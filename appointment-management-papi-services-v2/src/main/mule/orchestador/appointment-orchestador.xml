@@ -25,19 +25,32 @@ var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
 ]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.CUSTOMER_ID_TYPE != null and vars.parameters.CUSTOMER_ID_TYPE != "" &#10;	and vars.parameters.CUSTOMER_ID != null and vars.parameters.CUSTOMER_ID != ""&#10;)&#10; if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;  false&#10; else&#10;  true &#10;else&#10;	if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;	  true&#10;	else&#10;	  false]' doc:name="Set isValidRequestParams" doc:id="f4928e0a-690a-49f5-a52d-88b6dc3ac114" variableName="isValidRequestParams"/>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.CUSTOMER_ID_TYPE != null and vars.parameters.CUSTOMER_ID_TYPE != "" &#10;	and vars.parameters.CUSTOMER_ID != null and vars.parameters.CUSTOMER_ID != ""&#10;)&#10;  true &#10;else&#10;	if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;	  true&#10;	else&#10;	  false]' doc:name="Set isValidRequestParams" doc:id="f4928e0a-690a-49f5-a52d-88b6dc3ac114" variableName="isValidRequestParams"/>
 		<choice doc:name="Choice" doc:id="dbe30739-6710-4037-ad9d-317e85fe4df6" >
 			<when expression="#[vars.isValidRequestParams]">
-				<flow-ref doc:name="Flow Reference Call mongo-db-sapi-get-pqrAgendaTmr" doc:id="dc3af746-6eb6-4c4b-b6a7-9dc9f37d250a" name="mongo-db-sapi-get-pqrAgendaTmr-clientSub_Flow"/>
+				<scatter-gather doc:name="Scatter-Gather" doc:id="1a03db69-e1fa-4d32-b61f-a9a27f819ec0" >
+					<route >
+						<flow-ref doc:name="Flow Reference Call mongo-db-sapi-get-pqrAgendaTmr" doc:id="dc3af746-6eb6-4c4b-b6a7-9dc9f37d250a" name="mongo-db-sapi-get-pqrAgendaTmr-clientSub_Flow" />
+					</route>
+					<route >
+						<flow-ref doc:name="Flow Reference" doc:id="b46cfb5c-16d5-4bef-83a7-acedf53767f9" name="mongo-db-sapi-get-franjas-clientSub_Flow"/>
+					</route>
+				</scatter-gather>
+				<set-variable value='#[payload."1"."payload".portal_unificado_conf[0].Parametros default []]' doc:name="Set Variable" doc:id="0e26cfb3-2e46-4084-9109-6f1e4ad4d181" variableName="timeslot_user" />
 				<ee:transform doc:name="Transform Message" doc:id="77d05a1f-bdbf-44c2-b450-5e66b3f1140c" >
 					<ee:message >
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+var pay = payload."0"."payload"
+
+fun obtenerValor(llave) =
+    (vars.timeslot_user filter ($.Llave == llave))[0].Valor default ""
+
 ---
 {
-    codeResponse: payload.code,
-    responseMessage: payload.message,
-    appointments: payload.agendas map (item) -> {
+    codeResponse: payload."0"."payload".code,
+    responseMessage: payload."0"."payload".message,
+    appointments: payload."0"."payload".agendas map (item) -> {
         id: item."_id"."\$oid",
         actionType: item.action_type,
         address: item.address,
@@ -49,6 +62,7 @@ output application/json
             etaId: tmr.id_eta default "",
             requestedByCustomer: tmr.solicitado_cliente,
             timeSlot: tmr.timeslot,
+            timeSlotUser: obtenerValor((tmr.timeslot) as String),
             channel: tmr.canal default "",
             scheduleEndDate: tmr.fecha_fin_agenda,
             osmId: tmr.id_osm default "",
