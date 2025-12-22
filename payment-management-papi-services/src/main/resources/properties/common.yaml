@@ -30,53 +30,91 @@ payu-sapi:
       output application/json skipNullOn="everywhere"
       ---
       {
-        "order": {
-          "accountId": vars.payloadOri.accountId default Mule::p('payu.fields.accountId'),
-          "referenceCode": vars.payloadOri.reference,
-          "description": vars.payloadOri.description,
-          "language": vars.payloadOri.language default Mule::p('payu.fields.language'),
-          "signature": vars.payloadOri.signature default Mule::p('payu.fields.signature'),
-          "notifyUrl": vars.payloadOri.notifyUrl default Mule::p('payu.fields.notifyUrl'),
-          "additionalValues": vars.payloadOri.taxes map ((item, index) -> {
-            (item.code): {
-              "value": item.value,
-              "currency": vars.payloadOri.currency
-            }
-          }) reduce ((item, acc) -> item ++ acc),
-          "buyer": {
-            "merchantBuyerId": (vars.payloadOri.customer.document."type" default "CC") ++ (vars.payloadOri.customer.document.number default ""),
-            "fullName": vars.payloadOri.customer.firstname ++ " " ++ vars.payloadOri.customer.lastname,
-            "emailAddress": vars.payloadOri.customer.email,
-            "contactPhone": vars.payloadOri.customer.phone,
-            "dniNumber": vars.payloadOri.customer.document.number,
-            "shippingAddress": vars.payloadOri.customer.address ++ {
-            "phone": vars.payloadOri.customer.phone
-          }
+        // ===== ROOT =====
+        language: Mule::p("payu-sapi.fields.language"),
+        command: "SUBMIT_TRANSACTION",
+      
+        merchant: {
+          apiKey: Mule::p("payu-sapi.fields.apiKey"),
+          apiLogin: Mule::p("payu-sapi.fields.apiLogin")
+        },
+      
+        transaction: {
+          // ===== ORDER =====
+          order: {
+            accountId: Mule::p("payu-sapi.fields.accountId"),
+            referenceCode: payload.reference,
+            description: payload.description,
+            language: Mule::p("payu-sapi.fields.language"),
+            signature:
+              Mule::p("payu-sapi.fields.signature") default payload.signature,
+            notifyUrl:
+              Mule::p("payu-sapi.fields.notifyUrl") default payload.notifyUrl,
+      
+            additionalValues:
+              (payload.taxes default [])
+                map ((item) -> {
+                  (item.code): {
+                    value: item.value,
+                    currency: payload.currency
+                  }
+                })
+                reduce ((item, acc = {}) -> item ++ acc),
+      
+            buyer: {
+              merchantBuyerId: "1",
+              fullName: payload.customer.firstname,
+              emailAddress: payload.customer.email,
+              contactPhone: payload.customer.phone,
+              dniNumber: payload.customer.document.number,
+              shippingAddress:
+                payload.customer.address ++ {
+                  phone: payload.customer.phone
+                }
+            },
+      
+            shippingAddress:
+              payload.customer.address ++ {
+                phone: payload.customer.phone
+              }
           },
-          "shippingAddress": vars.payloadOri.customer.address ++ {
-            "phone": vars.payloadOri.customer.phone
-          }
+      
+          // ===== PAYER =====
+          payer: {
+            merchantPayerId: "1",
+            fullName: "First name and second payer name",
+            emailAddress: "payer_test@test.com",
+            contactPhone: payload.customer.phone,
+            dniNumber: "5415668464655",
+            billingAddress:
+              payload.customer.address ++ {
+                phone: payload.customer.phone
+              }
+          },
+      
+          // ===== PAYMENT DATA =====
+          creditCard: {
+            number: payload.paymentMethod.number,
+            securityCode: payload.paymentMethod.securityCode,
+            expirationDate: payload.paymentMethod.expirationDate,
+            name: payload.paymentMethod.name
+          },
+      
+          extraParameters: payload.extraParameters,
+      
+          "type": Mule::p("payu-sapi.fields.type"),
+          paymentMethod: Mule::p("payu-sapi.fields.paymentMethod"),
+          paymentCountry: Mule::p("payu-sapi.fields.paymentCountry"),
+          deviceSessionId: payload.deviceSessionId,
+          ipAddress: payload.ipAddress,
+          cookie: payload.cookie,
+          userAgent: payload.userAgent,
+          threeDomainSecure: payload.threeDomainSecure
         },
-        "payer": {
-          "merchantPayerId": (vars.payloadOri.customer.document."type" default "CC") ++ (vars.payloadOri.customer.document.number default ""),
-          "fullName": vars.payloadOri.customer.firstname ++ " " ++ vars.payloadOri.customer.lastname,
-          "emailAddress": vars.payloadOri.customer.email,
-          "contactPhone": vars.payloadOri.customer.phone,
-          "dniNumber": vars.payloadOri.customer.document.number,
-          "billingAddress": vars.payloadOri.customer.address ++ {
-            "phone": vars.payloadOri.customer.phone
-          }
-        },
-        (vars.payloadOri.paymentMethod.code): vars.payloadOri.paymentMethod - "code" - "type",
-        "extraParameters": vars.payloadOri.extraParameters,
-        "paymentMethod": vars.payloadOri.paymentMethod."type",
-        "paymentCountry": vars.payloadOri.paymentCountry,
-        "deviceSessionId": vars.payloadOri.deviceSessionId,
-        "ipAddress": vars.payloadOri.ipAddress,
-        "cookie": vars.payloadOri.cookie,
-        "userAgent": vars.payloadOri.userAgent,
-        "threeDomainSecure": vars.payloadOri.threeDomainSecure
+      
+        test: Mule::p("payu-sapi.fields.test") as Boolean
       }
+
   response:
     getBanks: "%dw 2.0 import modules::common output application/json --- vars.sapiResponse.data map ((item, index) -> { bankId: item.id, bankDescription: item.description, bankCode: item.pseCode })"
     postPayment: |
@@ -116,27 +154,52 @@ payu-sapi:
           id_transaccion: vars.payloadOri.correlatorId,
           CUS: vars.sapiResponse.data.transactionId,
           pasarela: "payu",
+      
           atributos_pasarela: vars.sapiResponse.data >> [],
-          referencia_pago: vars.payloadOri.reference  >> [],
+          referencia_pago: vars.payloadOri.reference >> [],
+      
           tipo_documento: vars.payloadOri.customer.document."type" default "CC",
           numero_documento: vars.payloadOri.customer.document.number default "",
-          valor_pagar: vars.payloadOri.amount as String,
-          valor_impuesto: sum(vars.payloadOri.taxes.value) as String,
+      
+          valor_pagar:
+            (
+              vars.payloadOri.amount
+              default
+              (vars.payloadOri.taxes filter $.code == "TX_VALUE")[0].value
+              default 0
+            ) as String,
+      
+          valor_impuesto:
+            (sum(vars.payloadOri.taxes.value) default 0) as String,
+      
           concepto: vars.payloadOri.description,
-          entidad_bancaria: vars.payloadOri.paymentMethod.bank.name default "ENTIDAD BANCARIA",
+      
+          entidad_bancaria:
+            vars.payloadOri.paymentMethod.bank.name default "ENTIDAD BANCARIA",
+      
           pasarela_tipo: vars.paymentMethod,
+      
           estado_transaccion: vars.sapiResponse.data.state,
           estado_tx: "PENDIENTE",
-          estados: (vars.estados default []) << {          
-              estado_transaccion: vars.sapiResponse.data.state,
-              estado_tx: "PENDIENTE",
-              fecha: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
-          },
-          fecha_registro: vars.sapiResponse.data.operationDate as DateTime {unit: "milliseconds"} as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
-          fecha_respuesta_pasarela: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
-          fecha_actualizacion: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+      
+          estados:
+            (vars.estados default []) << {
+                estado_transaccion: vars.sapiResponse.data.state,
+                estado_tx: "PENDIENTE",
+                fecha: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+            },
+      
+          fecha_registro:
+            (vars.sapiResponse.data.operationDate default 0)
+              as DateTime {unit: "milliseconds"}
+              as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
+      
+          fecha_respuesta_pasarela:
+            now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
+      
+          fecha_actualizacion:
+            now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
       }
-
 wompi-sapi:  
   basePath: "/api/v1/wompi"    
   paths:
