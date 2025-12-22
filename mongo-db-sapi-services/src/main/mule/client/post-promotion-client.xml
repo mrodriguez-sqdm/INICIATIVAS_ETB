@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+	xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd">
+	<flow name="post-promotion-clientFlow" doc:id="cf117ced-b6be-42d7-b2fc-ec2dac9db690" >
+	<!-- Parse incoming request (POST with JSON body) -->
+
+    <!-- Set default values if null -->
+    <set-variable variableName="filter" value="#[payload.filter default {}]" />
+    <set-variable variableName="fields" value="#[payload.fields default {}]" />
+    <set-variable variableName="offset" value="#[payload.offset default 0]" />
+    <set-variable variableName="limit" value="#[%dw 2.0
+output application/java
+---
+payload.limit default p('promotion.default-limit')]" />
+
+
+		<set-variable value="#[%dw 2.0
+output application/json
+---
+{
+	aggregate: p('promotion.collection'),
+	pipeline: [{
+		&quot;\$match&quot;: vars.filter
+	},
+{
+		&quot;\$skip&quot;: vars.offset
+	},
+{
+		&quot;\$limit&quot;: vars.limit
+	},
+{
+		&quot;\$project&quot;: vars.fields
+	}],
+	cursor: {
+	}
+}]" doc:name="Set Variable" doc:id="4edade9d-cc12-4dff-8725-3f525bc93944" variableName="aggCommand"/>
+		<logger level="INFO" message="#[vars.aggCommand]" />
+		<mongo:execute-command doc:name="Execute command" doc:id="e36a4369-adc9-4f7a-b979-a4fa7cea0307" config-ref="mdm_db_Config">
+			<mongo:command ><![CDATA[#[vars.aggCommand]]]></mongo:command>
+		</mongo:execute-command>
+		<set-payload value='#[payload.cursor.firstBatch]' doc:name="Set Payload" doc:id="7e311851-f4c9-4ce8-b78f-24fd19827e16" />
+    <!-- Payload is already a list of documents -->
+	</flow>
+</mule>

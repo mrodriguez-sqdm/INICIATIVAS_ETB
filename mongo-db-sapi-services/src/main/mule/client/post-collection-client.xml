@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-collection-clientSub_Flow" doc:id="c5b1864b-daf0-47f1-950c-fcc749195f7e" >
+		<ee:transform doc:name="Set Params" doc:id="0bb70e05-7045-4977-b57e-19f93d284893" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="fields" ><![CDATA[%dw 2.0
+output application/json
+var fields = payload.fields joinBy ","
+---
+fields ]]></ee:set-variable>
+				<ee:set-variable variableName="query" ><![CDATA[%dw 2.0
+output application/json
+var filters = payload.filters
+fun setQuery(op,value) = if (op == "eq") value else {"\$in": value}
+---
+filters map ((item, index) -> 
+{
+(item.field): setQuery(item.operator default "eq",item.value)
+}
+) reduce ((item, accumulator={}) -> accumulator ++ item)]]></ee:set-variable>
+				<ee:set-variable variableName="limit" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.limit default Mule::p("mongo.limit.default")]]></ee:set-variable>
+				<ee:set-variable variableName="dynamicDatabase" ><![CDATA[%dw 2.0
+output application/json
+var dbs =  read(Mule::p('collections'), "application/json")
+var finaleDb = dbs pluck ((value, key, index) ->
+    if (value contains vars.collectionName) key else null
+) filter $ != null 
+---
+finaleDb[0]
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<mongo:find-documents doc:name="Find documents" doc:id="3d082bc4-9a54-463d-a6da-d9c09bf26f9c" config-ref="MongoDB_Dynamic_Config" collectionName="#[vars.collectionName]" fields='#[vars.fields]' limit="#[vars.limit]">
+			<mongo:query ><![CDATA[#[vars.query]]]></mongo:query>
+		</mongo:find-documents>
+		<ee:transform doc:name="Transform Message" doc:id="483f623e-6c39-4fa2-8eca-0a22566563cf" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+fun setId(index) = payload."_id"."\$oid"[index] 
+---
+payload map ((item, index) -> 
+
+item - "_id" ++ {"id": setId(index)} 
+
+) ]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
