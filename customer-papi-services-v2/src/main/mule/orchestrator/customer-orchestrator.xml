@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-customer-orchestratorSub_Flow" doc:id="3ee3c998-d194-4c8b-ba01-e57af86e2771" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="fd1c6766-9161-4a9a-827e-b6b1e4f6d6fa" variableName="parameters"/>
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="89df4cf5-b9c2-4469-84c6-7e3477d07d28" variableName="headers"/>
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="4474aaa7-ee68-4384-8d39-873d1b22bbcc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.CUSTOMER_ID_TYPE != null and vars.parameters.CUSTOMER_ID_TYPE != "" &#10;	and vars.parameters.CUSTOMER_ID != null and vars.parameters.CUSTOMER_ID != ""&#10;)&#10; if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;  false&#10; else&#10;  true &#10;else&#10;	if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;	  true&#10;	else&#10;	  false]' doc:name="Set call" doc:id="80eaba17-5c6e-44e8-b56b-51d7350c5773" variableName="call" />
+		<choice doc:name="vars.call" doc:id="2bd08c83-dcee-477f-8f68-137902cdeb6d" >
+			<when expression="#[vars.call]">
+				<flow-ref doc:name="Flow Reference" doc:id="8bb8eee4-686a-49f6-b55a-7f62a1f7271d" name="mongo-db-sapi-get-customer-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="414488e9-cdc6-4c44-bba2-10ec4750fcf7">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: (payload.codigo default 200) as String,
+    responseMessage: "La solicitud fue exitosa",
+    customer: (payload.customers default []) map (cust) -> (
+        do {
+            var hasFibra = sizeOf((cust.Sistema_Origen default []) filter ((so) -> so.Sistema_Origen == "FIBRA")) > 0
+            ---
+            {
+                identityData: {
+                    name: cust.Nombre_Cliente default "",
+                    documentType: cust.Tipo_Documento default "",
+                    documentNumber: cust.Numero_Identificacion default "",
+                    gender: cust.Genero default "",
+                    maritalStatus: cust.Estado_Civil default "",
+                    birthDate: cust.Fecha_Nacimiento default ""
+                },
+                state: cust.Estado,
+                contactData: {
+                    email: cust.Correo_Electronico default "",
+                    phone: cust.Telefono_Fijo default "",
+                    mobile: cust.Telefono_Movil default "",
+                    address: cust.Direccion default "",
+                    country: cust.Pais default "",
+                    state: cust.Departamento default "",
+                    city: cust.Ciudad default ""
+                }
+            }
+            ++ (if (cust.ATDP?) { atdp: { decision: cust.ATDP default "" } } else {})
+            ++ (if (cust.Autorizacion_Datacredito? or cust.Correo_Electronico? or (cust.Contacto default [])[0]?) { 
+                    ley2300: { 
+                        contactRegistry: (cust.Contacto default []) map (c) -> {
+                            value: c.Email_Contacto default (cust.Correo_Electronico default "")
+                        }
+                    } 
+               } else {})
+            ++ (if (cust.UEN?) { segment: cust.UEN default "" } else {})
+            ++ (if (cust.EsquemaAtencion? or cust.Categoria?) { 
+                    customerExperience: {
+                        attentionType: cust.EsquemaAtencion default "",
+                        category: cust.Categoria default ""
+                    }
+               } else {})
+        }
+    )
+} ]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+			</when>
+						<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="a881f5ac-838a-489b-ab74-d0c6aecb7980" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD REQUEST",
+  "message": {
+    "message": "Error processing your consultation request"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable" doc:id="1fcf400c-3e1e-4d64-aace-abb5e55990b5" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

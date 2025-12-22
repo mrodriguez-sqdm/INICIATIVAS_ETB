@@ -1,0 +1,913 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:json-logger="http://www.mulesoft.org/schema/mule/json-logger"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/json-logger http://www.mulesoft.org/schema/mule/json-logger/current/mule-json-logger.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="get-customer-by-id" doc:id="3ee3c998-d194-4c8b-ba01-e57af86e2771" >
+		<ee:transform doc:name="Set Params" doc:id="4474aaa7-ee68-4384-8d39-873d1b22bbcc" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="fields" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams.fields]]></ee:set-variable>
+				<ee:set-variable variableName="customer" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	documentNumber: attributes.queryParams.documentNumber,
+	documentType: attributes.queryParams.documentType,
+}]]></ee:set-variable>
+				<ee:set-variable variableName="limit" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams.limit default 10]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="4d6dd006-8b63-4aff-8aa3-c2f80f246845" >
+			<route >
+				<flow-ref doc:name="get-customer-by-id-datosBasicos" doc:id="c5e6b7c5-5b69-470b-b831-f19ad7aa2e9c" name="get-customer-by-id-datosBasicos" />
+			</route>
+			<route >
+				<flow-ref doc:name="get-customer-by-id-servicios" doc:id="323f008e-6ffe-4a5e-8e53-7995771c22bc" name="get-customer-by-id-servicios"/>
+			</route>
+			<route >
+				<flow-ref doc:name="get-customer-by-id-notificaciones" doc:id="72cc3087-9fb4-4a1e-b41a-0bc219a1a61b" name="get-customer-by-id-notificaciones"/>
+			</route>
+			<route >
+				<flow-ref doc:name="get-customer-by-id-interacciones" doc:id="2563d6fb-f3da-490d-b0f4-d679bccd5fbc" name="get-customer-by-id-interacciones"/>
+			</route>
+			<route >
+				<flow-ref doc:name="get-customer-by-id-pqr" doc:id="65e1fbd2-96c3-47d2-b937-1ce7850ac4ec" name="get-customer-by-id-pqr"/>
+			</route>
+			<route >
+				<flow-ref doc:name="get-customer-by-id-facturacion" doc:id="9ed40fa3-61be-4bfa-aec9-6c111b3186a8" name="get-customer-by-id-facturacion"/>
+			</route>
+			<route >
+				<flow-ref doc:name="get-customer-by-id-retenciones" doc:id="744282dc-f0b2-43fc-8eba-344f108b9dd5" name="get-customer-by-id-retenciones"/>
+			</route>
+			<route >
+				<flow-ref doc:name="get-customer-by-id-promociones" doc:id="00b92376-e324-4d55-a972-4c93e823f6fb" name="get-customer-by-id-promociones"/>
+			</route>
+			<route >
+				<flow-ref doc:name="get-customer-by-id-ordenes" doc:id="7f49b702-4f2b-49ed-9db9-8f74443c99a1" name="get-customer-by-id-ordenes"/>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Set JSON Response" doc:id="2d6f4bb3-18e9-4d88-8372-8c49f6ad42a3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+fun getDirecciones(idDireccion) = do {
+    var direcciones = data.datosBasicos.direcciones
+---
+((direcciones default []) filter ((dir, index) -> dir.idDireccion == idDireccion) default [])[0]
+}
+var convertPayload = (flatten(valuesOf(payload) map ((item, index) -> item.*payload)) default []) as Array
+var data = convertPayload map ((item, index) ->
+{
+    (item.field as String): item.data
+}
+) reduce ((item, acc) -> item ++ acc)
+var datosBasicos = data.datosBasicos
+var servicios = {
+    servicios: data.servicios.servicios default []
+    map ((ser, index) ->
+    ser ++ {
+        direccionInstalacion: getDirecciones(ser.idDireccionInstalacion)
+    }),
+    serviciosActivos: data.servicios.serviciosActivos  default []
+    map ((ser, index) ->
+    ser ++ {
+        direccionInstalacion: getDirecciones(ser.idDireccionInstalacion)
+    }),
+}
+---
+(data.datosBasicos default {}) ++ {
+    (servicios: servicios) if(vars.fields contains "servicios"),
+    (notificaciones: data.notificaciones) if(vars.fields contains "notificaciones"),
+    (interacciones: data.interacciones) if(vars.fields contains "interacciones"),
+    (pqr: data.pqr) if(vars.fields contains "pqr"),
+    (facturacion: data.facturacion) if(vars.fields contains "facturacion"),
+    (retenciones: data.retenciones) if(vars.fields contains "retenciones"),
+    (promociones: data.promociones) if(vars.fields contains "promociones"),
+    (ordenes: data.ordenes) if(vars.fields contains "ordenes"),
+    (fallasMasivas: data.servicios.fallasMasivas) if(vars.fields contains "fallasMasivas"),
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-datosBasicos" doc:id="8f41862e-08fe-4f72-b1d0-f37bad349559" >
+		<ee:transform doc:name="Set mdmCliente Request" doc:id="49ecc1a3-9018-48fa-9eec-571d60d470e5">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmCliente"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="collectionName"><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmCliente.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<flow-ref doc:name="mdmCliente mongo-db-sapi-dynamic-search" doc:id="2f9f6abc-42a1-4963-bed6-37cdeaf00e7d" name="mongo-db-sapi-dynamic-search" target="mdmClienteResponse" targetValue="#[payload[0]]"/>
+		<ee:transform doc:name="datosBasicos Set Payload" doc:id="ab4417f7-2268-4e1e-9e78-1ae4bc777533">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import modules::common
+output application/java
+---
+{
+	field: "datosBasicos",
+	data: common::camelizeData(common::underscoreData(vars.mdmClienteResponse))
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-servicios" doc:id="0f8e1bb7-e701-4c17-a044-b0e100ce576b" >
+		<choice doc:name="Choice" doc:id="ac38a3ec-6421-49c2-a30d-0f721bcfc2c2" >
+			<when expression='#[(vars.fields contains "servicios") or (vars.fields contains "fallasMasivas")]'>
+				<ee:transform doc:name="Set mdmCdServicio Request" doc:id="b05d3795-5aac-4538-8880-7c4973b6b619">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmCdServicio"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="collectionName"><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmCdServicio.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mdmCdServicio mongo-db-sapi-dynamic-search" doc:id="52200729-2a06-4642-8d24-391064505c51" name="mongo-db-sapi-dynamic-search" target="mdmCdServicioResponse" />
+				<flow-ref doc:name="get-customer-by-id-fallasMasivas" doc:id="a23d14fe-e261-45f5-9f5b-48491e9b31d1" name="get-customer-by-id-fallasMasivas" target="fallasMasivas" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name='El campo de "servicios" o "fallasMasivas" no fue seleccionado' doc:id="27fea38a-817a-471e-a097-c6a23687e575" message='El campo de "servicios" o "fallasMasivas" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<choice doc:name="Choice" doc:id="76876c6c-2eb1-40c8-82fe-e103d1748c12" >
+			<when expression='#[vars.fields contains "servicios"]' >
+				<ee:transform doc:name="Set mdmServicioActivo Request" doc:id="e30caca8-56fd-4c10-a1c7-bb8035a61fd2" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmServicioActivo"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="collectionName" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmServicioActivo.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mdmServicioActivo mongo-db-sapi-dynamic-search" doc:id="a4d94b67-cd1b-4d60-a3f6-a23fc79c1506" name="mongo-db-sapi-dynamic-search" target="mdmServicioActivoResponse" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name='El campo de "servicios" no fue seleccionado' doc:id="b886b6d1-fd68-4a00-9465-505b6156f7bb" message='El campo de "servicios" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="servicios Set Payload" doc:id="b36a4f45-ab72-42b0-82f7-35b1e8011640" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/java
+---
+{
+	field: "servicios",
+	data: {
+		servicios: common::camelizeData(common::underscoreData(vars.mdmCdServicioResponse)),
+		serviciosActivos: common::camelizeData(common::underscoreData(vars.mdmServicioActivoResponse)),
+		fallasMasivas: common::camelizeData(common::underscoreData(vars.fallasMasivas))
+	}	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-notificaciones" doc:id="e5dc6c32-ca6e-449d-b6ee-bfef2d815350" >
+		<choice doc:name="Choice" doc:id="68d5d9a5-2273-4904-a28e-747ba1255dca" >
+			<when expression='#[vars.fields contains "notificaciones"]' >
+				<ee:transform doc:name="Set logNotificacion Request" doc:id="4dd5dbf7-2094-4170-954d-f1dbce6f9625" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.logNotificacion"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="collectionName" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.logNotificacion.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="logNotificacion mongo-db-sapi-dynamic-search" doc:id="6d5049d3-75bc-4fc0-abee-265856b0c1fc" name="mongo-db-sapi-dynamic-search" target="logNotificacionResponse" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name='El campo de "notificaciones" no fue seleccionado' doc:id="9a451048-7213-454c-ae37-f228cf05ccc4" message='El campo de "notificaciones" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="notificaciones Set Payload" doc:id="3d936a90-e355-45ca-8e27-248f95459cc1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/java
+---
+{
+	field: "notificaciones",
+	data: common::camelizeData(common::underscoreData(vars.logNotificacionResponse))
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-interacciones" doc:id="c9b62b22-fd61-4dcc-ab68-935cc20165b1" >
+		<choice doc:name="Choice" doc:id="b7de3b51-14e7-4b71-adc0-a05d96b98ee1" >
+			<when expression='#[vars.fields contains "interacciones"]' >
+				<ee:transform doc:name="Set mdmInteraccion Request" doc:id="afa58229-d9c6-4c9a-a957-f77f99916678" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmInteraccion"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="collectionName" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmInteraccion.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mdmInteraccion mongo-db-sapi-dynamic-search" doc:id="ac583298-a7cd-4e22-915a-dd2379e2749f" name="mongo-db-sapi-dynamic-search" target="mdmInteraccionResponse" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name='El campo de "interacciones" no fue seleccionado' doc:id="ac8d29c5-4fbe-43fa-8121-3d38b3445a1a" message='El campo de "interacciones" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="interacciones Set Payload" doc:id="78691842-5451-4603-94a7-1d6eb8598d02" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/java
+---
+{
+	field: "interacciones",
+	data: common::camelizeData(common::underscoreData(vars.mdmInteraccionResponse))
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-pqr" doc:id="83ffac0a-537e-4850-87a7-bbf738452ad3">
+		<choice doc:name="Choice" doc:id="2c7f6631-3bb0-4d6a-891f-a2206903321e">
+			<when expression='#[vars.fields contains "pqr"]'>
+				<ee:transform doc:name="Set mdmPQR Request" doc:id="b0dd5744-9902-42ab-841e-bcc9018cb728">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmPQR"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="collectionName"><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmPQR.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mdmPQR mongo-db-sapi-dynamic-search" doc:id="810f9af9-fe3e-402a-a726-a3f2c153ee84" name="mongo-db-sapi-dynamic-search" target="mdmPQRResponse" />
+				<ee:transform doc:name="Params PQR - Agenda" doc:id="ec42b2e5-0593-4f4d-aa19-e078e6a78f90">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="searchForValue" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.mdmPQRResponse filter
+  (
+    lower($.estado_pqr default "") == "cerrado"
+    and lower($.motivo_pqr default "") == "falla tecnica"
+  )).numero_pqr default []]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="get-customer-by-id-agendamiento" doc:id="54ebabe6-18e4-4071-9ddc-20e2ffa97d79" name="get-customer-by-id-agendamiento" target="prqAgendas"/>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name='El campo de "pqr" no fue seleccionado' doc:id="caa282a1-8b3b-4972-8432-33b932048750" message='El campo de "pqr" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="pqr Set Payload" doc:id="4056ebd2-0e3b-4b91-9046-6f3100eaad94">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import modules::common
+output application/java
+var prqAgendas = common::camelizeData(common::underscoreData(vars.prqAgendas))
+---
+{
+	field: "pqr",
+	data: common::camelizeData(common::underscoreData(vars.mdmPQRResponse))
+		map ((item, index) -> item ++ {
+		    agenda: (prqAgendas filter ($.apptNumber == item.numeroPqr))
+		})
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-facturacion" doc:id="10a172a3-d839-4447-b30e-89e4d0cd4172" >
+		<choice doc:name="Choice" doc:id="aff9427c-072e-4c25-b080-8660ae3cc5a0" >
+			<when expression='#[vars.fields contains "facturacion"]' >
+				<ee:transform doc:name="Set mdmCuentaFacturacion Request" doc:id="836b52de-8042-4ba2-b46b-83cdd4f16185" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmCuentaFacturacion"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="collectionName" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmCuentaFacturacion.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mdmCuentaFacturacion mongo-db-sapi-dynamic-search" doc:id="df4228ca-c790-4b4c-a62e-8f4f17d68281" name="mongo-db-sapi-dynamic-search" target="mdmCuentaFacturacionResponse" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name='El campo de "facturacion" no fue seleccionado' doc:id="4efa81a1-d65c-4544-8e5f-4637be370996" message='El campo de "facturacion" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="facturacion Set Payload" doc:id="00004354-e659-47b0-b0ee-98351b94f32e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/java
+---
+{
+	field: "facturacion",
+	data: common::camelizeData(common::underscoreData(vars.mdmCuentaFacturacionResponse))
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-retenciones" doc:id="ad1b71ae-b16e-4963-80fd-6873ab6a5723" >
+		<choice doc:name="Choice" doc:id="56c81819-46b1-408e-83e2-771a59e061b0" >
+			<when expression='#[vars.fields contains "retenciones"]' >
+				<ee:transform doc:name="Set cdRetencion Request" doc:id="4e056c39-c0f4-4d92-a6c4-db9e12b2c86d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.cdRetencion"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="collectionName" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.cdRetencion.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="cdRetencion mongo-db-sapi-dynamic-search" doc:id="d15deb19-28d7-4a90-8312-d043a889c8ab" name="mongo-db-sapi-dynamic-search" target="cdRetencionResponse" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name='El campo de "retenciones" no fue seleccionado' doc:id="ac62decc-f7ab-4376-a242-5daa653654fb" message='El campo de "retenciones" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="retenciones Set Payload" doc:id="16982b8f-94b6-4935-991e-53d34e83a3b5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/java
+---
+{
+	field: "retenciones",
+	data: common::camelizeData(common::underscoreData(vars.cdRetencionResponse))
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-fallasMasivas" doc:id="8bd6a17d-ea70-46d6-9909-573600be7679" >
+		<choice doc:name="Choice" doc:id="db6d7e62-530f-4996-b833-ce131bf76245" >
+			<when expression='#[vars.fields contains "fallasMasivas"]' >
+				<ee:transform doc:name="Set  Services Fallas Masivas" doc:id="a32781cb-9623-4b6f-ab0f-57f47ba11bf1">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="servicesFallasParams" ><![CDATA[%dw 2.6
+import modules::common
+output application/java
+var servicios = (
+(common::camelizeData(common::underscoreData(vars.mdmCdServicioResponse as Array default []))
+  map ((item, index) -> {
+    collection: "Servicio",
+    serviceAccount: item.idCuentaServicio,
+    tecnology: item.bundle.tipoServicio,
+    fallasFilter: true
+  }))
+++ (common::camelizeData(common::underscoreData(vars.mdmServicioActivoResponse as Array default []))
+map ((item, index) -> {
+    collection: "Servicio Activo",
+    serviceAccount: item.codigoServicio,
+    tecnology: item.producto,
+    fallasFilter: true
+  }))
+) as Array default []
+---
+(servicios filter ($.fallasFilter))
+  map ((item, index) -> {
+    serviceAccount: item.serviceAccount,
+    tecnology: item.tecnology,
+  })
+]]></ee:set-variable>
+						<ee:set-variable variableName="fallasAcc" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<foreach doc:name="For Each" doc:id="9496b9e4-5a11-4760-a2a9-f18db1160584" collection="#[vars.servicesFallasParams]">
+					<ee:transform doc:name="Set QueryParam" doc:id="f3a340ca-1d39-43f8-8949-16e76be36399" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="fallasQueryParam" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	serviceAccount: payload.serviceAccount,
+    tecnology: payload.tecnology
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="orquestador-sapi-get-fallas-masivas" doc:id="60119426-bae4-4e88-88c4-b739401b74ed" name="orquestador-sapi-get-fallas-masivas" target="orquestadorSapiResponse" />
+					<ee:transform doc:name="Set fallasAcc" doc:id="765492d0-89cd-446e-9701-fcf7ff43dc2f" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="fallasAcc" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.orquestadorSapiResponse.Descripcion == "OK")
+	(vars.fallasAcc default []) << vars.orquestadorSapiResponse
+else
+	vars.fallasAcc]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</foreach>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name='El campo de "fallasMasivas" no fue seleccionado' doc:id="7c488ef1-19df-4d7a-a71d-a429381e3d3c" message='El campo de "fallasMasivas" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="fallasMasivas Set Payload" doc:id="31a9f063-97d3-4645-80e7-bf935a9d1279" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/java
+---
+//{
+//	field: "fallasMasivas",
+//	data: common::camelizeData(common::underscoreData(vars.fallasAcc))
+//}
+vars.fallasAcc]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-promociones" doc:id="fcc17dbc-3d66-4710-98bc-3bbed58b1dae" >
+		<choice doc:name="Choice" doc:id="be418b28-1d76-43ff-bbbe-e9a9278c9cfa" >
+			<when expression='#[vars.fields contains "promociones"]' >
+				<ee:transform doc:name="Set promAltaPromocion Request" doc:id="d47f28c3-a1c1-4b89-aba2-aae18c252c2b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.promAltaPromocion"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="collectionName" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.promAltaPromocion.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="promAltaPromocion mongo-db-sapi-dynamic-search" doc:id="5cc89487-83b0-495a-9791-4bcc5ffc1c9d" name="mongo-db-sapi-dynamic-search" target="promAltaPromocionResponse" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name='El campo de "promociones" no fue seleccionado' doc:id="82e365a5-efbc-4dd7-9bfe-c3c42cedbcf9" message='El campo de "promociones" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="promociones Set Payload" doc:id="ede4756b-709c-4781-af94-fd4136fff3dc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/java
+---
+{
+	field: "promociones",
+	data: common::camelizeData(common::underscoreData(vars.promAltaPromocionResponse))
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-ordenes" doc:id="fd5ce5a8-7fa1-4d97-99fd-07f2dd497a67" >
+		<choice doc:name="Choice" doc:id="1accede3-5758-4166-b76c-1df608fc9689" >
+			<when expression='#[vars.fields contains "ordenes"]'>
+				<flow-ref doc:name="get-customer-by-id-orchestrator-ordenes-fijas" doc:id="09111a4f-8acc-4c9b-88d4-824218e301b9" name="get-customer-by-id-orchestrator-ordenes-fijas"/>
+				<flow-ref doc:name="get-customer-by-id-orchestrator-ordenes-moviles" doc:id="02607cd8-de4d-4a71-91b1-474c59594c5f" name="get-customer-by-id-orchestrator-ordenes-moviles" />
+				<ee:transform doc:name="Params Ordenes  - Agenda" doc:id="00fa1e65-83c7-4621-8e50-f31d1e0bf5d9">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="searchForValue"><![CDATA[%dw 2.6
+import modules::common
+output application/java
+var ordenes = (
+common::camelizeData(common::underscoreData(vars.mdmOrdenResponse)) ++
+common::camelizeData(common::underscoreData(vars.mdmOrdenCompletadasResponse)) ++
+common::camelizeData(common::underscoreData(vars.mdmCdOrdenResponse)) ++
+common::camelizeData(common::underscoreData(vars.mdmCdOrdenCompletadasResponse))
+) as Array default []
+---
+(ordenes filter ($.agendamiento.agenda default false)).numeroOrden default []
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="get-customer-by-id-agendamiento" doc:id="ec16312d-d9ca-40de-9abc-ebd03b74c140" name="get-customer-by-id-agendamiento" target="ordenesAgendas" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name='El campo de "ordenes" no fue seleccionado' doc:id="f0eec227-1ff0-4e65-9035-8d211495f021" message='El campo de "ordenes" no fue seleccionado, fields: #[vars.fields]' />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="ordenes Set Payload" doc:id="c52a87e7-557b-4c8a-aca0-e3272e60111b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/java
+var ordenesAgendas = common::camelizeData(common::underscoreData(vars.ordenesAgendas default []))
+fun getAgendamientos(ordenes) = do {
+    var data = common::camelizeData(common::underscoreData(ordenes)) as Array default []
+---
+data map ((item, index) ->
+    item ++ {
+        agendas: (ordenesAgendas filter ($.apptNumber == item.numeroOrden) default [])
+    }
+)
+}
+---
+{
+	field: "ordenes",
+	data: {
+		fijas: {
+			mdmOrden: getAgendamientos(vars.mdmOrdenResponse as Array default []),
+			mdmOrdenCompletadas: getAgendamientos(vars.mdmOrdenCompletadasResponse as Array default [])
+		},
+		moviles: {
+			mdmCdOrden: getAgendamientos(vars.mdmCdOrdenResponse as Array default []),
+			mdmCdOrdenCompletadas: getAgendamientos(vars.mdmCdOrdenCompletadasResponse as Array default [])
+		}
+	}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-orchestrator-ordenes-fijas" doc:id="737c44d5-871a-4168-a480-de9ef0e1b185" >
+		<ee:transform doc:name="Set mdmOrden Request" doc:id="b2df1e23-fce9-4e33-8b16-6e43ceaecd9e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmOrden"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="collectionName" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmOrden.name')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mdmOrden mongo-db-sapi-dynamic-search" doc:id="26d667df-2996-46f4-9cae-803ce5e46663" name="mongo-db-sapi-dynamic-search" target="mdmOrdenResponse" />
+		<choice doc:name="Choice" doc:id="1266666b-a3d4-4e09-b899-9b0db3524d0a" >
+			<when expression="#[(sizeOf(vars.mdmOrdenResponse) &lt; vars.limit) or (vars.limit &lt; 0)]">
+				<ee:transform doc:name="Set mdmOrdenCompletadas Request" doc:id="24528435-c081-40a8-bc49-5cc89c6e0440">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmOrdenCompletadas"
+var limit = if(vars.limit >= 0)
+		sizeOf(vars.mdmOrdenResponse default []) - (vars.limit default 10)
+	else 
+		(vars.limit default 10) 
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: limit as Number
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="collectionName"><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmOrdenCompletadas.name')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="mdmOrdenCompletadas mongo-db-sapi-dynamic-search" doc:id="9f843558-7064-4b0d-947f-5c6219f066e8" name="mongo-db-sapi-dynamic-search" target="mdmOrdenCompletadasResponse" />
+			</when>
+			<otherwise >
+				<logger level="DEBUG" doc:name="mdmOrden ya alcanzo el limite de registros" doc:id="1e968e07-c6fe-4d57-82a9-76740ceb7f38" message="mdmOrden ya alcanzo el limite de registros"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-orchestrator-ordenes-moviles" doc:id="236076bd-4211-438c-9350-ca75d6b418ad">
+		<ee:transform doc:name="Set mdmCdOrden Request" doc:id="536df00f-3f79-4cd7-be6e-0234da0240f8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmCdOrden"
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: (vars.limit default 10) as Number
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="collectionName"><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmCdOrden.name')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mdmCdOrden mongo-db-sapi-dynamic-search" doc:id="eb52b356-78c8-468e-9027-fb32b0fccef0" name="mongo-db-sapi-dynamic-search" target="mdmCdOrdenResponse" />
+		<choice doc:name="Choice" doc:id="0968033c-7bce-4f33-bcc9-3ac6ce940548">
+			<when expression="#[(sizeOf(vars.mdmCdOrdenResponse) &lt; vars.limit) or (vars.limit &lt; 0)]">
+				<ee:transform doc:name="Set mdmCdOrdenCompletadas Request" doc:id="ee64da77-f3a3-4350-a6e5-e45c01fe80f2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import modules::common
+output application/json
+var collection = "customer360.collections.mdmCdOrdenCompletadas"
+var limit = if(vars.limit >= 0)
+		sizeOf(vars.mdmCdOrdenResponse default []) - (vars.limit default 10)
+	else 
+		(vars.limit default 10)
+---
+{
+	fields: common::getFieldsFromProperties(collection ++ '.fields'),
+	filters: [
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentNumber'),
+	    "value": vars.customer.documentNumber
+	  },
+	  {
+	    "field": Mule::p(collection ++ '.filters.documentType'),
+	    "value": vars.customer.documentType
+	  }
+	],
+	limit: limit as Number
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="collectionName"><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p('customer360.collections.mdmCdOrdenCompletadas.name')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mdmCdOrdenCompletadas mongo-db-sapi-dynamic-search" doc:id="d86d9ad4-2d86-4b9a-a589-964d84081981" name="mongo-db-sapi-dynamic-search" target="mdmCdOrdenCompletadasResponse" />
+			</when>
+			<otherwise>
+				<logger level="DEBUG" doc:name="mdmCdOrdenResponse  ya alcanzo el limite de registros" doc:id="76138691-d2cd-4c03-bdb2-bef69b014cb3" message="mdmCdOrdenResponse  ya alcanzo el limite de registros" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-customer-by-id-agendamiento" doc:id="933bb61b-b89f-4e6c-95ed-9221803e6e91">
+		<ee:transform doc:name="Set agendamientosAcc" doc:id="047c732d-ac73-4426-8109-63bd2c5fcdea">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="agendamientosAcc"><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<foreach doc:name="For Each" doc:id="4db309f1-86c8-413e-8e76-a42076753910" collection="#[vars.searchForValue]">
+					<ee:transform doc:name="Field Services QueryParams" doc:id="797f4027-1935-4344-a435-401a8485030f">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="oracleParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+    searchInField: Mule::p('oracle-sapi.resources.searchFields.searchField'),
+	searchForValue: payload,
+	dateFrom: now() as String {format: "yyyy-MM-dd"},
+    dateTo: (now() + |P1M|) as String {format: "yyyy-MM-dd"},
+    fields: Mule::p('oracle-sapi.resources.searchFields.fields')
+}
+]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="oracle-sapi-get-field-service" doc:id="5d7c39e5-0f7e-4fa9-bebd-2b5c492acb63" name="oracle-sapi-get-field-service" target="oracleResponse" />
+					<ee:transform doc:name="acc Agendas" doc:id="6becfb7a-b899-40d8-bd5a-905dbc442002">
+						<ee:message>
+						</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="agendamientosAcc" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.agendamientosAcc default []) ++ (vars.oracleResponse.items default [])]]></ee:set-variable>
+				</ee:variables>
+					</ee:transform>
+				</foreach>
+		<ee:transform doc:name="Set Payload" doc:id="33bd7864-a177-48e4-bed5-c6b319f69bbd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+vars.agendamientosAcc]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

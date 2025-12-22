@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:json-logger="http://www.mulesoft.org/schema/mule/json-logger"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/json-logger http://www.mulesoft.org/schema/mule/json-logger/current/mule-json-logger.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="getRequestData" doc:id="d74ff480-f262-4759-b7f4-51da93aa4d89" >
+		<ee:transform doc:name="Transform Message" doc:id="caffd499-35a7-4ef0-aee7-80b6dc90e125">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="requestVars"><![CDATA[%dw 2.0
+import modules::paymentLib
+output application/json
+---
+paymentLib::getRequestData(vars.paymentMethod)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow
+		name="common-get-banks"
+		doc:id="4ad05b16-fbac-48e1-ab6b-a5c592e2934b">
+		<json-logger:logger
+			doc:name="Start Resource"
+			doc:id="ed9bbd4d-f10f-487a-bc40-b18d6ceb5cbf"
+			config-ref="JSON_Logger_Config"
+			message="Start Resource">
+			<json-logger:content><![CDATA[#[import modules::JSONLoggerModule output application/json ---
+{
+    payload: JSONLoggerModule::stringifyNonJSON(payload),
+    requestVars: JSONLoggerModule::stringifyNonJSON(vars.requestVars)
+}]]]></json-logger:content>
+		</json-logger:logger>
+		<flow-ref doc:name="getRequestData" doc:id="74e7f8d7-7971-4f34-916e-3ae3d1220362" name="getRequestData" />
+		<http:request method="GET" doc:name="Request" doc:id="591c9223-b96c-4d10-868f-64facbce938f" config-ref="HTTP_Request_Sapi_configuration" path="#[vars.requestVars.paths.getBanks]">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+    "client_id" : vars.commonHeaders.client_id,
+    "client_secret" : vars.commonHeaders.client_secret,
+    "name" : vars.commonHeaders.name,
+    "X-CORRELATION-ID": vars.commonHeaders.'X-CORRELATION-ID',
+    "systemId": vars.commonHeaders.systemId,
+    "source" : vars.commonHeaders.source
+}]]]></http:headers>
+		</http:request>
+		<json-logger:logger
+			doc:name="End Resource"
+			doc:id="2ffd232c-90b2-4cac-bf3f-69bf0af85b86"
+			config-ref="JSON_Logger_Config"
+			message="End Resource" />
+	</sub-flow>
+	<sub-flow name="common-post-transactions" doc:id="7938006f-603f-4c97-8cf7-c9eac6872179" >
+		<json-logger:logger doc:name="Start Resource" doc:id="8c24a12b-59cd-4fe6-be15-c06df6b3a8fc" config-ref="JSON_Logger_Config" message="Start Resource" >
+			<json-logger:content ><![CDATA[#[import modules::JSONLoggerModule output application/json ---
+{
+    payload: JSONLoggerModule::stringifyNonJSON(payload),
+    requestVars: JSONLoggerModule::stringifyNonJSON(vars.requestVars)
+}]]]></json-logger:content>
+		</json-logger:logger>
+		<flow-ref doc:name="getRequestData" doc:id="7cf611e4-7461-4da2-9d01-3f1c7f62fde0" name="getRequestData" />
+		<ee:dynamic-evaluate doc:name="Dynamic Evaluate" doc:id="98213aed-cca9-4707-8578-041d25c88ecf" expression="#[Mule::p(vars.paymentMethod ++ '-sapi.request.postPayment')]" />
+		<http:request method="POST" doc:name="Request" doc:id="b371d3aa-6f8f-4dd7-8409-c55209682447" config-ref="HTTP_Request_Sapi_configuration" path="#[vars.requestVars.paths.postPayment]" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+    "client_id" : vars.commonHeaders.client_id,
+    "client_secret" : vars.commonHeaders.client_secret,
+    "name" : vars.commonHeaders.name,
+    "X-CORRELATION-ID": vars.commonHeaders.'X-CORRELATION-ID',
+    "systemId": vars.commonHeaders.systemId,
+    "source" : vars.commonHeaders.source
+}]]]></http:headers>
+		</http:request>
+		<json-logger:logger doc:name="End Resource" doc:id="58f03433-11c2-45fc-aa98-18b19dd536ea" config-ref="JSON_Logger_Config" message="End Resource" />
+	</sub-flow>
+	<sub-flow name="common-get-payment-by-id" doc:id="2851af42-bc56-464c-ab78-4ec9a75e06fc" >
+		<json-logger:logger doc:name="Start Resource" doc:id="f93ddbe5-719d-4d72-8b4a-a9fd683173e1" config-ref="JSON_Logger_Config" message="Start Resource" >
+			<json-logger:content ><![CDATA[#[import modules::JSONLoggerModule output application/json ---
+{
+    payload: JSONLoggerModule::stringifyNonJSON(payload),
+    requestVars: JSONLoggerModule::stringifyNonJSON(vars.requestVars)
+}]]]></json-logger:content>
+		</json-logger:logger>
+		<flow-ref doc:name="getRequestData" doc:id="82f6272f-7e41-4b4e-bc1f-0ed4be3cdcaf" name="getRequestData" />
+		<http:request method="GET" doc:name="Request" doc:id="01b2cb31-4b32-4712-aac4-da24e8c77555" config-ref="HTTP_Request_Sapi_configuration" path="#[vars.requestVars.paths.getPaymentById]" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+    "client_id" : vars.commonHeaders.client_id,
+    "client_secret" : vars.commonHeaders.client_secret,
+    "name" : vars.commonHeaders.name,
+    "X-CORRELATION-ID": vars.commonHeaders.'X-CORRELATION-ID',
+    "systemId": vars.commonHeaders.systemId,
+    "source" : vars.commonHeaders.source
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"transactionId" : vars.paymentId
+}]]]></http:uri-params>
+		</http:request>
+		<json-logger:logger doc:name="End Resource" doc:id="21361ce9-33d2-4a4c-9b68-4fa932abba5a" config-ref="JSON_Logger_Config" message="End Resource" />
+	</sub-flow>
+</mule>

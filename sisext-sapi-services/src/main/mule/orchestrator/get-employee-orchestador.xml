@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-employee-orchestadorSub_Flow" doc:id="94e49dba-2f8d-4e3e-afdb-6745663391bd" >
+		<set-variable value="#[attributes.uriParams]" doc:name="Set Variable" doc:id="ad11ab28-3e1f-4341-ab44-5b3bf75bd376" variableName="uriParams"/>
+		<flow-ref doc:name="Flow Reference" doc:id="3393a1bf-d034-4792-8b3c-33e99d8ad0ba" name="get-employee-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="2c3c6134-3104-43ea-9bd6-0ef5c9961b95" >
+			<when expression="#[payload != null]">
+				<ee:transform doc:name="Transform Message" doc:id="15832f2b-625e-4874-9520-cebac6c737b4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: 200,
+    messageResponse: "OK",
+    employee: {
+        workforceID: payload.workforceID default null,
+        fullName: trim(
+            (payload.givenName default "") ++ " " ++ (payload.sn default "")
+        ),
+        email: payload.mail default null,
+        telephoneNumber: payload.telephoneNumber default null,
+        status:
+            if (upper((payload.loginDisabled default "") as String) == "TRUE") 
+                "INACTIVO"
+            else if (upper((payload.loginDisabled default "") as String) == "FALSE") 
+                "ACTIVO"
+            else 
+                null
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="8f10a379-de20-4b9e-bcc8-41fcdef8cd08" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: 200,
+    messageResponse: "Ejecución exitosa, sin resultados en LDAP",
+    employee: {}
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

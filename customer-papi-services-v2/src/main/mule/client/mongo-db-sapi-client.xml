@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="mongo-db-sapi-get-customer-clientSub_Flow" doc:id="d66f6bd5-3c0b-44a1-bf1e-0456f0200ac0" >
+		<http:request method="GET" doc:name="Request" doc:id="6c1e1caa-3688-48c7-92f4-1c213b912ae1" config-ref="mongo_db_sapi_config" path="${mongo-db-sapi.resources.customer.base-path}${mongo-db-sapi.resources.customer.get.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+	(Telefono_Movil: payload.filtros.MobilePhone) if (payload.filtros.MobilePhone? and payload.filtros.MobilePhone != ""),
+	(Telefono_Fijo: payload.filtros.Phone) if (payload.filtros.Phone? and payload.filtros.Phone != ""),
+	(Tipo_Documento: vars.parameters.CUSTOMER_ID_TYPE) if (vars.parameters.CUSTOMER_ID_TYPE? and vars.parameters.CUSTOMER_ID_TYPE != ""),
+	(Numero_Documento: vars.parameters.CUSTOMER_ID) if (vars.parameters.CUSTOMER_ID? and vars.parameters.CUSTOMER_ID != "")
+	
+}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="mongo-db-sapi-dynamic-search" doc:id="69526f4a-84f8-4ef2-8982-21eef300da01" >
+		<http:request method="POST" doc:name="POST Dynamic Search" doc:id="e77ccdbf-ac83-4092-bfa1-975d007b20d3" config-ref="mongo_db_sapi_config" path="${mongo-db-sapi.resources.dynamic-path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_id" : p('credentials.client_id'),
+	"client_secret" : p('credentials.client_secret'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID" default correlationId,
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+	collectionName: vars.collectionName
+}]]]></http:uri-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="95d50ff8-4d79-4c1d-ba6d-443dd69e79fa" >
+		<http:request method="#[vars.method]" doc:name="Request" doc:id="df32cb92-2281-4388-b5d7-d36de40653ee" config-ref="mongo_db_sapi_config" path="#[vars.path]" >
+			<http:headers ><![CDATA[#[vars.headers default {}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[vars.uriParams default{}]]]></http:uri-params>
+			<http:query-params ><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+</mule>

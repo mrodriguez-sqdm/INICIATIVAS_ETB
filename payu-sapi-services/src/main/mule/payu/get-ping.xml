@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:json-logger="http://www.mulesoft.org/schema/mule/json-logger"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/json-logger http://www.mulesoft.org/schema/mule/json-logger/current/mule-json-logger.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="get:\v1\ping:payu-sapi-services-config" doc:id="b50324a7-ce9e-4fde-97f0-5bdee4779d15" >
+		<json-logger:logger doc:name="Start Resource" doc:id="e1779832-4a37-4fa7-ace5-f3b2a5040778" config-ref="JSON_Logger_Config" message="Start Resource" />
+		<ee:transform doc:name="requestData" doc:id="cdc746dc-570e-476f-9905-927a8f4dd73d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "language": p('payu.language'),
+  "test": p('payu.test'),
+  "command": "PING",
+  "merchant": {
+    "apiLogin": p('payu.apiLogin'),
+    "apiKey": p('payu.apiKey')
+  }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<json-logger:logger doc:name="Before Request" doc:id="f41d09dc-1d21-4684-bea7-9f56d0095ad2" config-ref="JSON_Logger_Config" message="Before Request" tracePoint="BEFORE_REQUEST" priority="DEBUG" >
+			<json-logger:content ><![CDATA[#[import modules::JSONLoggerModule output application/json ---
+{
+    requestVars: JSONLoggerModule::stringifyNonJSON(vars.requestVars)
+}]]]></json-logger:content>
+		</json-logger:logger>
+		<http:request method="POST" doc:name="Get Ping" doc:id="2558e9b4-b41f-40b9-af01-f603abbb2f7a" config-ref="HTTP_Payu_Request_configuration" path="/${payu.payment_path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Accept" : "application/json",
+	"Content-Type" : "application/json"
+}]]]></http:headers>
+		</http:request>
+		<json-logger:logger doc:name="After Request" doc:id="702a6b23-853a-482a-8962-b6c2df18d234" config-ref="JSON_Logger_Config" message="After Request" tracePoint="AFTER_REQUEST" priority="DEBUG" />
+		<ee:transform doc:name="Set JSON Response" doc:id="26bad8de-1d01-4c1c-9434-0902f8f945e6" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "success",
+	"message": "Payu platform is running"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<json-logger:logger doc:name="End Resource" doc:id="4ac02ddd-331c-4585-9ea2-c81b2216a2d5" config-ref="JSON_Logger_Config" message="End Resource" />
+	</flow>
+</mule>

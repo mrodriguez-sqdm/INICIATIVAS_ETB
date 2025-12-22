@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:json-logger="http://www.mulesoft.org/schema/mule/json-logger"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/json-logger http://www.mulesoft.org/schema/mule/json-logger/current/mule-json-logger.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow
+		name="get:\v1\(paymentMethod)\banks:payment-management-papi-services-config"
+		doc:id="cc256e8f-46ca-41d2-b769-77a761f9a2b1">
+		<json-logger:logger
+			doc:name="Start Resource"
+			doc:id="7216527f-bed8-4233-a721-ebad626ea5f9"
+			config-ref="JSON_Logger_Config"
+			message="Start Resource" />
+		<ee:transform
+			doc:name="Set Vars"
+			doc:id="eab61271-c495-44b8-8476-598c4e838783">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="paymentMethod" ><![CDATA[attributes.uriParams.paymentMethod]]></ee:set-variable>
+				<ee:set-variable variableName="commonHeaders" ><![CDATA[%dw 2.0
+output application/java
+var paymentMethod = attributes.uriParams.paymentMethod
+---
+{
+    "client_id" : Mule::p(paymentMethod ++ '.client_id') default Mule::p('sapi.client_id'),
+    "client_secret" : Mule::p(paymentMethod ++ '.client_secret') default Mule::p('sapi.client_secret'),
+    "name" : attributes.headers.'name',
+    "X-CORRELATION-ID": correlationId,
+    "systemId": attributes.headers.'systemId',
+    "source" : attributes.headers.'source'
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="common-get-banks-sapi"
+			doc:id="a0d63c5f-cfd9-49dc-8845-3d57618422ce"
+			name="common-get-banks"
+			target="sapiResponse" />
+		<ee:dynamic-evaluate doc:name="Dynamic Evaluate" doc:id="db24f873-89c5-4395-8a32-9bc47cd9b475" expression="#[Mule::p(vars.paymentMethod ++ '-sapi.response.getBanks')]"/>
+		<json-logger:logger
+			doc:name="End Resource"
+			doc:id="34b05688-fd1b-479c-979d-f8c1a1d85728"
+			config-ref="JSON_Logger_Config"
+			message="End Resource" />
+	</flow>
+</mule>

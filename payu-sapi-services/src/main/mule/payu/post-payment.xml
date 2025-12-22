@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:json-logger="http://www.mulesoft.org/schema/mule/json-logger"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/json-logger http://www.mulesoft.org/schema/mule/json-logger/current/mule-json-logger.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="post:\v1\transactions:application\json:payu-sapi-services-config" doc:id="e63a0c45-a1d3-4fbc-9dc0-31dee7499179" >
+		<json-logger:logger doc:name="Start Resource" doc:id="f2fde13e-9967-4cac-9a9a-882271a436ec" config-ref="JSON_Logger_Config" message="Start Resource" />
+		<ee:transform doc:name="Set Vars and Request" doc:id="f0480cc9-75eb-43a2-8e96-2f7d523fb558">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::Crypto
+output application/json
+var merchantId = p('payu.merchantId')
+var apiKey = p('payu.apiKey')
+var paymentCountry = p('payu.paymentCountry')
+var apiLogin = p('payu.apiLogin')
+var referenceCode = payload.order.referenceCode
+var tx_value = payload.order.additionalValues.TX_VALUE.value
+var currency_co = payload.order.additionalValues.TX_VALUE.currency
+var sigString = apiKey ++ "~" ++ merchantId ++ "~" ++ referenceCode ++ "~" ++ tx_value ++ "~" ++ currency_co
+var signature = {"signature": MD5(sigString as Binary)}
+var order =  payload.order
+var data = payload - "transaction" ++ {
+    transaction: payload - "order"
+}
+var transaction = data.transaction ++ {"type": p('payu.type')}
+var newOrder = {"order": (order ++ signature)}
+---
+{
+    "language": "es",
+    "command": "SUBMIT_TRANSACTION",
+    "merchant": {
+        "apiKey": apiKey,
+        "apiLogin": apiLogin
+    },
+    "transaction": transaction ++ newOrder,
+    "test": "true"
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables />
+		</ee:transform>
+		<json-logger:logger doc:name="Before Request" doc:id="d2c4c720-fb40-447b-9be0-3dd0abc4aa9a" config-ref="JSON_Logger_Config" message="Before Request" tracePoint="BEFORE_REQUEST" priority="DEBUG" />
+		<http:request method="POST" doc:name="Create Payment Transaction" doc:id="857741c3-af5a-4e91-b5ee-4eb06b520aef" config-ref="HTTP_Payu_Request_configuration" path="/${payu.payment_path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Accept" : "application/json",
+	"Content-Type" : "application/json"
+}]]]></http:headers>
+		</http:request>
+		<json-logger:logger doc:name="After Request" doc:id="06294813-c741-468d-8c95-a7519e04ff2f" config-ref="JSON_Logger_Config" message="After Request" tracePoint="AFTER_REQUEST" priority="DEBUG" />
+		<ee:transform doc:name="Set JSON Response" doc:id="7ea13732-d0d9-4698-ad02-e5992299b8da" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "success",
+	"data": payload.transactionResponse
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<json-logger:logger doc:name="End Resource" doc:id="7d44f879-1676-4d38-a2bb-933e12e75ca7" config-ref="JSON_Logger_Config" message="End Resource" />
+	</flow>
+</mule>
