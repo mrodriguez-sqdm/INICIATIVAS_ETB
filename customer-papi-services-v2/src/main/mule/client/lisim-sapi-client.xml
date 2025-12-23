@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="lisim-sapi-clientFlow" doc:id="6f2cd810-8b2b-45b8-b2f4-f84bb1242894">
+		<try doc:name="Try" doc:id="try-lisim-sapi-client">
+			<http:request method="#[vars.method]" doc:name="Request lisim-sapi client" doc:id="8bdb062e-26ed-4dd0-8787-594c0a47f759" path="#[vars.path]" config-ref="HTTP_Request_configuration_lisim_sapi">
+				<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
+				<http:uri-params><![CDATA[#[vars.uriParams default {}]]]></http:uri-params>
+				<http:query-params><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
+			</http:request>
+			<error-handler>
+				<!-- Manejo de errores HTTP 4xx (Bad Request, Not Found, Unauthorized, etc.) -->
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Client Errors" doc:id="error-http-4xx" type="HTTP:BAD_REQUEST, HTTP:UNAUTHORIZED, HTTP:FORBIDDEN, HTTP:NOT_FOUND, HTTP:METHOD_NOT_ALLOWED, HTTP:NOT_ACCEPTABLE, HTTP:UNSUPPORTED_MEDIA_TYPE, HTTP:TOO_MANY_REQUESTS">
+					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 400]" doc:name="Set httpStatus from error" doc:id="set-status-4xx" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Error Response - Client Error" doc:id="transform-error-4xx">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var errorBody = error.cause.errorMessage.payload default {}
+var sapiError = if (errorBody is Object and errorBody.status?) errorBody else null
+---
+if (sapiError != null) 
+	sapiError
+else {
+	"status": vars.httpStatus,
+	"code": error.errorType.identifier default "CLIENT_ERROR",
+	"message": {
+		"message": if (errorBody is String and !isEmpty(errorBody)) 
+					errorBody 
+				   else 
+					error.description default "Error en la solicitud al servicio LISIM"
+	},
+	"messageServer": error.description default "",
+	"cause": [
+		{
+			"origin": "customer-papi-services",
+			"message": "Error en llamada a lisim-sapi-services: " ++ (error.errorType.identifier default "HTTP_CLIENT_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				
+				<!-- Manejo de errores HTTP 5xx (Internal Server Error, Bad Gateway, etc.) -->
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Server Errors" doc:id="error-http-5xx" type="HTTP:INTERNAL_SERVER_ERROR, HTTP:BAD_GATEWAY, HTTP:SERVICE_UNAVAILABLE, HTTP:GATEWAY_TIMEOUT">
+					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 500]" doc:name="Set httpStatus from error" doc:id="set-status-5xx" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Error Response - Server Error" doc:id="transform-error-5xx">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var errorBody = error.cause.errorMessage.payload default {}
+var sapiError = if (errorBody is Object and errorBody.status?) errorBody else null
+---
+if (sapiError != null) 
+	sapiError
+else {
+	"status": vars.httpStatus,
+	"code": if (vars.httpStatus == 503) "SERVICE_UNAVAILABLE" 
+			else if (vars.httpStatus == 504) "GATEWAY_TIMEOUT"
+			else "LISIM_SAPI_ERROR",
+	"message": {
+		"message": if (errorBody is String and !isEmpty(errorBody)) 
+					errorBody 
+				   else if (vars.httpStatus == 503)
+					"El servicio de validación de riesgo no está disponible temporalmente. Por favor intente más tarde."
+				   else if (vars.httpStatus == 504)
+					"Tiempo de espera agotado al conectar con el servicio de validación de riesgo."
+				   else 
+					"Error en el servicio de validación de riesgo LISIM."
+	},
+	"messageServer": error.description default "",
+	"cause": [
+		{
+			"origin": "customer-papi-services",
+			"message": "Error en llamada a lisim-sapi-services: " ++ (error.errorType.identifier default "HTTP_SERVER_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				
+				<!-- Manejo de errores de conectividad y timeout -->
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Connectivity" doc:id="error-connectivity" type="HTTP:CONNECTIVITY, HTTP:TIMEOUT, MULE:CONNECTIVITY, MULE:RETRY_EXHAUSTED">
+					<set-variable value="#[503]" doc:name="Set httpStatus 503" doc:id="set-status-connectivity" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Error Response - Connectivity" doc:id="transform-error-connectivity">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var isTimeout = (error.errorType.identifier default "") contains "TIMEOUT"
+---
+{
+	"status": 503,
+	"code": if (isTimeout) "TIMEOUT" else "SERVICE_UNAVAILABLE",
+	"message": {
+		"message": if (isTimeout) 
+					"Tiempo de espera agotado al conectar con el servicio de validación de riesgo. Por favor intente nuevamente."
+				   else 
+					"No fue posible conectar con el servicio de validación de riesgo. Por favor intente más tarde."
+	},
+	"messageServer": error.description default "",
+	"cause": [
+		{
+			"origin": "customer-papi-services",
+			"message": "Error de conectividad con lisim-sapi-services: " ++ (error.errorType.identifier default "CONNECTIVITY_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				
+				<!-- Manejo de errores de parsing/transformación -->
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Parsing" doc:id="error-parsing" type="HTTP:PARSING, MULE:EXPRESSION, EXPRESSION">
+					<set-variable value="#[500]" doc:name="Set httpStatus 500" doc:id="set-status-parsing" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Error Response - Parsing" doc:id="transform-error-parsing">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "PARSING_ERROR",
+	"message": {
+		"message": "Error procesando la respuesta del servicio de validación de riesgo."
+	},
+	"messageServer": error.description default "",
+	"cause": [
+		{
+			"origin": "customer-papi-services",
+			"message": "Error de parsing en respuesta de lisim-sapi-services: " ++ (error.errorType.identifier default "PARSING_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				
+				<!-- Catch-all para cualquier otro error no manejado -->
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Any" doc:id="error-any" type="ANY">
+					<set-variable value="#[500]" doc:name="Set httpStatus 500" doc:id="set-status-any" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Error Response - Any" doc:id="transform-error-any">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var errorBody = error.cause.errorMessage.payload default {}
+---
+{
+	"status": 500,
+	"code": "INTERNAL_SERVER_ERROR",
+	"message": {
+		"message": if (errorBody is String and !isEmpty(errorBody)) 
+					errorBody 
+				   else 
+					"Error inesperado en el servicio de validación de riesgo."
+	},
+	"messageServer": error.description default "",
+	"cause": [
+		{
+			"origin": "customer-papi-services",
+			"message": "Error inesperado en llamada a lisim-sapi-services: " ++ (error.errorType.identifier default "UNKNOWN_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

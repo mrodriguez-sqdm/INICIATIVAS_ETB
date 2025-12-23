@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd">
+	<sub-flow name="post-productOffering-clientSub_Flow" doc:id="b7304a5a-5bfc-4da9-97cc-02f4e35dde55" >
+		<choice doc:name="Choice" doc:id="8b5d8b11-1851-4b19-8321-416914d0c1d8" >
+			<when expression="payload == null">
+				<ee:transform doc:name="Transform Message" doc:id="4575e847-25c5-4327-a1b2-66289af9912f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  response: {
+    result: {
+      code: "FAIL",
+      description: "The field to find does not exists"
+    },
+    response: ""
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<async doc:name="Async" doc:id="f3dc1efc-be1e-4d5a-9ec4-f9f8ffed093a" >
+					<flow-ref doc:name="Call logger before" doc:id="b1a5356e-a78e-4483-8b47-32ee319c3a27" name="loggin-client-call"/>
+				</async>
+				<mongo:find-documents doc:name="Find documents" doc:id="2c3b5d55-5c4c-4df8-a0d7-eda4a5bab32f" config-ref="mdm_db_Config" collectionName="#[vars.collection]" fields="#[{}]" limit="#[(attributes.queryParams.limit default vars.defaultlimit) as Number]">
+			<mongo:query><![CDATA[#[payload]]]></mongo:query>
+		</mongo:find-documents>
+				<async doc:name="Async" doc:id="863d62ba-7a73-4ead-ad41-95e9038576ad" >
+					<flow-ref doc:name="Call logger before" doc:id="52024320-6c79-45f4-89ad-88f89e5879a4" name="loggin-client-call"/>
+				</async>
+				<ee:transform doc:name="Transform Message" doc:id="702ec032-e289-4100-84ee-378d9b7ead48" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  response: {
+    result: {
+      code: "OK",
+      description: "Response Query"
+    },
+    response: write(payload, "application/json")
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

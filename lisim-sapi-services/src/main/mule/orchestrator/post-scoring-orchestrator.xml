@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-scoring-orchestratorSub_Flow" doc:id="3fc05831-4341-4819-9764-494ac2bd1672">
+		<ee:transform doc:name="Set body request" doc:id="3af7f0bc-bb3e-4612-b14b-840e914946b7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml skipNullOn="everywhere"
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+---
+soapenv#Envelope:{
+    soapenv#Header: {},
+    soapenv#Body:{
+        tem#ValidarIdentificacion:{
+            tem#objSolicitud:{
+                tem#Usuario: p('lisim.usuario'),
+                tem#Contrasena: p('lisim.contrasena'),
+                tem#TipoIdentificacion: payload.Body.GestionClientes.body.Cliente.TipoDocumento,
+                tem#Identificacion: payload.Body.GestionClientes.body.Cliente.NumeroDocumento,
+                tem#Apellido: payload.Body.GestionClientes.body.Cliente.PrimerApellido,
+                tem#FechaExpedicion: payload.Body.GestionClientes.body.Cliente.FechaExpedicionDocumento,
+                tem#Modelo: payload.Properties.MODELO,
+                tem#Departamento: -1,
+                tem#Ciudad: -1,
+                tem#Asesor: payload.Properties.USUARIO default "",
+                tem#CanalVenta: payload.Properties.CANAL default "",
+                tem#Proveedor: payload.Properties.PROVEEDOR default "",
+                tem#Portal: payload.Properties.PORTAL default ""
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="bodyToWs" doc:id="a696f673-dd51-4858-90b6-8488649165c0" variableName="bodyToWs"/>
+		<flow-ref doc:name="Go to validation mock" doc:id="409863ca-872c-4ce0-b818-c70558f2c0ac" name="post-scoring-validateMock"/>
+		<set-variable value="#[payload]" doc:name="responseLisim" doc:id="e8140f63-eb16-4232-870a-d3193162769f" variableName="responseLisim"/>
+		<async doc:name="Async" doc:id="a25310f1-766b-4199-ae9b-360dcc225780" >
+			<flow-ref doc:name="registerLog" doc:id="1456b8b8-edd9-495c-9204-1cda3e9c80d9" name="registerLog"/>
+		</async>
+		<ee:transform doc:name="XML to JSON" doc:id="9afc90e0-70b0-4b93-bb9b-31fa273e382e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.Envelope.Body.ValidarIdentificacionResponse]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="is response without xmlCentral?" doc:id="847666c7-82d3-499b-9350-b85c0a5a5dcc">
+			<when expression="#[isEmpty(payload.ValidarIdentificacionResult.XmlCentral)]">
+				<ee:transform doc:name="Set response if XmlCentral field does not exists" doc:id="f8820dcf-37ce-4aa0-8552-383b92ca2e35">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var result = payload.ValidarIdentificacionResult
+
+---
+{
+  "WSResponseScoring": {
+    "WSResponseHeader": {
+      "System_correlationID": correlationId,
+      "Service": {
+        "status": if (result.EstadoHomologado != "VIGENTE") "FAIL" else "PASS" 
+      }
+    },
+    "GestionClientes": {
+      "head": {
+        "Interfaz": vars.originalPayload.Body.GestionClientes.head.Interfaz default "",
+        "Destino": vars.originalPayload.Body.GestionClientes.head.Destino default "",
+        "Respuesta": {
+          "CodigoRespuesta": result.EstadoHomologado default "",
+          "FechaRespuesta": now(),
+          "CodigoError": if (!isEmpty(result.EstadoHomologado)) "0" else "-1",
+          "DescripcionError": result.ResultadoProceso
+        },
+        "CodigoIntegracion": correlationId
+      },
+      "body": {
+        "Cliente": {
+          "TipoDocumento": vars.originalPayload.Body.GestionClientes.body.Cliente.TipoDocumento,
+          "NumeroDocumento": vars.originalPayload.Body.GestionClientes.body.Cliente.NumeroDocumento,
+          "EstadoDocumento": result.EstadoHomologado,
+          "FechaExpedicionDocumento": vars.originalPayload.Body.GestionClientes.body.Cliente.FechaExpedicionDocumento as DateTime as String {format: "dd/MM/yyyy"},
+          "DepartamentoExpedicionDocumento": vars.originalPayload.Properties.DEPARTAMENTO,
+          "Nombres": vars.originalPayload.Properties.NOMBRE,
+          "PrimerApellido": vars.originalPayload.Body.GestionClientes.body.Cliente.PrimerApellido default "",
+          "SegundoApellido": "",
+          "Genero": "",
+          "Ciudad": vars.originalPayload.Properties.CIUDAD default "",
+          "MercadoCuenta": result.TieneScore,
+          "Score": {
+            "tipo": result.Oferta default "",
+            "puntaje": result.Score default "",
+            "clasificacion": result.FechaScore default ""
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set full response" doc:id="fc768038-10b6-4ee9-ad86-046dd8501325">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var result = payload.ValidarIdentificacionResult
+var xmlCentral = read (payload.ValidarIdentificacionResult.XmlCentral, "application/xml")
+---
+{
+  "WSResponseScoring": {
+    "WSResponseHeader": {
+      "System_correlationID": correlationId,
+      "Service": {
+        "status": if (result.EstadoHomologado != "VIGENTE") "FAIL" else "PASS" 
+      }
+    },
+    "GestionClientes": {
+      "head": {
+        "Interfaz": vars.originalPayload.Body.GestionClientes.head.Interfaz default "",
+        "Destino": vars.originalPayload.Body.GestionClientes.head.Destino default "",
+        "Respuesta": {
+          "CodigoRespuesta": result.EstadoHomologado default "",
+          "FechaRespuesta": now(),
+          "CodigoError": if (!isEmpty(result.EstadoHomologado)) "0" else "-1",
+          "DescripcionError": if(upper(result.EstadoHomologado) == "NO VIGENTE") xmlCentral.CIFIN.Tercero.Estado else result.ResultadoProceso
+        },
+        "CodigoIntegracion": correlationId
+      },
+      "body": {
+        "Cliente": {
+          "TipoDocumento": if (isEmpty(xmlCentral.CIFIN.Tercero.TipoIdentificacion)) vars.originalPayload.Body.GestionClientes.body.Cliente.TipoDocumento else xmlCentral.CIFIN.Tercero.TipoIdentificacion default "",
+          "NumeroDocumento": if (isEmpty(xmlCentral.CIFIN.Tercero.NumeroIdentificacion)) vars.originalPayload.Body.GestionClientes.body.Cliente.NumeroDocumento else xmlCentral.CIFIN.Tercero.NumeroIdentificacion default "",
+          "EstadoDocumento": result.EstadoHomologado default "",
+          "FechaExpedicionDocumento": vars.originalPayload.Body.GestionClientes.body.Cliente.FechaExpedicionDocumento as DateTime as String {format: "dd/MM/yyyy"},
+          "DepartamentoExpedicionDocumento": xmlCentral.CIFIN.Tercero.CodigoDepartamento default "",
+          "Nombres": if (isEmpty(xmlCentral.CIFIN.Tercero.Nombre1)) xmlCentral.CIFIN.Tercero.NombreTitular else trim((xmlCentral.CIFIN.Tercero.Nombre1 ++ ' ' ++ xmlCentral.CIFIN.Tercero.Nombre2)) default "",
+          "PrimerApellido": vars.originalPayload.Body.GestionClientes.body.Cliente.PrimerApellido default "",
+          "SegundoApellido": xmlCentral.CIFIN.Tercero.Apellido2 default "",
+          "Genero": xmlCentral.CIFIN.Tercero.Genero default "",
+          "Ciudad": xmlCentral.CIFIN.Tercero.LugarExpedicion default "",
+          "MercadoCuenta": result.TieneScore,
+          "Score": {
+            "tipo": result.Oferta default "",
+            "puntaje": result.Score default "",
+            "clasificacion": result.FechaScore default ""
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="registerLog" doc:id="9eba6edc-fd1b-416f-9867-95415b958214" >
+		<choice doc:name="Choice" doc:id="cd24acc5-de04-42ab-b170-67c24cdf256f" >
+			<when expression="#[vars.flagNegativeLog == true]">
+				<ee:transform doc:name="Negative Log Body" doc:id="04f3a18c-52db-4364-b65b-300aa4b8f418">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var tipoDocumento = vars.originalPayload.Body.GestionClientes.body.Cliente.TipoDocumento default ""
+---
+{
+    Identificador_Peticion: correlationId,
+    Tipo_Documento: tipoDocumento, 
+    Numero_Identificacion: vars.originalPayload.Body.GestionClientes.body.Cliente.NumeroDocumento as Number default null,
+    Numero_Conexion: "",
+    Tipo_Transaccion: "Registro Log LISIM",
+    Fecha_Inicio: now(), 
+    Fecha_Fin: now(),
+    Estado_Transaccion: "",
+    Sistema_Origen: "MULESOFT",
+    Atributos: [
+      {
+        name: "FECHA_CONSULTA",
+        value: now() as DateTime{format: "dd/MM/yyyy"}
+      },
+      {
+        name: "HORA_CONSULTA",
+        value: now() as DateTime{format: "HH:mm"}
+      },
+      {
+        name: "TIPO_IDENTIFICACION",
+        value: if(tipoDocumento == "1") "CC" else if (tipoDocumento == "4") "CE" else " "
+      },
+      {
+        name: "NUMERO_IDENTIFICACION",
+        value: vars.originalPayload.Body.GestionClientes.body.Cliente.NumeroDocumento default ""
+      },
+      {
+        name: "APELLIDO",
+        value: vars.originalPayload.Properties.APELLIDO default ""
+      },
+      {
+        name: "NOMBRE",
+        value: vars.originalPayload.Properties.NOMBRE default ""
+      },
+      {
+        name: "TRAMITE",
+        value: vars.originalPayload.Properties.TRAMITE default ""
+      },
+      {
+        name: "TIPO_CONSULTA",
+        value: "VALIDACION DOCUMENTO LISIM"
+      },
+      {
+        name: "USUARIO",
+        value: vars.originalPayload.Properties.USUARIO default ""
+      },
+      {
+        name: "CANAL",
+        value: vars.originalPayload.Properties.CANAL default ""
+      },
+      {
+        name: "PROVEEDOR",
+        value: vars.originalPayload.Properties.PROVEEDOR default ""
+      },
+      {
+        name: "CIUDAD",
+        value: vars.originalPayload.Properties.CIUDAD default ""
+      },
+      {
+        name: "DEPARTAMENTO",
+        value: vars.originalPayload.Properties.DEPARTAMENTO default ""
+      },
+      {
+        name: "ESTADO_ETB",
+        value: "ERROR"
+      },
+      {
+        name: "SISTEMA_ORIGEN",
+        value: vars.originalPayload.Properties.SISTEMA_ORIGEN default ""
+      },
+      {
+        name: "MENSAJE",
+        value:  write(vars.bodyToWs, "application/xml"),
+      },
+      {
+        name: "NIVEL_RIESGO",
+        value:  ""
+      },
+      {
+        name: "SCORE",
+        value: ""
+      },
+      {
+        name: "ID",
+        value: correlationId,
+      },
+      {
+        name: "MODELO",
+        value: vars.originalPayload.Properties.MODELO default ""
+      },
+      {
+        name: "PORTAL",
+        value: vars.originalPayload.Properties.PORTAL default ""
+      },
+      {
+        name: "NUMERO_CONTACTO",
+        value: vars.originalPayload.Properties.NUMERO_CONTACTO default ""
+      },
+      {
+        name: "TIPO",
+        value: vars.originalPayload.Properties.TIPO default ""
+      },
+      {
+        name: "ESTRATO",
+        value: vars.originalPayload.Properties.ESTRATO default ""
+      }
+      ]
+  }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="registerLog-client" doc:id="0d0f2831-0fad-429e-8cb4-b00cb08b81e6" name="registerLog-client" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Positive Log Body" doc:id="b01bf5c1-c36f-4fd3-9f8e-915a6ee86bc1">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var tipoDocumento = vars.originalPayload.Body.GestionClientes.body.Cliente.TipoDocumento default ""
+var xmlCentral = read(payload.Envelope.Body.ValidarIdentificacionResponse.ValidarIdentificacionResult.XmlCentral, "application/xml") default {}
+---
+{
+    Identificador_Peticion: correlationId,
+    Tipo_Documento: tipoDocumento, 
+    Numero_Identificacion: vars.originalPayload.Body.GestionClientes.body.Cliente.NumeroDocumento as Number default null,
+    Numero_Conexion: "",
+    Tipo_Transaccion: "Registro Log LISIM",
+    Fecha_Inicio: now(), 
+    Fecha_Fin: now(),
+    Estado_Transaccion: "",
+    Sistema_Origen: "MULESOFT",
+    Atributos: [
+      {
+        name: "FECHA_CONSULTA",
+        value: now() as DateTime{format: "dd/MM/yyyy"}
+      },
+      {
+        name: "HORA_CONSULTA",
+        value: now() as DateTime{format: "HH:mm"}
+      },
+      {
+        name: "TIPO_IDENTIFICACION",
+        value: if(tipoDocumento == "1") "CC" else if (tipoDocumento == "4") "CE" else " "
+      },
+      {
+        name: "NUMERO_IDENTIFICACION",
+        value: vars.originalPayload.Body.GestionClientes.body.Cliente.NumeroDocumento default ""
+      },
+      {
+        name: "APELLIDO",
+        value: xmlCentral.CIFIN.Tercero.PrimerApellido default ""
+      },
+      {
+        name: "NOMBRE",
+        value: xmlCentral.CIFIN.Tercero.Nombre1 default ""
+      },
+      {
+        name: "TRAMITE",
+        value: vars.originalPayload.Properties.TRAMITE default ""
+      },
+      {
+        name: "TIPO_CONSULTA",
+        value: "VALIDACION DOCUMENTO LISIM"
+      },
+      {
+        name: "USUARIO",
+        value: vars.originalPayload.Properties.USUARIO default ""
+      },
+      {
+        name: "CANAL",
+        value: vars.originalPayload.Properties.CANAL default ""
+      },
+      {
+        name: "PROVEEDOR",
+        value: vars.originalPayload.Properties.PROVEEDOR default ""
+      },
+      {
+        name: "CIUDAD",
+        value: vars.originalPayload.Properties.CIUDAD default ""
+      },
+      {
+        name: "DEPARTAMENTO",
+        value: vars.originalPayload.Properties.DEPARTAMENTO default ""
+      },
+      {
+        name: "ESTADO_ETB",
+        value: "CONSULTA EXITOSA"
+      },
+      {
+        name: "SISTEMA_ORIGEN",
+        value: vars.originalPayload.Properties.SISTEMA_ORIGEN default ""
+      },
+      {
+        name: "MENSAJE",
+        value:  write(vars.responseLisim, "application/xml"),
+      },
+      {
+        name: "NIVEL_RIESGO",
+        value:  vars.responseLisim.Envelope.Body.ValidarIdentificacionResponse.ValidarIdentificacionResult.FechaScore default ""
+      },
+      {
+        name: "SCORE",
+        value: vars.responseLisim.Envelope.Body.ValidarIdentificacionResponse.ValidarIdentificacionResult.Score default ""
+      },
+      {
+        name: "ID",
+        value: correlationId,
+      },
+      {
+        name: "MODELO",
+        value: vars.originalPayload.Properties.MODELO default ""
+      },
+      {
+        name: "PORTAL",
+        value: vars.originalPayload.Properties.PORTAL default ""
+      },
+      {
+        name: "NUMERO_CONTACTO",
+        value: vars.originalPayload.Properties.NUMERO_CONTACTO default ""
+      },
+      {
+        name: "TIPO",
+        value: vars.originalPayload.Properties.TIPO default ""
+      },
+      {
+        name: "ESTRATO",
+        value: vars.originalPayload.Properties.ESTRATO default ""
+      }
+      ]
+  }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="registerLog-client" doc:id="e60645a9-bc25-4963-bd68-9173e1881e34" name="registerLog-client"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-scoring-validateMock" doc:id="8787209a-f3c6-46d8-9a50-f80c72b59c8d" >
+		<choice doc:name="is useMock variable true?" doc:id="1dd77bfe-833b-49c4-8530-5aa30d495a2c" >
+			<when expression="#[p('scoring.useMock')]">
+				<parse-template doc:name="Parse Template" doc:id="40d22bfd-5764-4a5b-987a-814029f93dbf" location="schemas\templates\scoringMock.xml"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to client" doc:id="cecc8310-1f52-4c78-8540-2bc2a24a8f51" name="post-scoring-clientSub_Flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-customer-clientSub_Flow" doc:id="ea7d1b13-579a-48b0-94a1-5a9bf36191b4" >
+		<try doc:name="Try" doc:id="a7b6fcb0-1c05-43f2-880f-82fe7a6a0a3a" >
+			<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="0ec25d50-4c40-4a97-9f14-25d4cd8ecf43" variableName="parameters" />
+			<choice doc:name="Choice" doc:id="6add9d76-be02-499a-a96e-dca104b1e976" >
+				<when expression='#[(vars.parameters.Telefono_Fijo != null) or (vars.parameters.Telefono_Movil != null) or (vars.parameters.Numero_Documento != null)]'>
+					<ee:transform doc:name="Set Query Payload" doc:id="f964d4a0-addd-4ee1-bca4-2ac2039674cd">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if(!isEmpty(vars.parameters.Tipo_Documento) and !isEmpty(vars.parameters.Numero_Documento)){
+ "Numero_Identificacion": vars.parameters.Numero_Documento,
+ "Tipo_Documento": vars.parameters.Tipo_Documento
+}else if(!isEmpty(vars.parameters.Telefono_Movil)) 
+    { "Telefono_Movil": vars.parameters.Telefono_Movil }
+else 
+    { "Telefono_Fijo": vars.parameters.Telefono_Fijo }]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<logger level="INFO" doc:name="Logger" doc:id="120f1e22-c8ba-4ac3-9ff6-765e7e5db3cf" message="#[payload]"/>
+					<mongo:find-documents doc:name="Find documents" doc:id="fba95c81-384b-4661-99f9-600f32343d7e" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.clientes.collection-cliente}" fields=",">
+				<mongo:query><![CDATA[#[payload]]]></mongo:query>
+			</mongo:find-documents>
+					<ee:transform doc:name="Set Response Body" doc:id="bd3c2d6f-a81b-4fb0-97c0-a3733027fa33">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: if(!isEmpty(payload)) 200 else 404,
+	customers: payload
+}
+]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Response Fail Parameters" doc:id="7534e109-f249-434e-8530-ad4bdd3107c1">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 400,
+	code: "BAD REQUEST",
+	message: "debe enviar al menos un parametro para la consulta"
+	
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="400" doc:name="Set status code" doc:id="4f7bec15-a869-485d-8874-66356f30e53a" variableName="httpStatus" />
+				</otherwise>
+			</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b4447d66-aabd-4288-93a7-b8b0570cc4c5" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="6590352f-1282-46ee-b0ae-774668583ab4" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 500,
+	code: "INTERNAL SERVER ERROR",
+	message: error.description,
+	messageServer: error.detailedDescription
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="56b708a6-ff51-4f31-b828-121c2bdcd773" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-customer-clientSub_Flow" doc:id="d9470ac5-faae-412a-b58d-1a32afcc624e" >
+		<try doc:name="Try" doc:id="b3938aed-3b32-4732-b1ce-51f0e129b4c1" >
+			<ee:transform doc:name="Transform Message" doc:id="ee8a93d8-3695-47cc-90ec-fe4090d9aed9" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.customer.Tipo_Cliente == "JURIDICO")
+  payload update {
+    case cust at .customer -> (cust -- [ "ATDP_PJ", "ATDP_PN"]) ++ { ATDP: cust.ATDP_PJ }
+  }
+else if(payload.customer.Tipo_Cliente == "NATURAL")
+  payload update {
+    case cust at .customer -> (cust -- [ "ATDP_PJ", "ATDP_PN"]) ++ { ATDP: cust.ATDP_PN }
+  }
+else
+ payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<mongo:insert-document doc:name="Insert document" doc:id="1bde0be1-6350-4b68-8647-d0765a1dea6d" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.clientes.collection-cliente}">
+				<mongo:document ><![CDATA[#[payload.customer]]]></mongo:document>
+			</mongo:insert-document>
+			<ee:transform doc:name="Set Response Body" doc:id="03175e81-46e3-4883-9c32-0071267c2582" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "200",
+	mensaje: "Cliente registrado con exito",
+	id: payload."_id"."\$oid"
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="cb886f63-eac8-42b2-bc77-89696c87004e" type="ANY">
+					<ee:transform doc:name="Set Response Fail Body" doc:id="4fc32437-2991-4b82-b98f-745c3b9aa9aa" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	mensaje: error.description
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="516ef8b0-483c-45f9-9fe3-9bdd5a9f56b6" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-customer-clientSub_Flow" doc:id="53c584fc-d532-40ac-a04f-fc74bbe48267" >
+		<set-variable value="#[attributes.uriParams]" doc:name="Set Variable" doc:id="f49bf967-4b67-4e57-b3b0-23261e2c69e2" variableName="uriParameters" />
+		<try doc:name="Try" doc:id="057356b6-164e-422f-a3b8-31280fae4db6" >
+			<ee:transform doc:name="Transform Message" doc:id="46995d4f-feda-4ca6-9b49-14fae25751bf" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.customer.Tipo_Cliente == "JURIDICO")
+  payload update {
+    case cust at .customer -> (cust -- [ "ATDP_PJ", "ATDP_PN"]) ++ { ATDP: cust.ATDP_PJ }
+  }
+else if(payload.customer.Tipo_Cliente == "NATURAL")
+  payload update {
+    case cust at .customer -> (cust -- [ "ATDP_PJ", "ATDP_PN"]) ++ { ATDP: cust.ATDP_PN }
+  }
+else
+ payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<mongo:update-documents doc:name="Update documents" doc:id="c73dba1f-61ac-4de5-b86d-72695a3866cf" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.clientes.collection-cliente}">
+				<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  "Numero_Identificacion": payload.customer.Numero_Identificacion,
+  "Tipo_Documento": payload.customer.Tipo_Documento
+}]]]></mongo:query>
+				<mongo:content-to-update ><![CDATA[#[payload.customer]]]></mongo:content-to-update>
+			</mongo:update-documents>
+			<ee:transform doc:name="Set Response Body" doc:id="c8e9fd8a-784b-41dc-89f8-8ed4db821500" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: "200",
+  mensaje: if ((payload.matched default 0) == 1 and (payload.modified default 0) == 1) 
+              "Cliente actualizado con éxito"
+           else if ((payload.matched default 0) == 1 and (payload.modified default 0) == 0)
+             "Sin cambios detectados: cliente fue encontrado pero no se encontraron modificaciones"
+           else if ((payload.matched default 0) == 0 )
+              "Cliente no existe"
+           else
+             "Error en el proceso de actualizar cliente"
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="de3d0b80-d842-4c63-9771-97837e33e216" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="aac568a3-2e67-42e9-a8fa-76b097f120bf" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	mensaje: error.description
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="59aa1294-440c-4666-a74b-b7f041158131" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

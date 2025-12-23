@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="set-dynamic-collection-data" doc:id="849bea1c-6583-4a5e-983b-160cf42edc9f" >
+		<ee:transform doc:name="Set Collection Data" doc:id="ebc753e0-d25a-4c97-8790-9798ca1c9b68" >
+			<ee:variables >
+				<ee:set-variable variableName="collectionName" ><![CDATA[attributes.uriParams.'collectionName']]></ee:set-variable>
+				<ee:set-variable variableName="dynamicDatabase" ><![CDATA[attributes.queryParams.'dbName' default 'MDM']]></ee:set-variable>
+				<ee:set-variable variableName="systemId" ><![CDATA[attributes.headers.systemId]]></ee:set-variable>
+				<ee:set-variable variableName="recordId" ><![CDATA[attributes.uriParams.'recordId']]></ee:set-variable>
+				<ee:set-variable variableName="mongoConnectionString" ><![CDATA[%dw 2.0
+output application/java
+var property = "mongoDb-dynamic." ++ lower(attributes.queryParams.'serverName' default 'mdm')
+var dbName = attributes.queryParams.'dbName'
+var data = {
+    hosts: [
+        Mule::p(property ++ ".host_list.host1"),
+        Mule::p(property ++ ".host_list.host2"),
+        Mule::p(property ++ ".host_list.host3")
+    ],
+    port: Mule::p(property ++ ".port") as Number,
+    database: dbName default Mule::p(property ++ ".database"),
+    username: Mule::p(property ++ ".username"),
+    password: Mule::p(property ++ ".password"),
+    properties: {
+        retryWrites: ((Mule::p("mongoDb-dynamic.commonProperties.retryWrites") default "true") == "true") as Boolean,
+        loadBalanced: ((Mule::p("mongoDb-dynamic.commonProperties.loadBalanced") default "false") == "true") as Boolean,
+        tls: ((Mule::p(property ++ ".tls") default Mule::p("mongoDb-dynamic.commonProperties.tls")) == "true") as Boolean,
+        readPreference: Mule::p("mongoDb-dynamic.commonProperties.readPreference") default "primary",
+        connectTimeoutMS: Mule::p("mongoDb-dynamic.commonProperties.connectTimeoutMS"),
+        authSource: Mule::p("mongoDb-dynamic.commonProperties.authSource") default Mule::p(property ++ ".database"),
+        authMechanism: Mule::p(property ++ ".authMechanism") default Mule::p("mongoDb-dynamic.commonProperties.authMechanism"),
+        minPoolSize: Mule::p("mongoDb-dynamic.commonProperties.minPoolSize"),
+        maxIdleTimeMS: Mule::p("mongoDb-dynamic.commonProperties.maxIdleTimeMS"),
+        serverSelectionTimeoutMS: Mule::p("mongoDb-dynamic.commonProperties.serverSelectionTimeoutMS"),
+        socketTimeoutMS: Mule::p("mongoDb-dynamic.commonProperties.socketTimeoutMS"),
+        readPreference: Mule::p("mongoDb-dynamic.commonProperties.readPreference"),
+    }
+}
+var hostsString = data.hosts map ((item, index) -> if(!isEmpty(item)) item ++ ":" ++ (data.port as String) else "") filter ((item, index) -> !isEmpty(item))
+var propertiesString = ((data.properties pluck ((value, key, index) -> if(!isEmpty(value)) key ++ "=" ++ value else "")) filter !isEmpty($) joinBy "&")
+---
+"mongodb://" ++ data.username ++ ":" ++ data.password ++ "@" ++
+    (hostsString joinBy ",") ++
+    "/" ++ data.database ++ "?" ++ propertiesString
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<flow name="calculate-objectid-string" doc:id="03382b81-1f50-457b-ab24-c36f93b1dc22" >
+		<ee:transform doc:name="Transform Message" doc:id="17cb9e8e-3d11-42f1-b2ff-69f8ab04a0ac">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Numbers
+import * from dw::core::Strings
+var byte5= toHex(randomInt(1099511627775))
+var byte3= toHex(randomInt(16777215))
+var epoch= toHex(now() as Number)
+var stringhex= epoch ++ byte5 ++ byte3 ++ "0000000000"
+---
+{
+    hexString: substring(stringhex,0,24)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	</mule>

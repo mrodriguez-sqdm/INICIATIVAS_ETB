@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="customer-get-customer-papi-v2-clientSub_Flow" doc:id="ae1c9dcb-9439-45eb-b286-43e7fe7daad1" >
+		<http:request method="GET" doc:name="customer-papi-v2" doc:id="3d5c60f6-fe06-4c4e-95d9-84bdefc36def" config-ref="HTTP_Request_configuration_customer-papi-services-v2" path="${customer-papi-v2.resources.customer.base-path}${customer-papi-v2.resources.customer.get.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('customer-papi-v2.security.client_secret'),
+	"client_id" : p('customer-papi-v2.security.client_id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+attributes.queryParams]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="customer-papi-risk-manager-clientFlow" doc:id="b1d66618-0811-440f-b582-22c74ba64bdc">
+		<try doc:name="Try" doc:id="try-customer-papi-risk-client">
+			<http:request method="#[vars.method]" doc:name="Request customer-papi-risk-manager client" doc:id="f56c40b4-f13e-4256-ab65-72fa5482f517" path="#[vars.path]" config-ref="HTTP_Request_configuration_customers_papi_risk">
+				<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
+				<http:uri-params><![CDATA[#[vars.uriParams default {}]]]></http:uri-params>
+				<http:query-params><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
+			</http:request>
+			<error-handler>
+				<!-- Manejo de errores HTTP 4xx (Bad Request, Not Found, Unauthorized, etc.) -->
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Client Errors" doc:id="xapi-error-http-4xx" type="HTTP:BAD_REQUEST, HTTP:UNAUTHORIZED, HTTP:FORBIDDEN, HTTP:NOT_FOUND, HTTP:METHOD_NOT_ALLOWED, HTTP:NOT_ACCEPTABLE, HTTP:UNSUPPORTED_MEDIA_TYPE, HTTP:TOO_MANY_REQUESTS">
+					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 400]" doc:name="Set httpStatus from error" doc:id="xapi-set-status-4xx" variableName="httpStatus"/>
+					<ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" doc:name="Transform Error Response - Client Error" doc:id="xapi-transform-error-4xx">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var errorBody = error.cause.errorMessage.payload default {}
+var papiError = if (errorBody is Object and errorBody.status?) errorBody else null
+---
+if (papiError != null) 
+	papiError
+else {
+	"status": vars.httpStatus,
+	"code": error.errorType.identifier default "CLIENT_ERROR",
+	"message": {
+		"message": if (errorBody is String and !isEmpty(errorBody)) 
+					errorBody 
+				   else 
+					error.description default "Error en la solicitud al servicio de validación de riesgo"
+	},
+	"messageServer": error.description default "",
+	"cause": [
+		{
+			"origin": "customer-xapi-services",
+			"message": "Error en llamada a customer-papi-services: " ++ (error.errorType.identifier default "HTTP_CLIENT_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				
+				<!-- Manejo de errores HTTP 5xx (Internal Server Error, Bad Gateway, etc.) -->
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Server Errors" doc:id="xapi-error-http-5xx" type="HTTP:INTERNAL_SERVER_ERROR, HTTP:BAD_GATEWAY, HTTP:SERVICE_UNAVAILABLE, HTTP:GATEWAY_TIMEOUT">
+					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 500]" doc:name="Set httpStatus from error" doc:id="xapi-set-status-5xx" variableName="httpStatus"/>
+					<ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" doc:name="Transform Error Response - Server Error" doc:id="xapi-transform-error-5xx">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var errorBody = error.cause.errorMessage.payload default {}
+var papiError = if (errorBody is Object and errorBody.status?) errorBody else null
+---
+if (papiError != null) 
+	papiError
+else {
+	"status": vars.httpStatus,
+	"code": if (vars.httpStatus == 503) "SERVICE_UNAVAILABLE" 
+			else if (vars.httpStatus == 504) "GATEWAY_TIMEOUT"
+			else "PAPI_ERROR",
+	"message": {
+		"message": if (errorBody is String and !isEmpty(errorBody)) 
+					errorBody 
+				   else if (vars.httpStatus == 503)
+					"El servicio de validación de riesgo no está disponible temporalmente. Por favor intente más tarde."
+				   else if (vars.httpStatus == 504)
+					"Tiempo de espera agotado al conectar con el servicio de validación de riesgo."
+				   else 
+					"Error en el servicio de validación de riesgo."
+	},
+	"messageServer": error.description default "",
+	"cause": [
+		{
+			"origin": "customer-xapi-services",
+			"message": "Error en llamada a customer-papi-services: " ++ (error.errorType.identifier default "HTTP_SERVER_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				
+				<!-- Manejo de errores de conectividad y timeout -->
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Connectivity" doc:id="xapi-error-connectivity" type="HTTP:CONNECTIVITY, HTTP:TIMEOUT, MULE:CONNECTIVITY, MULE:RETRY_EXHAUSTED">
+					<set-variable value="#[503]" doc:name="Set httpStatus 503" doc:id="xapi-set-status-connectivity" variableName="httpStatus"/>
+					<ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" doc:name="Transform Error Response - Connectivity" doc:id="xapi-transform-error-connectivity">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var isTimeout = (error.errorType.identifier default "") contains "TIMEOUT"
+---
+{
+	"status": 503,
+	"code": if (isTimeout) "TIMEOUT" else "SERVICE_UNAVAILABLE",
+	"message": {
+		"message": if (isTimeout) 
+					"Tiempo de espera agotado al conectar con el servicio de validación de riesgo. Por favor intente nuevamente."
+				   else 
+					"No fue posible conectar con el servicio de validación de riesgo. Por favor intente más tarde."
+	},
+	"messageServer": error.description default "",
+	"cause": [
+		{
+			"origin": "customer-xapi-services",
+			"message": "Error de conectividad con customer-papi-services: " ++ (error.errorType.identifier default "CONNECTIVITY_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				
+				<!-- Catch-all para cualquier otro error no manejado -->
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Any" doc:id="xapi-error-any" type="ANY">
+					<set-variable value="#[500]" doc:name="Set httpStatus 500" doc:id="xapi-set-status-any" variableName="httpStatus"/>
+					<ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" doc:name="Transform Error Response - Any" doc:id="xapi-transform-error-any">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var errorBody = error.cause.errorMessage.payload default {}
+---
+{
+	"status": 500,
+	"code": "INTERNAL_SERVER_ERROR",
+	"message": {
+		"message": if (errorBody is String and !isEmpty(errorBody)) 
+					errorBody 
+				   else 
+					"Error inesperado en el servicio de validación de riesgo."
+	},
+	"messageServer": error.description default "",
+	"cause": [
+		{
+			"origin": "customer-xapi-services",
+			"message": "Error inesperado en llamada a customer-papi-services: " ++ (error.errorType.identifier default "UNKNOWN_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="product-papi-services-get-product-order" doc:id="85588039-8693-4599-a5f1-0470b068965d" >
+		<http:request method="GET" doc:name="GET ProductOrder by OrderId" doc:id="0b1cd6b6-f933-4652-820b-7ff5fab2cd37" config-ref="HTTP_Request_configuration_product-papi" path="/productOrder/{orderId}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_id" : p('credentials.client_id'),
+	"client_secret" : p('credentials.client_secret'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID" default correlationId,
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[%dw 2.0
+output application/java
+---
+attributes.uriParams]]]></http:uri-params>
+			<http:query-params ><![CDATA[#[output application/java
+---
+attributes.queryParams]]]></http:query-params>
+		</http:request>
+	</sub-flow>	
+	<sub-flow name="product-papi-services-post-product-order" doc:id="fd7c3d67-961f-428b-8f6b-7ca666b2f10b" >
+		<http:request method="POST" doc:name="POST ProductOrder" doc:id="57326f7f-0244-4db9-b44e-80fa16019e0b" config-ref="HTTP_Request_configuration_product-papi" path="/productOrder">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_id" : p('credentials.client_id'),
+	"client_secret" : p('credentials.client_secret'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID" default correlationId,
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+attributes.queryParams]]]></http:query-params>
+		</http:request>
+	</sub-flow>	
+	<sub-flow name="product-papi-services-patch-product-order" doc:id="514b7335-4777-43b8-a4fc-ec8c8b71aa45" >
+		<http:request method="PATCH" doc:name="PATCH ProductOrder by OrderId" doc:id="203fd52e-670b-4936-a891-2855fa4467e5" config-ref="HTTP_Request_configuration_product-papi" path="/productOrder/{orderId}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_id" : p('credentials.client_id'),
+	"client_secret" : p('credentials.client_secret'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID" default correlationId,
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[%dw 2.0
+output application/java
+---
+attributes.uriParams]]]></http:uri-params>
+			<http:query-params ><![CDATA[#[output application/java
+---
+attributes.queryParams]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+</mule>

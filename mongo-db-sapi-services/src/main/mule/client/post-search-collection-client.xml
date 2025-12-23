@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow
+		name="post-search-collection-client"
+		doc:id="ff660764-ed63-47ca-980a-c13a398891f6">
+		<ee:transform
+			doc:name="Set Params"
+			doc:id="32317113-86f6-4056-b2b2-b91fe6195f31">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="fields"><![CDATA[%dw 2.0
+output application/json
+var fields = payload.fields joinBy ","
+---
+fields ]]></ee:set-variable>
+				<ee:set-variable variableName="query"><![CDATA[%dw 2.0
+output application/json
+var filters = payload.filters
+fun setQuery(op,value) = if (op == "eq") value else {"\$in": value}
+---
+filters map ((item, index) -> 
+{
+(item.field): setQuery(item.operator default "eq",item.value)
+}
+) reduce ((item, accumulator={}) -> accumulator ++ item)]]></ee:set-variable>
+				<ee:set-variable variableName="limit"><![CDATA[%dw 2.0
+output application/json
+---
+payload.limit default Mule::p("mongo.limit.default")]]></ee:set-variable>
+				<ee:set-variable variableName="querySort" ><![CDATA[%dw 2.0
+output application/json
+---
+(payload.sort default {}) ]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<mongo:find-documents
+			doc:name="Find documents"
+			doc:id="8fd8d976-a8c8-460e-bde6-6214e91feeb3"
+			config-ref="MongoDB_Dynamic_Config"
+			collectionName="#[vars.collectionName]"
+			fields='#[vars.fields]'
+			limit="#[vars.limit]">
+			<mongo:query><![CDATA[#[vars.query]]]></mongo:query>
+			<mongo:sort-by ><![CDATA[#[vars.querySort]]]></mongo:sort-by>
+		</mongo:find-documents>
+		<ee:transform
+			doc:name="Transform Message"
+			doc:id="089ae58a-fa09-4de8-9b96-8996c91c4dc0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+fun setId(index) = payload."_id"."\$oid"[index] 
+---
+payload map ((item, index) -> 
+
+{"_id": setId(index)} ++ (item - "_id")
+
+) ]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
