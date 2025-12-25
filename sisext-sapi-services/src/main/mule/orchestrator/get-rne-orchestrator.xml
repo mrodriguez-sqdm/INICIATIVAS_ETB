@@ -8,17 +8,13 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 		<ee:transform doc:name="Json to Xml" doc:id="fd346983-1f47-4c7e-8ca8-46beec17607f" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
-ns soap http://schemas.xmlsoap.org/soap/envelope/
-output text/xml
+output application/xml
+ns vmr VMRWebServiceETB
+
+var qp = attributes.queryParams
 ---
-{
-  soap#"Envelope": {
-    soap#"Body": {
-      "ConsultaRNE" @(xmlns:'VMRWebServiceETB'): {
-        "sMSISDN": attributes.queryParams.sMSISDN
-      }
-    }
-  }
+vmr#`ConsultaRNE`: {
+    vmr#sMSISDN: qp.sMSISDN default ""
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
@@ -27,30 +23,38 @@ output text/xml
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
-var status = payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Codigo
+
+var response = payload.body.ConsultaRNEResponse
+var result = response.ConsultaRNEResult
+var status = result.Codigo
 ---
-if (status == null or status == "FAIL") 
+if (status == null or status == "FAIL")
 {
-	"Codigo": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Codigo,
-	"Descripcion": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Descripcion
+  Codigo: result.Codigo,
+  Descripcion: result.Descripcion
 }
-else 
+else
 {
-	"Codigo": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Codigo,
-	"Descripcion": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Descripcion,
-	"RNEMSISDN": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.RNE_MSISDNS pluck ($)	
-}]]></ee:set-payload>
+  Codigo: result.Codigo,
+  Descripcion: result.Descripcion,
+  RNEMSISDN: result.RNE_MSISDNS.RNEMSISDN
+}
+]]></ee:set-payload>
 					</ee:message>
 					<ee:variables>
 						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
 output application/java
-var status = payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Codigo
+var response = payload.body.ConsultaRNEResponse
+var result = response.ConsultaRNEResult
+var status = result.Codigo
 ---
-if (status == null or status == "FAIL") 
-400
+if (status == null or status == "FAIL")
+    400
 else
-200]]></ee:set-variable>
+    200
+]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
-	</sub-flow>
+	
+</sub-flow>
 </mule>
