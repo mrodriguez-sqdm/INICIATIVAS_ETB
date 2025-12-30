@@ -7,159 +7,95 @@
 	xsi:schemaLocation="
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
 http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
-	<sub-flow name="lisim-client-rest" doc:id="3edef1e2-de39-4eeb-830a-6d476d4c4660" >
-		<try doc:name="Try" doc:id="d6fc1c83-ab96-4d8e-8d97-9d983a686331" >
-			<async doc:name="Async" doc:id="6744ed22-4aef-4717-984a-fb38bfbce01e">
-				<flow-ref doc:name="Call logger" doc:id="038526b2-68ab-4eaa-b7ed-b5fd7583adc6" name="loggin-client-call" />
-			</async>
-			<choice doc:name="Choice" doc:id="9319dd1f-cf3b-46c5-be81-7da53eaf1fc1" >
-				<when expression="#[vars.authenticationLisim != false]">
-					<http:request method="#[vars.method]" doc:name="Request to lisim token" doc:id="ee5ebeb9-f86e-4146-b5af-92df80218ead" config-ref="HTTP_Request_configuration_lisimv2_authentication" path="#[vars.path]">
-				<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
+	<sub-flow name="lisim-token-client-restSub_Flow" doc:id="21b527aa-e8f7-4660-b4bd-ff33bc9af472" >
+		<http:request method="POST" doc:name="Request to lisim token" doc:id="ee5ebeb9-f86e-4146-b5af-92df80218ead" config-ref="HTTP_Request_configuration_lisimv2_authentication" path="${lisim.base-path}${lisim.resources.authentication.path}">
+				<http:body ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  Username: p("lisim.usuario-rest"),
+  Password: p("lisim.contrasena-rest")
+}]]]></http:body>
+			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
 				<http:query-params><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
 			</http:request>
-				</when>
-				<otherwise>
-					<http:request method="#[vars.method]" doc:name="Request to lisim" doc:id="44dd72ff-9cde-42d5-8557-87b4a6ccead2" config-ref="HTTP_Request_configuration_lisimv2_request" path="#[vars.path]">
-						<http:headers ><![CDATA[#[vars.headers default {}]]]></http:headers>
-						<http:query-params ><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
-			</http:request>
-				</otherwise>
-			</choice>
-			<async doc:name="Async" doc:id="13348cf8-fe6c-4da6-abb0-08dfdde7ac8b" >
-				<flow-ref doc:name="Call logger" doc:id="16a9797b-0f7e-4d51-a90d-a2777cb84704" name="loggin-client-call" />
-			</async>
-			<error-handler >
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Bad Request" doc:id="1e59db1e-ba11-4767-9ea5-fb505bfa499a" type="HTTP:BAD_REQUEST">
-					<async doc:name="Async" doc:id="60889949-53bf-49c4-b003-42e55a6561a1" >
-						<set-variable value="#[true]" doc:name="flagNegativeLog" doc:id="28fd2c45-3248-4b09-a53b-3a29ee3e7c8a" variableName="flagNegativeLog"/>
-						<flow-ref doc:name="registerLog" doc:id="709c9a2a-70e8-49d6-879a-1b9cbefb67cc" name="registerLog" />
-					</async>
-					<set-variable value="#[400]" doc:name="Set Variable httpStatus 400" doc:id="ea304114-568b-4178-8d4c-94a9eaf3d290" variableName="httpStatus"/>
-					<ee:transform doc:name="Validation Error Response" doc:id="3d091aff-017b-458a-a629-15bd9804ec10" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-var errorPayload = error.cause.errorMessage.payload default {}
-var errorMsg = if (errorPayload is String) 
-                  (if (errorPayload contains "cellphone" or errorPayload contains "Cellphone" or errorPayload contains "celular")
-                      "Número de celular inválido. Debe ser un número colombiano de 10 dígitos."
-                   else if (errorPayload contains "document" or errorPayload contains "Document")
-                      "Número de documento inválido."
-                   else errorPayload)
-               else (errorPayload.message default error.description default "Error de validación en los datos enviados")
+		<set-variable value="#[payload.token]" doc:name="Set Variable" doc:id="eea54a47-bc8a-417d-a2c4-2bfd0109891c" variableName="token"/>
+	</sub-flow>
+	<sub-flow name="lisim-identityValidation-client-restSub_Flow" doc:id="134da6dd-a282-4dc8-90a5-632eadcb1842" >
+		<http:request method="POST" doc:name="Request to lisim" doc:id="bac1ff57-63d8-47df-85c0-9c624f9e14b5" config-ref="HTTP_Request_configuration_lisimv2_request" path="${lisim.base-path}${lisim.resources.identityValidation.path}" >
+			<http:body ><![CDATA[#[vars.identityValidationPayload]]]></http:body>
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
 ---
 {
-	"status": 400,
-	"code": "VALIDATION_ERROR",
-	"message": {
-		"message": errorMsg
-	},
-	"messageServer": error.description default "",
-	"cause": [
-		{
-			"origin": "lisim-sapi-services",
-			"message": error.errorType.identifier default "HTTP:BAD_REQUEST"
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Connectivity" doc:id="b14ccbc4-7728-4cab-9be0-a0a05d857da6" type="HTTP:CONNECTIVITY, HTTP:TIMEOUT, HTTP:SERVICE_UNAVAILABLE">
-					<async doc:name="Async" doc:id="60889949-53bf-49c4-b003-42e55a6560f9" >
-						<set-variable value="#[true]" doc:name="flagNegativeLog" doc:id="28fd2c45-3248-4b09-a53b-3a29ee3e7b7a" variableName="flagNegativeLog"/>
-						<flow-ref doc:name="registerLog" doc:id="709c9a2a-70e8-49d6-879a-1b9cbefb66bb" name="registerLog" />
-					</async>
-					<set-variable value="#[503]" doc:name="Set Variable httpStatus 503" doc:id="ea304114-568b-4178-8d4c-94a9eaf3d291" variableName="httpStatus"/>
-					<ee:transform doc:name="Service Unavailable Response" doc:id="91429df6-e59c-451d-84fc-a1597b0d7be4" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
+  Authorization: "Bearer " ++ (vars.token default "")
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-score-client-restSub_Flow" doc:id="0d136541-fb05-4ee1-8a01-ea9e4b73fbe6" >
+		<http:request method="POST" doc:name="Request to lisim" doc:id="7e70b236-f4d8-4b1f-97f5-ead377d72d19" config-ref="HTTP_Request_configuration_lisimv2_request" path="${lisim.base-path}${lisim.resources.score.path}" >
+			<http:body ><![CDATA[#[vars.scorePayload]]]></http:body>
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
 ---
 {
-	"status": 503,
-	"code": "SERVICE_UNAVAILABLE",
-	"message": {
-		"message": "El servicio de validación de identidad no está disponible en este momento. Por favor intente más tarde."
-	},
-	"messageServer": error.description default "",
-	"cause": [
-		{
-			"origin": "lisim-sapi-services",
-			"message": error.errorType.identifier default "CONNECTIVITY_ERROR"
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Unauthorized" doc:id="b14ccbc4-7728-4cab-9be0-a0a05d857da7" type="HTTP:UNAUTHORIZED, HTTP:FORBIDDEN, HTTP:CLIENT_SECURITY, HTTP:SECURITY">
-					<async doc:name="Async" doc:id="60889949-53bf-49c4-b003-42e55a6560fa" >
-						<set-variable value="#[true]" doc:name="flagNegativeLog" doc:id="28fd2c45-3248-4b09-a53b-3a29ee3e7b7b" variableName="flagNegativeLog"/>
-						<flow-ref doc:name="registerLog" doc:id="709c9a2a-70e8-49d6-879a-1b9cbefb66bc" name="registerLog" />
-					</async>
-					<set-variable value="#[401]" doc:name="Set Variable httpStatus 401" doc:id="ea304114-568b-4178-8d4c-94a9eaf3d292" variableName="httpStatus"/>
-					<ee:transform doc:name="Auth Error Response" doc:id="91429df6-e59c-451d-84fc-a1597b0d7be5" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
+  Authorization: "Bearer " ++ (vars.token default "")
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-otp-validate-client-restSub_Flow" doc:id="2294be85-9007-4cf1-b09f-ea930846a467" >
+		<http:request method="POST" doc:name="Request to lisim" doc:id="b2e70473-3f4e-49d7-9d62-1d2162110739" config-ref="HTTP_Request_configuration_lisimv2_request" path="${lisim.base-path}${lisim.resources.otp.base-path}${lisim.resources.otp.validate.path}" >
+			<http:body ><![CDATA[#[vars.otpValidationPayload]]]></http:body>
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
 ---
 {
-	"status": 401,
-	"code": "AUTHENTICATION_ERROR",
-	"message": {
-		"message": "Error de autenticación con el servicio de validación de identidad."
-	},
-	"messageServer": error.description default "",
-	"cause": [
-		{
-			"origin": "lisim-sapi-services",
-			"message": error.errorType.identifier default "AUTHENTICATION_ERROR"
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - General" doc:id="b14ccbc4-7728-4cab-9be0-a0a05d857da5" type="HTTP:BAD_GATEWAY, HTTP:INTERNAL_SERVER_ERROR, HTTP:METHOD_NOT_ALLOWED, HTTP:NOT_ACCEPTABLE, HTTP:NOT_FOUND, HTTP:PARSING, HTTP:RETRY_EXHAUSTED, HTTP:TOO_MANY_REQUESTS, HTTP:UNSUPPORTED_MEDIA_TYPE, EXPRESSION, STREAM_MAXIMUM_SIZE_EXCEEDED">
-					<async doc:name="Async" doc:id="60889949-53bf-49c4-b003-42e55a6560fb" >
-						<set-variable value="#[true]" doc:name="flagNegativeLog" doc:id="28fd2c45-3248-4b09-a53b-3a29ee3e7b7c" variableName="flagNegativeLog"/>
-						<flow-ref doc:name="registerLog" doc:id="709c9a2a-70e8-49d6-879a-1b9cbefb66bd" name="registerLog" />
-					</async>
-					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 500]" doc:name="Set Variable httpStatus from error" doc:id="ea304114-568b-4178-8d4c-94a9eaf3d293" variableName="httpStatus"/>
-					<ee:transform doc:name="General Error Response" doc:id="91429df6-e59c-451d-84fc-a1597b0d7be3" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-var statusCode = error.cause.errorMessage.attributes.statusCode default 500
-var errorMsg = if (statusCode == 404) 
-                  "Recurso no encontrado en el servicio de validación."
-               else if (statusCode == 429)
-                  "Se ha excedido el límite de consultas. Por favor intente más tarde."
-               else 
-                  (error.cause.errorMessage.payload.message default error.description default "Error en el servicio de validación de identidad")
+  Authorization: "Bearer " ++ (vars.token default "")
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-otp-resend-client-restSub_Flow" doc:id="3da6cef1-eb7d-40bd-ab2c-c87c43e25533" >
+		<http:request method="POST" doc:name="Request to lisim" doc:id="fc8e2207-7384-471e-853b-75a0b1b129d7" config-ref="HTTP_Request_configuration_lisimv2_request" path="${lisim.base-path}${lisim.resources.otp.base-path}${lisim.resources.otp.resend.path}" >
+			<http:body ><![CDATA[#[vars.otpResendPayload]]]></http:body>
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
 ---
 {
-	"status": statusCode,
-	"code": if (statusCode == 404) "NOT_FOUND" 
-	        else if (statusCode == 429) "TOO_MANY_REQUESTS"
-	        else "LISIM_ERROR",
-	"message": {
-		"message": errorMsg
-	},
-	"messageServer": error.description default "",
-	"cause": [
-		{
-			"origin": "lisim-sapi-services",
-			"message": error.errorType.identifier default "LISIM_ERROR"
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-			</error-handler>
-		</try>
+  Authorization: "Bearer " ++ (vars.token default "")
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-questionnaire-generate-client-restSub_Flow" doc:id="ec2a6c9b-bebc-4d8e-8f68-f0dcdef435e4" >
+		<http:request method="POST" doc:name="Request to lisim" doc:id="df09cd0d-764c-4afd-8221-f64aa3304f6c" config-ref="HTTP_Request_configuration_lisimv2_request" path="${lisim.base-path}${lisim.resources.questionnaire.base-path}${lisim.resources.questionnaire.generate.path}" >
+			<http:body ><![CDATA[#[vars.questionnaireGeneratePayload]]]></http:body>
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+  Authorization: "Bearer " ++ (vars.token default "")
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+  identityValidationId: vars.identityValidationId
+}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-questionnaire-validate-client-restSub_Flow" doc:id="6f746a9f-0783-46c9-9c77-2ce19d82940e" >
+		<http:request method="POST" doc:name="Request to lisim" doc:id="d151f6c4-cd31-4cb1-850f-360e88f69c38" config-ref="HTTP_Request_configuration_lisimv2_request" path="${lisim.base-path}${lisim.resources.questionnaire.base-path}${lisim.resources.questionnaire.validate.path}" >
+			<http:body ><![CDATA[#[vars.questionnaireValidationPayload]]]></http:body>
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+  Authorization: "Bearer " ++ (vars.token default "")
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
+		</http:request>
 	</sub-flow>
 </mule>
