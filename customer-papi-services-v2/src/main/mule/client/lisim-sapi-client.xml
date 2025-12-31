@@ -12,165 +12,101 @@ http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/htt
 				<http:uri-params><![CDATA[#[vars.uriParams default {}]]]></http:uri-params>
 				<http:query-params><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
 			</http:request>
-			<error-handler>
-				<!-- Manejo de errores HTTP 4xx (Bad Request, Not Found, Unauthorized, etc.) -->
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Client Errors" doc:id="error-http-4xx" type="HTTP:BAD_REQUEST, HTTP:UNAUTHORIZED, HTTP:FORBIDDEN, HTTP:NOT_FOUND, HTTP:METHOD_NOT_ALLOWED, HTTP:NOT_ACCEPTABLE, HTTP:UNSUPPORTED_MEDIA_TYPE, HTTP:TOO_MANY_REQUESTS">
-					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 400]" doc:name="Set httpStatus from error" doc:id="set-status-4xx" variableName="httpStatus"/>
-					<ee:transform doc:name="Transform Error Response - Client Error" doc:id="transform-error-4xx">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
-output application/json
-var errorBody = error.cause.errorMessage.payload default {}
-var sapiError = if (errorBody is Object and errorBody.status?) errorBody else null
----
-if (sapiError != null) 
-	sapiError
-else {
-	"status": vars.httpStatus,
-	"code": error.errorType.identifier default "CLIENT_ERROR",
-	"message": {
-		"message": if (errorBody is String and !isEmpty(errorBody)) 
-					errorBody 
-				   else 
-					error.description default "Error en la solicitud al servicio LISIM"
-	},
-	"messageServer": error.description default "",
-	"cause": [
-		{
-			"origin": "customer-papi-services",
-			"message": "Error en llamada a lisim-sapi-services: " ++ (error.errorType.identifier default "HTTP_CLIENT_ERROR")
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-				
-				<!-- Manejo de errores HTTP 5xx (Internal Server Error, Bad Gateway, etc.) -->
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Server Errors" doc:id="error-http-5xx" type="HTTP:INTERNAL_SERVER_ERROR, HTTP:BAD_GATEWAY, HTTP:SERVICE_UNAVAILABLE, HTTP:GATEWAY_TIMEOUT">
-					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 500]" doc:name="Set httpStatus from error" doc:id="set-status-5xx" variableName="httpStatus"/>
-					<ee:transform doc:name="Transform Error Response - Server Error" doc:id="transform-error-5xx">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
-output application/json
-var errorBody = error.cause.errorMessage.payload default {}
-var sapiError = if (errorBody is Object and errorBody.status?) errorBody else null
----
-if (sapiError != null) 
-	sapiError
-else {
-	"status": vars.httpStatus,
-	"code": if (vars.httpStatus == 503) "SERVICE_UNAVAILABLE" 
-			else if (vars.httpStatus == 504) "GATEWAY_TIMEOUT"
-			else "LISIM_SAPI_ERROR",
-	"message": {
-		"message": if (errorBody is String and !isEmpty(errorBody)) 
-					errorBody 
-				   else if (vars.httpStatus == 503)
-					"El servicio de validación de riesgo no está disponible temporalmente. Por favor intente más tarde."
-				   else if (vars.httpStatus == 504)
-					"Tiempo de espera agotado al conectar con el servicio de validación de riesgo."
-				   else 
-					"Error en el servicio de validación de riesgo LISIM."
-	},
-	"messageServer": error.description default "",
-	"cause": [
-		{
-			"origin": "customer-papi-services",
-			"message": "Error en llamada a lisim-sapi-services: " ++ (error.errorType.identifier default "HTTP_SERVER_ERROR")
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-				
-				<!-- Manejo de errores de conectividad y timeout -->
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Connectivity" doc:id="error-connectivity" type="HTTP:CONNECTIVITY, HTTP:TIMEOUT, MULE:CONNECTIVITY, MULE:RETRY_EXHAUSTED">
-					<set-variable value="#[503]" doc:name="Set httpStatus 503" doc:id="set-status-connectivity" variableName="httpStatus"/>
-					<ee:transform doc:name="Transform Error Response - Connectivity" doc:id="transform-error-connectivity">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
-output application/json
-var isTimeout = (error.errorType.identifier default "") contains "TIMEOUT"
----
-{
-	"status": 503,
-	"code": if (isTimeout) "TIMEOUT" else "SERVICE_UNAVAILABLE",
-	"message": {
-		"message": if (isTimeout) 
-					"Tiempo de espera agotado al conectar con el servicio de validación de riesgo. Por favor intente nuevamente."
-				   else 
-					"No fue posible conectar con el servicio de validación de riesgo. Por favor intente más tarde."
-	},
-	"messageServer": error.description default "",
-	"cause": [
-		{
-			"origin": "customer-papi-services",
-			"message": "Error de conectividad con lisim-sapi-services: " ++ (error.errorType.identifier default "CONNECTIVITY_ERROR")
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-				
-				<!-- Manejo de errores de parsing/transformación -->
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Parsing" doc:id="error-parsing" type="HTTP:PARSING, MULE:EXPRESSION, EXPRESSION">
-					<set-variable value="#[500]" doc:name="Set httpStatus 500" doc:id="set-status-parsing" variableName="httpStatus"/>
-					<ee:transform doc:name="Transform Error Response - Parsing" doc:id="transform-error-parsing">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	"status": 500,
-	"code": "PARSING_ERROR",
-	"message": {
-		"message": "Error procesando la respuesta del servicio de validación de riesgo."
-	},
-	"messageServer": error.description default "",
-	"cause": [
-		{
-			"origin": "customer-papi-services",
-			"message": "Error de parsing en respuesta de lisim-sapi-services: " ++ (error.errorType.identifier default "PARSING_ERROR")
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-				
-				<!-- Catch-all para cualquier otro error no manejado -->
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Any" doc:id="error-any" type="ANY">
-					<set-variable value="#[500]" doc:name="Set httpStatus 500" doc:id="set-status-any" variableName="httpStatus"/>
-					<ee:transform doc:name="Transform Error Response - Any" doc:id="transform-error-any">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
-output application/json
-var errorBody = error.cause.errorMessage.payload default {}
----
-{
-	"status": 500,
-	"code": "INTERNAL_SERVER_ERROR",
-	"message": {
-		"message": if (errorBody is String and !isEmpty(errorBody)) 
-					errorBody 
-				   else 
-					"Error inesperado en el servicio de validación de riesgo."
-	},
-	"messageServer": error.description default "",
-	"cause": [
-		{
-			"origin": "customer-papi-services",
-			"message": "Error inesperado en llamada a lisim-sapi-services: " ++ (error.errorType.identifier default "UNKNOWN_ERROR")
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-			</error-handler>
 		</try>
+	</sub-flow>
+	<sub-flow name="lisim-sapi-identity-clientSub_Flow" doc:id="1850d1d1-5b59-4d66-a3a3-041e3b2c34bf" >
+		<http:request method="POST" doc:name="Request lisim-sapi client" doc:id="abfe9f60-fcd9-4fcd-bcf5-5345b84fa66b" config-ref="HTTP_Request_configuration_lisim_sapi" path="${lisim-sapi.identity-validation.path}" >
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+	"source" : vars.headers.'source',
+	"name" : vars.headers.'name',
+	"X-CORRELATION-ID" : vars.headers."X-CORRELATION-ID",
+	"client_secret" : p('lisim-sapi.client_secret'),
+	"client_id" : p('lisim-sapi.client_id'),
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-sapi-score-clientSub_Flow" doc:id="89320cd1-a339-44d2-b3af-df1e10784d1c" >
+		<http:request method="POST" doc:name="Request lisim-sapi client" doc:id="fda40720-8642-4613-88ee-c6620c7f8b74" config-ref="HTTP_Request_configuration_lisim_sapi" path="${lisim-sapi.score.path}" >
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+	"source" : vars.headers.'source',
+	"name" : vars.headers.'name',
+	"X-CORRELATION-ID" : vars.headers."X-CORRELATION-ID",
+	"client_secret" : p('lisim-sapi.client_secret'),
+	"client_id" : p('lisim-sapi.client_id'),
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-sapi-otp-resend-clientSub_Flow" doc:id="a76358b9-67f1-4eb9-a30b-e16fe50d4f10" >
+		<http:request method="POST" doc:name="Request lisim-sapi client" doc:id="40e2760f-3092-4fc0-b0f7-0ab4f9c6c729" config-ref="HTTP_Request_configuration_lisim_sapi" path="${lisim-sapi.otp.path}${lisim-sapi.otp.resend.path}" >
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+	"source" : vars.headers.'source',
+	"name" : vars.headers.'name',
+	"X-CORRELATION-ID" : vars.headers."X-CORRELATION-ID",
+	"client_secret" : p('lisim-sapi.client_secret'),
+	"client_id" : p('lisim-sapi.client_id'),
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-sapi-otp-validate-clientSub_Flow" doc:id="96f3cc05-0be7-4671-b924-494a1f09992b" >
+		<http:request method="POST" doc:name="Request lisim-sapi client" doc:id="2bc5be84-e159-493b-abf4-4e8a0fcfc3e1" config-ref="HTTP_Request_configuration_lisim_sapi" path="${lisim-sapi.otp.path}${lisim-sapi.otp.validation.path}" >
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+	"source" : vars.headers.'source',
+	"name" : vars.headers.'name',
+	"X-CORRELATION-ID" : vars.headers."X-CORRELATION-ID",
+	"client_secret" : p('lisim-sapi.client_secret'),
+	"client_id" : p('lisim-sapi.client_id'),
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-sapi-questionnaire-validate-clientSub_Flow" doc:id="e624f68c-962a-47f3-b68d-f82054bc99df" >
+		<http:request method="POST" doc:name="Request lisim-sapi client" doc:id="5c544132-7cdd-4dc0-8431-76fcc56b5c74" config-ref="HTTP_Request_configuration_lisim_sapi" path="${lisim-sapi.questionnaire.path}${lisim-sapi.questionnaire.validate.path}" >
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+	"source" : vars.headers.'source',
+	"name" : vars.headers.'name',
+	"X-CORRELATION-ID" : vars.headers."X-CORRELATION-ID",
+	"client_secret" : p('lisim-sapi.client_secret'),
+	"client_id" : p('lisim-sapi.client_id'),
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="lisim-sapi-questionnaire-clientSub_Flow" doc:id="fc7c0659-aeb7-456a-bf52-ad7ea3164f78" >
+		<http:request method="GET" doc:name="Request lisim-sapi client" doc:id="ab94cd37-9e41-41b4-8ae3-fd8bae6b465c" config-ref="HTTP_Request_configuration_lisim_sapi" path="${lisim-sapi.questionnaire.path}${lisim-sapi.questionnaire.get.path}" >
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+	"source" : vars.headers.'source',
+	"name" : vars.headers.'name',
+	"X-CORRELATION-ID" : vars.headers."X-CORRELATION-ID",
+	"client_secret" : p('lisim-sapi.client_secret'),
+	"client_id" : p('lisim-sapi.client_id'),
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"identityValidationId" : vars.uriParams.identityValidation default ""
+}]]]></http:uri-params>
+		</http:request>
 	</sub-flow>
 </mule>
