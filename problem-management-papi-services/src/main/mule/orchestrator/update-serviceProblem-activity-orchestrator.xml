@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="update-serviceProblem-activity-orchestratorSub_Flow" doc:id="ea565ea7-98ed-4c0f-ba24-4d9f496f4848" >
+		<choice doc:name="Choice" doc:id="3a8e9051-072b-489f-85a5-a0384afb7f45" >
+			<when expression="#[upper(trim(payload.relatedEntity[0].status)) == 'COMPLETED' and payload.relatedEntity[0].role == 'appoimentTask' and payload.relatedEntity[0].&quot;type&quot; == 'Task']">
+				<set-variable value="#[payload]" doc:name="Save Payload Activity" doc:id="d2a5238f-1b93-4b66-ac7a-bb21c8c0d948" variableName="payload_activity" />
+				<set-variable value="#[attributes.headers]" doc:name="Set Headers " doc:id="88a2194e-a15a-42c2-b038-1d1692a0eb2a" variableName="headers_papi" />
+				<set-variable value="#[attributes.uriParams.'id']" doc:name="Set Id Uri" doc:id="58603b3d-bcdb-4338-8ae7-6fad8ead07b4" variableName="number_order" />
+				<try doc:name="Try" doc:id="dce318dc-9518-41fc-b8cb-9d8c13521321">
+			<flow-ref doc:name="Flow Reference" doc:id="2885b4b1-8c5f-462a-b462-c42a199baf32" name="update-serviceProblem-activity-consecutive-clientSub_Flow" />
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="bf6cbaae-c9e2-497a-8e6a-a517ded8ea52" type="HTTP:NOT_FOUND" />
+			</error-handler>
+		</try>
+				<ee:transform doc:name="Transform Message" doc:id="10c0b39b-f5c6-4ebb-81f7-1d18a157be9b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var fecha_format = (vars.payload_activity.relatedEntity[0].completionDate as LocalDateTime {format: "yyyy-MM-dd'T'HH:mm:ss.SSS"}) as DateTime {timezone: "UTC",format:"yyyy-MM-dd'T'HH:mm:ss'Z'"}
+
+---
+
+{
+  "actualizacion_extractor": "0",
+  "row_id_actividad": "MDM-PQR-ACT-" ++ payload.valor as String,
+  "nombre_actividad": "GESTION TECNICA",
+  "estado_actividad": "Cerrado",
+  "comentarios": "",
+  "descripcion": vars.payload_activity.relatedEntity[0].description,
+  "gestion": "GESTION TECNICA EXTERNA",
+  "descripcion_gestion": "SIN TEXTO",
+  "grupo_actividad": "GESTION TECNICA EXTERNA",
+  "usuario_asignado": vars.payload_activity.originatorParty.partyOrPartyRole.name,
+  "usuario_creador_actividad": vars.payload_activity.originatorParty.partyOrPartyRole.name,
+  "fecha_inicio_actividad": fecha_format,
+  "fecha_estado_actual": fecha_format,
+  "fecha_vencimiento_actividad": fecha_format,
+  "final": "",
+  "prioridad": "",
+  "fecha_desconexion": "",
+  "fecha_reconexion": "",
+  "duracion": "",
+  "cuenta": "",
+  "notificacion": "",
+  "semaforo": "",
+  "dias_habiles": "",
+  "actividades_adjuntas": ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<try doc:name="Try" doc:id="cd10ee47-dda2-4b75-b11c-1b062b28de79" >
+					<flow-ref doc:name="Flow Reference" doc:id="26a0016d-369b-4299-b606-9b1a10f43350" name="update-serviceProblem-activity-clientSub_Flow" />
+					<set-variable value="#[payload.response.orderNumber]" doc:name="Set Variable" doc:id="26263753-bae6-4993-8c97-18b9776c48f4" variableName="order_number" />
+					<flow-ref doc:name="Flow Reference" doc:id="14958f52-c569-482d-ae2b-1974c45d7a74" name="get-serviceProblem-orders-clientSub_Flow" />
+					<set-variable value="#[payload]" doc:name="Set Variable" doc:id="842821f5-62a7-4241-bec9-68a75088d8da" variableName="data_order" />
+					<flow-ref doc:name="Flow Reference" doc:id="f55a9345-621f-4481-8c9d-f8916f16bc40" name="get-serviceProblem-pqrs-by-number-clientSub_Flow" />
+					<ee:transform doc:name="Transform Message" doc:id="dd6f052f-3a93-4a79-96d3-026a5c49d164">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+ {
+  id: payload[0].numero_pqr,
+  status: if (payload[0].estado_pqr == "Enviado a Segundo Nivel") "pending" else payload[0].estado_pqr, 
+  description: payload[0].descripcion_pqr default "Sin descripción",
+  characteristic: [
+    {
+      name: "appointmentId",
+      value: vars.data_order[0].Agendamiento.IdActividad as String
+    },
+    {
+      name: "Causal",
+      value: payload[0].causal_pqr
+    }
+  ],
+  affectedService: [
+    {
+      id: vars.data_order[0].Servicio_Tramite.Id_Cuenta_Servicio,
+      name: vars.data_order[0].Servicio_Tramite.Bundle.Nombre,
+      category: payload[0].producto, 
+      "type": vars.data_order[0].Servicio_Tramite.Bundle.Tipo_Producto
+    }
+  ],
+  priority: payload[0].prioridad default "",
+  "@type": "ServiceProblem"
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d002fd75-47eb-4b30-a57a-b7dfcde1833d" type="HTTP:NOT_FOUND">
+							<ee:transform doc:name="Transform Message" doc:id="53534725-70f2-47eb-afc9-5caa00948778">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "REQUEST_ERROR",
+  "message": {
+    "message": error.description
+  }
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<set-payload value="#[payload]" doc:name="Set Payload" doc:id="8595d2f6-4c90-4f58-b47d-33ffffb8a8b2" />
+							<set-variable value="400" doc:name="Set Variable" doc:id="5e21dc5f-19f8-4ee2-93ee-4c9b7e23db38" variableName="httpStatus" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message" doc:id="17f452e3-300f-458f-a96d-a00aed5849e2" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "REQUEST_ERROR",
+  "message": {
+    "message": "incorrect value in the status field"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable" doc:id="f6fe213f-c6f7-4a44-a324-9da0ac4d3ad3" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

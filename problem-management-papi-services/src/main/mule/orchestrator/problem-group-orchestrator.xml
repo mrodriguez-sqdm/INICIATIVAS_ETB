@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-problem-group-orchestratorSub_Flow" doc:id="d95fbc04-dd26-48e4-bb85-e7a64813600d" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="86e7d9e9-67a4-4218-a5b5-8bfa7dd736da" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="659d9cc5-5603-4cac-b4fd-bd190ff91b22" variableName="headers" />
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="8604054a-d62f-45d1-920b-e56166ce6f7d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="build Payload BOT" doc:id="27f218fb-91e3-4e67-91ff-f01e29a8e3cc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+    "Service_Account": (payload.filtros.AccountNumber default ""),
+    "Phone": (payload.filtros.Phone default ""),
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call bot-sapi-services" doc:id="01821f83-956a-4ad5-bb32-1fe802531950" name="post-init-clientSub_Flow"/>
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Http Status" doc:id="ab676bba-5f6c-4e11-9be2-daac6162d450" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="a1b3b5fc-dbcf-4e9b-a2fd-b083592a57fb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: if(vars.httpStatus == 200) "200" else "500" ,
+	messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode,
+	                 
+	massiveFailure: 
+	 if (payload.WSResponseBody.MassiveFailure != null)
+		 [{
+			affectation: payload.WSResponseBody.MassiveFailure.Affectation,
+	    cun: payload.WSResponseBody.MassiveFailure.CUN,
+	    description: payload.WSResponseBody.MassiveFailure.Description,
+	    descriptionUser: payload.WSResponseBody.MassiveFailure.Description_User,
+	    descriptionTechnical: payload.WSResponseBody.MassiveFailure.Description_Technical,
+	    endDate: {
+	      date: payload.WSResponseBody.MassiveFailure.End_Date.Date,
+	      format1: payload.WSResponseBody.MassiveFailure.End_Date.Format_1,
+	      format2: payload.WSResponseBody.MassiveFailure.End_Date.Format_2,
+	      format3: payload.WSResponseBody.MassiveFailure.End_Date.Format_3,
+	      format4: payload.WSResponseBody.MassiveFailure.End_Date.Format_4
+	    },
+	    id: payload.WSResponseBody.MassiveFailure.Id,
+	    incident: payload.WSResponseBody.MassiveFailure.Incident,
+	    priority: payload.WSResponseBody.MassiveFailure.Priority,
+	    product: payload.WSResponseBody.MassiveFailure.Product,
+	    startDate: {
+	      date: payload.WSResponseBody.MassiveFailure.Start_Date.Date,
+	      format1: payload.WSResponseBody.MassiveFailure.Start_Date.Format_1,
+	      format2: payload.WSResponseBody.MassiveFailure.Start_Date.Format_2,
+	      format3: payload.WSResponseBody.MassiveFailure.Start_Date.Format_3,
+	      format4: payload.WSResponseBody.MassiveFailure.Start_Date.Format_4
+	    },
+	    tes: payload.WSResponseBody.MassiveFailure.TES
+			
+		}]
+	else []
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-serviceProblem-pqrs-orders-orchestratorSub_Flow" doc:id="8b32103f-84cd-49a7-b7b1-fe423d6e3b77" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Params" doc:id="3d0349b5-57eb-4c38-926d-ccf4ac2eb59d" variableName="user_data" />
+		<set-variable value="#[attributes.headers]" doc:name="Set Headers" doc:id="42f67dfb-2899-4314-a791-756e6b1cec67" variableName="headers_papi"/>
+		<set-variable value="#[[]]" doc:name="initialize responses" doc:id="e7c92396-c27c-4e86-b3f2-2618d91354df" variableName="responses"/>
+		<set-variable value="#[{}]" doc:name="initialize franjas" doc:id="2fb3c2f3-1bf5-472d-9600-84b6d382e78c" variableName="franjas" />
+		<try doc:name="Try" doc:id="7b9f04c5-e9b4-436e-83ab-b0f773e47559" >
+			<flow-ref doc:name="Flow Reference" doc:id="352bf50f-cf33-4701-a6a0-96b0430cf646" name="get-serviceProblem-pqrs-clientSub_Flow" />
+			<foreach doc:name="For Each" doc:id="6f9e10cb-9776-4946-9274-6bb57fa0eef6" collection="#[payload]">
+			<try doc:name="Try" doc:id="4532fe28-8a80-441d-a69a-72b15a973770" >
+					<set-variable value="#[payload]" doc:name="Set Data PQR" doc:id="ab4a46e2-e5e0-417e-bd01-36bf62d74f8b" variableName="payload_pqr" />
+					<set-variable value="#[payload.numero_pqr]" doc:name="Set Param order number" doc:id="bb7d1ed9-5f47-4f93-9df3-c60893fcab03" variableName="order_number" />
+					<flow-ref doc:name="Flow Reference" doc:id="f2f8f2e2-22ba-42cc-ba53-c02bfcf6acab" name="get-serviceProblem-orders-clientSub_Flow" />
+					<foreach doc:name="For Each" doc:id="209762d1-1676-4c78-b4d9-561000664fd9" collection="#[payload[0].Cliente_Tramite.Direcciones]">
+						<choice doc:name="Choice" doc:id="5d592427-dee9-46a7-920e-36a096a213e0" >
+							<when expression='#[payload.Tipo_Direccion == "INSTALACION"]'>
+								<flow-ref doc:name="Flow Reference" doc:id="2a250513-b96e-4f38-86a9-4d69978bf0fe" name="get-smallworld-sapi-clientSub_Flow"/>
+								<logger level="INFO" doc:name="Logger" doc:id="d3cc451f-b00b-48a3-9998-623ef5a38956" message="#[payload]" />
+								<choice doc:name="Choice" doc:id="90c17cef-f626-4150-a02c-0c8c634ac335" >
+									<when expression='#[payload.zonaAltoRiesgo == "Si"]'>
+										<flow-ref doc:name="Flow Reference" doc:id="dc531725-1c3c-41fd-a18b-f03b4074c2df" name="get-parameters-mongo-sapi-clientSub_Flow"/>
+										<logger level="INFO" doc:name="Logger" doc:id="56b54523-ea73-42ba-9480-11590ae3936d" message="#[payload]"/>
+										<set-variable value='#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;    name: "filtroFranjas",&#10;    value: (payload.Valores.*Codigo)&#10;             distinctBy $&#10;             joinBy ","&#10;}]' doc:name="Set Variable" doc:id="524f507b-be8c-4016-9543-e33128e7d7cd" variableName="franjas"/>
+									</when>
+									<otherwise >
+										<set-variable value='#[{}]' doc:name="Set Variable1" doc:id="b83fc112-d3e6-4065-b59a-18035152f2fe" variableName="franjas" />
+									</otherwise>
+								</choice>
+							</when>
+							<otherwise >
+								<logger level="INFO" doc:name="Logger" doc:id="9b5fe39a-f21b-437b-b330-c1bf6b4593d1" message="#[payload]" />
+							</otherwise>
+						</choice>
+					</foreach>
+					<ee:transform doc:name="Transform Message" doc:id="d1a71731-b013-42ce-9367-4a3930625235">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"datos_agendamiento": payload[0],
+	"datos_pqr": vars.payload_pqr,
+	"franjas": vars.franjas
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="#[%dw 2.0&#10;output application/json&#10;---&#10;(vars.responses default []) ++ [payload]]" doc:name="Set Variable" doc:id="1bcd6c94-22cd-4ab5-aaf3-8d8e9eaa2e5b" variableName="responses" />
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="0c5d4c1c-496f-4078-8db5-56a498850bae" type="HTTP:NOT_FOUND">
+						</on-error-continue>
+					</error-handler>
+				</try>
+		</foreach>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="09306e2a-769a-4000-898d-8cdfcdf15316" type="HTTP:NOT_FOUND">
+					<logger level="INFO" doc:name="Logger" doc:id="153f91ec-4b79-47b0-9e62-4a82cf758908" message="#[error.description]"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		
+		<choice doc:name="Choice" doc:id="c3c6071d-cfa4-4e58-8f69-2ca61d4f75aa" >
+			<when expression="#[vars.responses != []]">
+				<set-payload value="#[vars.responses]" doc:name="Set Payload" doc:id="654d89a2-7480-4182-bf96-fa61babc2742" />
+				<ee:transform doc:name="Transform Message" doc:id="f71af6d3-8193-4da7-a38c-d25dcf280ab0">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload map (item) -> {
+  id: item.datos_pqr.numero_pqr,
+  status: "pending", 
+  description: item.datos_pqr.descripcion_pqr default "Sin descripción",
+  characteristic: [
+    {
+      name: "appointmentId",
+      value: item.datos_agendamiento.Agendamiento.IdActividad as String
+    },
+    {
+      name: "Causal",
+      value: item.datos_pqr.causal_pqr
+    },
+    {
+      name: "filtroFranjas",
+      value: item.franjas.value default ""
+    }
+  ],
+  affectedService: [
+    {
+      id: item.datos_agendamiento.Servicio_Tramite.Id_Cuenta_Servicio,
+      name: item.datos_agendamiento.Servicio_Tramite.Bundle.Nombre,
+      category: item.datos_pqr.producto, 
+      "type": item.datos_agendamiento.Servicio_Tramite.Bundle.Tipo_Producto
+    }
+  ],
+  priority: item.datos_pqr.prioridad default "",
+  "@type": "ServiceProblem"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="c6d4e9d1-5457-4089-b1fb-2647719f5c69" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT DATA FOUND",
+  "message": {
+    "message": "Not Found with PQRS"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="404" doc:name="Set Variable" doc:id="117a4212-006b-4999-8fd2-d992100bfd4a" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
