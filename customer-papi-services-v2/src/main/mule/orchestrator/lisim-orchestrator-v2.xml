@@ -31,16 +31,19 @@ output application/json
 output application/json
 ---
 {
- "code" : "200",
- "message": "validacion exitosa",
-  "result": {
-    "id": payload.id,
-    "type": payload."type",
-    "questions": payload.questions,
-    "otpCode": payload.otpCode,
-    "matchType": payload.matchType
-  }
-}]]></ee:set-payload>
+  code: "200",
+  message: payload.messageServer default "validacion exitosa",
+  result: (
+    {
+      "id": payload.id,
+      "type": payload."type",
+      "questions": payload.questions,
+      "otpCode": payload.otpCode,
+      "matchType": payload.matchType
+    }
+  ) filterObject ((value, key) -> value != null)
+}
+]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
 	</sub-flow>
@@ -68,11 +71,12 @@ output application/json
 ---
 {
  "code" : "200",
- "message": "operacion exitosa",
-  "result": {
+ message: payload.messageServer default "operacion exitosa",
+  result: ({
     "score": payload.score,
     "offer": payload.offer
   }
+  ) filterObject ((value, key) -> value != null)
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
@@ -99,14 +103,15 @@ output application/json
 ---
 {
  "code" : "200",
- "message": "envio exitoso",
-  "result": {
+ message: payload.messageServer default "envio exitoso",
+  result: ({
     "id": payload.id,
     "type": payload."type",
     "questions": payload.questions,
     "otpCode": payload.otpCode,
     "matchType": payload.matchType
   }
+  ) filterObject ((value, key) -> value != null)
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
@@ -130,12 +135,33 @@ output application/json
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
+
+var isStringResult = payload.result is String
+var isObjectResult = payload.result is Object
+var hasMessageServer =
+  isObjectResult and payload.result.messageServer != null
+
 ---
 {
- "code" : "200",
- "message": "envio exitoso",
-  "result": payload.result
-}]]></ee:set-payload>
+  code: "200",
+  message:
+    if (isStringResult)
+      payload.result
+    else if (hasMessageServer)
+      payload.result.messageServer
+    else
+      "envio exitoso"
+}
+++
+(
+  if (isStringResult)
+    { result: payload.result }
+  else if (isObjectResult and not hasMessageServer)
+    { result: payload.result }
+  else
+    {}
+)
+]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
 	</sub-flow>
@@ -147,12 +173,24 @@ output application/json
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+
+var hasMessageServer = payload.messageServer != null
+
 ---
 {
-	code: "200",
-	message: "Questionario generado exitosamente",
-	questions: payload default []
-}]]></ee:set-payload>
+  code: "200",
+  message:
+    if (hasMessageServer)
+      payload.messageServer
+    else
+      "Questionario generado exitosamente",
+  questions:
+    if (hasMessageServer)
+      []
+    else
+      payload default []
+}
+]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
 	</sub-flow>
@@ -174,12 +212,27 @@ output application/json
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+
+var hasMessageServer =
+  payload.result is Object and payload.result.messageServer != null
+
 ---
 {
- "code" : "200",
- "message": "envio exitoso",
-  "result": payload.result
-}]]></ee:set-payload>
+  code: "200",
+  message:
+    if (hasMessageServer)
+      payload.result.messageServer
+    else
+      payload.result
+}
+++
+(
+  if (not hasMessageServer)
+    { result: payload.result }
+  else
+    {}
+)
+]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
 	</sub-flow>
