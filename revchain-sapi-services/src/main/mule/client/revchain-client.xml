@@ -1,0 +1,396 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:EjbPrefix="http://www.mulesoft.org/schema/mule/EjbPrefix"
+	xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:xml-module="http://www.mulesoft.org/schema/mule/xml-module" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/xml-module http://www.mulesoft.org/schema/mule/xml-module/current/mule-xml-module.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+	<sub-flow name="post-subscriber-Sub_Flow" doc:id="c508d6dd-f574-4fba-bfd8-f88dc6a052b9" >
+		<async doc:name="Async" doc:id="43ae20da-1942-454a-b30e-ed79eac17493" >
+			<flow-ref doc:name="Call logger before" doc:id="6fd8df60-f3d0-48cc-8684-cfb6aed44cad" name="loggin-client-call"/>
+		</async>
+		<http:request method="POST" doc:name="Call revchain subscriber" doc:id="cc55e720-f808-4c75-bab5-5a388e097171" config-ref="HTTP_Request_configuration" path="${revchain-client.path.subscriber}"/>
+		<async doc:name="Async" doc:id="483cbe51-7fc6-4c9c-b44b-923e5600d685" >
+			<flow-ref doc:name="Call logger after" doc:id="d0a494e6-1e3c-4cd8-99e3-0f28dde814d0" name="loggin-client-call"/>
+		</async>
+	</sub-flow>
+	<sub-flow name="patch-subscriber-Sub_Flow" doc:id="e753cb20-409a-4bb2-a3ca-1c347bab21d9" >
+		<async doc:name="Async" doc:id="62a1a915-2456-433c-bac5-3d0f8c082e18">
+			<flow-ref doc:name="Call logger before" doc:id="8775b4a3-a176-48fd-b3c7-4900f9c8097d" name="loggin-client-call" />
+		</async>
+		<http:request method="POST" doc:name="Call revchain update subscriber" doc:id="f9726b0d-89a2-4c4b-92e1-075c01af7231" config-ref="HTTP_Request_configuration_tipology" path="${tipologyRVC.path.perfilFact}" />
+		<ee:transform doc:name="Get response" doc:id="a478df82-bb62-45e2-b1f8-f92f65c92fcc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+---
+read(payload.Envelope.Body.ModifyProfileFactResponse.return, "application/xml")]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="9bf96cc3-da3b-4583-8c48-a587ba5dd832">
+			<flow-ref doc:name="Call logger before" doc:id="b13ffd1d-1714-4ef0-8d78-dd25a5c66271" name="loggin-client-call" />
+		</async>
+		<logger level="INFO" doc:name="Logger" doc:id="41b8ccff-5606-4280-921f-ee74d0744a08" message="#[payload]" />
+	</sub-flow>
+	<sub-flow name="post-cycle-Sub_Flow" doc:id="92d32feb-f18f-428a-b423-ce02f01facda" >
+<async doc:name="Async" doc:id="4f2a5aa7-59a0-473a-b399-137c068bc84f" >
+			<flow-ref doc:name="Call logger before" doc:id="1b4b07de-7e54-49db-9b8c-d46934287c0f" name="loggin-client-call"/>
+		</async>
+<java:new doc:name="RevchainSettings" doc:id="133b8d8d-7060-476a-b298-0e92b00541a3" class="com.etb.RevchainSettings" constructor="RevchainSettings(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String)">
+			<java:args ><![CDATA[#[{
+	context : p('revchain-client.factory'),
+	url: p('revchain-client.contextUrl'),
+	user : p('revchain-client.username'),
+	password: p('revchain-client.password'),
+	subscriber: p('revchain-client.jndiName') 
+}]]]></java:args>
+		</java:new>
+		<java:invoke-static method="getCycle(java.lang.String, com.etb.RevchainSettings)" doc:name="getCycles" doc:id="b147af75-6aa4-477b-844e-38f3b0262974" class="com.etb.RevchainServices" >
+			<java:args ><![CDATA[#[{	
+	"xmlString": write(vars.xmlString, 'text/xml'),
+	"settings": payload
+}]]]></java:args>
+		</java:invoke-static>
+		<async doc:name="Async" doc:id="970d16dc-9775-4cb6-9a27-692cfdbbac4d" >
+			<flow-ref doc:name="Call logger after" doc:id="faec7597-ee78-4c7b-bd93-69628641cce1" name="loggin-client-call"/>
+		</async>
+		<ee:transform doc:name="Prepare output" doc:id="16f1b802-6c4b-4f50-8baf-486371baa739">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cycle = read(payload,"aplication/xml")
+var error = cycle.replies.reply.response.@result == 'E'
+---
+if (not error)
+{
+  "response": {
+    "operation": cycle.replies.reply.response.@operation,
+    "result": cycle.replies.reply.response.@result,
+    "system": cycle.replies.reply.response.@system,
+    "faults":  cycle.replies.reply.response.faults
+  }
+}
+else
+{
+  "response": {
+    "operation": cycle.replies.reply.response.@operation,
+    "result": cycle.replies.reply.response.@result,
+    "system": cycle.replies.reply.response.@system,
+    "faults":  {
+        "fault": {
+            "fault_detail": cycle.replies.reply.response.faults.fault.fault_detail.@
+        }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-invokeServiceProvisioning-subFlow" doc:id="dc744930-ff07-49a9-a6d6-17cb133363ce" >
+		<async doc:name="Async" doc:id="279abd9f-c948-4b84-83bf-a7396ba2819d" >
+			<flow-ref doc:name="Call logger before" doc:id="fda603e2-b60b-49d9-8cfd-ed669e87ca65" name="loggin-client-call" />
+		</async>
+		<java:new constructor="RevchainSettings(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String)" doc:name="RevchainSettings" doc:id="a1d144f9-cc43-4d52-bd40-de2b6a929485" class="com.etb.RevchainSettings" >
+			<java:args ><![CDATA[#[{
+	context : p('serviceProvisioning.factory'),
+	url: p('serviceProvisioning.contextUrl'),
+	user : p('serviceProvisioning.username'),
+	password: p('serviceProvisioning.password'),
+	subscriber: p('serviceProvisioning.jndiName') 
+}]]]></java:args>
+		</java:new>
+		<java:invoke-static method="postService(java.lang.String, com.etb.RevchainSettings)" doc:name="getSubscriber" doc:id="878d78c5-dfa3-4ce6-be84-71eb40f28aef" class="com.etb.RevchainServices" >
+			<java:args ><![CDATA[#[{
+	"xmlString": vars.xmlString,
+	"settings": payload
+}]]]></java:args>
+		</java:invoke-static>
+		<async doc:name="Async" doc:id="7155b6b0-7d0b-4ece-a340-a23eec4d0876" >
+			<flow-ref doc:name="Call logger after" doc:id="78507ba1-edc7-42e1-8dd1-e128e5367c61" name="loggin-client-call" />
+		</async>
+		<ee:transform doc:name="Obtain payload" doc:id="d7a93d5c-ae02-4520-85a6-09457d35c757" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+import try from dw::Runtime
+var newComplexPayload = try(() -> read(payload.xmlProcessDetail.xml, 'application/xml'))
+var newSimplePayload = try(() -> read(payload.xml, 'application/xml'))
+---
+if (newComplexPayload.success) newComplexPayload.result
+else if (newSimplePayload.success) newSimplePayload.result
+else response: null]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="cedc4b3b-77e3-4ac7-af63-86821cda9bfe" >
+			<when expression="#[payload.response != null]">
+				<ee:transform doc:name="Prepare response" doc:id="aca4c3a4-8216-4a8e-9ec2-328f8512b9c5">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var error = payload.response.@result == 'E'
+---
+if (not error){
+InvokeServiceProvisioningOutput: {
+    WSResponseHeader2: {
+        System: {
+            name: vars.nameHeader,
+            correlationID: vars.correlationHeader,
+            processingServer: vars.sourceHeader
+        },
+        Service: {
+            status: "PASS",
+            responseDate: now()
+        }
+    },
+    BodyResponse: {
+        response: {
+   		 	"operation": payload.response.@operation,
+    		"result": payload.response.@result,
+    		"system": payload.response.@system,
+    		"services":  payload.response.services
+  		}
+    }
+  }
+}
+else
+{
+	"status": 500,
+	"code": "ERROR_REVCHAIN",
+	"message": {
+		"message": {
+			"error_code": payload.response.faults.fault_detail.@error_code,
+			"error_description": payload.response.faults.fault_detail.@error_description
+		}
+	},
+	"messageServer": "",
+	"cause": [
+		{
+			"origin": "revchain-sapi-services",
+			"message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+		}
+	]
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+var error = payload.response.@result == 'E'
+---
+if (not error) 201 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="e0f89f8b-b7ba-41c8-9338-13b68107c4fc" type="REVCHAIN:ERROR_CONNECTIVITY" description="Could not establish connection with Revchain services"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-billing-concepts-clientSub_Flow" doc:id="ea6a36fe-808a-4cbd-8719-e429b7bb2e2b" >
+		<async doc:name="Async" doc:id="79fe35f8-33ac-45d4-9016-56a6d230fea8">
+			<flow-ref doc:name="Call logger before" doc:id="cc96d213-b1b0-4ff7-8e65-9fa5232100b3" name="loggin-client-call" />
+		</async>
+		<choice doc:name="Choice" doc:id="47b9107b-0b2d-4328-8ddb-30ce3a0e1d4f">
+			<when expression="#[!isEmpty(attributes.queryParams.cuentaFacturacion)]">
+				<db:select doc:name="Select" doc:id="6c614002-6756-44db-a779-97e30c02b8e5" config-ref="Database_Config_revchain">
+					<db:sql><![CDATA[SELECT T.SUB_ID    AS CUENTA_FACTURACION,
+	   VI.INV_ID,
+       SUM(T.AMT)  AS MONTO_DETALLE,
+       Y.TRANS_NM  AS CONCEPTO_FACTURA,
+       VI.STRT_DT,
+       VI.END_DT
+  FROM WASABI.V_TRANS T
+  JOIN WASABI.V_TRANS_TYP Y
+    ON Y.TRANS_TYP = T.TRANS_TYP
+  JOIN V_INV VI
+    ON VI.INV_ID = T.INV_ID
+WHERE VI.SUB_ID = :cuentaFacturacion
+   AND VI.INV_ID = (SELECT MAX(INV_ID) FROM V_INV WHERE SUB_ID = VI.SUB_ID)
+GROUP BY T.SUB_ID, VI.INV_ID, Y.TRANS_NM, VI.STRT_DT, VI.END_DT]]></db:sql>
+					<db:input-parameters><![CDATA[#[{
+	cuentaFacturacion: attributes.queryParams.cuentaFacturacion
+}]]]></db:input-parameters>
+				</db:select>
+			</when>
+			<when expression="#[!isEmpty(attributes.queryParams.numeroConexion)]">
+				<db:select doc:name="Select" doc:id="9e14e3ed-9eb6-4fef-9c39-44f75a73945c" config-ref="Database_Config_revchain">
+					<db:sql><![CDATA[SELECT T.SUB_ID CUENTA_FACTURACION,
+                sum(T.AMT)MONTO_DETALLE,
+                T.INV_ID INV_ID,
+                Y.TRANS_NM CONCEPTO_FACTURA,
+                VI.STRT_DT,
+                VI.END_DT  
+
+FROM WASABI.V_TRANS T, WASABI.V_TRANS_TYP Y , V_INV VI 
+WHERE Y.TRANS_TYP = T.TRANS_TYP
+ AND T.INV_ID = VI.INV_ID
+AND VI.EXT_INV_ID = (
+    SELECT ext_inv_id
+    FROM (
+        SELECT factura.ext_inv_id
+        FROM wasabi.v_inv factura
+        JOIN (
+            SELECT srvc.sub_id
+            FROM wasabi.v_ct_ct_num ctn
+            JOIN wasabi.v_srvc_ct sct ON ctn.srvc_ct_id = sct.srvc_ct_id
+            JOIN wasabi.v_srvc srvc ON sct.srvc_id = srvc.srvc_id
+            WHERE ctn.stat = 'A'
+              AND ctn.ct_num = :numeroConexion
+        ) cuenta ON factura.sub_id = cuenta.sub_id
+        ORDER BY factura.inv_id DESC
+    )
+    WHERE ROWNUM = 1
+)
+GROUP BY T.SUB_ID, t.inv_id, Y.TRANS_NM,VI.STRT_DT, VI.END_DT]]></db:sql>
+					<db:input-parameters><![CDATA[#[{
+	numeroConexion: attributes.queryParams.numeroConexion
+}]]]></db:input-parameters>
+				</db:select>
+			</when>
+			<when expression="#[!isEmpty(attributes.queryParams.numeroFactura)]">
+				<db:select doc:name="Select" doc:id="683ab997-c31d-4c8d-847a-989318105750" config-ref="Database_Config_revchain">
+					<db:sql><![CDATA[SELECT T.SUB_ID CUENTA_FACTURACION,
+                sum(T.AMT)MONTO_DETALLE,
+                T.INV_ID INV_ID,
+                Y.TRANS_NM CONCEPTO_FACTURA,
+                VI.STRT_DT,
+                VI.END_DT  
+ 
+FROM WASABI.V_TRANS T, WASABI.V_TRANS_TYP Y , V_INV VI 
+WHERE Y.TRANS_TYP = T.TRANS_TYP
+AND T.INV_ID = VI.INV_ID
+AND VI.EXT_INV_ID = :numeroFactura
+GROUP BY T.SUB_ID, t.inv_id, Y.TRANS_NM,VI.STRT_DT, VI.END_DT]]></db:sql>
+					<db:input-parameters><![CDATA[#[{
+	numeroFactura: attributes.queryParams.numeroFactura
+}]]]></db:input-parameters>
+				</db:select>
+			</when>
+			<otherwise>
+				<raise-error doc:name="Raise error" doc:id="0274995a-c088-4a98-acf5-167a5e557a00" type="VALIDATION" description="Se debe enviar cuenta_facturacion, numero_conexion o numero_factura" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Response" doc:id="59121547-9dca-4be7-ae03-16327125c39f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "No se encontraron datos en Revchain"
+  },
+  "messageServer": "No se encontraron datos en Revchain",
+  "cause": [
+    {
+      "origin": "revchain-sapi-services",
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+else payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(isEmpty(payload)) 404 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="41e417d1-56ce-47cb-b7d5-43d4293db50d" >
+			<flow-ref doc:name="Call logger after" doc:id="a826771c-81f1-4acd-8302-ae5b2bc654dc" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<sub-flow name="get-billing-variations-clientSub_Flow" doc:id="67cf7084-2d8b-4144-9f62-3b2def08feef" >
+		<async doc:name="Async" doc:id="b5266976-8b84-4047-a355-8352b5cb8627">
+			<flow-ref doc:name="Call logger before" doc:id="401ffae2-4c11-4a28-a7cf-f1bfcdeb6864" name="loggin-client-call" />
+		</async>
+		<choice doc:name="Choice" doc:id="5d0b3caf-9017-4a56-aae3-60fcfda329ae">
+			<when expression="#[!isEmpty(attributes.queryParams.cuentaFacturacion)]">
+				<db:select doc:name="Select" doc:id="7f8e4901-c271-44e9-8ec5-aa3cad420329" config-ref="Database_Config_revchain">
+					<db:sql><![CDATA[SELECT *
+FROM (
+    SELECT vmf.mensaje,vmf.fecha_creacion
+    FROM crevchain.variacion_factura_mensaje vmf
+    JOIN (
+        SELECT srvc.sub_id
+        FROM wasabi.v_ct_ct_num ctn
+        JOIN wasabi.v_srvc_ct sct ON ctn.srvc_ct_id = sct.srvc_ct_id
+        JOIN wasabi.v_srvc srvc ON sct.srvc_id = srvc.srvc_id
+        WHERE ctn.stat = 'A'
+          AND srvc.sub_id= :cuentaFacturacion
+    ) cuenta ON vmf.sub_id = cuenta.sub_id
+    ORDER BY vmf.id DESC
+)
+WHERE ROWNUM = 1]]></db:sql>
+					<db:input-parameters><![CDATA[#[{
+	cuentaFacturacion: attributes.queryParams.cuentaFacturacion
+}]]]></db:input-parameters>
+				</db:select>
+			</when>
+			<when expression="#[!isEmpty(attributes.queryParams.numeroConexion)]">
+				<db:select doc:name="Select" doc:id="5ab2116a-3a52-4045-81c5-84c5008077e6" config-ref="Database_Config_revchain">
+					<db:sql><![CDATA[SELECT *
+FROM (
+    SELECT vmf.mensaje,vmf.fecha_creacion
+    FROM crevchain.variacion_factura_mensaje vmf
+    JOIN (
+        SELECT srvc.sub_id
+        FROM wasabi.v_ct_ct_num ctn
+        JOIN wasabi.v_srvc_ct sct ON ctn.srvc_ct_id = sct.srvc_ct_id
+        JOIN wasabi.v_srvc srvc ON sct.srvc_id = srvc.srvc_id
+        WHERE ctn.stat = 'A'
+          AND ctn.ct_num = :numeroConexion
+    ) cuenta ON vmf.sub_id = cuenta.sub_id
+    ORDER BY vmf.id DESC
+)
+WHERE ROWNUM = 1]]></db:sql>
+					<db:input-parameters><![CDATA[#[{
+	numeroConexion: attributes.queryParams.numeroConexion
+}]]]></db:input-parameters>
+				</db:select>
+			</when>
+			<otherwise>
+				<raise-error doc:name="Raise error" doc:id="a24b066a-28a0-4aeb-b3f6-343cf6985c27" type="VALIDATION" description="Se debe enviar cuenta_facturacion o numero_conexion" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Response" doc:id="b13e2641-fa3d-4c98-8351-042d9d72153c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "No se encontraron datos en Revchain"
+  },
+  "messageServer": "No se encontraron datos en Revchain",
+  "cause": [
+    {
+      "origin": "revchain-sapi-services",
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+else payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(isEmpty(payload)) 404 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="4d929901-0c5a-48d2-959c-c95ae371be08" >
+			<flow-ref doc:name="Call logger after" doc:id="fdc830be-879e-4677-afd4-cdeb84385bc0" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+</mule>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="billing-papi-services-main">
+        <http:listener config-ref="billing-papi-services-httpListenerConfig" path="/billing/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Capture log vars" doc:id="a5ba010d-cae6-496e-8011-577108869833" name="processAndSystem-logginSub_Flow" />
+        <apikit:router config-ref="billing-papi-services-config" />
+        <error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="billing-papi-services-console">
+        <http:listener config-ref="billing-papi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="billing-papi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\rmca-accounts:application\json:billing-papi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="13209add-a8b5-4245-8bb6-01beac986677" name="post-rmcaAccounts-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\accounts\revchain:application\json:billing-papi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="db1d7622-0b1f-4e6d-86a4-9be92fdd2b69" name="patch-checkBillingservices-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\accounts\revchain:application\xml:billing-papi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="e451c3e8-f3e9-4240-be71-6a865776dc0f" name="patch-checkBillingservices-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\mdm-accounts:application\json:billing-papi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="441acd5b-13de-4d1a-9699-d3e072d602f6" name="post-mdmAccounts-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billing\provisioningAccount:application\json:billing-papi-services-config" doc:id="a1a538d9-82d6-4192-9878-4f89779f4d6e">
+        <flow-ref doc:name="Go to Handler" doc:id="f17edcbd-fd5e-4ba9-aa96-af543117b605" name="post-provisioningAccount-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billing\products:application\json:billing-papi-services-config" doc:id="ad3475be-4d95-4ee7-9e64-577307444103">
+        <choice doc:name="Choice" doc:id="2aebeb65-1f1c-4806-8e7e-b52b523fb18f">
+            <when expression="#[attributes.queryParams.billeable == &quot;false&quot;]">
+                <flow-ref doc:name="Go to Handler NoBilleable" doc:id="27e2b6bc-9b0b-490a-9c9e-d2ada9d5776d" name="post-noBilleableProducts-handlerSub_Flow" />
+            </when>
+            <otherwise>
+                <flow-ref doc:name="Go to Handler Billeable" doc:id="5efcd876-1a52-4453-9e9a-84271d6645ac" name="post-BilleableProducts-handlerSub_Flow" />
+            </otherwise>
+        </choice>
+    </flow>
+    <flow name="post:\v1\billing_accounts:application\json:billing-papi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="d44fa3ca-0231-4dc0-b68b-e27e94087aa7" name="post-billingAccounts-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\billDuplicate\(billingAccount):billing-papi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="e88531b4-4849-4e01-b169-70f1cae65374" name="get-billDuplicate-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\servicios\(id)\estadocuenta\certificado:billing-papi-services-config" doc:id="a52afbea-4fdf-402f-b0ca-3b09e9dd31b1">
+        <flow-ref doc:name="Go to Handler" doc:id="0a4411aa-090b-42a8-9238-329e2d8763ef" name="get-serviceAccountState-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\billing_accounts:application\json:billing-papi-services-config">
+        <flow-ref doc:name="patch-billingAccounts-handlerSub_Flow" doc:id="9f10073f-39f1-46cf-a25e-36fec15a5eb7" name="patch-billingAccounts-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billing\(tipoConsulta):application\json:billing-papi-services-config" doc:id="e6dc7987-4616-454b-9590-a64c3a3d3dc9">
+		<flow-ref doc:name="Go to handler" doc:id="57c19122-4a20-4916-b3dd-302fc0e77c2b" name="post-billing-tipoConsulta-handlerSub_Flow"/>
+    </flow>
+</mule>

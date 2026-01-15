@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-responseProvisioning" doc:id="c8e97c44-b229-4bb1-9b45-4190af3a8ea1" >
+		<try doc:name="Try" doc:id="059a6243-fdfc-42ef-ae21-51a020877a0c" >
+			<http:request method="POST" doc:name="Request" doc:id="d307b30c-78cc-4e1c-ac44-3fd30c1d980a" config-ref="HTTP_Request_configuration_salesforce_sapi" path="#[p('salesforce-sapi.provisioning')]" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('salesforce-sapi.client_secret'),
+	"client_id" : p('salesforce-sapi.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b1f8215f-fbc7-4aad-9dfa-a0566ce12588" >
+					<set-payload value='#["ERROR"]' doc:name="Error" doc:id="6e96a77e-d860-4a22-bf03-7afc9ce200bd" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="updateProvisioningOrderState" doc:id="e92eab36-a977-414f-a0d1-6b615a53ccdd" >
+		<ee:transform doc:name="Mapping Request Payload" doc:id="8d92af5d-073c-424b-93d2-facea3ce1de9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	state: vars.state,
+	context: vars.context
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="PUT" doc:name="Request" doc:id="f112f3ae-1e6f-45b5-b49e-af9647c5a626" config-ref="HTTP_Request_configuration_salesforce_sapi" path="#[p('salesforce-sapi.states.provisioning.order')]" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('salesforce-sapi.client_secret'),
+	"client_id" : p('salesforce-sapi.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	orderNumber : vars.idOrigen
+}]]]></http:uri-params>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	positiveState : vars.positiveState
+}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+</mule>

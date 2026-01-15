@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-billingAccounts-orchestratorSub_Flow" doc:id="936ae9e8-9e67-4c3e-a775-097283b78b9a" >
+		<choice doc:name="Choice" doc:id="7a24c0a8-bf9d-48db-82aa-2a7968bba1a5" >
+			<when expression='#[vars.initialPayload.ProcessData.ProcessingType == "Reenvio"]'>
+				<choice doc:name="Choice" doc:id="e2d3a23b-5024-4015-b434-e70aba39c29c" >
+					<when expression='#[vars.processRVC == "1"]'>
+						<flow-ref doc:name="Go to RVC" doc:id="471393b6-1421-435f-8c4a-e28243a99037" name="RVC"/>
+					</when>
+					<otherwise >
+						<flow-ref doc:name="Go to RMCA y MDM" doc:id="e789f0a2-a24a-43c3-960a-69a4433892e6" name="RMCA_y_MDM"/>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<set-variable value='#["1"]' doc:name="Set processRMCA" doc:id="bfb45291-4731-4cb4-85e1-37fa7094360c" variableName="processRMCA"/>
+				<set-variable value='#["1"]' doc:name="Set processMDM" doc:id="6c9654d7-7866-4496-a761-ded18b4d86aa" variableName="processMDM" />
+				<flow-ref doc:name="Go to RVC" doc:id="bfbcf34d-d61e-447f-96f5-220def89c549" name="RVC" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="RVC" doc:id="dc2984f2-61c2-45bb-b545-69c5868fa70c" >
+		<ee:transform doc:name="Map RVC" doc:id="590cf126-00d9-4318-9191-cbd66974f9d3">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    subscribers: {
+        subscriber_particulars: {
+            subscriber_data: {
+                action: "modify",
+                user: vars.initialPayload.UpdateAccountDataSystemsBody.User,
+                subscriber_id: vars.initialPayload.UpdateAccountDataSystemsBody.SubscriberId,
+                first_name: vars.initialPayload.UpdateAccountDataSystemsBody.FirstName,
+                last_name: vars.initialPayload.UpdateAccountDataSystemsBody.LastName,
+                subscriber_name: vars.initialPayload.UpdateAccountDataSystemsBody.SubscriberName
+            },
+            billing_address_data:{
+                action: "modify",
+                bill_address1: vars.initialPayload.UpdateAccountDataSystemsBody.BillAddress,
+                bill_city: vars.initialPayload.UpdateAccountDataSystemsBody.AddressGeoCode,
+                bill_country_code: "COL",
+                bill_state_code: vars.initialPayload.UpdateAccountDataSystemsBody.BillStateCode
+            },
+            address_data:{
+                action: "modify",
+                address1: vars.initialPayload.UpdateAccountDataSystemsBody.BillAddress,
+                address_geo_code: vars.initialPayload.UpdateAccountDataSystemsBody.AddressGeoCode,
+                city: vars.initialPayload.UpdateAccountDataSystemsBody.City,
+                country_code: "COL",
+                state_code: vars.initialPayload.UpdateAccountDataSystemsBody.BillStateCode
+            },
+            email_data:{
+                action: "add",
+                email_address: vars.initialPayload.UpdateAccountDataSystemsBody.EmailAddress,
+                email_is_primary_flag: vars.initialPayload.UpdateAccountDataSystemsBody.EmailIsPrimaryFlag
+            },
+            invoice_method_data:{
+                action: "modify",
+                invoice_method_name: "Cuentas LTE Detallada",
+                invoice_delivery_name: vars.initialPayload.UpdateAccountDataSystemsBody.InvoiceDeliveryType
+            }
+        }
+    }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+		<try doc:name="Try" doc:id="2afada12-4258-4e41-9914-4aad10ef00ca" >
+			<flow-ref doc:name="patch-subscriber-client_Sub_Flow" doc:id="0a30f1ef-14a3-4411-94f8-de04fd7d1f56" name="patch-subscriber-client_Sub_Flow" />
+			<ee:transform doc:name="Get responseRVC" doc:id="a481277b-1547-4814-8fff-18f2a5823093">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="responseRVC"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Code: payload.result,
+	Description: payload.faults.fault_detail.error_description
+}
+]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d42973a8-a17c-4421-81df-f2b9d2f2000b" type="ANY">
+					<ee:transform doc:name="Get responseRVC" doc:id="2f5b4cba-56e0-4ac3-bc37-651a71d5dbfa" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="responseRVC" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Code: error.muleMessage.typedValue.code,
+	Description: error.muleMessage.typedValue.message.message
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<logger level="INFO" doc:name="Response" doc:id="7d213c12-c6da-4b95-bba8-aff5e8aac085" message="#[payload]" />
+		<choice doc:name="Choice" doc:id="1c7cb1dd-3cfc-47c0-be4d-9a11c2c4b4b9">
+							<when expression='#[payload.result == "S"]'>
+								<flow-ref doc:name="Go to RMCA y MDM" doc:id="9809605e-40b4-4d9f-b900-c8d71569456a" name="RMCA_y_MDM" />
+							</when>
+							<otherwise>
+								<ee:transform doc:name="Error in RVC" doc:id="73c62312-9521-4bfa-a9b4-ca845a83c147">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ResponseData: {
+		UpdateAccountDataRVCResponse: vars.responseRVC,
+		UpdateAccountDataRMCAResponse: {
+			Code: "NOK",
+			Description: "Error RVC"
+		},
+		UpdateAccountDataMDMResponse: {
+			Code: "NOK",
+			Description: "Error RVC"
+		}
+	}
+}]]></ee:set-payload>
+									</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+								</ee:transform>
+							</otherwise>
+						</choice>
+	</sub-flow>
+	<sub-flow name="RMCA_y_MDM" doc:id="59221725-56ba-46b7-9b7c-1825bb0a5533">
+		<choice doc:name="Choice" doc:id="74aba8ee-cf77-461c-87c4-ce92462bad86">
+			<when expression='#[vars.processRMCA == "1"]'>
+				<ee:transform doc:name="Map RMCA" doc:id="ade8122d-454a-43c8-a66f-fbedb15099b0">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ZRFC_BP_UPDATE_DATA:{
+	    COUNTRY: "CO",
+	    CTA_REVCHAIN: vars.initialPayload.UpdateAccountDataSystemsBody.SubscriberId,
+	    E_MAIL: vars.initialPayload.UpdateAccountDataSystemsBody.EmailAddress,
+	    FIRSTNAME: if(isEmpty(vars.initialPayload.UpdateAccountDataSystemsBody.FirstName)) 
+	    vars.initialPayload.UpdateAccountDataSystemsBody.SubscriberName 
+	    else vars.initialPayload.UpdateAccountDataSystemsBody.FirstName,
+	    LASTNAME: vars.initialPayload.UpdateAccountDataSystemsBody.LastName,
+	    RETURN: {},
+	    STREET: vars.initialPayload.UpdateAccountDataSystemsBody.BillAddress
+	    }
+	}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<try doc:name="Try" doc:id="a2944bfd-051d-4f0a-9d9d-4a95362691dc">
+					<flow-ref doc:name="update RMCA" doc:id="aedbf043-9093-4c13-b8f1-3f0bdfd24076" name="update-master-data-clientSub_Flow" />
+					<ee:transform doc:name="responseRMCA" doc:id="dd2f054e-dfc6-4091-95a7-3479dd488140">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="responseRMCA"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Item: payload.ZRFC_BP_UPDATE_DATAResponse.Item map ((item, index) -> 
+	{
+	    Code: item.TYPE,
+	    Description: item.MESSAGE
+    })
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4f5b45a2-5d05-432c-aebe-dce090bfa22a">
+							<ee:transform doc:name="responseRMCA" doc:id="5d4052a2-9f81-4dab-99f5-6985f0aa71e7">
+								<ee:message />
+								<ee:variables>
+									<ee:set-variable variableName="responseRMCA"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Code: "NOK",
+	Description: error.description
+}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+		</choice>
+		<choice doc:name="Choice" doc:id="b955e938-010b-427b-8a05-1708fd3bfa46">
+			<when expression='#[vars.processMDM == "1"]'>
+				<ee:transform doc:name="Map MDM" doc:id="96e90588-db3b-41c2-b09d-11a34e0c06ae">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    ActualizarDatosCuentaFacturacion:{
+        cuentaFactuarcion: vars.initialPayload.UpdateAccountDataSystemsBody.SubscriberId,
+        correo: if(isEmpty(vars.initialPayload.UpdateAccountDataSystemsBody.EmailAddress)) null 
+        else vars.initialPayload.UpdateAccountDataSystemsBody.EmailAddress,
+        direccion: if(isEmpty(vars.initialPayload.UpdateAccountDataSystemsBody.BillAddress)) null 
+        else vars.initialPayload.UpdateAccountDataSystemsBody.BillAddress,
+        tipoEnvio: if(vars.initialPayload.UpdateAccountDataSystemsBody.InvoiceDeliveryType == "Email") "Electronica" 
+        else if(isEmpty(vars.initialPayload.UpdateAccountDataSystemsBody.BillAddress)) null 
+        else vars.initialPayload.UpdateAccountDataSystemsBody.BillAddress,
+        usuario: if(isEmpty(vars.initialPayload.UpdateAccountDataSystemsBody.User)) null 
+        else vars.initialPayload.UpdateAccountDataSystemsBody.User
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<try doc:name="Try" doc:id="3937b550-9890-4f10-b8dd-973b5de18083">
+					<flow-ref doc:name="update MDM" doc:id="1e440b05-dd04-4c29-9bbf-d2a7bb515033" name="remedy-sapi-clientSub_Flow" />
+					<ee:transform doc:name="responseMDM" doc:id="a2f057a9-5b7e-4f70-87d8-4e1fd8a91ee3">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="responseMDM"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    Code: payload.ActualizarDatosCuentaFacturacionResponse.codigo,
+    Description: payload.ActualizarDatosCuentaFacturacionResponse.descripcion
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="280664a2-c8a4-499e-9816-e34dade75e20">
+							<ee:transform doc:name="responseMDM" doc:id="14293af7-a3e4-4615-bbc1-729fbce219e5">
+								<ee:message />
+								<ee:variables>
+									<ee:set-variable variableName="responseMDM"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Code: "NOK",
+	Description: error.description
+}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+		</choice>
+		<ee:transform doc:name="Final response" doc:id="a30bf2fd-4192-430e-a9fe-f920a4cfd047">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ResponseData: {
+		UpdateAccountDataRVCResponse: vars.responseRVC,
+		(UpdateAccountDataRMCAResponse: vars.responseRMCA) if(vars.responseRMCA != null),
+		(UpdateAccountDataMDMResponse: vars.responseMDM) if(vars.responseMDM != null)
+		}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+</mule>

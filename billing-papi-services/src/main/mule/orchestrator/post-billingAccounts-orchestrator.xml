@@ -1,0 +1,594 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-billingAccounts-orchestratorSub_Flow" doc:id="540147bd-2069-470a-a899-4a74f588e558" >
+		<choice doc:name="Choice" doc:id="94a2810f-a6d5-4648-aaa4-9c85222490bd" >
+			<when expression="#[vars.source != p('sourceGestor')]">
+				<flow-ref doc:name="Go to no gestor" doc:id="eab5f341-188a-4eae-a31b-0ae4615d1ab5" name="noGestor-orchestratorSub_Flow"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to gestor" doc:id="63750f80-9e4e-458d-ae29-bedefe5ac1cb" name="gestor-orchestratorSub_Flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="noGestor-orchestratorSub_Flow" doc:id="ed107c58-0446-4f9f-999e-2074be30da5d" >
+		<choice doc:name="Choice" doc:id="5dba542a-7fe3-411e-a829-b6cba79dcbc2">
+			<when expression='#[(vars.map.ProcessData.ProcessingType == "Reenvio" and vars.map.ProcessData.RVC == "1") or (vars.map.ProcessData.ProcessingType == null or vars.map.ProcessData.ProcessingType == "")]'>
+				<ee:transform doc:name="Set data RVC" doc:id="7c763de7-35ea-4bd1-a6ed-ceef40c933dd">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "idTx": correlationId, 
+  "CreateUniqueAccountInput": {
+    "EXT_MARKET_TYP": vars.map.CreateSystemsAccountsBody.MarketType,
+    "GEO_CODE1": vars.map.CreateSystemsAccountsBody.GeoCode1,
+    "GEO_CODE2": vars.map.CreateSystemsAccountsBody.GeoCode2,
+    "GEO_CODE3": vars.map.CreateSystemsAccountsBody.GeoCode3 default "",
+    "ORDER_TYPE": vars.map.CreateSystemsAccountsBody.OrderType,
+    "CT_NUM": vars.map.CreateSystemsAccountsBody.ConectionNumber,
+    "FD": vars.map.CreateSystemsAccountsBody.FD default "",
+    "CURR_CODE": vars.map.CreateSystemsAccountsBody.CurrCode,
+    "INV_DAY": vars.map.CreateSystemsAccountsBody.InvDay,
+    "CONV_IND": vars.map.CreateSystemsAccountsBody.ConvInd,
+    "SUB_ID": vars.map.CreateSystemsAccountsBody.SubId,
+    "BILL_PRNT_SUB_ID": vars.map.CreateSystemsAccountsBody.BillPrntSubId,
+    "PAYMENT_PRD": vars.map.CreateSystemsAccountsBody.PaymentPrd,
+    "BILLABLE": vars.map.CreateSystemsAccountsBody.Billiable,
+    "DocType": vars.map.CreateSystemsAccountsBody.Customer.DocumentType ,
+    "start_date": {
+      "month": vars.map.CreateSystemsAccountsBody.StartDate.Month,
+      "day": vars.map.CreateSystemsAccountsBody.StartDate.Day,
+      "year": vars.map.CreateSystemsAccountsBody.StartDate.Year
+    },
+    "Customer": {
+      "first_name": vars.map.CreateSystemsAccountsBody.Customer.FirstName default "",
+      "second_name": vars.map.CreateSystemsAccountsBody.Customer.SecondName default "",
+      "surname": vars.map.CreateSystemsAccountsBody.Customer.Surame default "",
+      "last_name": vars.map.CreateSystemsAccountsBody.Customer.Lastname default "",
+      "second_surname": vars.map.CreateSystemsAccountsBody.Customer.SecondSurname default "",
+      "subscriber_name": vars.map.CreateSystemsAccountsBody.Customer.ClientAccountName,
+      "BillBillingName": vars.map.CreateSystemsAccountsBody.Customer.BillingAccountName,
+      "ContactInfo": {
+        "PhoneNumber": vars.map.CreateSystemsAccountsBody.Customer.ContactInfo.PhoneNumber,
+        "ContactEmailAdd": vars.map.CreateSystemsAccountsBody.Customer.ContactInfo.ContactEmail,
+        "DocumentNo": vars.map.CreateSystemsAccountsBody.Customer.ContactInfo.DocumentNumber
+      }
+    },
+    "Billing_address": {
+      "LineOne": vars.map.CreateSystemsAccountsBody.BillingAddress.BillAddress,
+      "CityName": vars.map.CreateSystemsAccountsBody.BillingAddress.CityName,
+      "StateCode": vars.map.CreateSystemsAccountsBody.BillingAddress.StateCode,
+      "postcode": vars.map.CreateSystemsAccountsBody.BillingAddress.PostCode,
+      "DaneCode": vars.map.CreateSystemsAccountsBody.BillingAddress.DaneCode
+    },
+    "invoice_delivery_name": vars.map.CreateSystemsAccountsBody.InvoiceDeliveryName,
+    "OrderSubType": vars.map.CreateSystemsAccountsBody.OrderSubType,
+    "InvoiceMethod": vars.map.CreateSystemsAccountsBody.InvoiceMethod
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to uniqueAccount handler" doc:id="84377686-96b4-4472-a2a8-4462cdeb23a9" name="post-uniqueAccounts-handlerSub_Flow" />
+				<choice doc:name="Choice" doc:id="c8ae44b1-a401-4497-a5c2-9b7582f98b40" >
+					<when expression="#[payload.InvokeEJBURevChainOut.response.result == 'S']">
+						<set-variable value="#[payload]" doc:name="Set InvokeEJBURevChainOut" doc:id="e4f39d2c-5381-4968-bfd2-3805ebffc1d7" variableName="invokeEJBURevChainOut" />
+						<flow-ref doc:name="Go to RMCA and MDM" doc:id="91c21f75-d2d5-41ce-be7c-555867fed393" name="RMCA_and_MDM_processing" />
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Error in RVC" doc:id="8af62978-cc37-42db-bb93-cee8cb6f54c0" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	responseData: {
+		createBillingAccountResponse: {
+			code: "NOK",
+			description: payload.InvokeEJBURevChainOut.response.faults.fault.fault_detail.error_description
+		},
+		createRMCAAccountResponse: {
+			code: "NOK",
+			description: "Error RVC"
+		},
+		createMDMAccountResponse: {
+			code: "NOK",
+			description: "Error RVC"
+		}
+	}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Go to RMCA and MDM" doc:id="3a341833-8f55-4220-832f-264356fbfc85" name="RMCA_and_MDM_processing" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="RMCA_and_MDM_processing" doc:id="1cf650cf-0d5e-44bc-862c-5e63847484d9">
+		<choice doc:name="Choice" doc:id="c89904ad-ea98-417a-b2a9-f53788f244dd">
+			<when expression='#[(vars.map.ProcessData.ProcessingType == "Reenvio" and vars.map.ProcessData.RMCA == "1") or (vars.map.ProcessData.ProcessingType == null)]'>
+				<ee:transform doc:name="Set data RMCA" doc:id="400e2bdc-f338-4a6e-8996-6090386b4e05">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "OrderFulfilment": {
+    "Identification": {
+      "ID": vars.map.CreateSystemsAccountsBody.Customer.IdentificationID, 
+      "BusinessComponentID": "",
+      "ApplicationObjectKeyID": ""
+    },
+    "SalesOrder": {
+      "OrderDateTime": now() as String >> "America/Bogota", 
+      "DeliveryDateTime": now() as String >> "America/Bogota", 
+      "TypeCode": "",
+      "FulfilmentPriorityCode": "",
+      "FulfilmentModeCode": "",
+      "StatusCode": ""
+    },
+    "BusinessReference": {
+      "Id": "",
+      "ComponentId": "",
+      "ApplicationObjectKeyId": ""
+    },
+    "CustomerPartyAccount": {
+      "Identification": {
+        "ID": vars.map.CreateSystemsAccountsBody.Customer.AccountIdentificationID, 
+        "BusinessComponentID": "",
+        "ApplicationObjectKeyID": ""
+      },
+      "Name": vars.map.CreateSystemsAccountsBody.Customer.BillingAccountName, 
+      "Address": {
+        "LineOne": ""
+      },
+      "ContactPerson": {
+        "FirstName": "",
+        "FamilyName": "",
+        "CompleteNumber": ""
+      },
+      "TypeCode": vars.map.CreateSystemsAccountsBody.Customer.AccountTypeCode, 
+      "Custom": {
+        "DocumentType": "",
+        "DocumentNumber": vars.map.CreateSystemsAccountsBody.Customer.DocumentNumber
+      }
+    },
+    "Custom": {
+      "OrderSubType": vars.map.CreateSystemsAccountsBody.OrderSubType, 
+      "SignedDocumentIndicator": true
+    },
+    "PartyIdentification": {
+      "ID": "",
+      "BusinessComponentID": "",
+      "ApplicationObjectKeyID": ""
+    },
+    "SalesOrderLine": {
+      "Identification": {
+        "ID": "",
+        "BusinessComponentID": "",
+        "ApplicationObjectKeyID": ""
+      },
+      "OrderQuantity": "",
+      "ServiceActionCode": "",
+      "FulfilmentModeCode": "",
+      "ParentSalesOrderLineIdentification": {
+        "ID": "",
+        "BusinessComponentID": "",
+        "ApplicationObjectKeyID": ""
+      },
+      "RootParentSalesOrderLineIdentification": {
+        "ID": "",
+        "BusinessComponentID": "",
+        "ApplicationObjectKeyID": ""
+      },
+      "StatusCode": "",
+      "ServiceAddress": {
+        "LineOne": ""
+      },
+      "ItemReference": {
+        "ItemIdentification": {
+          "ID": "",
+          "BusinessComponentID": "",
+          "ApplicationObjectKeyID": ""
+        },
+        "Name": "",
+        "ServiceIndicator": true,
+        "TypeCode": "",
+        "NetworkIndicator": true,
+        "PrimaryClassificationCode": ""
+      },
+      "SalesOrderSchedule": {
+        "RequestedDeliveryDate": now() as String >> "America/Bogota", 
+        "ExpectedDeliveryDate": now() as String >> "America/Bogota" 
+      },
+      "OwnerPartyReference": {
+        "ID": "",
+        "BusinessComponentID": "",
+        "ApplicationObjectKeyID": ""
+      },
+      "ScheduleOrderIndicator": "",
+      "Custom": {
+        "PartNumber": "",
+        "AssetIntegrationID": ""
+      },
+      "AltKey": [
+        {
+          "AltKeyName": "SysOrg",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.SourceSystem 
+        },
+        {
+          "AltKeyName": "USO",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.SourceSystem 
+        },
+        {
+          "AltKeyName": "BACYT",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.BillingAddress.CityName 
+        },
+        {
+          "AltKeyName": "MetodoReclamacion",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.ClaimMethod default ""
+        },
+        {
+          "AltKeyName": "BACON",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.BillingAddress.Country
+        },
+        {
+          "AltKeyName": "BAAID",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.ExternalAddressNumber
+        },
+        {
+          "AltKeyName": "ETBFN",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.Customer.FirstName
+        },
+        {
+          "AltKeyName": "BAUSO",
+          "AltKeyValue": p('empty')
+        },
+        {
+          "AltKeyName": "ETBLN",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.Customer.Lastname default ""
+        },
+        {
+          "AltKeyName": "Segmento",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.Segment
+        },
+        {
+          "AltKeyName": "BAADD",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.BillingAddress.BillAddress
+        },
+        {
+          "AltKeyName": "Subsegmento",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.SubSegment
+        },
+        {
+          "AltKeyName": "PHONE",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.Customer.ContactInfo.PhoneNumber
+        },
+        {
+          "AltKeyName": "ETB Facturable",
+          "AltKeyValue": vars.map.CreateSystemsAccountsBody.Billiable
+        }
+      ]
+    }
+  },
+  "BillingProcess": {
+    "Customer": {
+      "FullName": vars.map.CreateSystemsAccountsBody.Customer.BillingAccountName,
+      "ContactInfo": {
+        "ContactAddress": {
+          "DaneCode": vars.map.CreateSystemsAccountsBody.GeoCode1
+        }
+      },
+      "DocumentType": vars.map.CreateSystemsAccountsBody.Customer.DocumentType, 
+      "DocumentNo": vars.map.CreateSystemsAccountsBody.Customer.DocumentNumber 
+    },
+    "CustomerBill": {
+      "SuscriberId": if(vars.map.ProcessData.RVC == "1" or vars.map.ProcessData.ProcessingType == null) vars.invokeEJBURevChainOut.InvokeEJBURevChainOut.response.faults.subscriber_id else vars.map.CreateSystemsAccountsBody.BillingAccountData.SubscriberId, 
+      "InvoicingCycle": if(vars.map.ProcessData.RVC == "1" or vars.map.ProcessData.ProcessingType == null) vars.invokeEJBURevChainOut.InvokeEJBURevChainOut.response.faults.ciclo_facturacion else vars.map.CreateSystemsAccountsBody.InvDay
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to rmcaAccount handler" doc:id="94bf0146-ceba-4826-812b-4cf5f3cbffde" name="post-rmcaAccounts-handlerSub_Flow" />
+				<ee:transform doc:name="Set var invokeRMCAOut" doc:id="76aafe59-7c1e-4a61-b911-21381cb64faa" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="invokeRMCAOut" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload.Z_RM_RFC_CREATE_MASTER_DATA.RETURN.CODE == '000' or payload.Z_RM_RFC_CREATE_MASTER_DATA.RETURN.CODE == '905')
+{
+      "code": "SUCCESS",
+      "description": "SUCCESS"
+    } else
+{
+	"code": payload.Z_RM_RFC_CREATE_MASTER_DATA.RETURN.CODE,
+	"description": payload.Z_RM_RFC_CREATE_MASTER_DATA.RETURN.MESSAGE
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+		</choice>
+		<choice doc:name="Choice" doc:id="cefdb2ed-10bf-4add-9ffb-1b57bbd9b83b">
+			<when expression='#[(vars.map.ProcessData.ProcessingType == "Reenvio" and vars.map.ProcessData.MDM == "1") or (vars.map.ProcessData.ProcessingType == null)]'>
+				<ee:transform doc:name="Set data MDM" doc:id="04578f89-d08e-4144-a9e8-3beb3f390efc">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "Header": {
+      "id": correlationId,       
+      "operation": "SetBillingAccount",
+      "requestSystem": "WS.BillingLTECorporate",
+      "version": "1",
+      "type": "IN",
+      "reqType": "SYNC",
+      "requestDateTime": now() as String { format: "yyyy-MM-dd'T'HH:mm:ss" },
+      "responseDateTime": now() as String { format: "yyyy-MM-dd'T'HH:mm:ss" }
+   },
+   "Body": {
+      "Set_BillingAccount": {
+         "WSRequestHeader": {
+            "system": {
+               "name": vars.name as String default '', 
+               "correlationId": correlationId,
+	           "processingServer": "Tibco"
+            },
+            "property": {
+               "Property": {
+                  "name": "",
+                  "value": ""
+               }
+            }
+         },
+         "WSRequestBody": {
+            "id": vars.map.CreateSystemsAccountsBody.Customer.IdentificationID, 
+            "document_type": vars.map.CreateSystemsAccountsBody.Customer.DocumentType, 
+            "document_number": vars.map.CreateSystemsAccountsBody.Customer.DocumentNumber, 
+            "billing_account": if(vars.map.ProcessData.ProcessingType == null or vars.map.ProcessData.RVC == "1") 
+						(vars.invokeEJBURevChainOut.InvokeEJBURevChainOut.response.faults.subscriber_id)
+					       else
+						(vars.map.CreateSystemsAccountsBody.BillingAccountData.SubscriberId) 
+						,
+            "parent_billing_account": vars.map.CreateSystemsAccountsBody.SubId, 
+            "state": vars.map.CreateSystemsAccountsBody.State, 
+            "market": vars.map.CreateSystemsAccountsBody.Market default "", 
+            "frequency": vars.map.CreateSystemsAccountsBody.Frequency, 
+            "creator_user": vars.map.CreateSystemsAccountsBody.User.CreatorUser, 
+            "modifier_user": vars.map.CreateSystemsAccountsBody.User.ModifierUser, 
+            "email": vars.map.CreateSystemsAccountsBody.Customer.Email, 
+            "address": vars.map.CreateSystemsAccountsBody.BillingAddress.BillAddress, 
+            "country": vars.map.CreateSystemsAccountsBody.BillingAddress.Country, 
+	    	"department": vars.map.CreateSystemsAccountsBody.BillingAddress.DepartmentName, 
+            "city": vars.map.CreateSystemsAccountsBody.BillingAddress.CityName,
+            "neighborhood": vars.map.CreateSystemsAccountsBody.BillingAddress.Neighborhood,
+            "location": vars.map.CreateSystemsAccountsBody.BillingAddress.Location, 
+            "stratum": vars.map.CreateSystemsAccountsBody.BillingAddress.Stratum,  
+            "billing_cycle": if(vars.map.ProcessData.ProcessingType == null or vars.map.ProcessData.RVC == "1") 
+					(vars.invokeEJBURevChainOut.InvokeEJBURevChainOut.response.faults.ciclo_facturacion)
+				      else
+					(vars.map.CreateSystemsAccountsBody.InvDay),
+            "long_time": vars.map.CreateSystemsAccountsBody.PortfolioArrears, 
+            "invoice_type": vars.map.CreateSystemsAccountsBody.InvoiceType,
+            "invoice_support": vars.map.CreateSystemsAccountsBody.InvoiceSupport, 
+            "type_delivery_invoice": if(vars.map.CreateSystemsAccountsBody.InvoiceDeliveryName == "Email") "Electronica" else "Fisica", 
+							
+            "charging_cycle": vars.map.CreateSystemsAccountsBody.ChargingCycle default "", 
+            "code_charging_cycle": vars.map.CreateSystemsAccountsBody.CodeChargingCycle default "",
+            "date_cut_billing": vars.map.CreateSystemsAccountsBody.DateCutBilling default "", 
+            "taxes": vars.map.CreateSystemsAccountsBody.Taxes default "",            
+	    	"modified_MDM": vars.map.CreateSystemsAccountsBody.ModifiedMDM, 
+            "order_order_related": vars.map.CreateSystemsAccountsBody.OrderRelated default "",
+            "salesforce_invoice_id": vars.map.CreateSystemsAccountsBody.SalesforceInvoiceId default "",
+            "set_type": vars.map.CreateSystemsAccountsBody.SetTypeMDM 
+         }
+      }
+   }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to mdmAccount handler" doc:id="52ab432f-aa59-41ac-9e93-524dbd9ba28f" name="post-mdmAccounts-handlerSub_Flow" />
+				<set-variable value="#[payload]" doc:name="Invoke MDM output" doc:id="5e7d00f4-46f8-433a-b748-5686a023aef4" variableName="invokeMDMOut"/>
+			</when>
+		</choice>
+		<ee:transform doc:name="Prepare output" doc:id="f10dfaa7-cdd3-4584-bda7-1cb93e01f4b4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	responseData: {
+		("createBillingAccountResponse": {
+	      "code": "S",
+	      "description": "operation is successful",
+	      "response": vars.invokeEJBURevChainOut.InvokeEJBURevChainOut.response
+    	}) if (vars.invokeEJBURevChainOut != null),
+    	("createRMCAAcountResponse": vars.invokeRMCAOut) if (vars.invokeRMCAOut != null),
+    	("createMDMAccountResponse": {
+	      "code": vars.invokeMDMOut.Set_BillingAccountResponse.Set_BillingAccountResult.WSResponseBody.OperationResult,
+	      "description": vars.invokeMDMOut.Set_BillingAccountResponse.Set_BillingAccountResult.WSResponseBody.OperationResultDesc
+    	}) if (vars.invokeMDMOut != null)
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="gestor-orchestratorSub_Flow" doc:id="991eaccb-8270-4345-b90c-ba520c1bfbee" >
+		<flow-ref doc:name="Go to om_orders" doc:id="291b2de5-c4cc-470a-aad5-e79ef27387a0" name="mongo-sapi-client-services-om_orders-Sub_Flow"/>
+		<ee:transform doc:name="First payload and item" doc:id="8111ea76-a165-4c9f-994b-d1d6364e84b1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload[0]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="firstItem" ><![CDATA[%dw 2.0
+output application/json
+---
+(payload[0].items filter $['idOrigen'] == vars.map.numeroOC)[0]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="6d9f12cc-6add-414f-aa9c-d7874a2ee57e" >
+			<when expression="#[%dw 2.0
+import * from dw::core::Arrays
+output application/java
+var esFacturacion = vars.firstItem.propiedades some ($.codigo == p('compRevchain.attFacturacion') and $.valor)
+var esProvisional = payload.cuentasFacturacion some ($.idCuentaFacturacion == vars.firstItem.idCuentaFacturacion and $.cuentaFacturacion == p('compRevchain.cta'))
+---
+esFacturacion or esProvisional]">
+				<flow-ref doc:name="Go to account creation" doc:id="0d995918-249d-4015-a06f-8a06189f2e65" name="account-creation-orchestratorSub_Flow"/>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="Set httpStatus 500" doc:id="cc6d9b99-8b5f-443f-a6b5-fe5508474c0b" variableName="httpStatus" />
+				<async doc:name="Async" doc:id="7ac12819-0960-430e-944a-59eada03d256" >
+					<ee:transform doc:name="Mapping error request - generic notifier" doc:id="0f5b6640-9828-45fc-968d-c09bf4a4aa15">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns tier http://schemas.datacontract.org/2004/07/Tier.Common
+ns ws http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts
+---
+soapenv#Envelope @("xmlns:tem": tem, "xmlns:tier": tier, "xmlns:ws": ws): {
+    soapenv#Header: {},
+    soapenv#Body: {
+        'tem:RespuestaTransaccion': {
+            'tem:WSRequestHeader': {
+                'tier:system': {
+                    'tier:correlationId': correlationId,
+                    'tier:name': vars.name,
+                    'tier:processingServer': p('generic-notifier.fact')
+                }
+            },
+            'tem:WSRequestBody': {
+            	'ws:Descripcion': write(payload, 'application/json'),
+            	'ws:Fecha': vars.map.fechaInicioFacturacion,
+            	'ws:IdServicio': vars.map.idServicio,
+            	'ws:NumeroOC': vars.map.numeroOC,
+                'ws:OrdenOM': vars.map.ordenOM,
+                'ws:Resultado': p('generic-notifier.errorCode'),
+                'ws:TipoTransaccion': p('generic-notifier.facturacion')
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					<flow-ref doc:name="Go to generic notifier" doc:id="32e54cae-ef86-41b4-b527-e94b00b5a445" name="notifier-clientSub_Flow" />
+				</async>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Mapping response" doc:id="9a878de8-0462-49e4-989e-a19033eb74a4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="account-creation-orchestratorSub_Flow" doc:id="16711bbc-4820-4a12-b3a5-5eea5802fe32" >
+		<ee:transform doc:name="Mapping - Account creation" doc:id="4815dc28-3ca0-4bc3-8e49-4a561b42de66" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	sfilluminate: {
+		operacion: p('compRevchain.servicioAv'),
+		orden_om: payload.ordenOM as String default '',
+		orden_comercial: payload.items[0].idOrigen as String default '',
+		cuenta: {
+			cuenta_padre: payload.cuentasFacturacion[0].cuentaPadreFacturacion as String default '',
+			business_unit: p('compRevchain.businessUnit'),
+			fecha_inicio: payload.cuentasFacturacion[0].fechaInicioFacturacion as String default '',
+			corte: payload.cuentasFacturacion[0].diaFacturacion as String default '',
+			ciclo: payload.cuentasFacturacion[0].cicloFacturacion as String default '',
+			periodo: p('compRevchain.periodo'),
+			term_type_name: p('compRevchain.termTypeName'),
+			nombres: payload.cliente.nombres as String default '',
+			apellidos: '$(payload.cliente.primerApellido) $(payload.cliente.segundoApellido)',
+			nombre_cuenta: payload.cuentasFacturacion[0].nombreCuentaFacturacion as String default '',
+			facturable: payload.cuentasFacturacion[0].billiable as String default '',
+			cod_ciudad: (payload.direcciones filter $['idDireccion'] == payload.cuentasFacturacion[0].idDireccionFacturacion)[0].codigoMunicipio as String default '',
+			direccion: (payload.direcciones filter $['idDireccion'] == payload.cuentasFacturacion[0].idDireccionFacturacion)[0].direccionNormalizada as String default '',
+			pais: p('compRevchain.country'),
+			cod_departamento: (payload.direcciones filter $['idDireccion'] == payload.cuentasFacturacion[0].idDireccionFacturacion)[0].codigoDepartamento as String default '',
+			currency_code: p('compRevchain.currencyCode'),
+			tipo_doc: payload.cliente.tipoDocumento as String default '',
+			num_doc: payload.cliente.numeroDocumento as String default '',
+			dig_verificacion: payload.cliente.dv as String default '',
+			bill_or_statement: p('compRevchain.billOrStatement'),
+			invoice_delivery_name: payload.cuentasFacturacion[0].tipoEntregaFactura as String default '',
+			invoice_format_name: payload.cuentasFacturacion[0].tipoFactura as String default '',
+			invoice_format_class_name: p('compRevchain.invoiceFormatClassName'),
+			correo_electronico: payload.cuentasFacturacion[0].correoElectronico as String default ''
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="esFacturable" ><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+---
+payload.items[0].propiedades some ($.codigo == p('compRevchain.attFacturacion') and $.valor == true)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to billing_accounts revchain-sapi-client" doc:id="213376ee-bca5-4ba1-8b70-e230f3ecad88" name="post-billing_accounts-clientSub_Flow"/>
+		<set-variable value="#[payload.sfilluminate.resultado]" doc:name="Set Resultado" doc:id="3e7debd0-ca0b-4312-9e2d-f269ecf3839f" variableName="resultado"/>
+		<set-variable value="#[if (vars.resultado == '0') 201 else 500]" doc:name="httpStatus 201/500" doc:id="383f58f8-e82c-45cd-aaf3-d74c4ebe7fb9" variableName="httpStatus" />
+		<async doc:name="Async" doc:id="f01b0f86-e629-4b5c-ac72-953f2f34a494" >
+			<ee:transform doc:name="Mapping success/error request - generic notifier" doc:id="e67ee99a-00fd-427f-8792-7567d26a1274">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns tier http://schemas.datacontract.org/2004/07/Tier.Common
+ns ws http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts
+---
+soapenv#Envelope @("xmlns:tem": tem, "xmlns:tier": tier, "xmlns:ws": ws): {
+    soapenv#Header: {},
+    soapenv#Body: {
+        'tem:RespuestaTransaccion': {
+            'tem:WSRequestHeader': {
+                'tier:system': {
+                    'tier:correlationId': correlationId,
+                    'tier:name': vars.name,
+                    'tier:processingServer': p('generic-notifier.fact')
+                }
+            },
+            'tem:WSRequestBody': {
+            	'ws:Descripcion': write(payload, 'application/json'),
+            	'ws:Fecha': vars.map.fechaInicioFacturacion,
+            	'ws:IdServicio': vars.map.idServicio,
+            	'ws:NumeroOC': vars.map.numeroOC,
+                'ws:OrdenOM': vars.map.ordenOM,
+                'ws:Resultado': if (vars.resultado == '0') p('generic-notifier.successCode') else p('generic-notifier.errorCode'),
+                'ws:TipoTransaccion': p('generic-notifier.facturacion')
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		</ee:transform>
+			<flow-ref doc:name="Go to generic notifier" doc:id="01ea2175-b61f-4352-8d5d-9ea1c7db016d" name="notifier-clientSub_Flow" />
+		</async>
+	</sub-flow>
+</mule>
