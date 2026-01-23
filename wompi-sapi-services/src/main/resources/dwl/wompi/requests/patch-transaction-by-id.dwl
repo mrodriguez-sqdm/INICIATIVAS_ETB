@@ -1,6 +1,10 @@
 %dw 2.0
-output application/java
+output application/json
 ---
 {
-	transactionId: attributes.uriParams.transaction_id
+	method: p("wompi.patchTransactionById.method"),
+	path: p('wompi.patchTransactionById.path'),
+	uriparams: {
+		transaction_id: attributes.uriParams.transaction_id
+	}
 }
