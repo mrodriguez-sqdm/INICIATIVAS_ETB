@@ -6,7 +6,7 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
 http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
 	<sub-flow name="patch-pseTransaction-orchestratorSub_Flow" doc:id="036cc042-dd14-4d92-ac89-78ca0bccb1a4" >
-		<ee:transform doc:name="Body request" doc:id="2c683822-52a5-4d3c-924a-8301ce0f938d" >
+		<ee:transform doc:name="Body and var request" doc:id="2c683822-52a5-4d3c-924a-8301ce0f938d" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
@@ -17,22 +17,13 @@ output application/json
 	(entityAuthorizationId: payload.entityAuthorizationId) if (!isBlank(payload.entityAuthorizationId))
 }]]></ee:set-payload>
 			</ee:message>
+			<ee:variables >
+				<ee:set-variable resource="dwl/pse/requests/put-transaction.dwl" variableName="httpRequest" />
+			</ee:variables>
 		</ee:transform>
-		<java:invoke-static method="processEncrypt(String, String, String)" doc:name="Encrypt payload" doc:id="3b92f929-817f-4cd1-ab9f-2299da7e5ecc" class="com.globant.cipher.Encryption" >
-			<java:args ><![CDATA[#[{
-	message: write(payload, "application/json"),
-	key: p('pse.security.secret'),
-	customerIV: p('pse.security.iv')
-}]]]></java:args>
-		</java:invoke-static>
-		<flow-ref doc:name="Go to Client" doc:id="4775ab0c-74b7-42fd-ac3c-0eea895ef8b0" name="finalize-transactions-services-clientSub_Flow" />
-		<java:invoke-static method="processDecrypt(String, String, String)" doc:name="Decrypt payload" doc:id="3139d8f0-f426-45f4-ad2f-f75804b9341a" class="com.globant.cipher.Encryption" >
-			<java:args ><![CDATA[#[{
-	message: payload,
-	key: p('pse.security.secret'),
-	customerIV: p('pse.security.iv')
-}]]]></java:args>
-		</java:invoke-static>
+		<flow-ref doc:name="encryption-encrypt-sub-flow" doc:id="7a5c0fe8-2bd1-4402-bcee-9946189e2f96" name="encryption-encrypt-sub-flow"/>
+		<flow-ref doc:name="pse-client-sub-flow" doc:id="4775ab0c-74b7-42fd-ac3c-0eea895ef8b0" name="pse-client-sub-flow" />
+		<flow-ref doc:name="encryption-decrypt-sub-flow" doc:id="936e8da9-3d10-4224-8677-621d9e14edfc" name="encryption-decrypt-sub-flow"/>
 		<ee:transform doc:name="Prepare output" doc:id="2ff55189-4696-4d8d-94c9-0c374024756f" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
