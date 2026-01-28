@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="comunicationMessage-orchestadorSub_Flow" doc:id="7dbec96f-5e32-419f-b564-645e07e6b400" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="d36caced-3d3a-4f50-a568-6310d16883fe" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="d4f9b24c-d5f7-4b33-a9b5-4147ab142208" variableName="headers" />
+		<choice doc:name="Choice" doc:id="2bfd8085-7031-423c-b6cc-b2ff3d4d5da6" >
+			<when expression='#[upper(payload.notificationType) == "SIMCARD_REPLACEMENT"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="b9024ba8-12fb-450a-9b24-6d914c7d0c20" name="post-comunicationMessage-orchestadorSub_Flow"/>
+			</when>
+			<when expression='#[upper(payload.notificationType) == "MASSIVE_FAILURE"]' >
+				<flow-ref doc:name="Flow Reference" doc:id="63d16788-e9c3-4140-bc9b-a1754c240c8e" name="post-createcontact-orchestadorSub_Flow"/>
+			</when>
+			<otherwise >
+				<set-variable value='#[500]' doc:name="Set Http Status" doc:id="7294a8e0-3138-462e-8e46-ce6e6843e4cc" variableName="httpStatus" />
+				<ee:transform doc:name="Set Body Response" doc:id="b0061e5a-e139-46f0-8130-cfbe5b633641">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: "Ruta no definida segun el campo notificationType, valores permitidos SIMCARD_REPLACEMENT,MASSIVE_FAILURE"
+	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-comunicationMessage-orchestadorSub_Flow" doc:id="b6d7b858-024a-47e6-b623-78f3fab11db0" >
+		<ee:transform doc:name="Transform Message Bot Request" doc:id="19fd883e-c498-4f16-9927-056000fcdb36" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  WSRequestHeader: {
+    System: {
+      name: vars.headers.name,
+      correlationID: vars.headers."X-CORRELATION-ID",
+      processingServer: ""
+    },
+    Property: []
+  },
+  WSRequestBody: {
+    Audit: {
+      Canal: vars.headers.name
+    },
+    Address: payload.customer.address default "",
+    Contact_Phone: payload.customer.phone default "",
+    Document_Number: payload.customer.documentNumber default "",
+    Document_Type: payload.customer.documentType default "",
+    Email: payload.notification.email default "",
+    Expedition_Date: payload.customer.documentIssueDate default "",
+    Kind_Procedure: payload.notificationType default "",
+    Number_PQR: payload.notification.pqr default "",
+    Phone: payload.notification.phoneNotification default ""
+  }
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="40458641-6d63-4ad4-a2d9-dc37d57dacfe" name="sendnotify-bot-sapi-2-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="b2a566c8-ffa1-4a0f-a584-a19b84359365" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Bot Response" doc:id="692c49a6-87cb-4ecb-a15f-126ae28e8c2d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codeResponse: vars.httpStatus as String,
+  messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+  detail: {
+    message: payload.WSResponseHeader.Service.StatusDetail[0].errorDetailCode
+  }
+  
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-createcontact-orchestadorSub_Flow" doc:id="1b983339-75dd-4bf3-9c4d-ad1e1e042825" >
+		<ee:transform doc:name="Transform Message Bot Request" doc:id="bad7a0c6-29ae-407b-b3c7-e16fa9e485a8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  WSRequestHeader: {
+    System: {
+      name: vars.headers.name,
+      correlationID: vars.headers."X-CORRELATION-ID",
+      processingServer: ""
+    },
+    Property: []
+  },
+  WSRequestBody: {
+    Audit: {
+      Canal: vars.headers.name
+    },
+    "Id": payload.id default "",
+    "Phone": payload.notification.phoneNotification default "",
+    "Phone_Contact": payload.customer.phone default "",
+    "Procedure": payload.procedure default ""
+  }
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="8272eb16-8811-43c0-b9da-63d483ef0a1a" name="createcontact-bot-sapi-2-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="3e8c175d-4662-45a7-9798-eab73d527313" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Bot Response" doc:id="87d319e9-70fc-4d26-bc72-fc1b0d7787c9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codeResponse: vars.httpStatus as String,
+  messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorMessage
+  
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

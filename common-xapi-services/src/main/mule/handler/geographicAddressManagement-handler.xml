@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="geographicAddressComplementResolver-handlerSub_Flow" doc:id="79fdabce-32f9-4197-92ac-9c828a5d655a" >
+		<flow-ref doc:name="Go to orchestrator" doc:id="dfd33e38-d262-49cf-99b6-f4d8282cdc63" name="geographicAddressComplementResolver-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="coverage-handlerSub_Flow" doc:id="a934b0f9-1a06-4c1f-afd8-a257d94352ba" >
+		<flow-ref doc:name="coverage-orchestratorSub_Flow" doc:id="aa02a942-7b05-4990-89a4-10265e856367" name="coverage-orchestratorSub_Flow" />
+	</sub-flow>
+	<sub-flow name="coverage-experience-handlerSub_Flow" doc:id="4502ae7d-3e34-4340-b169-d0c8ff8a85b7" >
+		<flow-ref doc:name="coverage-orchestratorSub_Flow" doc:id="a7a582a0-0b61-4d47-8ec8-50cfd608b460" name="coverage-orchestratorSub_Flow" />
+		<ee:transform doc:name="Transform coverage to geographicCoverage format" doc:id="coverage-transform-geographic">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Result: {
+		status: if (payload.gisRespuestaProceso.codigoError == "" or payload.gisRespuestaProceso.codigoError == null) "PASS" else "FAIL",
+		code: if (payload.gisRespuestaProceso.codigoError == "" or payload.gisRespuestaProceso.codigoError == null) "OK" else "ERROR"
+	},
+	body: {
+		Feasibility: {
+			Factible: payload.respuestaFactibilidad.factible default "NO FACTIBLE",
+			Tecnologia: payload.respuestaFactibilidad.tecnologia default "",
+			Motivo: payload.respuestaFactibilidad.motivo default ""
+		},
+		Tecnologia: payload.tecnologias map {
+			Tipo: $.tipo default "",
+			Propietario: $.propietario default "",
+			TipoCobertura: $.tipoCobertura default "",
+			Cobertura: $.cobertura default "",
+			NombreCobertura: $.nombreCobertura default "",
+			TipoArea: $.tipoArea default "",
+			Area: $.area default "",
+			Estrato: $.estratoPredominante default ""
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="geocodificar-handlerSub_Flow" doc:id="geocodificar-handler-subflow" >
+		<flow-ref doc:name="geocodificar-orchestratorSub_Flow" doc:id="geocodificar-orchestrator-ref" name="geocodificar-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="geographic-addressSub_Flow" doc:id="4629a1e7-1ae2-407d-b142-37e18957cc62" >
+		<!-- ✅ API-LED: Handler solo delega al Orchestrator -->
+		<!-- ✅ Single Responsibility: Única responsabilidad es delegar -->
+		<!-- TODA la lógica de negocio está en normalize-address-orchestratorSub_Flow -->
+		<flow-ref doc:name="Go to normalize-address orchestrator" doc:id="normalize-address-orchestrator-ref" name="normalize-address-orchestratorSub_Flow"/>
+	</sub-flow>
+
+
+</mule>

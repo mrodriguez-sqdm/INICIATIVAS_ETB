@@ -1,0 +1,426 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="create-trouble-ticket-orchestratorSub_Flow" doc:id="abbec349-4656-4e90-9cba-636e20dc1fb5" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="1f01f664-8a88-4295-8976-1a3bb8b4d62a" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="b241970f-4d0f-4f0d-b21e-46fbc9690172" variableName="headers" />
+		<ee:transform doc:name="Transform Message Bot Request" doc:id="f253e70a-855c-4c97-bbc9-23397aed17de" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  WSRequestHeader: {
+    System: {
+      name: vars.headers.name,
+      correlationID: vars.headers."X-CORRELATION-ID",
+      processingServer: ""
+    },
+    Property: []
+  },
+  WSRequestBody: {
+    Audit: {
+      Canal: vars.headers.name
+    },
+    Contact: {
+      Document_Number: payload.pqr.detailPqr.contact.documentNumber default null,
+      Document_Type: payload.pqr.detailPqr.contact.documentType default null,
+      Email: payload.pqr.detailPqr.contact.email default null,
+      Phone: payload.pqr.detailPqr.contact.phone default null
+    },
+    CUN_Massive_Failure: payload.pqr.detailPqr.cunMassiveFailure default null,
+    CUN_Related: payload.pqr.detailPqr.cunRelated default null,
+    Description: payload.pqr.detailPqr.description default null,
+    Document_Number: payload.pqr.customer.documentNumber default null,
+    Document_Type: payload.pqr.customer.documentType default null,
+    Failure: {
+      BOT_Peticion: payload.pqr.detailPqr.failure.botPeticion default null,
+      Causal: payload.pqr.detailPqr.failure.causal default null,
+      Class: payload.pqr.detailPqr.failure.class default null,
+      Description: payload.pqr.detailPqr.failure.description default null,
+      Reason: payload.pqr.detailPqr.failure.reason default null,
+      Symptom: payload.pqr.detailPqr.failure.symptom default null
+    },
+    Phone: payload.pqr.customer.phone default null,
+    Product: payload.pqr.service.product default null,
+    Solution: payload.pqr.detailPqr.solution default null,
+    State: payload.pqr.detailPqr.state default null,
+    User: payload.pqr.customer.user default null,
+    Attachments: payload.pqr.detailPqr.attachment map (item) -> {
+      File: item.file default null,
+      Filename: item.name default null,
+      Filesize: if ((item.size default "") != "") item.size as Number else 0,
+      Filetype: item.mimeType default null
+    }
+  }
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="e91ada10-6675-4c6e-9675-f755176e4aca" name="pqr-create-bot-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Bot Response" doc:id="63f8cb5b-ca83-4db7-ae1e-f70e2103dee2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: payload.WSResponseHeader.Service.status as String,
+  code: payload.WSResponseHeader.Service.statusDetail[0].errorCode,
+  message: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode
+  
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-trouble-ticket-orchestratorSub_Flow" doc:id="ae947eec-eb1f-4e20-96e8-0de740d14b8e" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="1db96f54-bf89-4c8d-8675-49f344480836" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="0de15c30-e34a-4ba2-bd36-728ae1e485aa" variableName="headers" />
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="b5196869-b3a3-416b-9212-9984bd5c03cf" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="build Payload BOT" doc:id="b61e9f9b-5c62-4f21-8a97-24c43ddfe48a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "Customer": {
+      "Document_Type": vars.parameters.CUSTOMER_ID_TYPE default "",
+      "Document_Number": vars.parameters.CUSTOMER_ID default ""
+    },
+    "CUN": vars.parameters.CUN default "",
+    "Num_PQR": vars.parameters.PQR_ID default "",
+    "Phone": vars.parameters.PHONE default "",
+    "Billing_Account": vars.parameters.BILLING_ACCOUNT default "",
+    "Filter": {
+      "Start_Date": "",
+      "End_Date": "",
+      "Quantity": "",
+      "Customer": true,
+      "Service": true,
+      "Billing_Account": true,
+      "Order": true,
+      "Schedules": true,
+      "Suspension_Info": true,
+      "States": {},
+      "Tipology": {}
+    },
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="9613cbc4-9951-4abe-a0a1-ef40ceaa2da5" name="pqr-get-bot-sapi-clientSub_Flow"/>
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="f0811eed-eee7-4ffb-9e97-e425f74898e1" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="bdaa85ee-1490-4d38-9b12-758ddf6c2d25" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    pqrs: 
+        if (payload.WSResponseBody != null)
+            (payload.WSResponseBody.PQRs) map (pqr) -> {
+                agenda: pqr.Agenda,
+                agendas: pqr.Agendas,
+                assignedUser: pqr.Assigned_User,
+                billingAccount: pqr.Billing_Account,
+                characteristics: pqr.Characteristics map (char) -> {
+                    action: char.Action,
+                    name: char.Name,
+                    value: char.Value
+                },
+                contactDocumentNumber: pqr.Contact_Document_Number,
+                contactDocumentType: pqr.Contact_Document_Type,
+                creationDate: {
+                    date: pqr.Creation_Date.Date,
+                    format1: pqr.Creation_Date.Format_1,
+                    format2: pqr.Creation_Date.Format_2,
+                    format3: pqr.Creation_Date.Format_3,
+                    format4: pqr.Creation_Date.Format_4,
+                    day: {
+                        format1: pqr.Creation_Date.Day.Format_1,
+                        format2: pqr.Creation_Date.Day.Format_2,
+                        format3: pqr.Creation_Date.Day.Format_3
+                    },
+                    month: {
+                        format1: pqr.Creation_Date.Month.Format_1,
+                        format2: pqr.Creation_Date.Month.Format_2,
+                        format3: pqr.Creation_Date.Month.Format_3
+                    },
+                    year: {
+                        format1: pqr.Creation_Date.Year.Format_1,
+                        format2: pqr.Creation_Date.Year.Format_2,
+                        format3: pqr.Creation_Date.Year.Format_3
+                    },
+                    hour: {
+                        format1: pqr.Creation_Date.Hour.Format_1,
+                        format2: pqr.Creation_Date.Hour.Format_2,
+                        format3: pqr.Creation_Date.Hour.Format_3,
+                        format4: pqr.Creation_Date.Hour.Format_4,
+                        format5: pqr.Creation_Date.Hour.Format_5,
+                        format6: pqr.Creation_Date.Hour.Format_6
+                    }
+                },
+                creationUser: pqr.Creation_User,
+                isAgendaSuspended: pqr.Is_Agenda_Suspended,
+                isSon: pqr.Is_Son,
+                notificationMedium: pqr.Notification_Medium,
+                modificationDate: {
+                    date: pqr.Modification_Date.Date,
+                    format1: pqr.Modification_Date.Format_1,
+                    format2: pqr.Modification_Date.Format_2,
+                    format3: pqr.Modification_Date.Format_3,
+                    format4: pqr.Modification_Date.Format_4,
+                    day: {
+                        format1: pqr.Modification_Date.Day.Format_1,
+                        format2: pqr.Modification_Date.Day.Format_2,
+                        format3: pqr.Modification_Date.Day.Format_3
+                    },
+                    month: {
+                        format1: pqr.Modification_Date.Month.Format_1,
+                        format2: pqr.Modification_Date.Month.Format_2,
+                        format3: pqr.Modification_Date.Month.Format_3
+                    },
+                    year: {
+                        format1: pqr.Modification_Date.Year.Format_1,
+                        format2: pqr.Modification_Date.Year.Format_2,
+                        format3: pqr.Modification_Date.Year.Format_3
+                    },
+                    hour: {
+                        format1: pqr.Modification_Date.Hour.Format_1,
+                        format2: pqr.Modification_Date.Hour.Format_2,
+                        format3: pqr.Modification_Date.Hour.Format_3,
+                        format4: pqr.Modification_Date.Hour.Format_4,
+                        format5: pqr.Modification_Date.Hour.Format_5,
+                        format6: pqr.Modification_Date.Hour.Format_6
+                    }
+                },
+                order: pqr.Order,
+                radicationDate: {
+                    date: pqr.Radication_Date.Date,
+                    format1: pqr.Radication_Date.Format_1,
+                    format2: pqr.Radication_Date.Format_2,
+                    format3: pqr.Radication_Date.Format_3,
+                    format4: pqr.Radication_Date.Format_4,
+                    day: {
+                        format1: pqr.Radication_Date.Day.Format_1,
+                        format2: pqr.Radication_Date.Day.Format_2,
+                        format3: pqr.Radication_Date.Day.Format_3
+                    },
+                    month: {
+                        format1: pqr.Radication_Date.Month.Format_1,
+                        format2: pqr.Radication_Date.Month.Format_2,
+                        format3: pqr.Radication_Date.Month.Format_3
+                    },
+                    year: {
+                        format1: pqr.Radication_Date.Year.Format_1,
+                        format2: pqr.Radication_Date.Year.Format_2,
+                        format3: pqr.Radication_Date.Year.Format_3
+                    },
+                    hour: {
+                        format1: pqr.Radication_Date.Hour.Format_1,
+                        format2: pqr.Radication_Date.Hour.Format_2,
+                        format3: pqr.Radication_Date.Hour.Format_3,
+                        format4: pqr.Radication_Date.Hour.Format_4,
+                        format5: pqr.Radication_Date.Hour.Format_5,
+                        format6: pqr.Radication_Date.Hour.Format_6
+                    }
+                },
+                activities: pqr.Activities map (act) -> {
+                    assignedUser: act.Assigned_User,
+                    creationUser: act.Creation_User,
+                    description: act.Description,
+                    expirationDate: {
+                        date: act.Expiration_Date.Date,
+                        format1: act.Expiration_Date.Format_1,
+                        format2: act.Expiration_Date.Format_2,
+                        format3: act.Expiration_Date.Format_3,
+                        format4: act.Expiration_Date.Format_4,
+                        day: {
+                            format1: act.Expiration_Date.Day.Format_1,
+                            format2: act.Expiration_Date.Day.Format_2,
+                            format3: act.Expiration_Date.Day.Format_3
+                        },
+                        month: {
+                            format1: act.Expiration_Date.Month.Format_1,
+                            format2: act.Expiration_Date.Month.Format_2,
+                            format3: act.Expiration_Date.Month.Format_3
+                        },
+                        year: {
+                            format1: act.Expiration_Date.Year.Format_1,
+                            format2: act.Expiration_Date.Year.Format_2,
+                            format3: act.Expiration_Date.Year.Format_3
+                        },
+                        hour: {
+                            format1: act.Expiration_Date.Hour.Format_1,
+                            format2: act.Expiration_Date.Hour.Format_2,
+                            format3: act.Expiration_Date.Hour.Format_3,
+                            format4: act.Expiration_Date.Hour.Format_4,
+                            format5: act.Expiration_Date.Hour.Format_5,
+                            format6: act.Expiration_Date.Hour.Format_6
+                        }
+                    },
+                    id: act.Id,
+                    management: act.Management,
+                    managementDescription: act.Management_Description,
+                    name: act.Name,
+                    startDate: { /* mismo tratamiento que expirationDate */ },
+                    state: act.State
+                },
+                receptionMedium: pqr.Reception_Medium,
+                service: pqr.Service,
+                subChannel: pqr.Sub_Channel,
+                suspensionDetail: pqr.Suspension_Detail,
+                solutionDate: pqr.Solution_Date,
+                billingAccount: pqr.Billing__Account,
+                cun: pqr.CUN,
+                cunMassiveFailure: pqr.CUN_Massive_Failure,
+                cunRelated: pqr.CUN_Related,
+                customer: {
+                    atdp: pqr.Customer.ATDP,
+                    birthday: pqr.Customer.Birthday,
+                    business: pqr.Customer.Business,
+                    collectionCommunications: pqr.Customer.Collection_Communications,
+                    documentNumber: pqr.Customer.Document_Number,
+                    documentType: pqr.Customer.Document_Type,
+                    email: pqr.Customer.Email,
+                    mobilePhone: pqr.Customer.Mobile_Phone,
+                    mobilePhone2: pqr.Customer.Mobile_Phone2,
+                    name: {
+                        completeName: pqr.Customer.Name.Complete_Name,
+                        firstName: pqr.Customer.Name.First_Name,
+                        firstSurname: pqr.Customer.Name.First_Surname,
+                        names: pqr.Customer.Name.Names,
+                        secondName: pqr.Customer.Name.Second_Name,
+                        secondSurname: pqr.Customer.Name.Second_Surname,
+                        surnames: pqr.Customer.Name.Surnames
+                    },
+                    segmentation: pqr.Customer.Segmentation,
+                    validationCode: pqr.Customer.Validation_Code
+                },
+                description: pqr.Description,
+                id: pqr.Id,
+                idRemedy: pqr.Id_Remedy,
+                isYoungFail: pqr.Is_Young_Fail,
+                phone: pqr.Phone,
+                response: pqr.Response,
+                serviceAccount: pqr.Service_Account,
+                serviceId: pqr.Service_Id,
+                solution: pqr.Solution,
+                state: pqr.State,
+                stateTechnical: pqr.State_Technical,
+                typology: {
+                    causal: pqr.Typology.Causal,
+                    class: pqr.Typology.Class,
+                    cun: pqr.Typology.CUN,
+                    extension: {
+                        closeType: pqr.Typology.Extension.Close_Type,
+                        notificationMedium: pqr.Typology.Extension.Notification_Medium,
+                        operator: pqr.Typology.Extension.Operator,
+                        operatorLsp: pqr.Typology.Extension.Operator_LSP,
+                        receptionMedium: pqr.Typology.Extension.Reception_Medium
+                    },
+                    product: pqr.Typology.Product,
+                    reason: pqr.Typology.Reason,
+                    remedy: pqr.Typology.Remedy,
+                    symptom: pqr.Typology.Symptom,
+                    technology: pqr.Typology.Technology,
+                    "type": pqr.Typology.Type,
+                    version: pqr.Typology.Version
+                }
+
+
+
+
+            }
+        else []
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="patch-trouble-ticket-orchestratorSub_Flow" doc:id="1e447b6a-d3ae-41c0-80ed-ea58e63332ac" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="bb17b27e-147d-4372-9e94-a2bf92f1db54" variableName="parameters" />
+		<set-variable value="#[attributes.uriParams]" doc:name="Save URI Parameters" doc:id="223250c2-e9bf-4049-8c89-c704347da7f4" variableName="uriParameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="6b3ca239-410e-401b-bc11-17f42ef75e0b" variableName="headers" />
+		<ee:transform doc:name="Transform Message Bot Request" doc:id="7c0421df-b49b-4cec-8a67-a1072fc14114" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  WSRequestHeader: {
+    System: {
+      name: vars.headers.name,
+      correlationID: vars.headers."X-CORRELATION-ID",
+      processingServer: ""
+    },
+    Property: []
+  },
+  WSRequestBody: {
+    Audit: {
+      Canal: vars.headers.name
+    },
+    Contact: {
+      Document_Number: payload.customer.documentNumber default null,
+      Document_Type: payload.customer.documentType default null,
+      Email: payload.customer.email default null,
+      Phone: payload.customer.phone default null
+    },
+    PQR_Number: vars.uriParameters.id,
+    State: payload.pqr.state default null,
+    Result: payload.pqr.solution default null
+   
+  }
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call Bot Sapi" doc:id="963f7acf-b3ca-4a3e-a61b-dc7e3e1b9418" name="pqr-update-bot-sapi-clientSub_Flow"/>
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="dca592bd-cda9-413b-ad2f-4aa9230c5b81" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Bot Response" doc:id="306442cf-b4f8-41bf-aae5-d3067049317c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: vars.httpStatus as String,
+  code: payload.WSResponseHeader.Service.statusDetail[0].errorCode,
+  message: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode
+  
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

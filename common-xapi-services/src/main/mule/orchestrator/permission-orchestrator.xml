@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="permission-orchestratorSub_Flow" doc:id="7a122b7b-b152-4faa-8280-8d127d9819e2" >
+		<choice doc:name="Choice" doc:id="26415d7f-e900-46a5-a243-a504fd604417" >
+			<when expression='#[upper(payload.operation) == "AUTH"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="86f71450-dc17-404c-9dbd-c6f68bebf700" name="permission-auth-orchestratorSub_Flow"/>
+			</when>
+			<when expression='#[upper(payload.operation) == "SETPASSWORD"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="e17f81b8-254e-41e2-87f3-de6a7df64f9c" name="permission-set-password-orchestratorSub_Flow"/>
+			</when>
+			<otherwise >
+				<set-variable value="#[400]" doc:name="Set Http Status" doc:id="862e5867-5f4a-490e-af78-6c6eb5589709" variableName="httpStatus" />
+				<ee:transform doc:name="Set Body Response" doc:id="25f5dc5c-b4bd-480c-a770-857276c319dc" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: "Ruta no definida segun el campo Operation, valores permitidos AUTH,SETPASSWORD"
+	
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="permission-auth-orchestratorSub_Flow" doc:id="a0fdfa6b-ddce-4ac4-b90a-604e7eb05f4e" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="028985b0-0ed6-4611-9ddc-dced532a1f52" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="05fbc852-aa59-4384-b8f5-c87054e701a6" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="96caef98-c2ad-4e5b-ac9f-c4d1e2ecd583" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+   "Mail": payload.credentials.username,
+    "Password": payload.credentials.password,
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="7380e8a0-0b7f-4f07-a20a-949ae40b81fa" name="pqr-mietb-authmail-bot-sapi-clientSub_Flow"/>
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="d8f95c6f-be39-49cd-900f-4b62893e38e4" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="9be3c484-2a26-4ea9-822a-9852d47b4e66" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    authentication: { 
+      detail_authentication: 
+       if(payload.WSResponseBody.Name != null)
+        { 
+        	name: payload.WSResponseBody.Name,
+        	userIdentificacionNumber: payload.WSResponseBody.User_Identificacion_Number,
+        	userIdentificationType:  payload.WSResponseBody.userIdentificationType,
+        	services:
+              if(payload.WSResponseBody.Services != null)
+                (payload.WSResponseBody.Services) map (service)  -> {
+                    lineType: service.Line_Type,
+                    phone: service.Phone,
+                    subType: service.Sub_Type,
+                    state: service.State,
+                    technology: service.Technology
+                }
+               else 
+                []
+        	
+        }
+       else
+        {}
+      
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="permission-set-password-orchestratorSub_Flow" doc:id="be28a1b7-78d3-4b14-9781-e475eed06a0a" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="1aa536f7-52ac-4a1b-bb87-1fbb740e9bc0" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="dfd64104-eda2-4b37-bcd1-7a9d97229b7e" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="768e45e5-20e2-4f6d-8b6b-4aad6de69f72" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+	
+	"New_Password": payload.credentials.newPassword,
+    "Password": payload.credentials.password,
+    "Username": payload.credentials.username,
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="7ead24d0-2413-421a-9243-9a32048a74b6" name="set-password-bot-sapi-2-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="968059af-ca03-4a5d-947f-20ae2845d872" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="c016b46a-d13f-4e0d-ba15-a3b287b25f1f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var mensaje = payload.WSResponseHeader.Service.statusDetail[0].errorMessage ++ ", " ++ payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: mensaje
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
