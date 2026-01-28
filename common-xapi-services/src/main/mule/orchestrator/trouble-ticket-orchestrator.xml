@@ -75,6 +75,95 @@ output application/json
 			</ee:message>
 		</ee:transform>
 	</sub-flow>
+	<sub-flow name="create-trouble-ticket-cun-orchestratorSub_Flow" doc:id="bef236f3-3df5-4933-b98b-af5cb3abe546">
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="a2c7297b-8435-41d0-b65f-b450e0835ba5" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="9887b35a-a53a-4ceb-a6f5-06745cf9a462" variableName="headers" />
+		<ee:transform doc:name="Transform Message Bot Request" doc:id="357de56e-870f-4174-843b-dfc9411f5167">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  WSRequestHeader: {
+    System: {
+      name: vars.headers.name,
+      correlationID: vars.headers."X-CORRELATION-ID",
+      processingServer: ""
+    },
+    Property: []
+  },
+  WSRequestBody: {
+    Audit: {
+      Canal: vars.headers.name
+    },
+    Contact: {
+      Document_Number: payload.pqr.detailPqr.contact.documentNumber default null,
+      Document_Type: payload.pqr.detailPqr.contact.documentType default null,
+      Email: payload.pqr.detailPqr.contact.email default null,
+      Phone: payload.pqr.detailPqr.contact.phone default null
+    },
+    CUN_Massive_Failure: payload.pqr.detailPqr.cunMassiveFailure default null,
+    CUN_Related: payload.pqr.detailPqr.cunRelated default null,
+    Description: payload.pqr.detailPqr.description default null,
+    Document_Number: payload.pqr.customer.documentNumber default null,
+    Document_Type: payload.pqr.customer.documentType default null,
+    Failure: {
+      BOT_Peticion: payload.pqr.detailPqr.failure.botPeticion default null,
+      Causal: payload.pqr.detailPqr.failure.causal default null,
+      Class: payload.pqr.detailPqr.failure.class default null,
+      Description: payload.pqr.detailPqr.failure.description default null,
+      Reason: payload.pqr.detailPqr.failure.reason default null,
+      Symptom: payload.pqr.detailPqr.failure.symptom default null
+    },
+    Phone: payload.pqr.customer.phone default null,
+    Product: payload.pqr.service.product default null,
+    Solution: payload.pqr.detailPqr.solution default null,
+    State: payload.pqr.detailPqr.state default null,
+    User: payload.pqr.customer.user default null,
+    Attachments: payload.pqr.detailPqr.attachment map (item) -> {
+      File: item.file default null,
+      Filename: item.name default null,
+      Filesize: if ((item.size default "") != "") item.size as Number else 0,
+      Filetype: item.mimeType default null
+    }
+  }
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="7f14ca1b-9765-4296-9c4c-4c22b0e8dbc8" name="pqr-create-bot-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Transform Bot Response" doc:id="a7a0dd7e-f30d-431f-9e56-510f9b5165c3">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="objects"
+---
+{
+  status: payload.WSResponseHeader.Service.status as String,
+  code: payload.WSResponseHeader.Service.statusDetail[0].errorCode,
+  message: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode,
+  pqr: {
+    idPqr: payload.WSResponseBody.Id,
+    cun: payload.WSResponseBody.CUN,
+    causal: payload.WSResponseBody.Causal,
+    contactDocumentNumber: payload.WSResponseBody.Contact_Document_Number,
+    contactDocumentType: payload.WSResponseBody.Contact_Document_Type,
+    creationDate: payload.WSResponseBody.Creation_Date,
+    description: payload.WSResponseBody.Description,
+    documentNumber: payload.WSResponseBody.Document_Number,
+    documentType: payload.WSResponseBody.Document_Type,
+    isSon: payload.WSResponseBody.Is_Son,
+    kind: payload.WSResponseBody.Kind,
+    phone: payload.WSResponseBody.Phone,
+    reason: payload.WSResponseBody.Reason,
+    solutionDate: payload.WSResponseBody.Solution_Date,
+    state: payload.WSResponseBody.State,
+    symptom: payload.WSResponseBody.Symptom,
+    'type': payload.WSResponseBody.Type
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
 	<sub-flow name="get-trouble-ticket-orchestratorSub_Flow" doc:id="ae947eec-eb1f-4e20-96e8-0de740d14b8e" >
 		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="1db96f54-bf89-4c8d-8675-49f344480836" variableName="parameters" />
 		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="0de15c30-e34a-4ba2-bd36-728ae1e485aa" variableName="headers" />
