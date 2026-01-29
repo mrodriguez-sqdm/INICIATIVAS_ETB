@@ -4,11 +4,12 @@
 	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
-	<sub-flow name="get-productOffering-json-orchestratorSub_Flow" doc:id="3deea60a-6acc-49f2-8358-d05b69602b6d" >
-		<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="f1343907-0694-46d4-8e2c-05f41330c7ba" variableName="parameters"/>
-	<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="da3332bb-c7ef-4f5a-90ec-21086b2bca00" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+	<sub-flow name="get-productOffering-orchestratorSub_Flow" doc:id="40b7b967-2e51-4af8-a239-1b27fd79b910" >
+	    <set-variable value='#[readUrl("classpath://approvals.json", "application/json")]' doc:name="Set Variable" doc:id="4c51c26f-0004-4396-a9cb-267cf2c46222" variableName="approvals"/>
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Variable parameters" doc:id="44db23d3-3fda-417b-8de5-f48bf78e8216" variableName="parameters" />
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="f9fd9c85-d8fd-48b0-acab-475e3e54751c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 var raw = vars.parameters.FILTERS
 var lista = raw splitBy ";"
@@ -24,65 +25,63 @@ var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
 ]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<ee:transform doc:name="Set payload system" doc:id="8a631dc7-d455-4066-93bf-c90dddbe3c92" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<choice doc:name="Choice" doc:id="220aa388-63e4-4ba8-9631-0fd0993a3297" >
+			<when expression='#[isEmpty(keysOf(payload.filtros default {}) map ($ as String) -- (vars.approvals.parametro default []))]'>
+				<ee:transform doc:name="Transform Message" doc:id="c565a5c4-57d8-479f-8c24-3d99c3980af2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
-var filtros = payload.filtros
-var parametros_bundle = [
-    if (filtros.Stratum != null) 
-        { "\$elemMatch": { "parametro": "ESTRATO", "valor": { "\$regex": filtros.Stratum, "\$options": "i" } } 
-    } else null,
-    if (filtros.Scoring_Client != null) 
-        { "\$elemMatch": { "parametro": "SCORING CLIENTE", "valor": filtros.Scoring_Client } 
-    } else null,
-    if (filtros.Sale_Chanel != null) 
-        { "\$elemMatch": { "parametro": "CANAL VENTA", "valor": { "\$regex": filtros.Sale_Chanel, "\$options": "i" } } 
-    } else null,
-    if (filtros.Business_Unit != null) 
-        { "\$elemMatch": { "parametro": "UEN", "valor": filtros.Business_Unit } 
-    } else null,
-    if (filtros.Sale_Profile != null) 
-        { "\$elemMatch": { "parametro": "PERFIL", "valor": { "\$regex": filtros.Sale_Profile, "\$options": "i" } } 
-    } else null,
-    if (filtros.Type_Via != null) 
-        { "\$elemMatch": { "parametro": "TIPO TRAMITE", "valor": { "\$regex": filtros.Type_Via, "\$options": "i" } } 
-    } else null
-]
+// 1. Diccionario
+var configMap = (vars.approvals default []) reduce (item, acc = {}) -> 
+    acc ++ { (item.parametro): item }
+
+// 2. Filtros Validados
+var filtrosValidos = (payload.filtros mapObject (v, k) -> {
+    (k): {
+        valor: v,
+        config: configMap[k as String]
+    }
+}) filterObject ($.config != null)
+
+// 3. Agrupación
+var filtrosAgrupados = filtrosValidos groupBy ($.config.contenedor)
+
 ---
 {
-	query:{
-		(if(payload.filtros.Product_Type != null)
-		 tipo_producto: payload.filtros.Product_Type
-		 else {}),
-		(if (payload.filtros.Service_Type != null)
-        { tipo_servicio: payload.filtros.Service_Type }
-        else {}),
-        (if (payload.filtros.Product_Subtype != null)
-        { subtipo_producto: payload.filtros.Product_Subtype }
-        else {}),
-        (if (payload.filtros.Service_Subtype != null)
-        { subtipo_servicio: payload.filtros.Service_Subtype }
-        else {}),
-        (if (payload.filtros.Stratum != null or payload.filtros.Scoring_Client != null or
-             payload.filtros.Sale_Chanel != null or payload.filtros.Business_Unit != null or
-             payload.filtros.Sale_Profile != null or payload.filtros.Type_Via != null)
-        { parametros_bundle: {
-            "\$all": parametros_bundle filter ($ != null)
-        } }
+    "query": (
+        // Bloque ROOT
+        (if (filtrosAgrupados.root != null) 
+            filtrosAgrupados.root mapObject (v, k) -> {
+                (v.config.valor): if (v.config.tipoDato == "number") v.valor as Number
+                                 else if (v.config.usaRegex == true) { "\$regex": v.valor, "\$options": "i" }
+                                 else v.valor
+            } 
         else {})
-		
-	},
-	limit: vars.parameters.LIMIT as Number,
-	offset: vars.parameters.OFFSET as Number
+        ++ 
+        // Bloque BUNDLE
+        ((filtrosAgrupados -- ["root"]) mapObject (filtros, nombreContenedor) -> {
+            (nombreContenedor): {
+                "\$all": filtros pluck (v) -> {
+                    "\$elemMatch": {
+                        "parametro": v.config.valor,
+                        "valor": if (v.config.tipoDato == "number") v.valor as Number
+                                 else if (v.config.usaRegex == true) { "\$regex": v.valor, "\$options": "i" }
+                                 else v.valor
+                    }
+                }
+            }
+        })
+    ),
+    "limit": (vars.parameters.LIMIT default 10) as Number,
+    "offset": (vars.parameters.OFFSET default 0) as Number
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="Flow Reference" doc:id="22fc5e92-ca07-4339-8a2c-4dfc82e3c89d" name="get-product-offering-clientSub_Flow"/>
-		<ee:transform doc:name="Transform Message" doc:id="72753372-9e80-4268-a145-ba09d6678f07" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+				<flow-ref doc:name="Flow Reference" doc:id="22fc5e92-ca07-4339-8a2c-4dfc82e3c89d" name="get-product-offering-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="72753372-9e80-4268-a145-ba09d6678f07">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 var offers = payload.ofertasProducto default []
 ---
@@ -208,5 +207,24 @@ var offers = payload.ofertasProducto default []
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="3cc12969-6b6f-4747-bb8b-6d3bc5c237fd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var llavesFiltro = keysOf(payload.filtros default {}) map ($ as String)
+var listaAprobados = vars.approvals.parametro default []
+var faltantes = llavesFiltro -- listaAprobados
+---
+{
+    "codeResponse": "200",
+    "responseMessage": "Existen filtros no homologados",
+    "invalid_filters": faltantes
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 </mule>
