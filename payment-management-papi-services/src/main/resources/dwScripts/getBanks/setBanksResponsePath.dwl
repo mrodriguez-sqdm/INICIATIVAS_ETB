@@ -2,8 +2,8 @@
 output application/json
 ---
 (attributes.uriParams.paymentMethod) match {
-	case "payu" -> readUrl('classpath://dwScripts/getBanks/setPayuBanksResponse.dwl')
-	case "wompi" -> readUrl('classpath://dwScripts/getBanks/setWompiBanksResponse.dwl')
-	case "pse" -> readUrl('classpath://dwScripts/getBanks/setPseBanksResponse.dwl')
+	case "payu" -> readUrl('classpath://dwScripts/getBanks/setPayuBanksResponse.dwl', 'text/plain')
+	case "wompi" -> readUrl('classpath://dwScripts/getBanks/setWompiBanksResponse.dwl', 'text/plain')
+	case "pse" -> readUrl('classpath://dwScripts/getBanks/setPseBanksResponse.dwl', 'text/plain')
 	else -> ""
 }
