@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-orders-clientSub_Flow" doc:id="8d2731f2-8e98-47dd-8f43-aa324db3916b" >
+		<async doc:name="Async" doc:id="5d9f4b69-458b-4ee7-b182-ca09b83a54dc">
+			<flow-ref doc:name="Logger before" doc:id="c6a6c126-c509-430d-91de-158bc6b22b96" name="loggin-client-call" />
+		</async>
+		<mongo:find-documents doc:name="Find documents" doc:id="417fba18-52be-446e-9247-b2e4f308408e" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.collection-order}" fields=",">
+			<mongo:query ><![CDATA[#["{Numero_Orden : '" ++ vars.orderNumber ++ "'}"]]]></mongo:query>
+		</mongo:find-documents>
+		<ee:transform doc:name="Response" doc:id="9a0d2f20-ba8b-4412-a2aa-4336e6ec0527" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Data not found",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}
+else
+payload[0] -'_id']]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(isEmpty(payload)) 404 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="7ffbe2cf-c48a-4ac7-b912-475c9536925f" >
+			<flow-ref doc:name="Logger after" doc:id="0499ce9a-4652-4042-98fb-61cb3620fae8" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+</mule>

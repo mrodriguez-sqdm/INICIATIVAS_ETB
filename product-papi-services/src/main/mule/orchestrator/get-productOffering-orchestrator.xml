@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-productOffering-json-orchestratorSub_Flow" doc:id="3deea60a-6acc-49f2-8358-d05b69602b6d" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="f1343907-0694-46d4-8e2c-05f41330c7ba" variableName="parameters"/>
+	<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="da3332bb-c7ef-4f5a-90ec-21086b2bca00" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Set payload system" doc:id="8a631dc7-d455-4066-93bf-c90dddbe3c92" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var filtros = payload.filtros
+var parametros_bundle = [
+    if (filtros.Stratum != null) 
+        { "\$elemMatch": { "parametro": "ESTRATO", "valor": { "\$regex": filtros.Stratum, "\$options": "i" } } 
+    } else null,
+    if (filtros.Scoring_Client != null) 
+        { "\$elemMatch": { "parametro": "SCORING CLIENTE", "valor": filtros.Scoring_Client } 
+    } else null,
+    if (filtros.Sale_Chanel != null) 
+        { "\$elemMatch": { "parametro": "CANAL VENTA", "valor": { "\$regex": filtros.Sale_Chanel, "\$options": "i" } } 
+    } else null,
+    if (filtros.Business_Unit != null) 
+        { "\$elemMatch": { "parametro": "UEN", "valor": filtros.Business_Unit } 
+    } else null,
+    if (filtros.Sale_Profile != null) 
+        { "\$elemMatch": { "parametro": "PERFIL", "valor": { "\$regex": filtros.Sale_Profile, "\$options": "i" } } 
+    } else null,
+    if (filtros.Type_Via != null) 
+        { "\$elemMatch": { "parametro": "TIPO TRAMITE", "valor": { "\$regex": filtros.Type_Via, "\$options": "i" } } 
+    } else null
+]
+---
+{
+	query:{
+		(if(payload.filtros.Product_Type != null)
+		 tipo_producto: payload.filtros.Product_Type
+		 else {}),
+		(if (payload.filtros.Service_Type != null)
+        { tipo_servicio: payload.filtros.Service_Type }
+        else {}),
+        (if (payload.filtros.Product_Subtype != null)
+        { subtipo_producto: payload.filtros.Product_Subtype }
+        else {}),
+        (if (payload.filtros.Service_Subtype != null)
+        { subtipo_servicio: payload.filtros.Service_Subtype }
+        else {}),
+        (if (payload.filtros.Stratum != null or payload.filtros.Scoring_Client != null or
+             payload.filtros.Sale_Chanel != null or payload.filtros.Business_Unit != null or
+             payload.filtros.Sale_Profile != null or payload.filtros.Type_Via != null)
+        { parametros_bundle: {
+            "\$all": parametros_bundle filter ($ != null)
+        } }
+        else {})
+		
+	},
+	limit: vars.parameters.LIMIT as Number,
+	offset: vars.parameters.OFFSET as Number
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="22fc5e92-ca07-4339-8a2c-4dfc82e3c89d" name="get-product-offering-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="72753372-9e80-4268-a145-ba09d6678f07" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var offers = payload.ofertasProducto default []
+---
+{
+  codeResponse: payload.codigo,
+  responseMessage: payload.mensaje,
+  totalData: payload.totalDatos default 0,
+  productOfferings: offers map (item) -> {
+
+    id: item."_id"."\$oid",
+
+    offerFilterGroups: item.agrupa_filtros_oferta map (g) -> {
+      group: g.grupo,
+      offerGroupFilters: g.grupo_filtros_oferta map (f) -> {
+        filter: f.filtro,
+        groupFilterValues: f.valor_grupo_oferta map (v) -> {
+          value: v.valor,
+          maxValue: v.valor_maximo,
+          minValue: v.valor_minimo
+        }
+      }
+    },
+
+    filterGrouping: item.agrupacion_filtros,
+    file: item.archivo,
+    mainBundle: item.bundle_principal,
+    maxQuantity: item.cantidad_maxima,
+    minQuantity: item.cantidad_minima,
+
+    productOfferingCharacteristics: item.caracteristicas_producto_oferta map (c) -> {
+      offeringCharacteristicActions: c.accion_caracteristica_oferta,
+      characteristic: c.caracteristica,
+      value: c.valor
+    },
+
+    classification: item.clasificacion,
+    configurationCode: item.cod_configuracion,
+    dependency: item.dependencia,
+    planDescription: item.descripcion_plan,
+    display: item.display,
+    isModification: item.es_modificacion,
+    isBundleType: item.es_tipo_bundle,
+    technicalSpecification: item.especificacion_tecnica,
+
+    billingSpecificationsUpdate: item.especificaciones_facturacion_upd map (b) -> {
+      id: b."_id"."\$oid",
+      technicalOfferingActions: b.accion_esp_tecnica_oferta,
+      status: b.estado,
+      applicationDate: b.fecha_aplicacion."\$date",
+      creationDate: b.fecha_creacion."\$date",
+      productSpecificationId: b.id_producto_espeficificacion,
+      parameter: b.parametro,
+      productSpecification: b.producto_espeficificacion,
+      system: b.sistema,
+      specificationType: b.tipo_especificacion,
+      createdBy: b.usuario_creo,
+      value: b.valor
+    },
+
+    status: item.estado,
+    statusUpdate: item.estado_update,
+    phase: item.fase,
+    phaseUpdate: item.fase_update,
+
+    creationDate: item.fecha_creacion."\$date",
+    validityEndDate: item.fecha_fin_vigencia."\$date",
+    validityStartDate: item.fecha_ini_vigencia."\$date",
+
+    icon: item.icono,
+    mainBundleId: item.id_bundle_principal,
+    productId: item.id_producto,
+    mainProductId: item.id_producto_principal,
+
+    planImages: item.imagenes_plan,
+    groupNumber: item.num_agrupacion,
+    notes: item.observaciones,
+
+    bundleParameters: item.parametros_bundle map (bp) -> {
+      parameter: bp.parametro,
+      parameterType: bp.tipo_parametro,
+      value: bp.valor
+    },
+
+    maxPrice: item.precio_maximo,
+    minPrice: item.precio_minimo,
+
+    offeringPrice: item.precio_oferta map (p) -> {
+      id: p."_id"."\$oid",
+      salesChannel: p.canal_venta,
+      status: p.estado,
+      applicationDate: p.fecha_aplicacion."\$date",
+      creationDate: p.fecha_creacion."\$date",
+      tax: p.iva,
+      priceWithTax: p.precio_con_iva,
+      priceFilters: p.precio_filtros,
+      priceWithoutTax: p.precio_sin_iva,
+      service: p.servicio,
+      createdBy: p.usuario_creo
+    },
+
+    product: item.producto,
+    mainProduct: item.producto_principal,
+    insuranceRangeEnd: item.rangoFinSeguro,
+    insuranceRangeStart: item.rangoInicioSeguro,
+    sequence: item.secuencia,
+    serviceSubtype: item.subtipo_servicio,
+    bundleType: item.tipo_bundle,
+    productType: item.tipo_producto,
+    serviceType: item.tipo_servicio,
+    blockedBy: item.usuario_bloqueo,
+    createdBy: item.usuario_creo,
+
+    technicalOfferingValue: item.valor_espec_tecnica_oferta map (t) -> {
+      technicalOfferingActions: t.accion_esp_tecnica_oferta,
+      productSpecificationId: t.id_producto_espeficificacion,
+      parameter: t.parametro,
+      productSpecification: t.producto_espeficificacion,
+      system: t.sistema,
+      specificationType: t.tipo_especificacion,
+      value: t.valor
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

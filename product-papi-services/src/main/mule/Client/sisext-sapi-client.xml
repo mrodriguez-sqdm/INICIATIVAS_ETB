@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<!--  <sub-flow name="sisext-sapi-client-feasibility" doc:id="5a90dd3c-193e-4ce1-9ab0-ffc2d9d6e378" >
+		<logger level="INFO" doc:name="Before" doc:id="6775b5c8-c4f0-4b15-a33d-33bf82493749" message="#[payload]"/>
+		<http:request method="GET" doc:name="Call Sisext" doc:id="e717a938-916d-4001-bba0-5a81cf404b3c" config-ref="sisext_HTTP_Request_configuration" path="${sisext.feasibility.path}">
+			<http:headers ><![CDATA[#[output application/java
+-&#45;&#45;
+{
+	"client_secret" : p('credentials.client_secret'),
+	"client_id" : p('credentials.client_id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"source": attributes.headers.source,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+-&#45;&#45;
+{
+	"addressCode" : attributes.queryParams.addressCode,
+	"mayorista" : attributes.queryParams.mayorista default ""
+}]]]></http:query-params>
+		</http:request>
+		<logger level="INFO" doc:name="After" doc:id="0e63b24c-bab4-4359-a230-e3f16475949e" message="#[payload]"/>
+	</sub-flow>-->
+	<sub-flow name="sisext-sapi-client-coverageGIS" doc:id="254a3b80-53b8-49c0-9b5e-103f00063b00" >
+		<logger level="INFO" doc:name="Before" doc:id="55986995-3035-403b-9794-a0c4625b9b93" message='#[%dw 2.0
+output application/json
+---
+{
+  "LATITUD"	: attributes.queryParams.latitude,
+	"LONGITUD": attributes.queryParams.longitude
+}]'/>
+		<try doc:name="Try" doc:id="3e6b15ed-3d1b-4eae-a41c-188c1971b570" >
+			<http:request method="GET" doc:name="Call sisext client" doc:id="3cc96706-e2b5-4e11-87fb-acb74310811d" config-ref="sisext_HTTP_Request_configuration" path="${sisext.coverage.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('credentials.client_secret'),
+	"client_id" : p('credentials.client_id'),
+	"name": attributes.headers.name,
+	"source": attributes.headers.source,
+	"systemId": "MIGRACION"
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"Latitud" : vars.normalizedQueryParams.latitude,
+	"Longitud" : vars.normalizedQueryParams.longitude
+}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="1a90cc82-cbaf-4eeb-9afa-9d73a5b60403" when='#[error.muleMessage.typedValue."wsGetFactibilidadServicios-RS".GisRespuestaProceso.CodigoRespuesta == "FAIL"]'>
+					<ee:transform doc:name="Transform Message" doc:id="abdac3de-eef4-45be-b188-490760823e60" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+error.muleMessage.typedValue]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="400" doc:name="http Status 400" doc:id="fe027ba1-25e6-4e22-81a8-dcc842847aa9" variableName="httpStatus"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<logger level="INFO" doc:name="Check response" doc:id="44ff42a1-6454-47e4-9d97-7c7f8f96ea7c" message="#[payload]" />
+	</sub-flow>
+</mule>
