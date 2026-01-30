@@ -11,14 +11,14 @@ output application/json
 	"currency": vars.payloadOri.currency,
 	"reference": vars.payloadOri.reference,
 	"sku": vars.payloadOri.sku,
-	"expires_at": vars.payloadOri.expiresAt default (now() + hours(4)) as String {
+	"expires_at": (vars.payloadOri.expiresAt) default (now() + |PT4H|) as String {
 		format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
 	},
 	"redirect_url": vars.payloadOri.redirectUrl default Mule::p('wompi.fields.redirectUrl'),
 	"image_url": vars.payloadOri.imageUrl default Mule::p('wompi.fields.imageUrl'),
 	"active": true,
 	"customer_data": {
-		"customer_references": payload.customerData.customerReferences map ((item, index) -> {
+		"customer_references": vars.payloadOri.customerData.customerReferences map ((item, index) -> {
 			"label": item.label,
 			"is_required": item.isRequired
 		})
@@ -27,6 +27,5 @@ output application/json
           {
 		"type": item.code,
 		"amount_in_cents": item.value
-	}
-        )
+	})
 } 

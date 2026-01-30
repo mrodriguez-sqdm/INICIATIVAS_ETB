@@ -2,7 +2,7 @@
 output application/json
 var paymentId = vars.paymentMethod match {
     case "payu" -> { "id": vars.paymentId }
-    case "wompi" -> { "transaction_id": vars.paymentId}
+    case "wompi" -> { "payment_link_id": vars.paymentId}
     case "pse" ->  { "id": vars.paymentId }
     else -> ""
 }
