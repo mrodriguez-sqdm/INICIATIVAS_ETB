@@ -10,5 +10,8 @@ output application/json
 	"headers": vars.httpRequest.headers,
 	"uriParams": {
 		"platform": vars.paymentMethod
+	},
+	"queryParams": {
+		"transactionId": vars.paymentId
 	}
 }

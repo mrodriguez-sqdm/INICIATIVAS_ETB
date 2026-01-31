@@ -12,7 +12,7 @@ output application/json
 	valor_pagar: vars.payloadOri.amount as String,
 	valor_impuesto: sum(vars.payloadOri.taxes.value) as String,
 	concepto: vars.payloadOri.description,
-	entidad_bancaria: vars.payloadOri.paymentMethod.bank.name default '',
+	entidad_bancaria: vars.payloadOri.paymentMethod.bank default '',
 	pasarela_tipo: vars.paymentMethod,
 	estado_transaccion: "PENDIENTE",
 	estado_tx: "PENDIENTE",

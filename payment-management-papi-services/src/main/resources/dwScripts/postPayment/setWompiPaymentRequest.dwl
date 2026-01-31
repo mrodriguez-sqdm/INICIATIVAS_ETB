@@ -1,5 +1,4 @@
 %dw 2.0
-import * from dw::core::Periods
 output application/json
 ---
 {
@@ -15,17 +14,26 @@ output application/json
 		format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
 	},
 	"redirect_url": vars.payloadOri.redirectUrl default Mule::p('wompi.fields.redirectUrl'),
-	"image_url": vars.payloadOri.imageUrl default Mule::p('wompi.fields.imageUrl'),
 	"active": true,
 	"customer_data": {
-		"customer_references": vars.payloadOri.customerData.customerReferences map ((item, index) -> {
+		"customer_references": vars.payloadOri.customerData.customerReferences map (item, index) -> {
 			"label": item.label,
 			"is_required": item.isRequired
-		})
+		}
 	},
-	"taxes": vars.payloadOri.taxes map ((item, index) ->
-          {
-		"type": item.code,
-		"amount_in_cents": item.value
-	})
+	"taxes": payload.taxes map (item, index) -> 
+        (item.code) match {
+		case "IVA" -> {
+			"type": "VAT",
+			"amount_in_cents": item.value
+		}
+            case "CONSUMO" -> {
+			"type": "CONSUMPTION",
+			"amount_in_cents": item.value
+		}
+            else -> {
+			"type": item.code,
+			"amount_in_cents": item.value
+		}
+	}
 } 
