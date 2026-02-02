@@ -5,22 +5,31 @@
 http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="get-pseBanks-orchestratorSub_Flow" doc:id="1cd12e7a-0468-49db-a160-7ead37d0a4e6" >
-		<ee:transform doc:name="Body and var request" doc:id="5340df3a-d253-4cb9-b5f2-7ebee28ff2c1" >
+		<ee:transform doc:name="Body request" doc:id="5340df3a-d253-4cb9-b5f2-7ebee28ff2c1" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 {
-	entityCode: p('secure::pse.params.entityCode')
+	entityCode: p('pse.params.entityCode')
 }]]></ee:set-payload>
 			</ee:message>
-			<ee:variables >
-				<ee:set-variable resource="dwl/pse/requests/get-banks.dwl" variableName="httpRequest" />
-			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="encryption-encrypt-sub-flow" doc:id="1a5010ce-0bc2-44e3-b6b8-bf92f8d8e008" name="encryption-encrypt-sub-flow"/>
-		<flow-ref doc:name="pse-client-sub-flow" doc:id="4a08681f-c5b0-487f-9d00-3459d56ce9b2" name="pse-client-sub-flow"/>
-		<flow-ref doc:name="encryption-decrypt-sub-flow" doc:id="cee1d35a-3eba-4b63-8851-81574df546d4" name="encryption-decrypt-sub-flow"/>
+		<java:invoke-static doc:name="Encrypt payload" doc:id="0aee42d7-adab-4066-90fb-aa33a0c4513c" class="com.globant.cipher.Encryption" method="processEncrypt(String, String, String)">
+			<java:args ><![CDATA[#[{
+	message: write(payload, "application/json"),
+	key: p('pse.security.secret'),
+	customerIV: p('pse.security.iv')
+}]]]></java:args>
+		</java:invoke-static>
+		<flow-ref doc:name="Go to Client" doc:id="4a08681f-c5b0-487f-9d00-3459d56ce9b2" name="get-banks-services-clientSub_Flow"/>
+		<java:invoke-static method="processDecrypt(String, String, String)" doc:name="Decrypt payload" doc:id="6e8b7f0c-2805-4c1b-9e93-77c0ac4aeb8c" class="com.globant.cipher.Encryption" >
+			<java:args ><![CDATA[#[{
+	message: payload,
+	key: p('pse.security.secret'),
+	customerIV: p('pse.security.iv')
+}]]]></java:args>
+		</java:invoke-static>
 		<ee:transform doc:name="Prepare output" doc:id="a1bdc97d-e54c-44d0-b9af-949b8aeae539" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0

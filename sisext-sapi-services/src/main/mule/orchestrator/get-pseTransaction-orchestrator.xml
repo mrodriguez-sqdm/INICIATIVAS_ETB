@@ -6,23 +6,33 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
 http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
 	<sub-flow name="get-pseTransaction-orchestratorSub_Flow" doc:id="74ab1b15-c4ed-4b16-b90a-d2c418880034" >
-		<ee:transform doc:name="Body and var request" doc:id="936aea19-aca4-4454-851f-f3df9d1c45e6" >
+		<flow-ref doc:name="Go to Auth Orchestrator" doc:id="3a232610-7a61-4a58-8572-db6975b522d8" name="get-authPse-orchestratorSub_Flow" target="pseAuth" />
+		<ee:transform doc:name="Body request" doc:id="936aea19-aca4-4454-851f-f3df9d1c45e6" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 {
-	entityCode: p('secure::pse.params.entityCode'),
-	trazabilityCode: vars.id,
+	entityCode: p('pse.params.entityCode'),
+	trazabilityCode: attributes.uriParams.id,
 }]]></ee:set-payload>
 			</ee:message>
-			<ee:variables >
-				<ee:set-variable resource="dwl/pse/requests/get-transaction.dwl" variableName="httpRequest" />
-			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="encryption-encrypt-sub-flow" doc:id="3cbb0d94-71e8-4562-b6e3-38c73a42ffde" name="encryption-encrypt-sub-flow"/>
-		<flow-ref doc:name="pse-client-sub-flow" doc:id="c8d3f065-d596-474b-a2d1-b59525d5a7e3" name="pse-client-sub-flow" />
-		<flow-ref doc:name="encryption-decrypt-sub-flow" doc:id="a81b4fed-8f51-4f25-82ab-1d585d4a2f80" name="encryption-decrypt-sub-flow"/>
+		<java:invoke-static method="processEncrypt(String, String, String)" doc:name="Encrypt payload" doc:id="f9fff521-8587-46b7-b7d5-4287b738053c" class="com.globant.cipher.Encryption" >
+			<java:args ><![CDATA[#[{
+	message: write(payload, "application/json"),
+	key: p('pse.security.secret'),
+	customerIV: p('pse.security.iv')
+}]]]></java:args>
+		</java:invoke-static>
+		<flow-ref doc:name="Go to Client" doc:id="c8d3f065-d596-474b-a2d1-b59525d5a7e3" name="get-transactions-services-clientSub_Flow" />
+		<java:invoke-static method="processDecrypt(String, String, String)" doc:name="Decrypt payload" doc:id="e06bf05c-5674-4918-8395-ff370c0ee8ed" class="com.globant.cipher.Encryption" >
+			<java:args ><![CDATA[#[{
+	message: payload,
+	key: p('pse.security.secret'),
+	customerIV: p('pse.security.iv')
+}]]]></java:args>
+		</java:invoke-static>
 		<ee:transform doc:name="Prepare output" doc:id="d3d709a0-4e77-4524-8e21-548984e7eadd" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
@@ -31,5 +41,6 @@ output application/json
 read(payload, "application/json")]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-	</sub-flow>
+	
+</sub-flow>
 </mule>
