@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="pqr-validateStatus-orchestadorSub_Flow" doc:id="a92bea1b-c77e-4a87-b2a7-7606782ea004" >
+		<choice doc:name="Choice" doc:id="3d1f97b8-2ae9-4345-a930-e14467bbc9f0" >
+			<when expression='payload.status == "CANCELLED"'>
+				<flow-ref doc:name="Flow Reference" doc:id="dcfa6cae-47bc-4942-ae17-0efa384df0aa" name="post-agendaclose-orchestadorSub_Flow"/>
+			</when>
+			<when expression='payload.status == "RESCHEDULE"'>
+				<flow-ref doc:name="Flow Reference" doc:id="8dc3fad4-4bf1-4920-aac2-fd1e2fecfbd7" name="post-reagenda-orchestadorSub_Flow"/>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-agendaclose-orchestadorSub_Flow" doc:id="e2dc202e-3095-4280-b695-27473bab93ef" >
+		<set-variable value="#[attributes.uriParams]" doc:name="Set params" doc:id="cc5f0fc2-039a-44a2-a373-5bbe27516af0" variableName="params" />
+		<set-variable value="#[attributes.headers]" doc:name="Set initial headers" doc:id="b71fd948-c4cc-4d48-9691-f170263fad2e" variableName="headers" />
+		<ee:transform doc:name="Transform Message" doc:id="adef5f40-dd90-4dfb-8f48-4fc01fe72b81" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  WSRequestHeader: {
+    System: {
+      name: "VOICEBOT",
+      correlationID: vars.headers."x-correlation-id",
+      processingServer: ""
+    },
+    Property: []
+  },
+  WSRequestBody: {
+    Audit: {
+      Canal: "VOICEBOT"
+    },
+    Id_PQR: payload.externalId,
+    Reason: (
+      (payload.appointmentCharacteristic 
+        filter (item) -> item.name == "cancellationReason"
+      ) 
+        map (item) -> item.value as String
+        default [null]
+    )[0]
+  }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="e03c8dd5-081f-4acf-a27d-0fed330f24b7" name="post-agendaclose-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="079bf093-de16-4d77-89c4-75ed1d58bcc2">
+			<when expression='#[payload.WSResponseHeader.Service.status == "OK"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="38e2dcc4-79f5-4c21-b607-d384c89d1069" name="get-appointmentId-clientSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="fe3a42e9-7cdc-4544-a98b-cf56bfbfc87a" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 409,
+    "code": payload.WSResponseHeader.Service.statusDetail.errorCode,
+    "message": {
+        "message": payload.WSResponseHeader.Service.statusDetail.errorDetailCode
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "bot-sapi-services",
+            "message": payload.WSResponseHeader.Service.statusDetail.errorMessage
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-reagenda-orchestadorSub_Flow" doc:id="c75de20a-7538-49d0-b571-b5986c14e109" >
+		<set-variable value="#[attributes.uriParams]" doc:name="Set params" doc:id="88400feb-6e8d-4da1-8c88-dc1cec77e6f1" variableName="params" />
+		<set-variable value="#[attributes.headers]" doc:name="Set initial headers" doc:id="bd5a0f96-0ecd-4079-8b0c-303e7ba83836" variableName="headers" />
+		<ee:transform doc:name="Transform Message" doc:id="a3285ac5-ffca-45de-9423-933f4eaf316b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+fun getValue(list, key) =
+  if (isEmpty(list filter (item) -> item.name == key))
+    null
+  else
+    (list filter (item) -> item.name == key)[0].value
+
+---
+{
+  WSRequestHeader: {
+    System: {
+      name: "VOICEBOT",
+      correlationID: vars.headers."x-correlation-id",
+      processingServer: "nostrud"
+    },
+    Property: []
+  },
+  WSRequestBody: {
+    Audit: {
+      Canal: "VOICEBOT"
+    },
+    Duration: getValue(payload.appointmentCharacteristic, "duration"),
+    Id_ETA: (payload.relatedParty default [])[0].id,
+    Id_PQR: payload.externalId,
+    New_Date: getValue(payload.appointmentCharacteristic, "NewDate"),
+    Timeslot: getValue(payload.appointmentCharacteristic, "NewTimeSlot")
+  }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="608e8d8f-0bbd-44b3-b93a-7140d605013b" name="post-reagenda-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="58a728f0-cdad-4cdd-adee-d815f159b058" >
+			<when expression='#[payload.WSResponseHeader.Service.status == "OK"]' >
+				<flow-ref doc:name="Flow Reference" doc:id="a6a74e8e-1647-4b41-be59-714f8ebb65ea" name="get-appointmentId-clientSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="258bbb4b-6281-4e2c-85f3-40134928a760" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 409,
+    "code": payload.WSResponseHeader.Service.statusDetail.errorCode,
+    "message": {
+        "message": payload.WSResponseHeader.Service.statusDetail.errorDetailCode
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "bot-sapi-services",
+            "message": payload.WSResponseHeader.Service.statusDetail.errorMessage
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-appointment-id-orchestadorSub_Flow" doc:id="2c5fcacf-30aa-4812-b3cd-61524322b78e" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Headers" doc:id="bf5e6518-79c6-476b-82ba-db8606b8ab52" variableName="headers" />
+		<set-variable value="#[attributes.uriParams]" doc:name="Set params" doc:id="d3b44a17-c3b0-4ac2-bae0-9e01e43a9a8e" variableName="params" />
+		<flow-ref doc:name="Go to Client" doc:id="75dc132c-2156-432d-a910-a609856438d5" name="get-appointmentId-clientSub_Flow" />
+	</sub-flow>
+</mule>
