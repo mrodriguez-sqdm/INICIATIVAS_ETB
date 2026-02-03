@@ -3,12 +3,12 @@ import * from dw::core::Periods
 output application/json
 ---
 {
-	"financialInstitutionCode": vars.payloadOri.bank.code,
+	"financialInstitutionCode": vars.payloadOri.bank.code default "1007",
 	"entityCode": Mule::p('pse-sapi.fields.entityCode'),
 	"serviceCode": Mule::p('pse-sapi.fields.serviceCode'),
 	"transactionValue": vars.payloadOri.amount,
 	"vatValue": (vars.payloadOri.taxes filter $.item == Mule::p('pse-sapi.fields.iva'))[0].value default 0,
-	"ticketId": vars.payloadOri.invoiceNumber,
+	"ticketId": vars.payloadOri.invoiceNumber as Number,
 	"entityurl": vars.payloadOri.extraParameters.entityurl,
 	"userType": vars.payloadOri.customer.document.userType default Mule::p('pse-sapi.fields.userType'),
 	"soliciteDate": now() as String {
@@ -21,7 +21,7 @@ output application/json
 	"identificationType": vars.payloadOri.customer.document."type",
 	"identificationNumber": vars.payloadOri.customer.document."number",
 	"fullName": vars.payloadOri.customer.firstname ++ " " ++ vars.payloadOri.customer.lastname,
-	"cellphoneNumber": vars.payloadOri.customer.phone as Number,
+	"cellphoneNumber": vars.payloadOri.customer.phone,
 	"address": vars.payloadOri.customer.address.street1 ++ " " ++ vars.payloadOri.customer.address.street2,
 	"email": vars.payloadOri.customer.email,
 	"beneficiaryEntityIdentificationType": Mule::p('pse-sapi.fields.beneficiaryEntityIdentificationType'),
