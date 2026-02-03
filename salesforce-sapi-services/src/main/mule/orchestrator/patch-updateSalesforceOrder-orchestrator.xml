@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateSalesforceOrder-orchestratorSub_Flow" doc:id="175b78f9-f755-4c16-bb1f-4d4f74152055" >
+		<flow-ref doc:name="Get token" doc:id="126580e4-54d3-4ee9-908b-37eafb102c61" name="get-salesforce-token-clientSub_Flow" target="token" />
+		<ee:transform doc:name="Set request body" doc:id="01628eef-8a59-40e3-acd3-ff438e78b11e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false
+---
+{
+  "soapenv:Envelope" @(
+      "xmlns:soapenv":"http://schemas.xmlsoap.org/soap/envelope/",
+      "xmlns:lte":"http://soap.sforce.com/schemas/class/LTE_ServiciosAprovisionamiento_ws"
+      ): {
+    "soapenv:Header": {
+      "lte:SessionHeader": {
+        "lte:sessionId": vars.token.access_token
+      }
+    },
+    "soapenv:Body": {
+      "lte:ActualizacionEstadoOrden": {
+        "lte:EO": {
+          "lte:Comentarios": payload.Comments,
+          "lte:EstadoOrden": payload.Status,
+          "lte:OrderId": payload.OrderID
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Set errorPayload empty" doc:id="efa0fb60-9ced-4524-b239-ac62d57c2823">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="errorPayload"><![CDATA[%dw 2.0
+output application/json
+---
+null]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<flow-ref doc:name="Go to try salesforce" doc:id="edbf61ff-f6dd-431d-8987-0d6e08b14d27" name="patch-updateSalesforceOrder-try-salesforce"/>
+		<choice doc:name="Choice" doc:id="55c19818-b5f5-4894-9534-578a86a6fe87">
+					<when expression="#[payload.Fault != null]">
+						<ee:transform doc:name="Set error" doc:id="a94c6e8e-d457-4431-95ad-13762453c89b">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "result": 1,
+    "code": payload.Fault.faultcode,
+    "descripcion": payload.Fault.faultstring
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<when expression='#[!(["0","1"] contains payload.Envelope.Body.ActualizacionEstadoOrdenResponse.result)]'>
+						<ee:transform doc:name="Set error" doc:id="4a96ef07-73f0-4caa-802e-834bd292eebb">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "result": 1,
+    "code": "SYSTEM:ERROR",
+    "descripcion": "'UpdateEstadoOrdenSalesForce' service Result is not 0 or 1"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Set response" doc:id="d3a8747e-a84a-431f-8f88-e2e09ffa7a85">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "result": 0,
+    "descripcion": "Procesamiento Exitoso"
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="patch-updateSalesforceOrder-try-salesforce" doc:id="44b15bf0-5c71-4ba0-9681-984cca2bb7f7" >
+		<try doc:name="Try" doc:id="06d51e09-4683-45ba-8f69-fceb47f0b6d2">
+					<until-successful maxRetries="#[p('actualizacionEstadoOrdenRequest.retry.numberOfRetries')]" doc:name="Until Successful" doc:id="f89026a8-54b5-48e3-acc2-cfe059499ed9" millisBetweenRetries="#[p('actualizacionEstadoOrdenRequest.retry.timeBetween')]">
+						<try doc:name="Try" doc:id="cea79ba8-3296-4dae-879a-c468f4c2cfe1">
+						<flow-ref doc:name="Go to client" doc:id="7ad68990-b40c-47ff-bee4-e6dc6589470e" name="salesforce-updateEstadoOrden-clientSub_Flow" />
+							<error-handler>
+							<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="cac27fcd-bde0-4dcc-a511-7d1bc322e043">
+								<ee:transform doc:name="Set errorPayload with last response body error" doc:id="54a25483-7ed1-4dfe-a5b2-1bc47e2c8d19">
+									<ee:message>
+									</ee:message>
+										<ee:variables>
+											<ee:set-variable variableName="errorPayload"><![CDATA[%dw 2.0
+output application/json
+---
+error.errorMessage.payload.Envelope.Body]]></ee:set-variable>
+										</ee:variables>
+								</ee:transform>
+							</on-error-propagate>
+						</error-handler>
+					</try>
+						<choice doc:name="Result is not 0 or 1" doc:id="69568af7-042f-49a3-b51e-e5fbf28ed568">
+								<when expression='#[((payload.Envelope.Body.ActualizacionEstadoOrdenResponse.result as String) != "0") and&#10;	((payload.Envelope.Body.ActualizacionEstadoOrdenResponse.result as String) != "1")]'>
+								<raise-error doc:name="Raise error" doc:id="c9269969-eb13-4811-83b0-96944ba537db" type="CUSTOM:ERROR" />
+							</when>
+							</choice>
+				</until-successful>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="40b40d16-b455-4bd6-a784-5ff8aabc0bd9">
+							<ee:transform doc:name="Set payload with the obtained error" doc:id="8d61e793-cc74-4c97-a871-b3cfaea4e65d">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.errorPayload default error.errorMessage.payload.Envelope.Body]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+	</sub-flow>
+</mule>

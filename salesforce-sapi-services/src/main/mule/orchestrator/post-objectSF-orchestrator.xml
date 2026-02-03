@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow
+		name="patch-objectSF-orchestrator"
+		doc:id="e0a64f64-bd8c-4ac3-928b-8ef7a02d6360">
+		<flow-ref
+			doc:name="get-salesforce-token-client"
+			doc:id="988d6764-5126-4e7c-9ee0-aadd2bec65db"
+			name="get-salesforce-token-clientSub_Flow"
+			target="token_response" />
+		<ee:transform doc:name="Transform to Xml" doc:id="8c7bb8b6-46b1-45d9-b84d-88d33ee4c225" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+fun appendNamespace(data, nsSelector: (k: Key) -> Namespace | Null) =
+  data match {
+	case is Array -> data map appendNamespace($, nsSelector)
+    case is Object -> data mapObject do {
+		var ns0 = nsSelector($$)
+		---
+		ns0#"$($$)": appendNamespace($, nsSelector)
+	}
+    else -> data
+}
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns ns2 http://soap.sforce.com/schemas/class/IntegracionRemedy_ws
+---
+soapenv#Envelope: {
+    soapenv#Header: {
+        SessionHeader:
+            sessionId: vars.token_response.access_token
+    },
+    soapenv#Body: {
+        ns2#WSActualizarObjeto: {
+            ns2#mensajeEntrada: {
+                (payload appendNamespace ns2)
+            }
+        }
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref
+			doc:name="Go to client"
+			doc:id="9e09d975-a66b-44d7-9d46-07bd4914a780"
+			name="patch-objectSF-client" />
+		<ee:transform doc:name="Transform to Json" doc:id="3dcfc571-83dd-40cc-ab5a-3ec3d091dc9d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.Envelope.Body.WSActualizarObjetoResponse.result]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Set httpStatus" doc:id="08c7f0d1-54ec-400e-8f6e-e51c5e499231" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload.resultado == 'Exitoso')
+	200
+else
+	500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>
