@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-salesforceOrder-orchestratorSub_Flow" doc:id="f4f52cb5-e3e5-459c-8267-47a72562c7c8" >
+		<ee:transform doc:name="Prepare new order" doc:id="6a49d851-3dba-433d-a778-05b21821e710" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+var varChildrenItems = if (payload.inputMessage.OrderFulfilment.Sender.ApplicationID == "SalesForce")
+    payload.inputMessage.OrderFulfilment.SalesOrderLine filter ($.ParentSalesOrderLineIdentification.ID == $.Identification.BusinessComponentID)
+    else
+    payload.inputMessage.OrderFulfilment.SalesOrderLine filter ($.ParentSalesOrderLineIdentification.ID == $.Identification.ID)
+---
+{
+    Creacion_Orden: {
+        Header: {
+            IdentificadorPeticion: payload.inputMessage.OrderFulfilment.Identification.ID,
+            SistemaPeticion: if(isEmpty(payload.inputMessage.OrderFulfilment.Sender.ApplicationID default "")) "SalesForce" else payload.inputMessage.OrderFulfilment.Sender.ApplicationID,
+            UsuarioMDM: p('global.createOrder.usuarioMDM'),
+            PasswordMDM: p('global.createOrder.passwordMDM')
+        },
+        InformacionOrden: {
+            Datos_Cliente: {
+                MDM_Cliente: {
+                    Tipo_Documento: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Custom.DocumentType,
+                    (Tipo_Cliente: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.TypeCode) if (!isBlank(payload.inputMessage.OrderFulfilment.CustomerPartyAccount.TypeCode)),
+                    Numero_Identificacion: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Custom.DocumentNumber,
+                    Primer_Nombre: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "NOMBRES"))[0].AltKeyValue,
+                    (Primer_Apellido: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "APELLIDO1"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "APELLIDO1"))[0].AltKeyValue)),
+                    (Segundo_Apellido: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "APELLIDO2"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "APELLIDO2"))[0].AltKeyValue)),
+                    (Segmento: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "Segment"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "Segment"))[0].AltKeyValue)),
+                    (Segmento_UEN: (payload.inputMessage.OrderFulfilment.SalesOrderLine[0].AltKey filter ($.AltKeyName == "SegmentoUEN"))[0].AltKeyValue) if (!isEmpty(payload.inputMessage.OrderFulfilment.SalesOrderLine[0].AltKey filter ($.AltKeyName == "SegmentoUEN"))), 
+                    (UEN: (payload.inputMessage.OrderFulfilment.SalesOrderLine[0].AltKey filter ($.AltKeyName == "UEN"))[0].AltKeyValue) if (!isEmpty(payload.inputMessage.OrderFulfilment.SalesOrderLine[0].AltKey filter ($.AltKeyName == "UEN"))),
+                    (Correo_Electronico: payload.inputMessage.BillingProcess.Customer.ContactInfo.Email) if (!isBlank(payload.inputMessage.BillingProcess.Customer.ContactInfo.Email)),
+                    (Telefono_Fijo: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "TelefonoFijoCliente"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "TelefonoFijoCliente"))[0].AltKeyValue)),
+                    (Telefono_Movil: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "TelefonoMovilCliente"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "TelefonoMovilCliente"))[0].AltKeyValue)),
+                    Direccion: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Address.LineOne,
+                    (Pais: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Address.CountryName) if (!isBlank(payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Address.CountryName)),
+                    (Ciudad: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Address.CityCode) if (!isBlank(payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Address.CityCode)),
+                    (Estrato: (payload.inputMessage.OrderFulfilment.SalesOrderLine[0].AltKey filter ($.AltKeyName == "Estrato"))[0].AltKeyValue) if (!isEmpty(payload.inputMessage.OrderFulfilment.SalesOrderLine[0].AltKey filter ($.AltKeyName == "Estrato"))),
+                    (Identificador_Sistema_Origen: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Identification.ID) if (!isBlank(payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Identification.ID)),
+                    (Sistema_Origen: payload.inputMessage.OrderFulfilment.Sender.ApplicationID) if (!isBlank(payload.inputMessage.OrderFulfilment.Sender.ApplicationID)),
+                    Informacion_Contacto: {
+                        MDM_Contacto: {
+                            (Tipo_Documento: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Custom.DocumentType) if (!isBlank(payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Custom.DocumentType)),
+                            (Numero_Documento: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Custom.DocumentNumber) if (!isBlank(payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Custom.DocumentNumber)),
+                            (Nombre_Contacto: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Name) if (!isBlank(payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Name)),
+                            (Telefono_Contacto: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "TelefonoFijoCliente"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "TelefonoFijoCliente"))[0].AltKeyValue)),
+                            (Movil_Contacto: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "TelefonoMovilCliente"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "TelefonoMovilCliente"))[0].AltKeyValue)),
+                            (Email_Contacto: payload.inputMessage.BillingProcess.Customer.ContactInfo.Email) if (!isBlank(payload.inputMessage.BillingProcess.Customer.ContactInfo.Email)),
+                            Direccion_Asociada: payload.inputMessage.OrderFulfilment.CustomerPartyAccount.Address.LineOne     
+                        }
+                    }
+                }
+            },
+            Datos_Orden: {
+                (CUN: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "CUN"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "CUN"))[0].AltKeyValue)),
+                (Tipo_Orden: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "ORDER TYPE"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "ORDER TYPE"))[0].AltKeyValue)),
+                (Subtipo_Orden: payload.inputMessage.OrderFulfilment.Scheduling.SubOrderType) if (!isBlank(payload.inputMessage.OrderFulfilment.Scheduling.SubOrderType)),
+                Estado_Orden: p('global.createOrder.estadoOrden'),
+                (Numero_Orden: payload.inputMessage.OrderFulfilment.Identification.ID) if (!isBlank(payload.inputMessage.OrderFulfilment.Identification.ID)),
+                (Fecha_Creacion_Orden: payload.inputMessage.OrderFulfilment.SalesOrder.OrderDateTime) if (!isBlank(payload.inputMessage.OrderFulfilment.SalesOrder.OrderDateTime)),
+                (Usuario_Creador: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "usuarioCreador"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "usuarioCreador"))[0].AltKeyValue)),
+                (Usuario_Vendedor: payload.inputMessage.OrderFulfilment.SalesOrderAgent.Name) if (!isBlank(payload.inputMessage.OrderFulfilment.SalesOrderAgent.Name)),
+                (Subcanal: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "subcanal"))[0].AltKeyValue) if (!isBlank((payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "subcanal"))[0].AltKeyValue)),
+                (Id_Orden_Sistema_Origen: payload.inputMessage.OrderFulfilment.Identification.ID) if (!isBlank(payload.inputMessage.OrderFulfilment.Identification.ID)),
+                Sistema_Origen: if(isEmpty(payload.inputMessage.OrderFulfilment.Sender.ApplicationID default "")) "SalesForce" else payload.inputMessage.OrderFulfilment.Sender.ApplicationID,
+                Servicios_Orden: {
+                    MDM_Servicio_Orden: payload.inputMessage.OrderFulfilment.SalesOrderLine map ((sol, index) -> do{
+                        var serviceTypeCode = if (p('global.createOrder.filters.raiz') contains sol.ItemReference.PrimaryClassificationCode) "RAIZ" else if (p('global.createOrder.filters.paquete') contains sol.ItemReference.PrimaryClassificationCode) "PAQUETE" else ""
+                        ---
+                        {
+                        (Empaquetado: sol.ItemReference.Name) if (p('global.createOrder.filters.paquete') contains sol.ItemReference.PrimaryClassificationCode),
+                        Tipo_Producto: serviceTypeCode,
+                        Producto: sol.ItemReference.Name,
+                        Oferta_Plan: (varChildrenItems filter (p('global.createOrder.filters.ofertas') contains $.ItemReference.PrimaryClassificationCode))[0].ItemReference.Name,
+                        Valor_Oferta: ((varChildrenItems filter (p('global.createOrder.filters.ofertas') contains $.ItemReference.PrimaryClassificationCode))[0].AltKey filter ($.AltKeyName == "Price"))[0].AltKeyValue,
+                        Numero_Conexion: ((varChildrenItems filter (p('global.createOrder.filters.numerosConexion') contains $.ItemReference.PrimaryClassificationCode)).SpecificationGroupXA filter ($.Name == "Numero"))[0].Value,
+                        IMEI: (sol.AltKey filter ($.AltKeyName == "IMEI"))[0].AltKeyValue,
+                        (Service_Class: sol.ItemReference.PrimaryClassificationCode) if (!isBlank(sol.ItemReference.PrimaryClassificationCode)),
+                        Integration_Id: sol.Identification.ID,
+                        Duracion_Servicio: null, //vacio
+                        Accion: sol.ServiceActionCode,
+                        Estado: p('global.createOrder.estadoServicio'),
+                        Fecha_Estado: payload.inputMessage.OrderFulfilment.SalesOrder.OrderDateTime,
+                        Portabilidad_Fecha: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "ScheduledPortbilityDate"))[0].AltKeyValue,
+                        Portabilidad_Operador_Origen: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName == "DonorOperator"))[0].AltKeyValue,
+                        (Financiamiento_Porcentaje_Maximo: (sol.SpecificationGroupXA filter ($.Name == "PORCENTAJE FINANCIAMIENTO"))[0].Value) if (!isEmpty(sol.SpecificationGroupXA filter ($.Name == "PORCENTAJE FINANCIAMIENTO"))),
+                        (Financiamiento_Valor_Financiado: null), //vacio
+                        (Financiamiento_Numero_Cuotas: (sol.SpecificationGroupXA filter ($.Name == "RVC CUOTAS"))[0].Value) if (!isEmpty(sol.SpecificationGroupXA filter ($.Name == "RVC CUOTAS"))),
+                        Fecha_Activacion: null, //vacio
+                        (Modalidad_Servicio: (sol.SpecificationGroupXA filter ($.Name == "METODO DE PAGO"))[0].Value) if (!isEmpty(sol.SpecificationGroupXA filter ($.Name == "METODO DE PAGO"))),
+                        Direccion_Instalacion: sol.ServiceAddress.LineOne,
+                        (Pais_Instalacion: sol.ServiceAddress.CountryName) if (!isBlank(sol.ServiceAddress.CountryName)),
+                        (Ciudad_Instalacion: sol.ServiceAddress.CityCode) if (!isBlank(sol.ServiceAddress.CityCode)),
+                        Estrato_Instalacion: (sol.AltKey filter ($.AltKeyName == "Estrato"))[0].AltKeyValue,
+                        Tecnologia: if(serviceTypeCode == "RAIZ") if(isEmpty((sol.SpecificationGroupXA filter ($.Name == "TECNOLOGIA ETB"))[0].Value)) "LTE" else if((sol.SpecificationGroupXA filter ($.Name == "TECNOLOGIA ETB"))[0].Value == "") "FO" else if((sol.SpecificationGroupXA filter ($.Name == "TECNOLOGIA ETB"))[0].Value == "CU") "COBRE" else (sol.SpecificationGroupXA filter ($.Name == "TECNOLOGIA ETB"))[0].Value else "",
+                        (Fecha_Vencimiento_Ejecucion: payload.SalesOrder.DeliveryDateTime) if (!isBlank(payload.SalesOrder.DeliveryDateTime)),
+                        Cuenta_Facturacion: null, //vacio
+                        Ciclo_Facturacion: payload.inputMessage.BillingProcess.CustomerBill.InvoicingCycle,
+                        Ciclo_OCS: null, //vacio
+                        (Ciclo_OCS_Codigo: null), //vacio
+                        Id_Servicio_Sistema_Origen: sol.Custom.AssetIntegrationID,
+                        Id_Servicio_Sistema_Origen_Padre: sol.ParentSalesOrderLineIdentification.ID,
+                        (Agenda_Fecha: payload.inputMessage.OrderFulfilment.Scheduling.TechnicalVisitDate) if (!isBlank(payload.inputMessage.OrderFulfilment.Scheduling.TechnicalVisitDate)),
+                        (Agenda_Franja: payload.inputMessage.OrderFulfilment.Scheduling.TimeZone) if (!isBlank(payload.inputMessage.OrderFulfilment.Scheduling.TimeZone)),
+                        Promocion_Servicio: {
+                            MDM_Servicio_Promocion: payload.inputMessage.OrderFulfilment.SalesOrderLine filter (($.ParentSalesOrderLineIdentification.ID == sol.Identification.ID) and ($.ItemReference.PrimaryClassificationCode contains "Promo")) map ((promos, index) -> {
+                                Nombre_Promocion: promos.ItemReference.Name,
+                                Atributos_Promocion: {
+                                    MDM_Servicio_Atributo_Promocion: promos.SpecificationGroupXA map ((attr, index) -> {
+                                        Atributo: attr.Name,
+                                        Valor: attr.Value,
+                                        (Accion: attr.ActionCode) if (!isBlank(attr.ActionCode))
+                                    })
+                                }
+                            })
+                        },
+                        Descuento_Servicio: {
+                            MDM_Servicio_Descuento: sol.SpecificationGroupXA filter (startsWith($.Name, "RVC DESCUENTO")) map ((dto, index) -> do{
+                                var dtoSuffix = trim(substringAfter(dto.Name, "RVC DESCUENTO"))
+                                var durationSuffix = if (dtoSuffix == "INICIAL") "" else dtoSuffix
+                                ---
+                                {
+                                Nombre_Descuento: dto.Name,
+                                Duracion_Descuento: (sol.SpecificationGroupXA filter ($.Name == ("RVC DESCUENTO " ++ durationSuffix)))[0].Value,
+                                Valor_Descuento: dto.Value,
+                                Fecha_Inicio_Descuento: null //vacio
+                                }
+                            })
+                        },
+                        Caracteristica_Servicio: {
+                            MDM_Servicio_Caracteristica: (sol.AltKey map ((ak, index) -> {
+                                Caracteristica: ak.AltKeyName,
+                                Valor_Caracteristica: ak.AltKeyValue,
+                                (Accion: ak.ActionCode) if (!isBlank(ak.ActionCode))
+                            })) ++ (sol.SpecificationGroupXA  map ((sgxa, index) -> { 
+                                Caracteristica: sgxa.Name,
+                                Valor_Caracteristica: sgxa.Value,
+                                (Accion: sgxa.ActionCode) if (!isBlank(sgxa.ActionCode))
+                            }))
+                        }
+                        }
+                    })
+                },
+                Caracteristicas_Orden: {
+                    MDM_Orden_Caracteristica: (payload.inputMessage.OrderFulfilment.AltKey filter ($.AltKeyName != "NOMBRES" and $.AltKeyName != "APELLIDOS")) map ((dynamics, index) -> {
+                        Caracteristica: dynamics.AltKeyName,
+                        Valor_Caracteristica: dynamics.AltKeyValue
+                    })
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Prepare MDM_INTEGRATION_MSG input" doc:id="05e1195e-7f7d-464e-8fe1-6802f0390779" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	IdentificadorPeticion: correlationId,
+	SistemaOrigen: "MULESOFT",
+	TipoOperacion: 10,
+	Peticion: write(payload, "application/xml"),
+	FechaPeticion: (((now() >> "America/Bogota") as DateTime) as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS"}),
+	IP: attributes.headers.'x-real-ip' default "",
+	Observaciones: ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="f74322f6-811e-4b27-9e5e-e736022b0653" name="post-mdmIntegrationMsg-client"/>
+	</sub-flow>
+</mule>

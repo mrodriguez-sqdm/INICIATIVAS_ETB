@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-cases-orchestratorSub_Flow" doc:id="2a60410c-370f-4c4a-92c7-079b69716fc4" >
+		<flow-ref doc:name="Go to get sources" doc:id="e914a78c-82a3-4562-8aa6-d59bacd35c36" name="patch-cases-get-sources" target="sources"/>
+		<choice doc:name="Choice" doc:id="60cf1c9d-77f3-4a8f-a248-baf1117554e6">
+			<when expression="#[!(vars.sources contains attributes.headers.source)]">
+				<ee:transform doc:name="BAD_REQUEST" doc:id="a7b02e53-61e2-4fe9-98b6-e853320eac5e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Wrong source",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": "Wrong source"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Go to salesforce-sapi" doc:id="e03694e4-1838-49fa-9502-65c3960f6481" name="patch-cases-salesforce-clientSub_Flow" target="salesforce_resp" />
+				<ee:transform doc:name="Set response" doc:id="7e2b78c8-d0b0-41b1-a08e-d054aaf1bcad">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Id": vars.salesforce_resp.Envelope.Body.WSActualizarObjetoResponse.result.Id,
+  "ConsecutivoCaso": vars.salesforce_resp.Envelope.Body.WSActualizarObjetoResponse.result.Name
+}]]></ee:set-payload>
+			</ee:message>
+					<ee:variables>
+					</ee:variables>
+		</ee:transform>
+					</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="patch-cases-get-sources" doc:id="7f90d944-5b10-402f-8034-13af4210cf9a" >
+		<ee:transform doc:name="Set sources" doc:id="9dfa0b01-2427-4edd-bf0b-e670e1aadd5d">
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+p('global.update-cases.validSources') splitBy " | "]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

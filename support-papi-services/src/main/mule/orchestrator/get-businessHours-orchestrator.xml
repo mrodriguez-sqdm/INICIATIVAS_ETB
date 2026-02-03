@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-businessHours-orchestratorSub_Flow" doc:id="0a2e95a2-5a7d-4bf1-a375-bc787f0ac3ff" >
+		<flow-ref doc:name="Go to client" doc:id="29111429-ffe3-4872-bdce-a69e358e9d83" name="get-businessHours-salesforce-clientSub_Flow" target="salesforce_resp" />
+		<ee:transform doc:name="Transform Message" doc:id="d1278977-97f9-4393-b60b-54ba9dd07bca" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="salesforce_resp" ><![CDATA[%dw 2.0
+output application/json
+---
+if((typeOf(vars.salesforce_resp) as String) == "String")
+read(vars.salesforce_resp default "")
+else vars.salesforce_resp]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="d60a0869-5898-4d3f-b0c9-d8738ae25a64">
+			<when expression='#[vars.salesforce_resp.errorCode != null]'>
+				<ee:transform doc:name="Error" doc:id="68e4dfbf-4dfe-4bfe-8919-7187f0b2d3d9">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cause = ((vars.salesforce_resp default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": if(sizeOf(vars.salesforce_resp)!=1) "INTERNAL_SERVER_ERROR" else vars.salesforce_resp[0].errorCode  default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set response" doc:id="26ccfe7d-439f-4c8c-a06e-9523ed58661d">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	esHabil: if((vars.headers.source != "WebChatEmpresas" and vars.headers.source != "WhatsappEmpresas") or (vars.salesforce_resp.esHabil == null)) "" else vars.salesforce_resp.esHabil,
+	proximoDiaHabil: if((vars.headers.source != "WebChatEmpresas" and vars.headers.source != "WhatsappEmpresas") or (vars.salesforce_resp.proximoDiaHabil == null)) "" else vars.salesforce_resp.proximoDiaHabil
+}]]></ee:set-payload>
+							</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[200]]></ee:set-variable>
+					</ee:variables>
+						</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

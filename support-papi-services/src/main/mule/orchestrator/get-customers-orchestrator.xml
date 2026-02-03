@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-customers-orchestratorSub_Flow" doc:id="80694862-95f6-46b4-acfd-13a9b1b085a7" >
+		<flow-ref doc:name="Go to salesforce-sapi" doc:id="66b5eee9-0ecd-4cb9-b028-0992231908fd" name="get-customers-salesforce-clientSub_Flow" target="salesforce_resp"/>
+		<choice doc:name='Error in Salesforce?' doc:id="cfb7597f-7672-431d-8ff1-9d50f1208566" >
+			<when expression='#[vars.salesforce_resp.done != true]'>
+				<set-variable value="#[true]" doc:name="Set salesforce error" doc:id="b745b4c9-fceb-448e-97d5-43a1b7a2d4d9" variableName="salesforce_error"/>
+				<flow-ref doc:name="Go to SUMA" doc:id="4c8f188d-3249-431f-ac6f-d45d932f8e23" name="get-customers-remedy"/>
+			</when>
+			<otherwise>
+				<choice doc:name='source is not "WebChatEmpresas" or "WhatsappEmpresas" and not records found' doc:id="8e45dc0e-b03e-422c-9666-c14abbe86757">
+					<when expression='#[(vars.headers.source != "WebChatEmpresas" and&#10;vars.headers.source != "WhatsappEmpresas") or vars.salesforce_resp.records[0].Id == null]'>
+						<set-variable value="#[false]" doc:name="Set salesforce error" doc:id="0f87fa02-103b-446a-b63e-f2a4c0a69696" variableName="salesforce_error" />
+						<flow-ref doc:name="Go to SUMA" doc:id="ecf0e2c3-7506-4381-ae37-06f1188ebef6" name="get-customers-remedy" />
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Set response" doc:id="0505628f-c733-44fc-81f1-e0d64a0de39a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    id: vars.salesforce_resp.records[0].Id,
+    tipoDocumento: vars.salesforce_resp.records[0].Tipodedocumento__c,
+    numeroDocumento: vars.salesforce_resp.records[0].External_Id__c,
+    nombre: vars.salesforce_resp.records[0].Name,
+    uen: vars.salesforce_resp.records[0].UEN__c,
+    segmento: vars.salesforce_resp.records[0].Segmento__c,
+    esquemaAtencion: vars.salesforce_resp.records[0].Esquema_de_Atencion__c,
+    clienteValor: vars.salesforce_resp.records[0].ValordeCliente__c,
+    ejecutivoExperiencia: vars.salesforce_resp.records[0].Administrador_Experiencia_al_Cliente__c,
+    bloqueo: vars.salesforce_resp.records[0].LTE_CausalRestriccionVenta__c,
+    integrationId: vars.salesforce_resp.records[0].Identificador_Cuenta_Mongo__c
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-customers-remedy" doc:id="2d253f25-3b32-4f1b-a660-6a12771368e9" >
+		<try doc:name="Try" doc:id="5b9c63ec-4935-422f-b91c-31f499cdf84f" >
+			<flow-ref doc:name="Go to remedy-sapi" doc:id="9c4f0417-d1e9-4364-9811-9618deeaacbd" name="get-customers-remedy-clientSub_Flow" target="remedy_resp" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="62ad454c-099d-4700-a61f-d277ef0985bf" >
+					<ee:transform doc:name="Set error response" doc:id="e463b9ab-0a7c-4d44-948f-afcd2889080f" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="remedy_resp" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Envelope": {
+    "Body": {
+      "Get_CustomerResponse": {
+        "Get_CustomerResult": {
+          "WSResponseHeader": {
+            "service": {
+              "status": "ERROR",
+              "responseDate": now(),
+              "statusDetail": error.errorMessage.payload.message.message
+            }
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Error in Remedy?" doc:id="a6c1ff88-ce76-482b-8a25-03ef683870f0">
+			<when expression='#[vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseHeader.service.status != "OK"]'>
+				<choice doc:name="Error in Salesforce?" doc:id="82e1d995-93fe-4055-95d0-3c85b067aa22" >
+					<when expression="#[vars.salesforce_error]">
+						<ee:transform doc:name="Error" doc:id="fa38f146-4ac5-4fa7-9f2a-eaf8f6e4ead0">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cause = [
+    {
+      "origin": "remedy-sapi-services",
+      "message": vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseHeader.service.statusDetail default ""
+    }
+] ++  ((vars.salesforce_resp default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Error" doc:id="af398984-a28c-4d9f-a04d-1f4f43382ac2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "No se encontraron datos",
+  "cause": [
+    {
+      "origin": "salesforce-sapi-services",
+      "message": ""
+    },
+    {
+      "origin": "remedy-sapi-services",
+      "message": vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseHeader.service.statusDetail default ""
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+						<ee:transform doc:name="Set response" doc:id="f9bf390e-a8be-4882-bc67-e03944b61198">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    id: vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.Id,
+    tipoDocumento: vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.Tipo_Documento,
+    numeroDocumento: vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.Numero_Identificacion,
+    nombre: upper(vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.Nombre_Cliente),
+    uen: vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.UEN,
+    segmento: upper(vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.Segmento_UEN),
+    esquemaAtencion: upper(vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.EsquemaAtencion),
+    clienteValor: upper(vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.Cliente_Valor),
+    ejecutivoExperiencia: vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.Ejecutivo_Experiencia,
+    bloqueo: "",
+    integrationId: vars.remedy_resp.Envelope.Body.Get_CustomerResponse.Get_CustomerResult.WSResponseBody.Id
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

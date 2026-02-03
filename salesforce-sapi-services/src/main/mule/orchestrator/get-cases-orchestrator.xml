@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="get-cases-orchestratorSub_Flow" doc:id="110e13fd-2fab-400d-aab2-4dd6fe2d49d8" >
+		<flow-ref doc:name="Get Token" doc:id="00ac6649-7014-44e1-8f4c-b2d7b7609ea7" name="get-salesforce-token-clientSub_Flow" target="token_response" />
+		<choice doc:name="Choice" doc:id="9197ac22-1081-4e27-9727-0a684e4648a0">
+			<when expression='#[vars.headers.source == "WebMailEmpresas"]'>
+				<ee:transform doc:name="queryParams" doc:id="082f2a01-454a-4e97-bb2c-dd7783893ab5" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="fecha_inicio" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams.fecha_inicio]]></ee:set-variable>
+						<ee:set-variable variableName="accountId" ><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.idCuenta
+]]></ee:set-variable>
+						<ee:set-variable variableName="caseNumber" ><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.numeroCaso
+]]></ee:set-variable>
+						<ee:set-variable variableName="fecha_fin" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams.fecha_fin]]></ee:set-variable>
+						<ee:set-variable variableName="cant_registros" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams.cant_registros default "20"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="f9ff3b9f-8990-49fa-ac65-d1aa874716bc" >
+					<when expression="#[vars.accountId == null]" >
+						<ee:transform doc:name="BAD_REQUEST" doc:id="c0c974ee-f62f-4704-a3e5-672e835a260b" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "idCuenta must not be empty",
+  "cause": [
+    {
+      "origin": "salesforce-sapi-services",
+      "message": "idCuenta is empty"
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Set query" doc:id="534f2454-29ff-4a33-ad4b-a22888eb3097" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="query" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.caseNumber != null)
+	(p('salesforce.servicioWhatsApp.queryCases.select') ++ 
+	p('salesforce.servicioWhatsApp.queryCases.caseNumber') ++ 
+	p('salesforce.servicioWhatsApp.queryCases.limit1')) 
+	replace '{accountId}' with vars.accountId 
+	replace '{caseNumber}' with vars.caseNumber
+else 
+	(
+		p('salesforce.servicioWhatsApp.queryCases.select') ++
+		(if(vars.fecha_inicio == null) "" else p('salesforce.servicioWhatsApp.queryCases.fechaRadicacionInicio')) ++
+		(if(vars.fecha_fin == null) "" else p('salesforce.servicioWhatsApp.queryCases.fechaRadicacionFin')) ++
+		p('salesforce.servicioWhatsApp.queryCases.limitCantRegistros')
+	)
+	replace '{accountId}' with vars.accountId
+	replace '{caseNumber}' with vars.caseNumber
+	replace '{fecha_inicio}' with vars.fecha_inicio
+	replace '{fecha_fin}' with vars.fecha_fin
+	replace '{cant_registros}' with vars.cant_registros]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Go to client" doc:id="a02875d7-5c54-4e7c-ba18-e69a216c600a" name="get-cases-clientSub_Flow" />
+					</otherwise>
+				</choice>
+			</when>
+			<when expression='#[vars.headers.source == "WebChatEmpresas" or vars.headers.source == "WhatsappEmpresas"]' >
+				<choice doc:name="Choice" doc:id="bee41f95-87c9-4155-b02a-c3a51e95ba2b">
+			<when expression="#[attributes.queryParams.idCuenta != null and attributes.queryParams.numeroCaso != null]">
+				<ee:transform doc:name="queryParams" doc:id="869ef85e-d577-4c2e-9e69-615148f47d70">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="accountId"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.idCuenta
+]]></ee:set-variable>
+				<ee:set-variable variableName="caseNumber"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.numeroCaso
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<ee:transform doc:name="Set query" doc:id="7ade7480-d1d9-4084-8896-efa58c08d544">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="query"><![CDATA[%dw 2.0
+output application/java
+---
+(p('salesforce.servicioWhatsApp.queryCases.select') ++ 
+	p('salesforce.servicioWhatsApp.queryCases.caseNumber') ++ 
+	p('salesforce.servicioWhatsApp.queryCases.limit1')) 
+	replace '{accountId}' with vars.accountId 
+	replace '{caseNumber}' with vars.caseNumber]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to client" doc:id="6a0bac7f-9aae-4070-82f2-7ae54cae27b0" name="get-cases-clientSub_Flow" />
+			</when>
+					<when expression="#[attributes.queryParams.numeroCaso == null]" >
+						<ee:transform doc:name="BAD_REQUEST" doc:id="d9f67f08-ebeb-4779-a2c5-9a70f1254897">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "numeroCaso must not be empty",
+  "cause": [
+    {
+      "origin": "salesforce-sapi-services",
+      "message": "idCuenta is empty"
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="BAD_REQUEST" doc:id="9241fdc7-b2a8-4e13-8dd3-6e1a541c6fb5" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "idCuenta must not be empty",
+  "cause": [
+    {
+      "origin": "salesforce-sapi-services",
+      "message": "idCuenta is empty"
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+		
+</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="BAD_REQUEST" doc:id="54f3a87c-f84c-42ef-bc16-d2862fbd671f">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Wrong source",
+  "cause": [
+    {
+      "origin": "salesforce-sapi-services",
+      "message": "Wrong source"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Transform Message" doc:id="091db74a-1052-4362-a7c1-c1bc1eff6218" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

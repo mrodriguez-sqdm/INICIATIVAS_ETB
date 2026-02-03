@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
+    <http:listener-config name="salesforce-sapi-services-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="${http.private.port}" />
+    </http:listener-config>
+    <apikit:config name="salesforce-sapi-services-config" api="salesforce-sapi-services.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+	<http:request-config name="HTTP_Request_configuration_mongo" doc:name="HTTP Request configuration" doc:id="0fe2ea92-612d-4bd4-acd4-ffd9e06c816a" basePath="${mongo-sapi-services.basepath}" responseTimeout="${configurationTimeout.mongo-sapi}">
+		<http:request-connection host="${mongo-sapi-services.host}" port="${mongo-sapi-services.port}" connectionIdleTimeout="999999"/>
+	</http:request-config>
+	<configuration-properties doc:name="Configuration properties" doc:id="f2b47c4e-0e03-4d01-b4e7-69d38d2a019a" file="${env}-properties.yaml" />
+	<api-gateway:autodiscovery apiId="${salesforce.autodiscovery}" ignoreBasePath="true" doc:name="API Autodiscovery" doc:id="c1845316-30b4-4b41-8f50-08aed446e77c" flowRef="salesforce-sapi-services-main" />
+	<http:request-config name="HTTP_Request_configuration_salesforce_services" doc:name="HTTP Request configuration" doc:id="5ba82f95-9ba7-4e84-a595-4efc2cdba94c" responseTimeout="${configurationTimeout.salesforce.services}">
+		<http:request-connection host="${salesforce.services.host}" protocol="${salesforce.services.protocol}"/>
+	</http:request-config>
+	<http:request-config name="HTTP_Request_configuration_token_salesforce" doc:name="HTTP Request configuration" doc:id="2536e5e8-37bf-4ded-ac9c-81dcda092767" basePath="${salesforce.provitional-endpoint.basePath}" responseTimeout="${configurationTimeout.salesforce.provitional}">
+		<http:request-connection protocol="HTTPS" host="${salesforce.provitional-endpoint.host}" port="${salesforce.provitional-endpoint.port}" />
+	</http:request-config>
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="046a0034-191e-4350-b973-cc36106774c1" fetchAllApexRestMetadata="true">
+		<salesforce:jwt-connection consumerKey="${salesforce.jwt.consumer}" keyStore="${salesforce.jwt.store}" storePassword="${salesforce.jwt.pass}" certificateAlias="${salesforce.jwt.alias}" principal="${salesforce.jwt.principal}" tokenEndpoint="${salesforce.jwt.endpoint}" connectionTimeout="${configurationTimeout.salesforce.jwt}" connectionTimeoutUnit="MILLISECONDS" loginRequestTimeout="${configurationTimeout.salesforce.jwt}" loginRequestTimeoutUnit="MILLISECONDS">
+			<reconnection >
+				<reconnect count="3" />
+			</reconnection>
+		</salesforce:jwt-connection>
+	</salesforce:sfdc-config>
+	<http:request-config name="HTTP_Request_configuration_token" doc:name="HTTP Request configuration" doc:id="eae927d0-6f25-460f-be1e-f3e1a992d6c6" responseTimeout="${configurationTimeout.salesforce.security-token}">
+		<http:request-connection host="#[p('salesforce.security.host')]" protocol="HTTPS"/>
+	</http:request-config>
+	<ee:object-store-caching-strategy name="Caching_Strategy" doc:name="Caching Strategy" doc:id="51000eb9-4464-4cf3-8876-b43e9840d498" objectStore="Object_store" />
+	<os:object-store name="Object_store" doc:name="Object store" doc:id="32b395cc-94f8-46b2-b5c1-94114ff37e2a" entryTtl="115" entryTtlUnit="MINUTES"/>
+	<http:request-config name="HTTP_Request_configuration_token_salesforce_sf" doc:name="HTTP Request configuration" doc:id="bab8d5b3-96be-40d6-beb4-fc348b9b949b" responseTimeout="${configurationTimeout.salesforce.services}">
+		<http:request-connection protocol="${salesforce.rest-token.protocol}" host="${salesforce.rest-token.host}" />
+	</http:request-config>
+	<ee:object-store-caching-strategy name="Caching_Strategy_sf" doc:name="Caching Strategy" doc:id="134804c5-13cc-4048-848c-9fe28af872b9" keyGenerationExpression="#[vars.sfdcToken]" >
+		<os:private-object-store maxEntries="10" entryTtl="10" entryTtlUnit="MINUTES" expirationInterval="5" persistent="false"/>
+	</ee:object-store-caching-strategy>
+	<import doc:name="Import" doc:id="1b502f15-e01d-4d67-b825-1b1d3820b079" file="error-handler.xml" />
+	<import doc:name="Import" doc:id="df21fccb-89e1-4f90-811a-1e01f7b12bef" file="loggin.xml" />
+	<import doc:name="Import" doc:id="67e275b8-4da6-4d6c-9218-5e3d26927602" file="audits-sapi-client.xml" />
+	<import doc:name="Import" doc:id="69cdb036-f380-47c3-8b08-79da37494369" file="etb-common-lib.xml" />
+</mule>

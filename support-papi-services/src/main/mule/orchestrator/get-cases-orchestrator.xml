@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-cases-validate-source" doc:id="2e522fd1-31ba-4867-ae47-3a5ec91c2dc5" >
+		<ee:transform doc:name="Validate source" doc:id="99adc014-a6d8-4264-aa0a-13cf2ee3adc9" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="isValidSource" ><![CDATA[%dw 2.0
+output application/java
+var sources = ["WebChatEmpresas", "WhatsappEmpresas", "WebMailEmpresas"]
+---
+sources contains vars.headers.source]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="265f4f00-fdc2-4675-b082-e32cbf0076af" >
+			<when expression="#[!(vars.isValidSource default true)]" >
+				<ee:transform doc:name="BAD_REQUEST" doc:id="dc5538fe-4e25-4b84-95cd-a6da98a89bc8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Wrong source",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": "Wrong source"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to get-cases-go-to-client" doc:id="8db3ac6b-0573-49d1-a111-db125b116243" name="get-cases-validate-numeroCaso" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-cases-validate-numeroCaso" doc:id="93ddd6ae-122d-4ba9-bfe9-207973cea9bc" >
+		<choice doc:name="Choice" doc:id="426aea5b-466b-4e37-80e3-bfba44adb1c0" >
+			<when expression='#[(["WebChatEmpresas", "WhatsappEmpresas"] contains vars.headers.source) and (isEmpty(vars.queryParams.numeroCaso))]'>
+				<ee:transform doc:name="BAD_REQUEST" doc:id="83bab798-35f6-4fb7-a777-e78b6bbb5d9f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "numeroCaso must not be empty",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": "numeroCaso is empty"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Validate numeroCaso" doc:id="eca3c586-04c3-4738-aa85-dd3cfd778af7">
+			<ee:message>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="isValid" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.queryParams.numeroCaso != null) (
+    if(vars.queryParams.numeroCaso matches (/^[0-9]*$/)) true else false
+)
+else true]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<choice doc:name="Choice" doc:id="0d22473b-1364-4f2b-93f5-ece92ff8f848">
+			<when expression="#[!(vars.isValid default true)]">
+				<ee:transform doc:name="BAD_REQUEST" doc:id="a82c1896-30f6-41cc-a5cd-19f7b623c5dd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "numeroCaso must be a number",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": "Wrong numeroCaso"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Go to get-cases-go-to-client" doc:id="ac327b27-aa43-4067-a587-c1b05c8563eb" name="get-cases-orchestratorSub_Flow" />
+			</otherwise>
+		</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-cases-orchestratorSub_Flow" doc:id="7fa0596e-1375-4fe5-8d42-152fcdfb5cb7" >
+		<flow-ref doc:name="Go to client" doc:id="29111429-ffe3-4872-bdce-a69e358e9d83" name="get-cases-salesforce-clientSub_Flow" target="salesforce_resp" />
+		<choice doc:name="Choice" doc:id="d60a0869-5898-4d3f-b0c9-d8738ae25a64">
+			<when expression="#[vars.salesforce_resp.done != true]">
+				<ee:transform doc:name="Error" doc:id="68e4dfbf-4dfe-4bfe-8919-7187f0b2d3d9">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cause = ((vars.salesforce_resp default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": if(sizeOf(vars.salesforce_resp)!=1) "INTERNAL_SERVER_ERROR" else vars.salesforce_resp[0].errorCode default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause ++ [{
+      "origin": "support-papi-services",
+      "message": ""
+    }]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<choice doc:name="Choice" doc:id="3dd43509-24f3-41a5-b894-3d22a09fe843">
+					<when expression='#[vars.headers.source == "WebMailEmpresas"]'>
+						<ee:transform doc:name="Set response" doc:id="8fb58cd3-a880-4b94-bc4d-f95105e4afcc">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "res-casos": vars.salesforce_resp.records map {
+        "id": $.Id,
+        "cun": $.CodigouniconumericoCUN__c,
+        "consecutivo": $.CaseNumber,
+        "estado": $.Status,
+        "asunto": $.Subject,
+        "fechaRadicacion": $.Fechaderadicacion__c,
+        "tipoCaso": upper($.TipoCaso__c),
+        "descripcionAvance": $.DescripcionAvance__c
+    }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Set response" doc:id="26ccfe7d-439f-4c8c-a06e-9523ed58661d">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	id: vars.salesforce_resp.records[0].Id,
+	cun: vars.salesforce_resp.records[0].CodigouniconumericoCUN__c,
+	consecutivo: vars.salesforce_resp.records[0].CaseNumber,
+	estado: vars.salesforce_resp.records[0].Status,
+	asunto: vars.salesforce_resp.records[0].Subject,
+	fechaRadicacion: vars.salesforce_resp.records[0].Fechaderadicacion__c,
+	tipoCaso: upper(vars.salesforce_resp.records[0].TipoCaso__c),
+	descripcionAvance: vars.salesforce_resp.records[0].DescripcionAvance__c
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

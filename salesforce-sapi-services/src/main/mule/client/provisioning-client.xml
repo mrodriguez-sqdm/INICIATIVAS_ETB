@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="provisioning-clientSub_Flow" doc:id="b0c979e5-3d7e-4817-9248-41eb423ac1d5" >
+		<logger level="INFO" doc:name="Before Salesforce" doc:id="1ab0bfeb-1bbc-4f54-bcf6-363973f1ea80" message="#[payload]"/>
+		<async doc:name="Async" doc:id="4e868f57-fa94-4740-a860-f7d742109075">
+			<flow-ref doc:name="Process Logging" doc:id="4a47d1b8-418d-44e8-958e-518a34e6c9cd" name="loggin-client-call" />
+		</async>
+		<try doc:name="Try" doc:id="32561528-013d-4612-8d43-8a0e88af0814" >
+			<salesforce:invoke-apex-rest-method doc:name="Request to Salesforce" doc:id="6aea7841-65ef-4920-bb0f-749efd216130" config-ref="Salesforce_Config" className="#[p('salesforce.jwt.provisioning.className')]" methodName="#[p('salesforce.jwt.provisioning.classMethod')]"/>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e8daf9ac-4f6d-4316-9f63-381c83598a84" type="SALESFORCE:INVALID_INPUT, SALESFORCE:INVALID_RESPONSE, SALESFORCE:MUTUAL_AUTHENTICATION_FAILED, SALESFORCE:NOT_FOUND, SALESFORCE:RETRY_EXHAUSTED, EXPRESSION, STREAM_MAXIMUM_SIZE_EXCEEDED">
+					<set-variable value="#['true']" doc:name="ERROR" doc:id="a559a52d-6742-435c-92b2-c33f54ef9669" variableName="ERROR"/>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="8d1efd3f-70df-423e-a636-78fbdb81e420" type="SALESFORCE:CONNECTIVITY, SALESFORCE:TIMEOUT">
+					<logger level="INFO" doc:name="Logger" doc:id="d0631f83-91d4-4fff-b20b-1d210b550414" message="a" />
+					<async doc:name="Async" doc:id="01665227-71f2-4a4f-9338-e00c3b4b5f31" >
+						<flow-ref doc:name="RetryManager" doc:id="7ac5a2cb-8d23-4425-8c3d-a71ae374d4b7" name="RetryManager-provisioning-notification" />
+					</async>
+					<set-variable value="#[error]" doc:name="ERROR" doc:id="89a79f5c-3f79-44d4-a3f3-0b6214024520" variableName="ERROR" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="58b0583b-a27f-42a8-ae23-189d1deb4639">
+			<flow-ref doc:name="Process Logging" doc:id="6590e3be-3118-4179-8e2a-8a99b9805f05" name="loggin-client-call" />
+		</async>
+		<choice doc:name="Choice" doc:id="5954fc1c-5975-40df-b11f-3d149c4613ff" >
+			<when expression="#[vars.ERROR == null]" >
+				<ee:transform doc:name="Set response PASS" doc:id="1591396a-42bf-4746-a4ed-b7933136de1f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[output application/json
+---
+{
+  "resultado": "Positivo",
+  "fecha": now (),
+  "descripcion": ""
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set response FAIL" doc:id="548cb944-171a-4a94-8c36-e7f852ac8702" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "resultado": "Negativo",
+  "fecha": now(),
+  "ordenOM": vars.ordenOM,
+  "descripcion": if (vars.error.errorType.asString == "SALESFORCE:CONNECTIVITY") vars.error.detailedDescription else ""
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<async doc:name="Async" doc:id="dff12625-e205-4f3e-985c-2aaeec57d39f" >
+			<flow-ref doc:name="Final Logging" doc:id="c399d637-58b5-4f6a-9315-742b7bb4cf66" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<sub-flow name="RetryManager-provisioning-notification" doc:id="2c7d66e2-10e5-456b-b5b4-3e0dac7f91db" >
+		<set-variable value="#[payload]" doc:name="Payload to Variable" doc:id="d6c57ff8-9258-4e97-bd68-01ebeedf08f6" variableName="body" />
+		<try doc:name="Try" doc:id="926766ba-ff9f-47e8-998d-90fe7b06f890" >
+			<until-successful maxRetries="#[p('retryManager.numberOfRetries')]" doc:name="Until Successful" doc:id="56f545a9-5eee-4679-8975-1751444c940e" millisBetweenRetries="#[p('retryManager.timeBetween')]">
+			<async doc:name="Async" doc:id="be78f691-fe92-4f12-99a3-4cefad39aace">
+					<set-payload value="Reintentando solicitud hacia Salesforce..." doc:name="Reprocess Msg" doc:id="c7e283e2-7c62-4219-869a-cf04a72e1b39" />
+					<flow-ref doc:name="Process Logging" doc:id="e8c6c39f-5c53-4a59-9ee5-2e01c6ae1fa2" name="loggin-client-call" target="response" />
+				</async>
+				<salesforce:invoke-apex-rest-method className="#[p('salesforce.jwt.viability.className')]" methodName="#[p('salesforce.jwt.viability.classMethod')]" doc:name="Request to salesforce" doc:id="08a008f8-2aee-46cc-9312-9b540774bbf2" config-ref="Salesforce_Config" />
+		</until-successful>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="18a60794-fcba-475b-a58f-e1dcd8a526a4" >
+					<ee:transform doc:name="Setting Payload" doc:id="760fe767-02a8-4c6b-b8fe-eb42db0212ca" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+"Se alcanzo el número máximo de reintentos (" ++ p('retryManager.numberOfRetries') ++ ") para establecer la conexión con Salesforce."]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<async doc:name="Async" doc:id="64d354bc-0bbf-4637-8076-30a2ba2fa08b" >
+						<flow-ref doc:name="Error Logging" doc:id="9dcdf7db-a6fe-497d-b5d0-818d911fccea" name="loggin-client-call" target="response" />
+					</async>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

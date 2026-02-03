@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-createNewTask-orchestratorSub_Flow" doc:id="51a939d8-f898-4513-8bec-c1dd4c80ec2d" >
+		<ee:transform doc:name="Transform to XML" doc:id="ff8abba1-91aa-4011-b6b8-37c1f896e1e1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns urn urn:ETB_Integracion_CreateNewTask_RMD
+---
+{
+  soapenv#"Envelope": {
+    soapenv#"Header": {
+      urn#"AuthenticationInfo": {
+        urn#"userName": p('mdm-remedy.credentials.user'),
+        urn#"password": p('mdm-remedy.credentials.password')
+      }
+    },
+    soapenv#"Body": {
+      urn#"Create_Task": {
+        urn#"IN_Accion": vars.initial.accion,
+        urn#"IN_Nombre_Task": vars.initial.nombreTask,
+        urn#"IN_Resumen_Task": vars.initial.resumenTask,
+        urn#"IN_Notas_Task": vars.initial.notasTask,
+        urn#"IN_Numero_Incidente": vars.incidenceId,
+        urn#"IN_ID_CasoSalesforce": vars.initial.idCasoSalesforce,
+        urn#"IN_ID_Tarea": vars.initial.idTarea,
+        urn#"IN_Grupo_Asg": vars.initial.grupoAsg
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go To Remedy apps" doc:id="badc6f80-d7bd-4e3e-9e7e-cb4eb4523c58" name="post-createNewTask-serviceSub_Flow"/>
+		<ee:transform doc:name="Transform Message to JSON" doc:id="8b3e299d-e5b1-4673-95d1-38c4cd674e14" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="0153c56c-5acb-4b1f-8140-7086a30a3175" >
+			<when expression='#[payload.Envelope.Body.Create_TaskResponse.OUT_Aknowledge == "OK"]'>
+				<set-variable value="201" doc:name="Set httpStatus 201" doc:id="5fa95542-289b-4a7d-881e-84cf1928d77c" variableName="httpStatus"/>
+				<ee:transform doc:name="Response 201" doc:id="21040fc1-cb3e-4a7c-acc6-57476b85a822" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "createNewTaskOut": {
+    "status": "Exitoso",
+    "tasksId": payload.Envelope.Body.Create_TaskResponse.OUT_ID_Task
+}
+
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="Set httpStatus 500" doc:id="fc8cc136-db1b-4fad-a909-8999f0e95f0a" variableName="httpStatus"/>
+				<raise-error doc:name="Raise error" doc:id="1a11cba6-bbf6-4bdd-b44e-8ab0ed6ddfbb" type="SOAP:UNEXPECTED_ERROR" description="#[payload.Envelope.Body.Create_TaskResponse.OUT_Error]"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

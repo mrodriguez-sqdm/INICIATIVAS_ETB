@@ -1,0 +1,348 @@
+#%RAML 1.0
+title: support-papi-services
+version: v1
+uses:
+  support-api-services: libraries/support-api-services-library.raml
+mediaType: 
+  - application/json
+
+traits:
+  security_client_id: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/security-clientid/1.0.2/security-clientid.raml
+  request_headers: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.5/tibcorequestheaders.raml
+  imeiParams: !include traits/imeiQueryParameters.raml
+
+types: 
+  whatsappResponse: !include /datatypes/responses/get-cases.raml
+  webMailResponse:  !include /datatypes/responses/get-cases-web-mail.raml
+
+
+/v1:
+  /imei:
+    get:
+      is: [security_client_id, request_headers,imeiParams]
+      displayName: Consulta IMEI
+      description: Consulta de los IMEI Registrados
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/ResponseBDO.raml
+  /contacts:
+    get:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait
+      displayName: Get contact
+      description: Retrieve information about a contact from salesforce
+      queryParameters:
+        tipoDocumento:
+          type: string
+          enum: ["CC","CE","TI"]
+          example: "CC"
+        numeroDocumento:
+          type: string
+          maxLength: 30
+          example: "12314235"
+          pattern: ^[0-9]*$
+        idCuenta: 
+          type: string
+          maxLength: 50
+          example: "A123_342H-909L"
+          pattern: ^[a-zA-Z0-9\-_]+$
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/get-contacts.raml
+        500:
+          body:
+            application/json:
+              example: !include examples/responses/error-500.json
+        409:
+          body:
+            application/json:
+              example: !include examples/responses/error-409.json
+    post:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait
+      displayName: Create contact
+      description: Create contact in Salesforce and SUMA
+      body:
+        application/json:
+          type: !include datatypes/requests/post-contacts.raml
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include datatypes/responses/post-contacts.raml
+        500:
+          body:
+            application/json:
+              example: !include examples/responses/error-500.json
+        409:
+          body:
+            application/json:
+              example: !include examples/responses/error-409.json          
+  /customers:
+    get:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait
+      displayName: Get customer
+      description: Retrieve information about a customer from salesforce or SUMA
+      queryParameters:
+        tipoDocumento:
+          type: string
+          enum: ["CC","CE","TI","NIT","RUT"]
+          example: "CC"
+        numeroDocumento:
+          type: string
+          maxLength: 30
+          example: "12314235"
+          pattern: ^[0-9]*$
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/get-customers.raml
+        500:
+          body:
+            application/json:
+              example: !include examples/responses/error-500.json
+        409:
+          body:
+            application/json:
+              example: !include examples/responses/error-409.json              
+  /cases:
+    get:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait 
+      displayName: Get cases
+      description: Retrieve information about a case from salesforce
+      queryParameters:
+        numeroCaso:
+          type: string
+          maxLength: 30
+          example: "12314235"
+          required: false
+        idCuenta: 
+          type: string
+          maxLength: 50
+          example: "A123_342H-909L"
+          pattern: ^[a-zA-Z0-9\-_]+$
+        fecha_inicio:
+          type: date-only
+          example: "2025-02-24"
+          required: false
+        fecha_fin:
+          type: date-only
+          example: "2025-02-26"
+          required: false
+        cant_registros:
+          type: number
+          example: 200
+          required: false
+          minimum: 1
+          maximum: 200
+      responses:
+        200:
+          body:
+            application/json:
+              type: whatsappResponse | webMailResponse
+    post:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait
+      displayName: Create cases
+      description: Create a case in Salesforce
+      body:
+        application/json:
+          type: !include /datatypes/requests/post-cases.raml
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include /examples/responses/post-cases.json
+        500:
+          body:
+            application/json:
+              example: !include /examples/responses/error-500.json
+        409:
+          body:
+            application/json:
+              example: !include /examples/responses/error-409.json
+    patch:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait
+      displayName: Update cases
+      description: Update a case in Salesforce
+      body:
+        application/json:
+          type: !include /datatypes/requests/patch-cases.raml
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/responses/patch-cases.raml
+  /digitalRecord:
+    get:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait      
+      displayName: Get Digital Record
+      description: Retrieve information about a Digital record from salesforce
+      queryParameters:
+        idCanal: 
+          type: string
+          maxLength: 50
+          example: "A123_342H-909L"
+          pattern: ^[a-zA-Z0-9\-_]+$
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/responses/digitalRecord.raml
+        500:
+          body:
+            application/json:
+              example: !include /examples/responses/error-500.json
+    post:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait           
+      displayName: Get Digital Record
+      description: Create information about a Digital record in salesforce          
+      body:
+        application/json:
+          type: !include /datatypes/requests/post-digitalRecord.raml
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include /datatypes/responses/post-digitalRecord.raml
+        500:
+          body:
+            application/json:
+              example: !include /examples/responses/error-500.json
+        400:
+          body:
+            application/json:
+              example: !include /examples/responses/error-400-digitalRecord.json    
+  /businessHours:
+    get:
+      is:
+        - request_headers
+      displayName: Get business hours
+      description: Retrieve information about a business hours from salesforce
+      queryParameters:
+        canal:
+          type: string
+          maxLength: 50
+          pattern: ^[a-zA-Z0-9\-_]+$
+          example: "WhatsApp"
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/responses/get-businessHours.raml
+  /asset:
+    get:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait      
+      displayName: Get asset
+      description: Retrieve information about a asset from salesforce
+      queryParameters:
+        IdCuenta:
+          type: string
+          maxLength: 50
+          pattern: ^[a-zA-Z0-9-_]+$
+          example: "0014000000uczFLAAY"
+        IdServicio:
+          type: string
+          maxLength: 255
+          pattern: ^[a-zA-Z0-9]+$
+          example: "CAV30CI1027505"
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/responses/get-asset.raml
+        500:
+          body:
+            application/json:
+              example: !include /examples/responses/error-500.json        
+  /delivery:
+    post:
+      displayName: "Salesforce Delivery"
+      description: "Unico servicio para ejecutar los tramites de Corporativo"
+      is: [security_client_id, request_headers]
+      body:
+        application/json:
+          type: !include datatypes/requests/post-delivery.raml
+          example: !include examples/requests/post-delivery.json
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/post-delivery.raml
+              
+  /agreements:
+    /create:
+      post:
+        is: [security_client_id, request_headers]
+        displayName: Generacion de Acuerdo
+        description: Generacion de Acuerdo
+        body:
+          application/json:
+            type: !include /datatypes/requests/post-createAgreements.raml
+        responses:
+          200:
+            body:
+                application/json:            
+                  type: !include /datatypes/responses/post-createAgreements.raml
+    /retrieve:
+      post:
+        is: [security_client_id, request_headers]
+        displayName: Obtencion de Respuesta de Acuerdo (WebHook)
+        description: Obtencion de Respuesta de Acuerdo (WebHook)
+        body:
+          application/xml:
+            type: !include /datatypes/requests/post-retrieveAgreements.raml
+        responses:
+          200:
+            body:
+              application/json:  
+                type: !include /datatypes/responses/post-retrieveAgreements.raml
+  /account:
+    get:
+      is:
+        - request_headers
+        - support-api-services.security-clientid-trait
+      displayName: Get account
+      description: Retrieve information about a account from salesforce
+      queryParameters:
+        tipo_documento:
+          type: string
+          enum: ["CC","CE","TI","NIT","RUT"]
+          required: false
+          example: "CC"
+        numero_documento:
+          type: string
+          maxLength: 30
+          required: false
+          example: "12314235"
+          pattern: ^[0-9]*$
+        correo_electronico:
+          type: string
+          pattern: ^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$
+          required: false
+          example: "prueba@etb.com"
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/responses/get-account.raml

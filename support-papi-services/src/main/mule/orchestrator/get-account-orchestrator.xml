@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-account-validate-source" doc:id="7fa0596e-1375-4fe5-8d42-152fcdfb5cb7" >
+		<ee:transform doc:name="Set sources" doc:id="20fdbca5-06f5-4fd0-85cc-38e9ea6fe63a" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="sources" ><![CDATA[%dw 2.0
+output application/json
+---
+p('global.get-account.sources') splitBy " | "]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="3dd43509-24f3-41a5-b894-3d22a09fe843">
+			<when expression='#[vars.sources contains vars.headers.source]'>
+				<flow-ref doc:name="Go to get-account-validate-params" doc:id="16cf6212-d166-4579-9aed-09f64d143b1a" name="get-account-validate-params"/>
+					</when>
+			<otherwise>
+				<ee:transform doc:name="BAD_REQUEST" doc:id="fae23018-d3e4-41c3-8df9-d95b0b028b29">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Wrong source",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": "Wrong source"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="get-account-validate-params" doc:id="9d31c7d9-5799-4b4c-8e50-eb103fe6a64d" >
+		<choice doc:name="Choice" doc:id="4a95ec1b-693c-4954-9f96-3f60a675eb6b">
+					<when expression="#[!isEmpty(vars.queryParams.tipo_documento) and !isEmpty(vars.queryParams.numero_documento)]">
+				<flow-ref doc:name="Go to get-account-by-document-type-and-number" doc:id="f8a349d9-f709-4024-9e3f-1c21d92c534a" name="get-account-by-document-type-and-number"/>
+					</when>
+			<when expression="#[!isEmpty(vars.queryParams.correo_electronico)]">
+				<flow-ref doc:name="Go to get-account-by-email" doc:id="d4741438-83a3-48b6-a55d-8644d8d73def" name="get-account-by-email"/>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="BAD_REQUEST" doc:id="bf8b367d-f50a-4950-b674-fe12539ec6fd">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Invalid tipo_documento, numero_documento or correo_electronico",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": "Wrong source"
+    }
+  ]
+}]]></ee:set-payload>
+									</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+					</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="get-account-by-document-type-and-number" doc:id="f5877386-2bfa-46ff-b14e-d2344989e5dc" >
+		<flow-ref doc:name="Go to client" doc:id="29111429-ffe3-4872-bdce-a69e358e9d83" target="salesforce_resp" name="get-account-salesforce-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="d60a0869-5898-4d3f-b0c9-d8738ae25a64">
+			<when expression="#[vars.salesforce_resp.done != true]">
+				<ee:transform doc:name="Salesforce Error" doc:id="68e4dfbf-4dfe-4bfe-8919-7187f0b2d3d9">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cause = ((vars.salesforce_resp default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": if(sizeOf(vars.salesforce_resp)!=1) "INTERNAL_SERVER_ERROR" else vars.salesforce_resp[0].errorCode default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause ++ [{
+      "origin": "support-papi-services",
+      "message": ""
+    }]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+							<when expression="#[vars.salesforce_resp.totalSize == 0]">
+								<ee:transform doc:name="NOT_FOUND" doc:id="497bb5a0-0c92-49b5-b0a4-c9cc6d190fd7">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Account does not exist",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": ""
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+							</when>
+							<otherwise>
+								<ee:transform doc:name="Set response" doc:id="ca46943c-fbda-4d96-b7b8-5f872a14b09a">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "id": vars.salesforce_resp.records[0].Id,
+    "tipoDocumento": vars.salesforce_resp.records[0].Tipodedocumento__c,
+    "numeroDocumento": vars.salesforce_resp.records[0].External_Id__c,
+    "nombre": upper(vars.salesforce_resp.records[0].Name),
+    "uen": vars.salesforce_resp.records[0].UEN__c,
+    "segmento": upper(vars.salesforce_resp.records[0].Segmento__c),
+    "integrationId": vars.salesforce_resp.records[0].Identificador_Cuenta_Mongo__c
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-account-by-email" doc:id="fd370385-ccc8-49f7-9c1a-6bcd4e1e01ae" >
+		<flow-ref doc:name="Go to client" doc:id="4917c602-721d-4c47-a544-6f7636f49564" target="salesforce_resp" name="get-account-email-salesforce-clientSub_Flow" />
+		<ee:transform doc:name="Set compositeResponse" doc:id="82544a5f-02c7-4710-8bea-53fd3a0644fd">
+									<ee:message>
+									</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="compositeResponse"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    refContactGet: (vars.salesforce_resp.compositeResponse filter $.referenceId == "refContactGet")[0].body,
+    refAccountGet: (vars.salesforce_resp.compositeResponse filter $.referenceId == "refAccountGet")[0].body
+}]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+		<choice doc:name="Choice" doc:id="b236e21f-1a08-435c-a967-70ef930ae987">
+									<when expression="#[vars.compositeResponse.refContactGet.done != true]">
+										<ee:transform doc:name="Salesforce Error" doc:id="08aeead3-bb20-45ef-8f9d-311fc5cdfc1b">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cause = ((vars.compositeResponse.refContactGet default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": if(sizeOf(vars.compositeResponse.refContactGet)!=1) "INTERNAL_SERVER_ERROR" else vars.compositeResponse.refContactGet[0].errorCode default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause ++ [{
+      "origin": "support-papi-services",
+      "message": ""
+    }]
+}]]></ee:set-payload>
+											</ee:message>
+											<ee:variables>
+												<ee:set-variable variableName="httpStatus"><![CDATA[409]]></ee:set-variable>
+											</ee:variables>
+										</ee:transform>
+									</when>
+									<when expression="#[vars.compositeResponse.refContactGet.totalSize == 0]">
+										<ee:transform doc:name="NOT_FOUND" doc:id="72196769-039b-41d9-ade5-f9f1809ff289">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Contact does not exist",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": ""
+    }
+  ]
+}]]></ee:set-payload>
+											</ee:message>
+											<ee:variables>
+												<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+											</ee:variables>
+										</ee:transform>
+									</when>
+									<when expression="#[vars.compositeResponse.refAccountGet.done != true]">
+										<ee:transform doc:name="Salesforce Error" doc:id="122becdc-4240-447b-8fac-c6a8ec0211c6">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cause = ((vars.compositeResponse.refAccountGet default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": if(sizeOf(vars.compositeResponse.refAccountGet)!=1) "INTERNAL_SERVER_ERROR" else vars.compositeResponse.refAccountGet[0].errorCode default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause ++ [{
+      "origin": "support-papi-services",
+      "message": ""
+    }]
+}]]></ee:set-payload>
+											</ee:message>
+											<ee:variables>
+												<ee:set-variable variableName="httpStatus"><![CDATA[409]]></ee:set-variable>
+											</ee:variables>
+										</ee:transform>
+									</when>
+									<when expression="#[vars.compositeResponse.refAccountGet.totalSize == 0]">
+										<ee:transform doc:name="NOT_FOUND" doc:id="30f9ec93-4bcd-4950-9286-16a8709eb309">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Account does not exist",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": ""
+    }
+  ]
+}]]></ee:set-payload>
+											</ee:message>
+											<ee:variables>
+												<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+											</ee:variables>
+										</ee:transform>
+									</when>
+									<otherwise>
+										<ee:transform doc:name="Set response" doc:id="4c0f86f8-889c-4d65-9518-257c73f12cfd">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "id": vars.compositeResponse.refAccountGet.records[0].Id,
+    "tipoDocumento": vars.compositeResponse.refAccountGet.records[0].Tipodedocumento__c,
+    "numeroDocumento": vars.compositeResponse.refAccountGet.records[0].External_Id__c,
+    "nombre": upper(vars.compositeResponse.refAccountGet.records[0].Name),
+    "uen": vars.compositeResponse.refAccountGet.records[0].UEN__c,
+    "segmento": upper(vars.compositeResponse.refAccountGet.records[0].Segmento__c),
+    "integrationId": vars.compositeResponse.refAccountGet.records[0].Identificador_Cuenta_Mongo__c
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									</otherwise>
+								</choice>
+	</sub-flow>
+</mule>

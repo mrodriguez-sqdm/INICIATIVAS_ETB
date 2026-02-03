@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-account-orchestratorSub_Flow" doc:id="7fa0596e-1375-4fe5-8d42-152fcdfb5cb7" >
+		<flow-ref doc:name="Get Token" doc:id="36220674-92dd-4f7b-88f4-b1f9eb025ed3" name="get-salesforce-token-clientSub_Flow" target="token_response" />
+		<ee:transform doc:name="Set query" doc:id="f2a5935e-a1b2-48e0-b4ff-da1495485755">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="query"><![CDATA[%dw 2.0
+output application/java
+---
+p('salesforce.servicioWhatsApp.queryAccount')
+replace '{tipoDocumento}' with vars.queryParams.tipo_documento
+replace '{numeroDocumento}' with vars.queryParams.numero_documento]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="4917c602-721d-4c47-a544-6f7636f49564" target="salesforce_resp" name="get-account-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="279d3d83-e50e-4856-8537-36bfdad4faf3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.salesforce_resp]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-account-email-orchestratorSub_Flow" doc:id="4e3989eb-5af4-43d3-b149-c39ed8d2c556" >
+		<flow-ref doc:name="Get Token" doc:id="35b46fd5-8943-4cc3-b51c-f987f04b6aa6" name="get-salesforce-token-clientSub_Flow" target="token_response" />
+		<ee:transform doc:name="Set request body" doc:id="78346d39-77fc-49e4-b9cd-a1a1c85e0e3f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"compositeRequest" : [
+		{
+			"method" : "GET",
+			"url" : (p('salesforce.servicioWhatsApp.urlPostCases') ++ "?q=" ++ p('salesforce.servicioWhatsApp.queryAccountEmailContact')) replace '{correo_electronico}' with vars.queryParams.correo_electronico,
+			"referenceId" : "refContactGet"
+		},
+		{
+			"method" : "GET",
+			"url" : p('salesforce.servicioWhatsApp.urlPostCases') ++ "?q=" ++ p('salesforce.servicioWhatsApp.queryAccountEmailAccount'),
+			"referenceId" : "refAccountGet"
+		}
+	]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="244ace81-8008-42fe-a757-ffb71d0b5d4c" name="get-account-email-clientSub_Flow" target="salesforce_resp" />
+		<ee:transform doc:name="Transform Message" doc:id="25c3e219-15f9-4df0-a966-9f7f3be89de7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.salesforce_resp]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

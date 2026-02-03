@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="post-createAgreements-orchestratorSub_Flow" doc:id="5b9b02ee-9527-4636-bc18-cbf2181a4bf6" >
+		<flow-ref doc:name="Get documents Azure storage" doc:id="c6bf49cf-9fff-41ef-81f0-bb7c86371ef7" name="azure-sapi-get-documents-storage" target="documento" targetValue="#[payload.documento]"/>
+		<ee:transform doc:name="Request AZSign" doc:id="8308ba8f-9ae7-45eb-b6c8-b9afa982b9ac" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="requestAZSign" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "requiereCopiaAsesor": vars.initialPayload.requiereCopiaAsesor,
+  "emailAsesor":  vars.initialPayload.emailAsesor,
+  "usuario": vars.initialPayload.usuario,
+  "fechaVencimientoAcuerdo": vars.initialPayload.fechaVencimientoAcuerdo,
+  "destinatarios": vars.initialPayload.destinatarios,
+  "mensajeCorreo": vars.initialPayload.mensajeCorreo,
+  "documento": [
+    {
+      "nombreDocumento": vars.initialPayload.nombreAcuerdo,
+      "contenidoDocumento": vars.documento,
+      "tipoDocumento": "application/pdf"
+    }
+  ]
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Create AZSign" doc:id="82f80bbe-eec5-459a-8ca1-fd79b569636b" name="sisext-sapi-create-AZSign" target="responseAZSign"/>
+		<choice doc:name="Choice" doc:id="53e00c70-75ec-46d9-ba6a-13552005c16b" >
+			<when expression='#[vars.responseAZSign.Codigo == "OK"]'>
+				<os:store doc:name="Store data docs" doc:id="f665b3df-9685-48e7-9c8a-7dd41db5433b" key="#[vars.responseAZSign.AcuerdoRsp.AcuerdoId]" objectStore="Object_store_acuerdos">
+						<os:value><![CDATA[#[{
+	acuerdoId: vars.responseAZSign.AcuerdoRsp.AcuerdoId,
+	container : payload.documento[0].contenidoDocumento,
+	fileName : payload.documento[0].nombreDocumento,
+	usuario: payload.usuario
+}]]]></os:value>
+					</os:store>
+				<try doc:name="Try" doc:id="515a0555-7b47-45f2-b6ab-30ae3ff41d34" >
+					<ee:transform doc:name="Request save agrement" doc:id="fa6c350b-9116-43a9-a730-0771115e5714">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var fecha = now() >> "America/Bogota"
+---
+{
+	TipoDocumento: vars.initialPayload.tipoDocumento,
+	NumeroDocumento: vars.initialPayload.numeroDocumento,
+	UsuarioEnvioAcuerdo: vars.initialPayload.usuario,
+	FechaEnvio: fecha,
+	NumeroOrden: vars.initialPayload.numeroOrden,
+	FirmantesAcuerdo: (vars.initialPayload.destinatarios map ($.nombre ++ " " ++ $.apellido)) joinBy  ", ",
+	EmailDestinatario: (vars.initialPayload.destinatarios map ($.email)) joinBy  ", ",
+	EmailCopia: vars.initialPayload.emailAsesor,
+	NumeroAcuerdo: vars.responseAZSign.AcuerdoRsp.AcuerdoId,
+	NombreAcuerdo: vars.responseAZSign.AcuerdoRsp.AcuerdoNombre,
+	TipoTramite: vars.initialPayload.tipoTramite,
+	EstadoTramite: "En Tramite",
+	FechaVencimientoTramite: vars.responseAZSign.AcuerdoRsp.Vencimiento,
+	FechaRegistroTramite: fecha,
+	FechaActualizacionTramite: fecha
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					<flow-ref doc:name="Save agreement" doc:id="b6f740b9-af63-4170-8af6-534fea5c043c" name="mongo-sapi-post-agreement" />
+					<set-variable value="false" doc:name="Set error" doc:id="775468ad-fae8-4895-a20c-1aa5036f0248" variableName="error" />
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d6137bba-644f-4a00-aabb-1b3397f2a738" >
+							<set-variable value="true" doc:name="Set error" doc:id="05cc776f-c27b-41f3-b428-abe34f98a6d4" variableName="error"/>
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<ee:transform doc:name="Response" doc:id="2ff2fd60-3a56-4132-a268-20e8ab11f2cc">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if(vars.error)
+{
+	codigo: "500",
+	descripcionRespuesta: "Error: Se envío email pero hubo un error al insertar el acuerdo: " ++ vars.responseAZSign.AcuerdoRsp.AcuerdoId
+}
+else
+{
+	codigo: "200" ,
+	numeroAcuerdo: vars.responseAZSign.AcuerdoRsp.AcuerdoId,
+	descripcionRespuesta: "Exitoso"
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.error) 500 else 200
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Response error" doc:id="0d67029c-f1fb-4cfa-96a4-afc9bb027b69" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500" ,
+	descripcionRespuesta: "Error: " ++ vars.responseAZSign.Codigo ++ " " ++ vars.responseAZSign.Descripcion
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<async doc:name="Async" doc:id="06054699-a868-4a2a-a5b2-76f7b7c9868a">
+			<ee:transform doc:name="Transform Message" doc:id="7a0a7034-3f91-4e06-9757-46d0dc795067">
+							<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "numero_solicitud_app": correlationId,
+  "tipo_auditoria": "Insercion",
+  "aplicacion": app.name,
+  "iniciativa": "3505",
+  "ip": vars.attributes.headers.host,
+  "navegador": ((write(vars.attributes.headers."sec-ch-ua","application/java")) splitBy (";"))[0],
+  "nombre_equipo": vars.attributes.remoteAddress,
+  "usuario": vars.initialPayload.usuario,
+  "operacion": vars.attributes.rawRequestUri,
+  "resultado_operacion": payload.descripcionRespuesta,
+  "fecha_solicitud": now() >> "America/Bogota"
+}]]></ee:set-payload>
+			</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Register traceability" doc:id="f49aa2fb-cae7-4447-ae85-2bc551428294" name="trazabilidad-common-sapi-servicesSub_Flow" />
+		</async>
+	</sub-flow>
+</mule>

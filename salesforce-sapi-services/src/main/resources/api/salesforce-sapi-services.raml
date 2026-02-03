@@ -1,0 +1,611 @@
+#%RAML 1.0
+title: salesforce-sapi-services
+mediaType:
+  - application/xml
+  - application/json
+
+protocols:
+  - HTTP
+
+description: This API is the one required to obtain a valid token to consume SFDC services
+baseUri: http://salesforce-sapi-services-{env}.us-e2.cloudhub.io/salesforce/
+
+traits:
+  security_client_id: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/security-clientid/1.0.2/security-clientid.raml
+  tibco-headers: !include /exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.5/tibcorequestheaders.raml
+
+uses:
+  updateViability-lib: libraries/updateViability-library.raml
+  provisioning-lib: libraries/provisioning-library.raml
+  syncProduct-lib: libraries/syncProduct-library.raml
+
+/v1:
+  /objectSF:
+    patch:
+      is: [security_client_id, tibco-headers]
+      displayName: Update object salesforce
+      description: Updates the received object in the salesforce system
+      body:
+        application/json:
+          type: !include dataTypes/request/updateObjectSFType.raml
+          example: !include examples/request/updateObjectSFExample.raml            
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include dataTypes/response/updateObjectSF200Response.raml
+        500:
+          body:
+            application/json:
+              type: !include dataTypes/response/updateObjectSF500Response.raml
+  /complaints:
+    /{case-number}:
+      /status:
+        uriParameters:
+          case-number:
+            example: "02285387"
+        patch:
+          is: [security_client_id, tibco-headers]
+          displayName: Ajuste SAAW         
+          body:
+            application/json:
+              type: !include dataTypes/request/ajusteSAAWInput.raml
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include dataTypes/response/ajusteSAAWResponse200.raml
+            500:
+              body: 
+                application/json:
+                  type: !include dataTypes/response/ajusteSAAWResponse500.raml
+        get:
+          is: [security_client_id, tibco-headers]
+          displayName: Consulta SAAW
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include dataTypes/response/consultaSAAWResponse200.raml
+            500: 
+              body:
+                application/json:
+                  type: !include dataTypes/response/consultaSAAWResponse500.raml
+  /viability:
+    post:
+      is: [security_client_id, tibco-headers]
+      displayName: Send viabilities to salesforce
+      description: This method/operation send the viabilities response to salesforce
+      body:
+        application/json:
+          type: !include dataTypes/request/viability.raml
+      responses:
+        200:
+          body:
+            application/json: 
+              type: !include dataTypes/response/viabilityResponse.raml
+
+    patch:
+      is: [security_client_id, tibco-headers]
+      displayName: Process to update viability data from manager.
+      description: Service to process a request of viability from manager to salesforce.
+      body:
+        application/json:
+          type: updateViability-lib.updateViability
+          example: !include examples/request/updateRequest.json
+      responses:
+        200:
+          body:
+            type: !include dataTypes/response/updateRequestResponse.raml
+            example: !include examples/response/updateRequestResponse.json
+    /order:
+      /{orderNumber}:
+        /status:
+          put:
+            is: [security_client_id, tibco-headers]
+            displayName: Update viability order status by orderNumber
+            description: Update the status of a viability in salesforce by his subAgrupador
+            body:
+              application/json:
+                type: !include dataTypes/request/updateStatus.raml
+            responses:
+              200:
+                body:
+                  type: !include dataTypes/response/updateStatusResponse.raml
+    /item:
+      /{idItem}:
+        /status:
+          put:
+            is: [security_client_id, tibco-headers]
+            displayName: Update viability order status by orderNumber and idItem
+            description: Update the status of a viability in salesforce by his subAgrupador and idItem
+            body:
+              application/json:
+                type: !include dataTypes/request/updateStatus.raml
+            responses:
+              200:
+                body:
+                  type: !include dataTypes/response/updateStatusResponse.raml
+              
+       
+
+  /provisioning:
+    post:
+      is: [security_client_id, tibco-headers]
+      displayName: Send provisionings to salesforce
+      description: This method/operation send the provisioning response to salesforce
+      body:
+        application/json:
+          type: !include dataTypes/request/provisioning.raml
+          example: !include examples/request/responseProvisioningRequestExample.json
+      responses:
+        200:
+          body:
+            application/json: 
+              type: !include dataTypes/response/provisioningResponse.raml
+    patch:
+      is: [security_client_id, tibco-headers]
+      displayName: Process to update provisioning data from manager.
+      description: Service to process a request of provisioning from manager to salesforce.
+      body:
+        application/json:
+          type: provisioning-lib.updateProvisioning
+          example: !include examples/request/updateRequest.json
+      responses:
+        200:
+          body:
+            type: !include dataTypes/response/updateRequestResponse.raml
+            example: !include examples/response/updateRequestResponse.json
+    /order:
+      /{orderNumber}:
+        /status:
+          put:
+            is: [security_client_id, tibco-headers]
+            displayName: Update provisioning order status by orderNumber
+            description: Update the status of a provisioning in salesforce by his idOrigen
+            queryParameters: 
+              positiveState:
+                description: Is a Positive State?
+                type: string | nil
+                required: false
+                example: "true-false"
+            body:
+              application/json:
+                type: !include dataTypes/request/updateStatus.raml
+            responses:
+              200:
+                body:
+                  type: !include dataTypes/response/updateStatusResponse.raml
+  
+  /syncProduct:
+    patch:
+      is: [security_client_id, tibco-headers]
+      displayName: Process a list of assets from manager to be updated in salesforce.
+      description: Service to update assets received from manager to salesforce.
+      body:
+        application/json:
+          type: syncProduct-lib.syncProduct
+          example: !include examples/request/syncProduct.json
+      responses:
+        200:
+          body:
+            type: !include dataTypes/response/updateRequestResponse.raml
+            example: !include examples/response/updateRequestResponse.json
+  
+  /validarPortafolio:
+    get:
+      is: [security_client_id, tibco-headers]
+      displayName: Validate portfolio
+      description: Validate portfolio
+      queryParameters:
+        id:
+          type: string
+          example: "12345647"
+        idType:
+          type: string
+          example: "2"
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                result:
+                  type: string
+                  example: "1"
+                  
+  /security:
+    /access_token:
+      post:
+        is: [security_client_id, tibco-headers]
+        displayName: Obtain access token
+        description: This method/operation returns a valid token
+        responses:
+          200:
+            description: Token valid returned by Salesforce 
+            body:
+              application/json: 
+                type: !include examples/response/tokenSalesforce.raml
+      put:  
+        is: [security_client_id, tibco-headers]
+        displayName: Obtain access token
+        description: This method/operation returns a valid token after invalidating the last token
+        responses:
+          200:
+            description: Token valid returned by Salesforce 
+            body:
+              application/json: 
+                type: !include examples/response/tokenSalesforce.raml
+      get:
+        is: [security_client_id, tibco-headers]
+        displayName: Obtain access token
+        description: This method/operation returns a valid token whether the user and password are correct
+        queryParameters:
+            username:
+              example: Example
+              type: string
+            password:
+              example: Example
+              type: string 
+        responses:
+          200:
+            description: Token valid returned by Salesforce 
+            body:
+              application/xml: 
+                example: !include /examples/response/loginResponse.xml
+  /sendNotification:
+    post:
+      is: [security_client_id, tibco-headers]
+      displayName: Enviar notificaciones via Whatsapp
+      description: Enviar notificaciones via Whatsapp
+      body:
+        application/json:
+          type: !include /dataTypes/request/sendNotification.raml
+          example: !include /examples/request/sendNotification.json
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                message: 
+                  type: string
+                  example: "OK"
+        401:
+          body:
+            application/json:
+              properties:
+                message: 
+                  type: string
+                  example: "Session expired or invalid"
+                errorCode:
+                  type: string
+                  example: "INVALID_SESSION_ID"
+        500:
+          body:
+            application/json:
+              properties:
+                message: 
+                  type: string
+                  example: "System.DmlException"
+                errorCode:
+                  type: string
+                  example: "APEX_ERROR"
+  /support:              
+    /contacts:
+      get:
+        is: [security_client_id, tibco-headers]      
+        displayName: Get contact
+        description: Retrieve information about a contact from salesforce
+        queryParameters:
+          tipoDocumento:
+            type: string
+            enum: ["CC","CE","TI"]
+            example: "CC"
+          numeroDocumento:
+            type: string
+            maxLength: 30
+            example: "12314235"           
+          idCuenta: 
+            type: string
+            maxLength: 50
+            example: "A123_342H-909L"
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include dataTypes/response/get-contacts.raml
+          500:
+            body:
+              application/json:
+                example: !include examples/response/error-500.json
+          409:
+            body:
+              application/json:
+                example: !include examples/response/error-409.json      
+      post:
+        is: [security_client_id, tibco-headers]      
+        displayName: Create contact
+        description: Create contact in Salesforce and SUMA
+        body:
+          application/json:
+            type: !include dataTypes/request/post-contacts.raml
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include dataTypes/response/post-contacts.raml
+          500:
+            body:
+              application/json:
+                example: !include examples/response/error-500.json
+          409:
+            body:
+              application/json:
+                example: !include examples/response/error-409.json
+    /customers:
+      get:
+        is: [security_client_id, tibco-headers]      
+        displayName: Get customer
+        description: Retrieve information about a customer from salesforce or SUMA
+        queryParameters:
+          tipoDocumento:
+            type: string
+            enum: ["CC","CE","TI","NIT","RUT"]
+            example: "CC"
+          numeroDocumento:
+            type: string
+            maxLength: 30
+            example: "12314235"          
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include dataTypes/response/get-customers.raml
+          500:
+            body:
+              application/json:
+                example: !include examples/response/error-500.json
+          409:
+            body:
+              application/json:
+                example: !include examples/response/error-409.json        
+    /cases:
+      get:
+        is: [security_client_id, tibco-headers]
+        displayName: Get cases
+        description: Retrieve information about a case from salesforce
+        queryParameters:
+          numeroCaso:
+            type: string
+            maxLength: 30
+            example: "12314235" 
+            required: false           
+          idCuenta: 
+            type: string
+            maxLength: 50
+            example: "A123_342H-909L"
+            pattern: ^[a-zA-Z0-9\-_]+$
+          fecha_inicio:
+            type: date-only
+            example: "2025-02-24"
+            required: false
+          fecha_fin:
+            type: date-only
+            example: "2025-02-26"
+            required: false
+          cant_registros:
+            type: number
+            example: 200
+            required: false
+            minimum: 1
+            maximum: 200
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/response/get-cases.json
+      post:
+        is: [security_client_id, tibco-headers]
+        displayName: Create cases
+        description: Create a case in Salesforce
+        body:
+          application/json:
+            type: !include /dataTypes/request/post-cases.raml
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include /examples/response/post-cases.json
+      patch:
+        is: [security_client_id, tibco-headers]
+        displayName: Update cases
+        description: Update a case in Salesforce
+        body:
+          application/json:
+            type: !include /dataTypes/request/patch-cases.raml
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/response/patch-cases.json
+      /id:   
+        get:
+          is: [security_client_id, tibco-headers]
+          displayName: Get cases by id
+          description: Retrieve information about a case from salesforce
+          queryParameters:
+            caseId:
+              type: string
+              maxLength: 50
+              example: "A123_342H-909L"
+              pattern: ^[a-zA-Z0-9\-_]+$
+          responses:
+            200:
+              body:
+                application/json:
+                  example: !include /examples/response/get-cases.json
+    /digitalRecord:
+      get:        
+        is: [security_client_id, tibco-headers] 
+        displayName: Get Digital Record
+        description: Retrieve information about a Digital record from salesforce
+        queryParameters:
+          idCanal: 
+            type: string
+            maxLength: 50
+            example: "A123_342H-909L"
+            pattern: ^[a-zA-Z0-9\-_]+$
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /dataTypes/response/digitalRecord.raml
+          500:
+            body:
+              application/json:
+                example: !include /examples/response/error-500.json
+      post:
+        is: [security_client_id, tibco-headers]     
+        displayName: Get Digital Record
+        description: Create information about a Digital record in salesforce          
+        body:
+          application/json:
+            type: !include /dataTypes/request/post-digitalRecord.raml
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include /dataTypes/response/post-digitalRecord.raml
+          500:
+            body:
+              application/json:
+                example: !include /examples/response/error-500.json
+          400:
+            body:
+              application/json:
+                example: !include /examples/response/error-400-digitalRecord.json   
+    /businessHours:
+      get:
+        is: [security_client_id, tibco-headers]
+        displayName: Get business hours
+        description: Retrieve information about a business hours from salesforce
+        queryParameters:
+          canal:
+            type: string
+            maxLength: 50
+            pattern: ^[a-zA-Z0-9\-_]+$
+            example: "WhatsApp"
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /examples/response/get-businessHours.json
+    /asset:
+      get:
+        is: [security_client_id, tibco-headers]
+        displayName: Get asset
+        description: Retrieve information about a asset from salesforce
+        queryParameters:
+          IdCuenta:
+            type: string
+            maxLength: 50
+            pattern: ^[a-zA-Z0-9-_]+$
+            example: "0014000000uczFLAAY"
+          IdServicio:
+            type: string
+            maxLength: 255
+            pattern: ^[a-zA-Z0-9]+$
+            example: "CAV30CI1027505"
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /dataTypes/response/get-asset.raml
+          500:
+              body:
+                application/json:
+                  example: !include /examples/response/error-500.json
+    /account:
+      get:
+        is: [security_client_id, tibco-headers]
+        displayName: Get account
+        description: Retrieve information about a account from salesforce
+        queryParameters:
+          tipo_documento:
+            type: string
+            enum: ["CC","CE","TI","NIT","RUT"]
+            required: true
+            example: "CC"
+          numero_documento:
+            type: string
+            maxLength: 30
+            required: true
+            example: "12314235"
+            pattern: ^[0-9]*$
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/response/get-account.json
+      /email:
+        get:
+          is: [security_client_id, tibco-headers]
+          displayName: Get account by email
+          description: Retrieve information about a account from salesforce by email
+          queryParameters:
+            correo_electronico:
+              type: string
+              pattern: ^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$
+              required: true
+              example: "prueba@etb.com"
+          responses:
+            200:
+              body:
+                application/json:
+                  example: !include /examples/response/get-accountEmail.json
+  /portability:
+    /notify:
+      post:
+        is: [security_client_id, tibco-headers]
+        displayName: Notificar a sf portabilidad
+        description: Enviar notificaciones de portabilidad a Salesforce 
+        body:
+          application/json:
+            type: !include /dataTypes/request/notifyPortability.raml
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /dataTypes/response/notifyPortability.raml
+
+/operations:
+  /v1:
+    /order:
+      patch:
+        is: [security_client_id, tibco-headers]
+        displayName: Update salesforce order
+        description: Update salesforce order
+        body:
+          application/json:
+            type: !include /dataTypes/request/updateSalesforceOrder.raml
+            example: !include /examples/request/updateSalesforceOrder.json
+        responses:
+          200:
+            body:
+              application/json:
+                properties:
+                  result: 
+                    type: number
+                    example: 0
+                  descripcion: 
+                    type: string
+                    example: "Procesamiento Exitoso"
+          500:
+            body:
+              application/json:
+                properties:
+                  result: 
+                    type: number
+                    example: 1
+                  descripcion:
+                    type: string
+                    example: "Descripcion del error"

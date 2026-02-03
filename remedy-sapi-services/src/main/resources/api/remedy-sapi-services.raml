@@ -1,0 +1,432 @@
+#%RAML 1.0
+title: remedy-sapi-services 
+baseUri: http://remedy-sapi-services-{env}.us-e2.cloudhub.io/remedy
+description: 
+version: 1
+mediaType: 
+- application/json
+protocols:
+  - HTTP
+
+traits:
+  security-client-id: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/security-clientid/1.0.2/security-clientid.raml
+  tibcoHeaders: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.5/tibcorequestheaders.raml
+  consultTasksParameters: !include traits/consultTaskArrayParams.raml
+uses:
+  cancelSchedule-lib: libraries/cancelSchedule-lib.raml
+  createEnterpriseIncident-lib: libraries/createEnterpriseIncident-lib.raml
+  createRelationPQR-lib: libraries/createRelationPQR-lib.raml
+
+/v1:
+  /assign_technician:
+    post:
+      is:
+        - security-client-id
+        - tibcoHeaders
+      displayName: Assign Technician TOA
+      description: Assign Technician TOA
+      body:
+        application/json:
+          type: !include datatypes/request/AssignTechnicianTOA.raml
+          example: !include examples/request/AssignTechnicianTOA.json
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/response/AssignTechnicianTOA_200_Response.raml
+              example: !include examples/response/AssignTechnicianTOA_200_Response.json    
+
+  /incident:
+    post:
+      is:
+        - security-client-id
+        - tibcoHeaders
+      displayName: Create incidents into Remedy system.
+      description: This method create incidents
+      body:
+        application/json:
+          type: !include datatypes/request/post-createIncident.raml
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/response/post-createIncident.raml
+    /note:
+      post:
+        is: 
+          - security-client-id
+          - tibcoHeaders
+
+        displayName: Create notes of incidents into Remedy system.
+        description: This method create notes of incidents
+        body:
+          application/json:
+            type: !include datatypes/request/post-createIncidentNote.raml
+            example: !include examples/request/createIncidentNoteRequest.json
+              
+        responses:
+          201:
+            body:
+              application/json:
+                example: !include examples/response/createIncidentNoteResponse200.json
+    /{incidence_id}:
+      patch:
+        is:
+          - tibcoHeaders
+          - security-client-id
+        displayName: Update enterprise incident status.
+        description:  This method update the enterprise incident status into Salesforce.
+        body:
+          application/json:
+            type: !include datatypes/request/updateEntIncidentStatusType.raml
+            example:
+              !include examples/request/updateEntIncidentStatusRequest.raml
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include examples/response/updateEntIncidentStatusResponse.raml
+      /tasks:
+        post:
+          is:
+            - tibcoHeaders
+            - security-client-id 
+          displayName: Create a task related to an incident.
+          description: This method creates a new task related to an incident.
+          body:
+            application/json:
+              type: !include datatypes/request/createNewTaskType.raml
+          responses:
+            201:
+              body:
+                application/json:
+                  type: !include datatypes/response/createNewTaskResponse.raml
+                  example: !include examples/response/createNewTask201ResponseExample.raml
+            500:
+              body:
+                application/json:
+                  type: !include datatypes/response/errorResponseType.raml
+                  example: !include examples/response/createNewTask500ResponseExample.raml
+        get:
+          is:
+            - tibcoHeaders
+            - security-client-id
+            - consultTasksParameters
+          displayName: Get tasks related to an incident
+          description: This method gets tasks related to an incident.
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/response/consultTaskArrayResponse.raml
+                  example: !include examples/response/consultTaskArray200ResponseExample.raml
+            500:
+              body:
+                application/json:
+                  type: !include datatypes/response/errorResponseType.raml
+                  example: !include examples/response/consultTaskArray500ResponseExample.raml
+      /schedule:
+        /{schedule_id}:
+          patch:
+            is:
+              - tibcoHeaders
+              - security-client-id
+            displayName: display name
+            description: description
+            body:
+              application/json:
+                type: !include datatypes/request/updateScheduleType.raml
+            responses:
+              201:
+                body:
+                  application/json:
+                    example: !include examples/response/updateScheduleResponse.raml
+              500:
+                body:
+                  application/json:
+                    example: !include examples/response/updateScheduleStatus500Response.json
+        /agenda/{agenda_id}:
+          delete:
+            is: [security-client-id] 
+            displayName: Cancel process rised due some incident
+            description: Process responsible for canceling the ticket related with some incident.
+            responses:
+              200:
+                description: Response for the status 200 of the upgrade
+                body: 
+                  application/xml:
+                    example: !include examples/response/cancelScheduleResponse.json                      
+      /vias:
+        patch:
+          is:
+            - tibcoHeaders
+            - security-client-id
+          displayName: Update an incident path, into Remedy system.
+          description: This method update an incident path.
+          body:
+            application/json:
+              type: !include datatypes/request/updateViasType.raml
+              example:
+                !include examples/request/updateViasRequest.json
+          responses:
+            200:
+              body:
+                application/json:
+                  example: !include examples/response/updateViasResponse.raml
+    /enterprise:
+      post:
+        is: [security-client-id] 
+        displayName: Create enterprise incident register into Remedy systems
+        description: Based on input information, the method creates a register about an incident faced by a enterprise
+        body:
+          application/xml:
+            type: createEnterpriseIncident-lib.WSCreateEnterpriseIncidentIN
+            example:
+              !include examples/request/createEnterpriseIncidentRequest.raml
+        responses:
+          201:
+            body:
+              application/xml:
+                example: !include examples/response/createEnterpriseIncidentResponse.json
+    /orders:
+      patch:
+        is:
+          - tibcoHeaders
+          - security-client-id
+        displayName: displayName
+        description: description
+        body:
+          application/json:
+            type: !include datatypes/request/patch-updateOrder.raml
+        responses:  
+          200:  
+            body: 
+              application/json: 
+                example: !include examples/response/updateOrdersResponse.raml
+          500: 
+            body: 
+              application/json: 
+                example: !include examples/response/updateOrdersStatus500Response.raml
+
+  /billing_accounts:
+    post:
+      is: [security-client-id]
+      displayName: 
+      description: 
+      body:
+        application/json:
+          type: !include datatypes/request/BillingAccountRequest.raml
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include datatypes/response/BillingAccountResponse.raml
+    patch:
+      is: [security-client-id]
+      displayName: Update MDM Account
+      description: Update MDM Account
+      body:
+        application/json:
+          type: !include datatypes/request/ActualizarDatosCuentaFacturacion.raml
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include datatypes/response/ActualizarDatosCuentaFacturacionResponse.raml
+  /relation_pqr:
+    post:
+      is: [security-client-id] 
+      displayName: Create relation between two people based on their incidents
+      description: Based on input information, the method creates a relation between two registers and store that info into MDM
+      body:
+        application/xml:
+          type: createRelationPQR-lib.Envelope
+          example:
+            !include examples/request/createRelationPQRRequest.raml
+      responses:
+        201:
+          body:
+            application/xml:
+              example: !include examples/response/createRelationPQRResponse.json
+  /enterprise:
+    /request:
+      post:
+        is: 
+          - security-client-id
+          - tibcoHeaders
+
+        displayName: Create requirements into Remedy.
+        description: This method creates requirements (task and work orders) into Remedy.
+        body:
+          application/json:
+            type: !include datatypes/request/createEnterpriseRequestType.raml
+              
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include datatypes/response/createEnterpriseRequestResponseType.raml
+                example: !include examples/response/createEnterpriseRequest201Example.raml
+          500:
+            body:
+              application/json:
+                type: !include datatypes/response/errorResponseType.raml
+                example: !include examples/response/createEnterpriseRequest500Example.raml              
+  /entries:
+    /{entryId}:
+      /{formName}:
+        uriParameters:
+          entryId:
+            type: string
+            example: "000000051652"
+          formName:
+            type: string
+            example: "PBIform"
+        get:
+          is: [security-client-id, tibcoHeaders]
+          displayName: Get PBI from ProductBacklog
+          description: Get PBI from ProductBacklog
+          responses:
+            200:
+              body:
+                application/json:
+                  example: !include /examples/response/entries-response.json
+        put:
+          is: [security-client-id, tibcoHeaders]
+          displayName: Update entry status
+          description: Update entry status
+          body:
+            application/json:
+              type: !include /datatypes/request/put-entries.raml
+              example: !include /examples/request/put-entries-request.json
+          responses:
+            201:
+              body:
+                application/json:
+                  properties:
+                    codigo:
+                      type: string
+                      example: "204"
+                    respuesta:
+                      type: string
+                      example: "OK"
+  /request:
+    /note:
+      post:
+        is: 
+          - security-client-id
+          - tibcoHeaders
+
+        displayName: CreateRequestNote.
+        description: This method creates request notes.
+        body:
+          application/json:
+            type: !include datatypes/request/createRequestNote.raml
+            example: !include examples/request/createRequestNoteExample.raml
+              
+        responses:
+          201:
+            body:
+              application/json:
+                example: !include examples/response/createRequestNoteExample.raml
+  /schedule:
+    post:
+      is: [tibcoHeaders, security-client-id]
+      displayName: Create Remedy Schedule
+      description: Create Remedy Schedule
+      body:
+        application/json:
+          type: !include datatypes/request/createScheduleRemedy.raml
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include datatypes/response/createScheduleRemedy.raml
+  /orders:
+    /{order_id}:
+      patch:
+        is: [security-client-id]
+        displayName: Update Schedule Status
+        description: "Actualizar informacion de Estado de Cierre Agenda TOA"
+        body:
+          application/json:
+            type: !include datatypes/request/ScheduleStatusRequest.raml
+        responses:
+          200:
+            description: Response for the status 200 of the close_order process
+            body:
+              application/json:
+                type: !include datatypes/response/order_Close_200_Response.raml
+          500:
+                description: Response for the status 500 of the close_order process
+                body:
+                  application/json:
+                    type: !include datatypes/response/order_Close_500_Response.raml
+    /schedule:
+      patch:
+        is:
+          - tibcoHeaders
+          - security-client-id              
+        body:
+          application/json:
+            type: !include datatypes/request/updateSchedule.raml
+        responses:
+          201:
+            description: update order status returned by the method
+            body:
+              application/json:
+                type:
+                  !include /datatypes/response/updateSchedule.raml                    
+  /support:              
+    /contacts:
+      post:
+        is: [security-client-id, tibcoHeaders]      
+        displayName: Create contact
+        description: Create contact in SUMA
+        body:
+          application/json:
+            type: !include datatypes/request/post-contacts.raml
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include datatypes/response/post-contacts.raml
+          500:
+            body:
+              application/json:
+                example: !include examples/response/error-500.json
+          409:
+            body:
+              application/json:
+                example: !include examples/response/error-409.json
+    /customers:
+      get:
+        is: [security-client-id, tibcoHeaders]      
+        displayName: Get customer
+        description: Retrieve information about a customer from salesforce or SUMA
+        queryParameters:
+          tipoDocumento:
+            type: string
+            example: "CC"
+          numeroDocumento:
+            type: string
+            maxLength: 30
+            example: "12314235"
+            pattern: ^[0-9]*$
+          idCuenta: 
+            type: string
+            required: false
+            example: "A123_342H-909L"
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include examples/response/get-customers.json
+          500:
+            body:
+              application/json:
+                example: !include examples/response/error-500.json
+          409:
+            body:
+              application/json:
+                example: !include examples/response/error-409.json                             

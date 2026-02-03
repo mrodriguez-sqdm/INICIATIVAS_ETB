@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="put-provisioningOrderStatus-clientSub_Flow" doc:id="45ee9f8a-3f53-4038-b54c-0c488c0875be" >
+		<choice doc:name="Choice" doc:id="a5127ae5-79df-47cd-83c3-740fe7ca44ef" >
+			<when expression='#[upper(attributes.queryParams.positiveState) == "TRUE"]'>
+				<flow-ref doc:name="Positive State" doc:id="56d98467-932f-4675-bcc7-f271b6473d12" name="positiveState" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Error State" doc:id="a9b83503-4bcb-4dfb-9093-fcd35aa9107b" name="errorState" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="errorState" doc:id="8d431a37-1ef4-41f9-a37c-cc79faebabad" >
+		<salesforce:query doc:name="Obtain ID" doc:id="8aea0ef6-710b-41b7-9df6-08a516dc01f1" config-ref="Salesforce_Config" target="responseGetByID" >
+			<salesforce:salesforce-query ><![CDATA[SELECT Id, OrderNumber, Estado_integracion__c, Contexto_estado_integracion__c
+From Order
+where OrderNumber=':idOrigen']]></salesforce:salesforce-query>
+			<salesforce:parameters ><![CDATA[#[output application/java
+---
+{
+	idOrigen : vars.idOrigen
+}]]]></salesforce:parameters>
+		</salesforce:query>
+		<ee:transform doc:name="Map Update Body" doc:id="ebaa3a54-b8d8-49be-a75e-3e82b145e618" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseGetById map 
+{
+	"Id": $.Id,
+	"Estado_integracion__c": payload.state,
+	"Contexto_estado_integracion__c": payload.context
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="f413fc6d-3a33-43d8-976d-8b2768a1d4bf" >
+			<flow-ref doc:name="Process Logging" doc:id="44f490db-f25d-4568-9398-d90cad14bd91" name="loggin-client-call" />
+		</async>
+		<salesforce:update type="#[p('salesforce.objectType.Order')]" doc:name="Update Order in SF" doc:id="fa28716f-1df9-4f5d-a1e1-5455a2380a87" config-ref="Salesforce_Config" />
+		<async doc:name="Async" doc:id="4f201cf7-7428-4cec-aee0-12e9dc0f8fea" >
+			<flow-ref doc:name="Process Logging" doc:id="1906c30a-f654-4003-abef-a05140870c5f" name="loggin-client-call" />
+		</async>
+		<ee:transform doc:name="Output" doc:id="04689446-aaa1-4528-8ee3-b14580a8c53f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"resultado": if(payload.successful == true) "Positivo" else "Negativo",
+	"registrosAfectados": sizeOf(payload.items),
+	"fecha": now() >> "America/Bogota",
+	"descripcion": if(payload.successful == true) "Positivo" else "No se pudo realizar la actualizacion de estado.",
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.successful == true) 200 else 404]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="positiveState" doc:id="4eb19588-193a-4ab6-afa7-137ffb19ecbc" >
+		<salesforce:query doc:name="Obtain ID" doc:id="1369f6a7-0261-4924-9d8a-f71d96762154" config-ref="Salesforce_Config" target="responseGetByID" >
+			<salesforce:salesforce-query ><![CDATA[SELECT Id, Status
+From Order
+where OrderNumber=':idOrigen']]></salesforce:salesforce-query>
+			<salesforce:parameters ><![CDATA[#[output application/java
+---
+{
+	idOrigen : vars.idOrigen
+}]]]></salesforce:parameters>
+		</salesforce:query>
+		<ee:transform doc:name="Map Update Body" doc:id="5a9f2805-86bf-4393-99d3-b1ffd0e2af05" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseGetById map 
+{
+	"Id": $.Id,
+	"Status": payload.state
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="abebd9e1-04b0-4ac0-baaf-8c5c4ac9a0f1" >
+			<flow-ref doc:name="Process Logging" doc:id="f72ebfd5-d929-4e17-99e1-e9ee8333544d" name="loggin-client-call" />
+		</async>
+		<salesforce:update type="#[p('salesforce.objectType.Order')]" doc:name="Update Order in SF" doc:id="217b7980-28cb-4b58-9a2b-ecc6d48f9103" config-ref="Salesforce_Config" />
+		<async doc:name="Async" doc:id="9c6d553e-c01d-47c3-a3b8-0f420748b666" >
+			<flow-ref doc:name="Process Logging" doc:id="bbd894f8-f2ff-47af-98ce-d70fd92e9ff3" name="loggin-client-call" />
+		</async>
+		<ee:transform doc:name="Output" doc:id="58b145b3-3c21-4d96-be02-5946371f885a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"resultado": if(payload.successful == true) "Positivo" else "Negativo",
+	"registrosAfectados": sizeOf(payload.items),
+	"fecha": now() >> "America/Bogota",
+	"descripcion": if(payload.successful == true) "Positivo" else "No se pudo realizar la actualizacion de estado.",
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.successful == true) 200 else 404]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

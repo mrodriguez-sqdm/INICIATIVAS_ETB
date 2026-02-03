@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="post-retrieveAgreements-orchestratorSub_Flow" doc:id="fa7e6fae-1618-4b34-87af-cdd254af0cda" >
+		<ee:transform doc:name="XML to Json" doc:id="0170edfd-14c5-46b1-85f9-a1d561ab8b76" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	AZsign:
+	{
+	    WebHook: 
+	    {
+	        Atributos: payload.Envelope.Body.WebHook.@,
+	        Cuenta: payload.Envelope.Body.WebHook.Cuenta.@,
+	        Ambito:
+	        {
+	            Atributos: payload.Envelope.Body.WebHook.Ambito.@,
+	            Aplicacion: payload.Envelope.Body.WebHook.Ambito.Aplicacion.@
+	        },
+	        Evento: payload.Envelope.Body.WebHook.Evento.@,
+	        AcuerdoInfo: 
+	        {
+	            Atributos: payload.Envelope.Body.WebHook.AcuerdoInfo.@,
+	            Estado: payload.Envelope.Body.WebHook.AcuerdoInfo.Estado.@,
+	            Cuenta: payload.Envelope.Body.WebHook.AcuerdoInfo.Cuenta.@,
+	            GrupoRegistro: payload.Envelope.Body.WebHook.AcuerdoInfo.GrupoRegistro.@,
+	            Origen: payload.Envelope.Body.WebHook.AcuerdoInfo.Origen.@,
+	            GruposPartcipantes:  payload.Envelope.Body.WebHook.AcuerdoInfo.GruposPartcipantes pluck ($.Participante.@),
+	            Mensaje: payload.Envelope.Body.WebHook.AcuerdoInfo.Mensaje,
+	            Observacionnes: payload.Envelope.Body.WebHook.AcuerdoInfo.Observacionnes,
+	            Documentos: 
+	            {
+                    Atributos: payload.Envelope.Body.WebHook.AcuerdoInfo.Documentos pluck ($.@),
+                    Documento: payload.Envelope.Body.WebHook.AcuerdoInfo.Documentos pluck ($)
+                },
+               	Copias: payload.Envelope.Body.WebHook.AcuerdoInfo.Copias
+	        }
+	    } 
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload.AZsign.WebHook.AcuerdoInfo.Atributos.Id]" doc:name="Set acuerdoId" doc:id="636a6465-13df-4f54-8e0d-5317a463dbd3" variableName="acuerdoId"/>
+		<flow-ref doc:name="Verify status in agreement" doc:id="5fa7dc2a-7d1b-4f4d-b092-42c121a93ca7" name="mongo-sapi-get-agreement" target="agreement"/>
+		<choice doc:name="Choice" doc:id="6524fa56-6390-4e39-a639-e507f9e8d856" >
+			<when expression='#[vars.agreement[0].EstadoTramite != "Cancelado"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="4e8aabda-f59f-4743-b275-79af6f65a2fa" name="continue-flow" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="continue-flow" doc:id="af345281-e0fb-4a73-a85c-c519d979997d">
+		<ee:transform doc:name="Set documentoFirmado" doc:id="301b70bf-ebec-421e-8add-a08412a7fc82">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="documentoFirmado"><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+import * from dw::core::Arrays
+
+output application/PDF with binary
+
+var index = payload.AZsign.WebHook.AcuerdoInfo.Documentos.Atributos indexWhere (item) -> item.Naturaleza == "S"
+var doc = payload.AZsign.WebHook.AcuerdoInfo.Documentos.Documento[index]
+---
+fromBase64(doc as String) as Binary]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="updateAgreement" doc:id="44ae7a3f-0655-487b-835f-8392d880fdd7" name="UpdateAgreement" target="responseUpdate" />
+		<os:retrieve doc:name="Retrieve data docs" doc:id="461777f2-0a81-4acb-a477-f68ae319aec7" key="#[vars.acuerdoId]" objectStore="Object_store_acuerdos" target="dataStorage" />
+		<flow-ref doc:name="SaveAzureStorage" doc:id="1732fb06-a508-44f8-b668-cd1a6d85362f" name="SaveAzureStorage" target="responseAzure" />
+		<async doc:name="Async" doc:id="ce14c8fe-480a-4087-b003-6d544f43721d">
+			<ee:transform doc:name="Request save logs" doc:id="be93e27f-e689-452c-8309-c226548343f1">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var fecha = now() >> "America/Bogota"
+
+---
+{
+	ResponseAcuerdo: write(vars.initialPayload,"application/xml"),
+	FechaEnvio: fecha,
+	Asesor: vars.dataStorage.usuario,
+	FechaRespuesta: fecha,
+	Aplicacion: "MULESOFT",
+	NumeroDocumento: payload.AZsign.WebHook.AcuerdoInfo.GruposPartcipantes[0].DocumentoIdentificacion
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Save logs" doc:id="6606b6f6-7d67-45fb-a710-4c17fe5fe3b5" name="mongo-sapi-post-agreement-logs" />
+		</async>
+	</sub-flow>
+	<sub-flow name="UpdateAgreement" doc:id="53b159b9-1ce3-42a6-a797-31958ef44053" >
+		<ee:transform doc:name="Set request to update agreements" doc:id="6775edf4-d31c-4885-a8f4-97d06d0f4955">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var estado = payload.AZsign.WebHook.AcuerdoInfo.Estado.Nombre
+---
+{
+	EstadoTramite: if(estado == "Finalizado") "Aprobado"
+		else if(estado == "Abortado") "Cancelado"
+		else estado,
+	FechaActualizacionTramite: payload.AZsign.WebHook.Evento.FechaHora
+}
+
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Update agreement in MDM" doc:id="c0d2f109-fbb9-4fb0-9aab-41d7f02c7cb2" name="mongo-sapi-patch-agreement" />
+	</sub-flow>
+	<sub-flow name="SaveAzureStorage" doc:id="9b7ab244-baab-4f81-83aa-8c83048fc167" >
+		<ee:transform doc:name="Prepare azure input" doc:id="7e0c84ee-958c-4068-a535-2ae8c616ce61">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output multipart/form-data
+import * from dw::module::Multipart
+---
+parts: {
+    container: field({name: "container", value: ((vars.dataStorage.container splitBy ("/"))[0] as String)}),
+    filename: field({name: "filename", value: (vars.dataStorage.container splitBy  ("/"))[1] ++ "/" ++ vars.dataStorage.fileName}),
+    file: field({name: "file", value: vars.documentoFirmado, mime: "application/pdf"})
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Save in Storage" doc:id="bcee9721-c8d0-489b-871c-38d00361fc66" name="azure-sapi-post-documents-storage" />
+	</sub-flow>
+</mule>

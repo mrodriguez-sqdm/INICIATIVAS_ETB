@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="put-viabilityOrderStatus-clientSub_Flow" doc:id="6d726ac4-60c1-481c-b683-f808e1e98bd6" >
+		<salesforce:query doc:name="Obtain ID" doc:id="c6d8d89b-a33b-498a-b568-98e0fcacebaa" config-ref="Salesforce_Config" target="responseGetByID">
+			<salesforce:salesforce-query><![CDATA[SELECT Id, QuoteNumber, Estado_integracion__c, Contexto_estado_integracion__c
+From Quote
+where QuoteNumber=':subAgrupador']]></salesforce:salesforce-query>
+			<salesforce:parameters ><![CDATA[#[output application/java
+---
+{
+	subAgrupador : vars.subAgrupador
+}]]]></salesforce:parameters>
+		</salesforce:query>
+		<ee:transform doc:name="Map Update Body" doc:id="5b31df30-356a-4a31-ac3d-536a47d5fe00" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseGetById map 
+{
+	"Id": $.Id,
+	"Estado_integracion__c": payload.state,
+	"Contexto_estado_integracion__c": payload.context
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="f4a18b3e-21bf-4eab-a50f-6ca78145ddd0">
+			<flow-ref doc:name="Process Logging" doc:id="0398c151-2826-4004-a113-e3e4d7f6b3f7" name="loggin-client-call" />
+		</async>
+		<salesforce:update type="#[p('salesforce.objectType.Quote')]" doc:name="Update Order in SF" doc:id="c01df202-e3fb-490b-b09b-72addd0cb04a" config-ref="Salesforce_Config" />
+		<async doc:name="Async" doc:id="6f8629c7-a3f7-4278-89d8-875e34c2c618">
+			<flow-ref doc:name="Process Logging" doc:id="f897f565-f15a-4109-b573-6538a6185966" name="loggin-client-call" />
+		</async>
+		<ee:transform doc:name="Output" doc:id="a6bbc5b5-f2bb-4581-b7c7-3e38faacdf10">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"resultado": if(payload.successful == true) "Positivo" else "Negativo",
+	"registrosAfectados": sizeOf(payload.items),
+	"fecha": now() >> "America/Bogota",
+	"descripcion": if(payload.successful == true) "Positivo" else "No se pudo realizar la actualizacion de estado.",
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.successful == true) 200 else 404]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

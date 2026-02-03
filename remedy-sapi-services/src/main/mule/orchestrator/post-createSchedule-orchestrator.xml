@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-createSchedule-orchestratorSub_Flow" doc:id="a62b32d1-20dc-4415-9ed0-3b94bfb00442" >
+		<ee:transform doc:name="Prepare body request" doc:id="13e9283f-725a-45f8-ab6e-58d9c1d73e46" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns ns0 http://tempuri.org/
+ns ns1 http://www.etb.com.co/orquestador
+ns ns2 http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Solicitudes
+fun isEmptyObj (obj) = obj match {
+    case is Object -> (obj pluck $) reduce ((item, accumulator=true) -> accumulator and isEmptyObj(item))
+    else -> isEmpty(obj)
+}
+fun appendNamespace(data, nameSpace) =
+  data match {
+    case is Object -> data mapObject do {
+      nameSpace#"$($$)": appendNamespace($, nameSpace)
+    }
+    else -> data
+}
+---
+{
+	soapenv#Envelope: {
+		soapenv#Header: {},
+		soapenv#Body: {
+		    ns0#CreacionAgendaRemedy: {
+		        ns0#creacionObjeto: {
+		            ns1#ParametrosCreacion: payload.CreacionAgendaRemedy.creacionObjeto.ParametrosCreacion mapObject ((value, key, index) -> if (!isEmptyObj(value)) ({
+		    ns2#ParametroCreacion: appendNamespace(value, ns2)
+		}) else ns2#ParametroCreacion: null )
+		        }
+		    }
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="d39f64f2-e915-4532-9760-03a0b684dcbd" name="orquestador-services-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="5d27bf14-fd29-47b3-a080-c63de130a0dd" >
+			<when expression='#[output application/java ---&#10;payload.Envelope.Body.CreacionAgendaRemedyResponse.Resultado.Encabezado.Servicio.Estado != "FAIL"]'>
+				<ee:transform doc:name="Prepare output" doc:id="0db7f112-d7f7-43ac-b86e-ce158e6728b8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "CreateScheduleRemedyOutput": {
+        "WSResponseHeader2": {
+        "System": {
+          "name": "Mulesoft",
+          "correlationID": vars.correlation_id,
+          "processingServer": "Mulesoft"
+        },
+        "Service": {
+          "status": "PASS",
+          "responseDate": now() >> "America/Bogota"
+        }
+      },
+    "response": payload.Envelope.Body
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="a5623087-f326-4d16-8188-66bf4e792fa8" type="CUSTOM:REMEDY_SCHEDULE" description="#[payload.Envelope.Body.CreacionAgendaRemedyResponse.Resultado.Encabezado.Servicio.DetalleEstado]"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-createEnterpriseRequest-orchestratorSub_Flow" doc:id="96fcc4bd-c02c-470b-a005-e838ff67279d" >
+		<ee:transform doc:name="Transform to XML" doc:id="9ccf563f-34be-4916-af99-3fbc85cec083" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns urn urn:ETB_Create_Requerimiento_Portafolio
+---
+{
+  soapenv#"Envelope": {
+    soapenv#"Header": {
+      urn#"AuthenticationInfo": {
+        urn#"userName": p('mdm-remedy.credentials.user'),
+        urn#"password": p('mdm-remedy.credentials.password')
+      }
+    },
+    soapenv#"Body": {
+      urn#"Create_Req": {
+        urn#"ACCION": vars.initial.accion,
+        urn#"IN_ID_Salesforce": vars.initial.idSalesforce,
+        urn#"IN_ID_Cta_Cliente": vars.initial.idCtaCliente,
+        urn#"IN_Nombre_Cliente": vars.initial.nombreCliente,
+        urn#"IN_Apellidos_Cliente": vars.initial.apellidosCliente,
+        urn#"IN_Telefono_Cliente": vars.initial.telefonoCliente,
+        urn#"IN_Email_Cliente": null,
+        urn#"IN_TipoIdentificacion": vars.initial.tipoIdentificacion,
+        urn#"IN_Numero_Iden": vars.initial.numeroIden,
+        urn#"IN_Ubicacion": vars.initial.ubicacion,
+        urn#"IN_Cod_Pais": vars.initial.codPais,
+        urn#"IN_Servicio": vars.initial.servicio,
+        urn#"IN_ServicioAfectado": vars.initial.servicioAfectado,
+        urn#"IN_Nota": vars.initial.nota,
+        urn#"IN_Resumen": vars.initial.resumen,
+        urn#"IN_TipoOrden": vars.initial.tipoOrden,
+        urn#"IN_FuenteReportada": vars.initial.fuenteReportada,
+        urn#"IN_Nivel_1": vars.initial.nivel1,
+        urn#"IN_Nivel_2": null,
+        urn#"IN_Nivel_3": null,
+        urn#"IN_Serial": null,
+        urn#"IN_GrupoGestor": vars.initial.grupoGestor,
+        urn#"IN_GrupoAsg": vars.initial.grupoAsg,
+        urn#"IN_Cod_Mun_Cliente": vars.initial.codMunCliente,
+        urn#"IN_Cod_Edo_Cliente": vars.initial.codEdoCliente,
+        urn#"IN_NroCaso": vars.initial.nroCaso
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go To Service" doc:id="4c829379-b9f8-4057-883f-e54c3725f8d7" name="post-createEnterpriseRequest-serviceSub_Flow"/>
+		<ee:transform doc:name="Payload" doc:id="9a07acae-2bdf-43c0-86ad-8046a91f1466" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Filter Exitoso" doc:id="e4281ea0-21c6-4252-82eb-76ee70ffef20" >
+			<when expression='#[payload.Envelope.Body.Create_ReqResponse.OUT_Aknowledge == "Exitoso"]'>
+				<set-variable value="201" doc:name="httpStatus 201" doc:id="6b63628b-204c-4948-b6ed-88bc6a213474" variableName="httpStatus"/>
+				<ee:transform doc:name="201 Response" doc:id="be154e92-1ee7-4fa7-8e5d-9d8619ea6408" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "createEnterpriseRequestOut": {
+    "status": payload.Envelope.Body.Create_ReqResponse.OUT_Aknowledge,
+    "workOrderId": payload.Envelope.Body.Create_ReqResponse.OUT_WorkOrderID,
+    "responseDate": now() >> "America/Bogota" 
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="httpStatus 500" doc:id="4c51422e-4a91-4158-997a-ed90072bd31e" variableName="httpStatus"/>
+				<ee:transform doc:name="500 Response" doc:id="117814f8-5f4e-4dca-bbb1-a0807b51bdfa" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+  "Envelope": {
+    "Header": null,
+    "Body": {
+      "Create_ReqResponse": {
+        "OUT_WorkOrderID": payload.Envelope.Body.Create_ReqResponse.OUT_WorkOrderID,
+        "OUT_Aknowledge": payload.Envelope.Body.Create_ReqResponse.OUT_Aknowledge,
+        "OUT_Error": payload.Envelope.Body.Create_ReqResponse.OUT_Error
+      }
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<raise-error doc:name="Raise error" doc:id="0a9294db-b1da-47ac-944a-eebe1362039e" type="SOAP:UNEXPECTED_ERROR" description="#[payload.Envelope.Body.Create_ReqResponse.OUT_Error]"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

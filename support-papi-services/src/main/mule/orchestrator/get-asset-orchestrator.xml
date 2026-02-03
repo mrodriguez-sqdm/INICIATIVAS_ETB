@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-asset-orchestratorSub_Flow" doc:id="b36d4569-c55a-4d18-8ab5-320398b0456e" >
+		<flow-ref doc:name="Go to client" doc:id="a9512803-9d2a-4032-a745-df21989bb6c6" name="get-asset-salesforce-clientSub_Flow" target="salesforce_resp"/>
+		<choice doc:name="Choice" doc:id="8a3a41aa-e0cc-4573-a353-26d6893adb49" >
+			<when expression='#[vars.salesforce_resp != null]'>
+				<ee:transform doc:name="Set response" doc:id="9e07ca47-1dba-466e-b7c7-44f91d140655">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+read(vars.salesforce_resp)
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[201]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Transform Message" doc:id="f8c43311-c537-4e53-8f7f-ee81cc6b3ac8">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+ activos: payload.records
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="NOT_FOUND" doc:id="7f8c01e0-e332-4cff-aecd-68c7ed0e8200">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "No se encontraron datos",
+  "cause": [
+    {
+      "origin": "salesforce-sapi-services",
+      "message": ""
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
