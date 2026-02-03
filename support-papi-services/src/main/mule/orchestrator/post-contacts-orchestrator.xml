@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-contacts-validateSource" doc:id="b4026058-9dbb-45e6-af18-331fd4e2815b" >
+		<ee:transform doc:name="Set sources" doc:id="0504a30d-4e35-467a-99d4-7d7680075f8e">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="sources"><![CDATA[%dw 2.0
+output application/json
+---
+p('global.set-contact.sources') splitBy " | "]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="654b2203-037b-4b5f-987d-73bb69b67f7e" >
+			<when expression="#[vars.sources contains vars.headers.source]" >
+				<flow-ref doc:name="Go to post-contacts-orchestratorSub_Flow" doc:id="60eadac6-ebeb-4b82-9f60-339de4c594ef" name="post-contacts-orchestratorSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="BAD_REQUEST" doc:id="3c91407b-3fdc-46f7-9160-d100c4f55c03" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Wrong source",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": "Wrong source"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-contacts-orchestratorSub_Flow" doc:id="53eded8c-dba9-4b1a-95be-88670da98f8e" >
+		<ee:transform doc:name="Upper email" doc:id="cca191b9-0f0b-496b-97c1-d33be6164c02">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.Correo != null)
+((payload - "Correo") ++ {
+    "Correo": upper(payload.Correo)
+})
+else payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<try doc:name="Try" doc:id="f2b2b3e8-7ed0-4fd6-a566-6ebeb2cdaa5a" >
+			<flow-ref doc:name="Go to remedy-sapi" doc:id="79a3bda4-5bb3-435f-bb7e-315c9a71f5f5" name="post-contacts-remedy-clientSub_Flow" target="remedy_resp" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="0a30d43c-46cd-41a5-be42-084ef1b2cedb" >
+					<ee:transform doc:name="Transform Message" doc:id="30bfb14d-025c-461b-9d60-b722820ecabe" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="remedy_resp" ><![CDATA[%dw 2.0
+output application/json
+---
+null]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<flow-ref doc:name="Go to salesforce-sapi" doc:id="e03694e4-1838-49fa-9502-65c3960f6481" name="post-contacts-salesforce-clientSub_Flow" target="salesforce_resp" />
+		<choice doc:name="Choice" doc:id="60cf1c9d-77f3-4a8f-a248-baf1117554e6">
+					<when expression='#[vars.salesforce_resp.success != true]'>
+				<ee:transform doc:name="Error" doc:id="35d718cc-729e-4bf6-a36e-073c35e329c9">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var causeRemedy = 
+if(vars.remedy_resp.Envelope.Body.Set_Customer_ContactResponse.Set_Customer_ContactResult.WSResponseHeader.service.status != "OK")
+[
+    {
+      "origin": "remedy-sapi-services",
+      "message": vars.remedy_resp.Envelope.Body.Set_Customer_ContactResponse.Set_Customer_ContactResult.WSResponseHeader.service.statusDetail default ""
+    }
+]
+else
+[]
+
+var cause = causeRemedy
+ ++  ((vars.salesforce_resp default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[409]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Set response" doc:id="7e2b78c8-d0b0-41b1-a08e-d054aaf1bcad">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var remedyHeader = vars.remedy_resp.Envelope.Body.Set_Customer_ContactResponse.Set_Customer_ContactResult.WSResponseHeader
+---
+{
+  "id" : if(vars.salesforce_resp.success == true) vars.salesforce_Resp.id else null,
+  "integrationId" : if(remedyHeader.service.status == "OK") remedyHeader.property.value else null
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					</otherwise>
+				</choice>
+	</sub-flow>
+</mule>

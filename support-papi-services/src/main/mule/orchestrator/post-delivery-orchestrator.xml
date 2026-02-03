@@ -1,0 +1,1070 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-delivery-orchestratorSub_Flow" doc:id="2489a503-e137-47e8-9f5d-4ff733261372" >
+		<async doc:name="Async" doc:id="37056c2e-13c7-46a7-9ffe-559c7ff68883">
+			<flow-ref doc:name="Go to Delivery Flow" doc:id="8d94108c-a577-4b79-bc5a-98fa6c7879ee" name="delivery-flow"/>
+		</async>
+		<ee:transform doc:name="Output" doc:id="a22924f4-cf78-4e68-9102-08284dedcc20">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "DeliveryLTEResponse": {
+        "OrderId": payload.inputMessage.OrderFulfilment.Identification.ID,
+        "ResponseCode": p('global.ack.responseCode') as Number,
+        "ResponseDescription": p('global.ack.responseDescription')
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="delivery-flow" doc:id="86d5df40-3f7b-4dea-a716-29bf3b024895" >
+		<try doc:name="Try" doc:id="3443b17b-6016-4450-8985-bb400798a3f5" >
+			<flow-ref doc:name="Go to CreateSalesForceOrderIntf" doc:id="3bdeb6d2-03e7-4c83-9da0-d90357737406" name="post-salesforceOrder-orchestratorSub_Flow" target="notifyCreateMongo" />
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="ee67d6d3-7191-43fc-aa08-f2773106445b" >
+					<ee:transform doc:name="Fail Response" doc:id="93e53c14-dc1c-4b65-bc9d-f8802701707d" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.saveInputMongo'),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="Notif UpdateSalesforceOrder_v" doc:id="1d2a63b2-4d9d-4d81-b68b-a184daf539b3" name="patch-salesforce-order-v2" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<choice doc:name="Evaluate SubOrderType" doc:id="00be29a2-70ef-484c-81c5-6594d6bd1d5d" >
+			<when expression="#[p('global.noProvCase') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;)]">
+				<flow-ref doc:name="No Prov Case" doc:id="0558364a-04d1-4c6a-93a8-5cb8a42c1b2c" name="noProvCase" />
+			</when>
+			<when expression="#[upper(vars.subOrderType) == p('global.adicionSVA')&#10;and &#10;((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.add')).ItemReference.PrimaryClassificationCode map upper($) contains p('global.lteSva2PackageClass'))]">
+				<flow-ref doc:name="provOne TimeBag" doc:id="ac4435e1-2292-4e98-b9ed-004130c936f5" name="provOneTimeBag"/>
+				<try doc:name="Try" doc:id="bacae199-8dc9-40ae-bef3-99346be12b84" >
+					<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="6df0f148-ce0f-4309-bed0-e239eccc578e" name="save-output-mongo" target="notifyUpdateMongo" />
+					<error-handler >
+						<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="220a1c1e-8ddd-498b-8df9-9ff84c57fe3c" >
+							<ee:transform doc:name="Fail Prov One Time Bag" doc:id="b479c0c6-8b40-4be4-865f-f3ca26d14e0a" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.saveOutputMongo'),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<flow-ref doc:name="Notif UpdateSalesforceOrder_v" doc:id="fdc102ef-a2e8-4c0e-a295-41473df7596a" name="patch-salesforce-order-v2" />
+						</on-error-propagate>
+					</error-handler>
+				</try>
+				<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="4e4b2103-c1c5-4cb6-8f8a-94aa057bee18" name="patch-salesforce-order-v2" />
+			</when>
+			<otherwise >
+				<choice doc:name="Choice" doc:id="90aaaca9-5f4f-422e-9951-0bc50eba0f06">
+					<when expression="#[p('global.venta') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;)]">
+						<ee:transform doc:name="Map body to Provisioning" doc:id="b23d12d7-acff-4305-871d-04d00265f498">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+var inputBody = payload.inputMessage
+var msisdn = (flatten(
+                inputBody.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value  
+                        else null
+            ) filter !isEmpty($))[0]
+var parentPkgInstanceId = (flatten(
+                inputBody.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.parentPkgInstanceId')))).Value  
+                        else null
+            ) filter !isEmpty($))[0]
+var isParent = ((flatten(inputBody.OrderFulfilment..AltKey)) filter upper($.AltKeyName) == upper(p('global.isProvider'))) some ($.AltKeyValue == "Y")
+output application/json
+---
+{
+  "documentType": inputBody.OrderFulfilment.CustomerPartyAccount.Custom.DocumentType,
+  "documentNumber": inputBody.OrderFulfilment.CustomerPartyAccount.Custom.DocumentNumber,
+  "planPackage": flatten(inputBody.OrderFulfilment.SalesOrderLine.SpecificationGroupXA)
+  					filter $.Name == p('global.serviceClassOcs')
+  						map { "id": $.Value },
+  "addonPackage": (flatten(inputBody.OrderFulfilment.SalesOrderLine.SpecificationGroupXA)
+  					filter $.Name == p('global.offerClassOcs')
+  						map { "id": $.Value }) ++ (if(isParent) ([{"id": p('global.parentSva')}]) else []),
+  "subscriberId": inputBody.BillingProcess.CustomerBill.SuscriberId,
+  "MSISDN": if (!isEmpty(msisdn)) 
+                        msisdn 
+                  else null,
+  "ICCID": (flatten(inputBody.OrderFulfilment.SalesOrderLine.SpecificationGroupXA) filter upper($.Name) == p("global.iccid")).Value[0],
+  "PAM": inputBody.BillingProcess.CustomerBill.InvoicingCycle,
+  "integrationId": inputBody.OrderFulfilment.SalesOrderLine.Custom.AssetIntegrationID[0],
+  "billingAccountNumber": inputBody.BillingProcess.CustomerBill.BillingAccount.Number,
+  ("parentPkgInstanceId": parentPkgInstanceId) if (!isEmpty(parentPkgInstanceId))
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<try doc:name="Try" doc:id="64206467-c4c1-419c-9eb1-9d6090228924" >
+							<flow-ref doc:name="Provisioning Client" doc:id="efa25dc4-d439-4cd9-a1f1-081745ff78de" name="provisioningLTECorp" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="316dd32b-3283-4887-b174-6f0a75714e9c" >
+									<ee:transform doc:name="Fail Response" doc:id="6957b938-843a-4cfa-acb4-cb466b21a837" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.provisioning') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="646e3a98-d68e-4a08-955e-619d260b0a01" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="8300bb3d-ca01-4a73-b0c8-a2a98d4fdf89" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="6bd117dd-3ce6-47e0-97b2-e320e8a2ec07" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="a0bf0d29-1312-43ae-bc6b-5bc2eda84f6c" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.cambioPlan') == upper(vars.subOrderType)]">
+						<ee:transform doc:name="Map body to Cambio Plan" doc:id="0494cf16-a655-4d08-ae06-ae6d60373152">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+var filterdItems =((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.add')) 
+					filter ((item, index) -> 
+					    p('global.addonPackage') contains ("|" ++ upper(item.ItemReference.PrimaryClassificationCode) ++ "|")
+					))
+var connectionNumber = (flatten(
+                payload.inputMessage.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value
+                        else null
+            ) filter !isEmpty($))[0]
+var isCtlAdd = !isEmpty((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.add'))
+	filter $.ItemReference.PrimaryClassificationCode == p('global.lteControlPlanClass'))
+var isCtlDel = !isEmpty((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.delete'))
+	filter $.ItemReference.PrimaryClassificationCode == p('global.lteControlPlanClass'))
+var isPosAdd = !isEmpty((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.add'))
+	filter $.ItemReference.PrimaryClassificationCode == p('global.ltePostpaidPlanClass'))
+var isPosDel = !isEmpty((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.delete'))
+	filter $.ItemReference.PrimaryClassificationCode == p('global.ltePostpaidPlanClass'))
+var isPreAdd = !isEmpty((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.add'))
+	filter $.ItemReference.PrimaryClassificationCode == p('global.ltePrepaidPlanClass'))
+var isPreDel = !isEmpty((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.delete'))
+	filter $.ItemReference.PrimaryClassificationCode == p('global.ltePrepaidPlanClass'))
+var processType =  if ( 
+				        (isPosDel and isPosAdd) or (isCtlDel and isCtlAdd) or (isCtlDel and isPosAdd) or (isPosDel and isCtlAdd )
+				    ) p('global.isPosPos')
+					else if ( (isPosDel and isPreAdd) or (isCtlDel and isPreAdd) )
+						p('global.isPosPre')
+					else if ( (isPreDel and isPosAdd) or (isPreDel and isCtlAdd) )
+						p('global.isPrePos')
+					else if ( isPreDel and isPreAdd )
+						p('global.isPrePre')
+					else p('global.none')
+---
+{
+  "planPackage": flatten((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.add')).SpecificationGroupXA) filter $.Name == p('global.serviceClassOcs') map {
+      id: $.Value
+  },
+  "addonPackage": (flatten(filterdItems.SpecificationGroupXA) filter $.Name == p('global.offerClasseOcs')) map {
+      id: $.Value
+  },
+  "billingAccountNumber": payload.inputMessage.BillingProcess.CustomerBill.BillingAccount.Number,
+  "PAM": payload.inputMessage.BillingProcess.CustomerBill.InvoicingCycle,
+  "integrationId": payload.inputMessage.OrderFulfilment.SalesOrderLine.Custom.AssetIntegrationID[0],
+  "processType": processType,
+  "msisdn": connectionNumber
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<try doc:name="Try" doc:id="44783b74-3461-418a-a518-ef37883c7d45" >
+							<flow-ref doc:name="Change Plan Client" doc:id="b406dc6d-ae2b-4699-93a2-f6761a4e376c" name="changePlanCorp" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="7b0002c3-aaa4-41ac-bef1-86db9a5db9c1" >
+									<ee:transform doc:name="Fail Response" doc:id="2bf1e4a4-a8d0-4629-8e88-cc487f2262c0">
+										<ee:message>
+											<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.changePlan') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="5ba9c577-8e4f-4085-8bbe-051b4e7ed60a" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="a491a750-f991-4838-84fa-32a78037041b" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="74999d37-c5c9-4a53-94c0-1677171c21c5" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="cab81a54-fe2b-4339-87b3-e8d910f8b709" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.adicionRetiroSva') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;)]">
+						<ee:transform doc:name="Adicion Retiro Sva" doc:id="3da38d91-a159-45c0-b28a-39b57bbc79cc">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+var filterdItems = payload.inputMessage.OrderFulfilment.SalesOrderLine filter ((item, index) -> p("global.adicionRetiroSvaIds") contains ("|" ++ upper(item.ItemReference.PrimaryClassificationCode) ++ "|"))
+var addonPackage = ((flatten((filterdItems map {
+    "Items": $.SpecificationGroupXA 
+    			map (o, i) -> o ++ { "ServiceActionCode": $.ServiceActionCode } }).Items)) 
+    				filter $.Name == p('global.offerClasseOcs'))
+    				
+var connectionNumber = (flatten(
+                payload.inputMessage.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value
+                        else null
+            ) filter !isEmpty($))[0]
+output application/json  
+---
+{
+  "addonPackage": if (p('global.adicionRetiroFlagMap') == "true") 
+  	// En caso de que el actionCode se obtenga de ServiceActionCode sin filtro de ADD en ServiceActionCode
+    addonPackage map {
+        id: $.Value,
+        actionCode: $.ServiceActionCode
+    }
+    else 
+    // En caso de que el actionCode se obtenga de SpecificationGroupXA.ActionCode con filtro de ADD en ServiceActionCode
+    addonPackage filter $.ServiceActionCode == p('global.add') map {
+        id: $.Value,
+        actionCode: $.ActionCode
+    },
+  "integrationId": payload.inputMessage.OrderFulfilment.SalesOrderLine.Custom.AssetIntegrationID[0],
+  "msisdn": connectionNumber
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<try doc:name="Try" doc:id="9ce13671-5c23-4964-8e7c-bb1d6fc684b1">
+							<flow-ref doc:name="Adicion Retiro Sva Client" doc:id="411f14af-b67d-4e7a-a179-cf1f6138ba34" name="adicionRetiroSvaCorp" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="29d66ace-4c14-4bc6-8dec-b4326738c606" >
+									<ee:transform doc:name="Fail Response" doc:id="66db0365-486f-4ac4-9ba2-353ff326fc50" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.adicionRetiroSva') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="7a9658b5-e029-41a5-82ed-f5b395f9fd08" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="29d106f2-a644-4798-a248-5bb45c44e58f" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="4a6a4924-575b-48dc-a565-a9676cea9293" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="92dcdf33-8d26-41ff-9d23-18147a44e108" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.cambioSubscriptor') == upper(vars.subOrderType)]">
+						<ee:transform doc:name="Map body to Cambio Subscriptor" doc:id="08b95fa4-0dda-4a89-abea-65f2084a4120">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var inputBody = payload.inputMessage
+var connectionNumber = (flatten(
+                payload.inputMessage.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value
+                        else null
+            ) filter !isEmpty($))[0]
+---
+{
+  "documentType": inputBody.OrderFulfilment.CustomerPartyAccount.Custom.DocumentType,
+  "documentNumber": inputBody.OrderFulfilment.CustomerPartyAccount.Custom.DocumentNumber,
+  "billingAccountNumber": inputBody.BillingProcess.CustomerBill.BillingAccount.Number,
+  "PAM": inputBody.BillingProcess.CustomerBill.InvoicingCycle,
+  "integrationId": inputBody.OrderFulfilment.SalesOrderLine.Custom.AssetIntegrationID[0],
+  "msisdn": connectionNumber
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<try doc:name="Try" doc:id="0303d5e4-0524-4510-8142-ce8d3cbbd6e9" >
+							<flow-ref doc:name="subscriptor Change client" doc:id="d7cd8cb7-58c5-4b28-947c-a0c4fb1ed91a" name="subscriptorChangeCorp" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="1868ac30-1fae-4caa-b078-6ab5840e5138" >
+									<ee:transform doc:name="Fail Response" doc:id="21366cb4-20d0-4e45-9bd8-e89398e70045" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.changeSubscriptor') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="506c77b5-21af-41dc-bf97-a8e575ecf2a9" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="9a6148fa-506c-456e-9459-73c29255a4a1" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="70763b42-fe99-4e46-899e-7b87aa015dab" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="494f6319-77a8-4f0a-97b8-e2c772b0cc02" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.cancelacion') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;)]">
+						<ee:transform doc:name="variable connectionNumber to Cancelacion" doc:id="c64d6b1a-fbbc-4399-8a05-3362d3db8cb0">
+							<ee:message>
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="connectionNumber" ><![CDATA[output json
+var connectionNumber = (flatten(
+                payload.inputMessage.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value  
+                            //o.Custom.AssetIntegrationID
+                        else null
+            ) filter !isEmpty($))[0]
+---
+if (!isEmpty(connectionNumber)) connectionNumber else null]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<try doc:name="Try" doc:id="d47392cc-3743-48de-a67e-11a0634a3038" >
+							<flow-ref doc:name="Cancelacion Client" doc:id="b2fe1edb-0d30-46ca-9613-ce71132e3033" name="cancellation" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="26734c95-88cf-4258-b0a1-f38f88a91422" >
+									<ee:transform doc:name="Fail Response" doc:id="e93c8a00-f156-4b99-9a2c-30c1b2b26954" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.cancellation') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="22259503-44b3-4859-aac0-dd9bd9308729" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="0ba8075a-f9b3-4c16-a408-370de581952a" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="cb5d8f3e-f78a-4bf6-8c8d-bd1836189ad1" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="1031657d-0d72-4f2f-beb1-2ae8f89d9e90" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.reconexion') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;)]">
+						<ee:transform doc:name="variable connectionNumber to Reconexion" doc:id="dd8d6900-7b6e-468b-9af3-591324fd5dd4">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "ACTIVE"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="connectionNumber"><![CDATA[output json
+var connectionNumber = (flatten(
+                payload.inputMessage.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value  
+                            //o.Custom.AssetIntegrationID
+                        else null
+            ) filter !isEmpty($))[0]
+---
+if (!isEmpty(connectionNumber)) connectionNumber else null]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<try doc:name="Try" doc:id="aa58f2c6-ce1c-4fe7-988c-6d31349173e7" >
+							<flow-ref doc:name="Reconexion Client" doc:id="d1b28edf-9a93-4664-9b93-c9efca38c179" name="reconnection" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="755ea22b-25e6-40d0-b188-92a4b560faf7" >
+									<ee:transform doc:name="Fail Response" doc:id="3d263c92-6549-4097-8910-0c807d12c26d" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.reconnection') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="66615424-d3a0-48d5-9bf5-75bd9d88253d" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="3f66344a-fc38-4ba1-88b0-bccb45abdd64" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="5dc978f9-5226-4dac-b3f9-c1e698806113" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="196fa0f7-4928-4577-9a2b-d7825b926e1d" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.suspension') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;)]">
+						<ee:transform doc:name="variable connectionNumber to Suspension" doc:id="e013e107-2d33-4cf3-b0d8-d59c444b0da0">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "BLOCKEDCORE"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="connectionNumber"><![CDATA[output json
+var connectionNumber = (flatten(
+                payload.inputMessage.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value  
+                            //o.Custom.AssetIntegrationID
+                        else null
+            ) filter !isEmpty($))[0]
+---
+if (!isEmpty(connectionNumber)) connectionNumber else null]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<try doc:name="Try" doc:id="506bf367-9382-4c7d-97fb-9b92d8d7a653" >
+							<flow-ref doc:name="Suspension Client" doc:id="76b77bd1-453c-45e9-92c3-3c9db17b18e7" name="suspension" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="5dc9a44c-9113-43f5-8a37-9eb79c559de7" >
+									<ee:transform doc:name="Fail Response" doc:id="205b6482-36a4-4fcc-9a41-b07cb91db3d2" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.suspension') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="320b14be-52bc-49df-9b57-a5de228b25ff" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="d6cb23b1-649a-47c0-b17e-3efc71593415" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="8e6def53-f246-4c54-92d4-abaa34e4d148" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="92bbd113-1adf-46b6-8179-6ac5bea244df" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.renoRepo.filters') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;)]">
+						<ee:transform doc:name="Map Body to Reno Repo" doc:id="4473052c-360b-483f-b149-9772a700d447">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var inputBody = payload.inputMessage
+var connectionNumber = (flatten(
+                payload.inputMessage.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value  
+                            //o.Custom.AssetIntegrationID
+                        else null
+            ) filter !isEmpty($))[0]
+var iccid = (flatten(payload.inputMessage.OrderFulfilment.SalesOrderLine.SpecificationGroupXA) filter upper($.Name) == p('global.iccid')).Value[0]
+/*
+var filterdItems = ((payload.inputMessage.OrderFulfilment.SalesOrderLine filter upper($.ServiceActionCode) == p('global.add')) 
+						filter ((item, index) -> 
+						    p('global.renoRepoIds') contains ("|" ++ upper(item.ItemReference.PrimaryClassificationCode) ++ "|")
+						))						
+*/
+var packageId= p('global.renoRepo.packageId')
+---
+{
+  "connectionNumber": connectionNumber,
+  "simNumber": iccid,
+  "packageId": packageId
+  /*(flatten(inputBody.OrderFulfilment.SalesOrderLine.SpecificationGroupXA)
+  					filter $.Name == p('global.serviceClassOcs')).Value[0]
+  */
+  //(flatten(filterdItems.SpecificationGroupXA) filter $.Name == p("global.offerClasseOcs"))[0].Value
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<try doc:name="Try" doc:id="4ccd4ca6-ac91-479c-8abc-c6d1f502cdac" >
+							<flow-ref doc:name="RenoRepo Client" doc:id="7fcdf54f-c873-4319-9523-bdb94113b4cc" name="renoRepo" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="23d350e5-6800-4161-a611-652987b7e0c8" >
+									<ee:transform doc:name="Fail Response" doc:id="aab6c225-2a13-44ee-b8db-b36d8bdf2818" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.renoRepo') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="aeddb5b0-4b1a-4cc6-a4e4-072a9f2819d6" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="5885ffa1-d8d6-4e9b-8028-aec3e460fa92" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="5e63fc1f-b407-4920-b64c-a0f44bd9e44c" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="2e2ca877-683a-43b8-810f-e19d5825ae26" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.cambioNumero') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;)]">
+						<ee:transform doc:name="Map Body to cambioNumero" doc:id="e3b1a91c-90dd-4099-98c3-e17aadd53f7f">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var inputBody = payload.inputMessage
+var newMsisdn = (flatten(
+                inputBody.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value  
+                        else null
+            ) filter !isEmpty($))[0]
+var oldMsisdn = (flatten(
+                inputBody.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numeroAnterior')))).Value  
+                        else null
+            ) filter !isEmpty($))[0]
+---
+{
+  "newMsisdn": if (!isEmpty(newMsisdn)) 
+                        newMsisdn 
+                  else null,
+  "oldMsisdn": if (!isEmpty(oldMsisdn)) 
+                        oldMsisdn 
+                  else null,
+  "integrationId": inputBody.OrderFulfilment.SalesOrderLine.Custom.AssetIntegrationID[0]
+}
+]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<try doc:name="Try" doc:id="9f024e28-0670-4e9a-a284-f524a706cd68" >
+							<flow-ref doc:name="Number Change Client" doc:id="32d5ce2a-4e57-43b3-a472-e09f59cf2c55" name="numberChange" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="8c26bb58-9f6d-498c-ac2d-4a001ca763d4" >
+									<ee:transform doc:name="Fail Response" doc:id="96872c92-b6d2-47e0-9682-117a5a6fcaf7" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.changeNumber') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="4c26aefe-092e-433c-9ac3-cb3b1a522bb4" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="5722cb21-a104-4b7b-ae72-03dc3c89caf2" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="f57b1d6d-8a21-4ab6-9125-f54100ccf33d" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="971245d2-f446-4eec-aa5a-0fb1363ecd91" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.adicionBolsa') == upper(vars.subOrderType)]">
+						<ee:transform doc:name="Map Body to adicionBolsaCompartida" doc:id="2958a364-cef1-4dcf-b259-5548ebfa0479">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var inputBody = payload.inputMessage
+var msisdn = (flatten(
+                inputBody.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value  
+                        else null
+            ) filter !isEmpty($))[0]
+var parentPkgInstanceId = (flatten(
+                inputBody.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.parentPkgInstanceId')))).Value  
+                        else null
+            ) filter !isEmpty($))[0]
+---
+{
+  "integrationId": inputBody.OrderFulfilment.SalesOrderLine.Custom.AssetIntegrationID[0],
+  "MSISDN": if (!isEmpty(msisdn))  msisdn 
+            else null,
+  "parentPkgInstanceId": if (!isEmpty(parentPkgInstanceId)) parentPkgInstanceId 
+                         else null
+}
+]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<try doc:name="Try" doc:id="02ea9e8e-a212-4e87-885c-891e8ba4a7cc" >
+							<flow-ref doc:name="Adicion Bolsa Comp Client" doc:id="9f104ea1-93fc-4b08-8339-a8208fd5ad4b" name="adicionBolsaComp" />
+							<error-handler >
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="cee2a7fa-abe3-40c1-9196-5d65d5a2c40a" >
+									<ee:transform doc:name="Fail Response" doc:id="ebf28bc4-7e4b-409c-a2c0-b8c1eaa74bb6" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.adicionBolsa') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="458285a1-41d3-4bfd-8d0a-5b90dcbbb0b2" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="324a66a0-658a-416b-8a1f-a0f9e98f93cc" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="c501a681-416c-43dc-8b8c-f7e71ed86799" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="af2d1e3a-1b79-4943-a2b1-4231f4ed5729" name="after-tramit-notifications" />
+					</when>
+					<when expression="#[p('global.reduccionBolsa') == upper(vars.subOrderType)]">
+						<ee:transform doc:name="Map Body to reduccionBolsaCompartida" doc:id="00a1eb69-aab6-4aa3-8869-34f9a6a4ebb9">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var inputBody = payload.inputMessage
+var parentPkgInstanceId = (flatten(
+                inputBody.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.parentPkgInstanceId')))).Value  
+                        else null
+            ) filter !isEmpty($))[0]
+var msisdn = (flatten(
+                inputBody.OrderFulfilment.SalesOrderLine
+                    map (o,i) -> 
+                        if (upper(o.ItemReference.PrimaryClassificationCode) == upper(p('global.lteNumberClass')))  
+                            (o.SpecificationGroupXA filter (upper($.Name) == upper(p('global.numero')))).Value  
+                        else null
+            ) filter !isEmpty($))[0]
+---
+{
+  "msisdn": if (!isEmpty(msisdn))  msisdn 
+            else null,
+  "parentPkgInstanceId": if (!isEmpty(parentPkgInstanceId)) parentPkgInstanceId 
+                         else null
+}
+]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<try doc:name="Try" doc:id="55bf038f-70d0-4ef4-849d-7f2216d51235">
+							<flow-ref doc:name="Reduccion BolsaComp Client" doc:id="ebf08140-99f9-4f7f-ab5e-05dfb366538c" name="reduccionBolsaComp" />
+							<error-handler>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="d3579713-100f-4667-a6c9-c74c0dcbe498">
+									<ee:transform doc:name="Fail Response" doc:id="0ed189c2-2c10-48ad-81a0-72fd331ee230">
+										<ee:message>
+											<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.reduccionBolsa') ++ " " ++ (error.muleMessage.typedValue.message.message default ""),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<async doc:name="Async" doc:id="349d6827-a0c1-442b-b9c2-5df7f7379e7d" >
+										<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="1cc14627-eb2e-4759-82c8-506b69cb44e2" name="save-output-mongo" target="notifyUpdateMongo" />
+									</async>
+									<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="c631c984-1a98-43c5-8fa3-b172f4b2847e" name="patch-salesforce-order-v2" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+						<flow-ref doc:name="After Tramit Notifications" doc:id="48d01fa5-76ca-467d-83d3-4259cb3c41fe" name="after-tramit-notifications" />
+					</when>
+					<otherwise>
+						<flow-ref doc:name="No Prov Case" doc:id="628a916b-09e1-4a99-89a3-30b7fd98142b" name="noProvCase"/>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="noProvCase" doc:id="7963d59d-b701-4151-93ae-0f24e579725e">
+		<try doc:name="Try" doc:id="11a713ef-9a4d-4a0e-ac66-e35bab34fb0b">
+			<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="591403a6-0d76-4f69-a84e-567afc0c46bb" name="save-output-mongo" target="notifyUpdateMongo" />
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="fbff9674-97fc-490b-8316-a8c68300aac0" >
+					<ee:transform doc:name="Fail No Prov Case Mapping" doc:id="d6e09bce-7578-44dc-a3c0-f912c02f4edd">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.saveOutputMongo'),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="c4ffba4d-ad4f-438c-897c-a7f3825e77c2" name="patch-salesforce-order-v2" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="Success No Prov Case Mapping" doc:id="001fd11a-efc0-436e-8792-b492ac098fc1">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": "",
+	"Status": p('global.output.success')
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="6f5b5aa0-eb8f-44b7-887f-81d7675c03b9" name="patch-salesforce-order-v2" />
+	</sub-flow>
+	<sub-flow name="after-tramit-notifications" doc:id="e079e10c-c4b0-478a-9cdc-ad8363537928" >
+		<try doc:name="Try" doc:id="38ba4cee-81c6-4564-bcb4-50edef628e5b">
+					<flow-ref doc:name="Save notification in mongo 27-UpdatedProvLTEASAPIntf" doc:id="bfc61d25-59ca-4841-b698-c91f68a68b9f" name="save-output-mongo" target="notifyUpdateMongo" />
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="9c3432a8-ed30-4d66-819d-44e47e7971aa" >
+					<ee:transform doc:name="Fail Response" doc:id="6b5b2c62-7e77-4ea7-acb4-9c31bbddccde">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.saveOutputMongo'),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="9e4ff982-f118-42c0-b3df-0eef389f55b2" name="patch-salesforce-order-v2" />
+				</on-error-propagate>
+					</error-handler>
+				</try>
+		<try doc:name="Try" doc:id="556e968f-00ab-4e24-b122-9a96c81f6766">
+					<flow-ref doc:name="Go to Inventario Complete" doc:id="6d9542a6-d918-4339-b47e-3c8d886693de" name="inventario-complete" />
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="e49a8614-c9e5-4646-a1a3-6ec5d502ed96" >
+					<ee:transform doc:name="Fail Response" doc:id="b26c40a1-d71c-4905-bba3-e90e000af90a" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ p('global.output.error.inventaryComplete'),
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="Notif UpdateSalesforceOrder_v" doc:id="b1ed10fb-434d-4d61-a73e-39c6b0531e9e" name="patch-salesforce-order-v2" />
+				</on-error-propagate>
+					</error-handler>
+				</try>
+		<try doc:name="Try" doc:id="f68bc7cb-c066-49b4-8dc4-b0d8d0cf9653">
+			<flow-ref doc:name="Go to Insert Positive Record" doc:id="528ec728-b4c3-4f95-8783-496cd9eb9134" name="insert-positive-record"/>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e3b61937-db5e-4fb0-9fef-5669c0c03bd3" >
+				</on-error-continue>
+					</error-handler>
+				</try>
+		<ee:transform doc:name="Success Response" doc:id="eb14710a-c593-47f8-8ec6-3b7099662832">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": "",
+	"Status": p('global.output.success')
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<flow-ref doc:name="Notif UpdateSalesforceOrder_v2" doc:id="887b3b47-57be-4260-90cc-bd9c75ae9b08" name="patch-salesforce-order-v2" />
+	</sub-flow>
+	<sub-flow name="save-output-mongo" doc:id="1d8d3831-c857-42d4-9d19-5b7b55cd82ed" >
+		<choice doc:name="Notification enabled?" doc:id="cddf2422-fe36-4509-8325-74daf533d9df" >
+			<when expression="#[p('global.notifMongoON') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;)]" >
+				<ee:transform doc:name="Prepare Update Order" doc:id="3e0c6281-6fae-441f-9850-4535b575e1fd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+var orderProcess = if (payload.Status == p('global.output.error.failed')) 500 else 200
+---
+{
+    Actualiza_Aprovisionamiento: {
+        Header: {
+            IdentificadorPeticion: vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+            SistemaPeticion: if(isEmpty(vars.inputPayload.inputMessage.OrderFulfilment.Sender.ApplicationID default "")) "SalesForce" else vars.inputPayload.inputMessage.OrderFulfilment.Sender.ApplicationID,
+            UsuarioMDM: p('global.createOrder.usuarioMDM'),
+            PasswordMDM: p('global.createOrder.passwordMDM')
+        },
+        Informacion: {
+            (Id_Orden_Sistema_Origen: vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID) if (!isBlank(payload.inputMessage.OrderFulfilment.Identification.ID)),
+            Estado: if (orderProcess == 200) "Completed" else "Error",
+            Fecha_Estado: now() >> "America/Bogota" as String,
+            Resultado: if (orderProcess == 200) "Procesamiento exitoso" else "Procesamiento fallido"
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<ee:transform doc:name="Prepare MDM_INTEGRATION_MSG input" doc:id="a9ab61eb-98c1-4448-98ac-39451efc4fc4" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	IdentificadorPeticion: correlationId,
+	SistemaOrigen: "MULESOFT",
+	TipoOperacion: 20,
+	Peticion: write(payload, "application/xml"),
+	FechaPeticion: (((now() >> "America/Bogota") as DateTime) as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS"}),
+	IP: attributes.headers.'x-real-ip' default "",
+	Observaciones: ""
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to Client" doc:id="a55a9a3c-5692-4ebd-a72f-1b2d2ded7dec" name="post-mdmIntegrationMsg-client" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="inventario-complete" doc:id="0b28df33-e53a-4bd6-85c0-0d5a7daa65b4" >
+		<choice doc:name="Functionality enabled?" doc:id="31998065-5311-4c83-b2d9-85d2a7eeb1dd" >
+			<when expression="#[(p('global.invCompleteON') == &quot;true&quot;) and (p('global.invSubOrderTypes') contains upper(&quot;|&quot; ++ vars.subOrderType ++ &quot;|&quot;))]" >
+				<ee:transform doc:name="Set request variables" doc:id="cc06ed01-ed39-4bf8-a258-9afdf027e9fc">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="catalog" ><![CDATA[p('global.invHomologationCollection')]]></ee:set-variable>
+						<ee:set-variable variableName="genericValue" ><![CDATA[vars.inputPayload.inputMessage.OrderFulfilment.Scheduling.SubOrderType]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to get homologation client" doc:id="3d349d2a-383f-489d-880b-190bac9107ac" name="get-homologation-by-generic-value-and-catalog" target="homologation_resp"/>
+				<ee:transform doc:name="Set request body" doc:id="f0baae5f-7f5a-4914-8de9-2df9ba345f47">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "ICCID": ((flatten(vars.inputPayload.inputMessage.OrderFulfilment.SalesOrderLine map ((o, i) -> (
+    if((o.ItemReference.PrimaryClassificationCode contains p('global.invCompleteFilters.lteSimcardClass'))) 
+      (o.SpecificationGroupXA filter ($.Name == p('global.invCompleteFilters.iccid'))).Value 
+    else "")))
+) filter ($ != ""))[0] default "",
+  "OrderId": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID, 
+  "ServiceId": (vars.inputPayload.inputMessage.OrderFulfilment.AltKey filter ((item, index) -> item.AltKeyName == p('global.invCompleteFilters.serviceId')))[0].AltKeyValue,
+  "MSISDN": if(upper(vars.inputPayload.inputMessage.OrderFulfilment.Scheduling.SubOrderType) contains p('global.invCompleteFilters.cancelacion')) (((vars.inputPayload.inputMessage.OrderFulfilment.SalesOrderLine filter $.ItemReference.PrimaryClassificationCode == p('global.invCompleteFilters.lteNumberClass')))[0].SpecificationGroupXA filter $.Name == p('global.invCompleteFilters.numero'))[0].Value
+  else if(upper(p('global.invCompleteFilters.subOrderType')) contains upper("|" ++ vars.inputPayload.inputMessage.OrderFulfilment.Scheduling.SubOrderType ++ "|")) (flatten(vars.inputPayload.inputMessage.OrderFulfilment.SalesOrderLine.SpecificationGroupXA) filter ($.Name == p('global.invCompleteFilters.numeroAnterior')))[0].Value
+  else (flatten(vars.inputPayload.inputMessage.OrderFulfilment.SalesOrderLine.SpecificationGroupXA) filter $.Name == p('global.invCompleteFilters.numero'))[0].Value,
+  "NewMSISDN": 
+    if(upper(p('global.invCompleteFilters.subOrderType')) contains upper("|" ++ vars.inputPayload.inputMessage.OrderFulfilment.Scheduling.SubOrderType ++ "|")) ((flatten(vars.inputPayload.inputMessage.OrderFulfilment.SalesOrderLine.SpecificationGroupXA)) filter $.Name == p('global.invCompleteFilters.numero'))[0].Value
+    else "",
+  "Tramit": vars.homologation_resp.homologation
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to complete inventory client" doc:id="cd929666-3444-46e8-a5e7-fd220f75063c" name="post-complete-inventory"/>
+			</when>
+		</choice>
+	</sub-flow>
+<sub-flow name="provOneTimeBag" doc:id="5fdfc716-2a7c-4d32-8351-b7a3a85abf2a" >
+		<ee:transform doc:name="Filter Adicion SVA" doc:id="a0c5f94f-8a37-455c-a097-6948e4f61b68">
+				<ee:message>
+				</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="svas" ><![CDATA[%dw 2.0
+output application/json
+---
+(payload.inputMessage.OrderFulfilment.SalesOrderLine
+	filter upper($.ServiceActionCode) == p("global.add"))
+	filter upper($.ItemReference.PrimaryClassificationCode) == p("global.lteSva2PackageClass")]]></ee:set-variable>
+			</ee:variables>
+			</ee:transform>
+		<ee:transform doc:name="foreachResult" doc:id="2165ac72-a9f2-4a8f-9a0e-5a95012ba448" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="foreachResult" ><![CDATA[%dw 2.0
+output application/json
+---
+[
+	
+]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<foreach doc:name="For Each" doc:id="4b6b9c2b-c28c-4a64-800d-16876897b829" collection="#[vars.svas]">
+			<ee:transform doc:name="numerConexion" doc:id="f5490e60-d3e1-4450-bb09-e9a9ef1de350">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+					<ee:set-variable variableName="nroConexion" ><![CDATA[%dw 2.0
+output application/json
+---
+(flatten((vars.inputPayload.inputMessage.OrderFulfilment.SalesOrderLine 
+	filter $.ItemReference.PrimaryClassificationCode == p("global.lteNumberClass")
+).SpecificationGroupXA) filter $.Name == p("global.numero"))[0].Value
+
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			<ee:transform doc:name="Map body to Adicion SVA" doc:id="07b2806c-d8d6-4f68-a6c2-ccf48736c186">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var integrationId = (vars.activeService filter upper($.Estado) != p("global.inactivo"))[0].Integration_Id
+---
+{
+  "integrationId": vars.nroConexion,
+  "msisdn": vars.nroConexion,
+  "svas": [
+  	{
+	  "action": payload.ServiceActionCode,
+	  "packageId": (payload.SpecificationGroupXA filter $.Name == p("global.offerClasseOcs"))[0].Value
+  	}
+  ]
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<try doc:name="Try" doc:id="55d708de-8a0a-4a2c-b472-8375f17b4022">
+				<flow-ref doc:name="adicionSVA" doc:id="3cdc8a1f-3ff9-4127-9045-89ff76b94a21" name="adicionSVA" target="adicionSVA"/>
+				<error-handler >
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d7a7cc26-4a59-4c9d-8f1b-7bfbaf6f819c" >
+						<ee:transform doc:name="Save Error Out" doc:id="eb88a55b-0acf-4ccc-bd32-8b9fddd7b8b1" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="adicionSVA" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "codigo": "ERROR",
+  "descripcion": "Procesamiento Fallido" ++ " Respuesta Service Papi: " ++ (payload.message.message default "")
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+			<ee:transform doc:name="Add result to variable" doc:id="3dd98a0b-0cfa-4556-8901-1268092871ec">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="foreachResult"><![CDATA[%dw 2.0
+output application/json
+---
+vars.foreachResult << vars.adicionSVA]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		</foreach>
+		<choice doc:name="Choice" doc:id="21c7d4f2-67c0-4f9c-8edd-9f9aa39c44dd">
+				<when expression='#[%dw 2.0&#10;output application/json&#10;import * from dw::core::Arrays&#10;---&#10;vars.foreachResult.codigo every $ == 0]'>
+				<ee:transform doc:name="Success Response" doc:id="22825ef8-712e-473a-8d3a-fc7fd85dd036" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": "",
+	"Status": p('global.output.success')
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				</when>
+			<otherwise >
+				<ee:transform doc:name="Fail Response" doc:id="149b5faf-0a58-40f4-a094-0df1d1e81d83" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OrderID": vars.inputPayload.inputMessage.OrderFulfilment.Identification.ID,
+	"Comments": vars.subOrderType ++ " Fallido.",
+	"Status": p('global.output.error.failed')
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+			</choice>
+	</sub-flow>
+	<sub-flow name="insert-positive-record" doc:id="f93a8d9a-1f79-4c43-b0db-63a8b257fbf6" >
+		<choice doc:name="Functionality enabled?" doc:id="8c52b62e-7835-49e6-95ef-d86c404bdf65" >
+			<when expression="#[(p('global.insertPositiveRecordON') == &quot;true&quot;)]" >
+				<ee:transform doc:name="Set request body" doc:id="17c0f45c-c457-44f0-b5af-358a695e386e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+
+var msisdn = (flatten((vars.inputPayload.inputMessage.OrderFulfilment.SalesOrderLine filter $.ItemReference.PrimaryClassificationCode == "LTE Number Class").SpecificationGroupXA) filter $.Name == "Numero")[0].Value
+var valueCondition = (flatten((vars.inputPayload.inputMessage.OrderFulfilment.SalesOrderLine filter $.ItemReference.PrimaryClassificationCode == "LTE Equipment Class").SpecificationGroupXA) filter $.Name == "IMEI")[0].Value
+var imei = if(sizeOf(valueCondition default "") > 0)
+    valueCondition
+else ((vars.inputPayload.inputMessage.OrderFulfilment.SalesOrderLine filter $.ItemReference.PrimaryClassificationCode == "LTE Customer Equipment Class")[0].SpecificationGroupXA filter $.Name == "IMEI")[0].Value
+    
+---
+WSRegistroPositivo: {
+    WSRequestHeader: {
+        System: {
+            correlationID: null,
+            processingServer: null
+        },
+        Property: {
+            value: null,
+            name: null
+        }
+    },
+    RegistroPositivo: {
+        sUsuarioETB: "",
+        sIMEI: imei,
+        sMSISDN: msisdn,
+        sNombrePropietario: vars.inputPayload.inputMessage.OrderFulfilment.CustomerPartyAccount.Name,
+        sDireccionPropietario: vars.inputPayload.inputMessage.OrderFulfilment.CustomerPartyAccount.Address.LineOne,
+        iTipoUsuarioPropietario: vars.inputPayload.inputMessage.OrderFulfilment.CustomerPartyAccount.TypeCode,
+        sTipoDocPropietario: vars.inputPayload.inputMessage.OrderFulfilment.CustomerPartyAccount.Custom.DocumentType,
+        sDocPropietario: vars.inputPayload.inputMessage.OrderFulfilment.CustomerPartyAccount.Custom.DocumentNumber,
+        sTelContactoPropietario: vars.inputPayload.inputMessage.OrderFulfilment.CustomerPartyAccount.ContactPerson.CompleteNumber,
+        sNombreContacto: vars.inputPayload.inputMessage.OrderFulfilment.CustomerPartyAccount.ContactPerson.FirstName,
+        sDireccionContacto: "",
+        iTipoUsuarioAutorizado: "",
+        sTipoDoAutorizado: "",
+        sDocAutorizado: "",
+        sTelContactoAutorizado: vars.inputPayload.inputMessage.OrderFulfilment.CustomerPartyAccount.ContactPerson.CompleteNumber
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to insert positive record client" doc:id="5da5fdd0-2143-426d-843b-da381b6ce32f" name="post-insert-positive-record" />
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

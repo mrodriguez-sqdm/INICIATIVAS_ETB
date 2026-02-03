@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-digitalRecords-orchestratorSub_Flow" doc:id="2df7efbb-f6d1-425c-8abb-2d9510d69096" >
+		<flow-ref doc:name="Go to client" doc:id="ecedbee1-8be3-40e6-94f0-8a62ad512848" name="get-digitalRecords-salesforce-clientSub_Flow" target="salesforce_resp"/>
+		<choice doc:name="Choice" doc:id="b9581a5b-686e-4fc4-b3af-e139a15c3f91" >
+			<when expression="#[vars.salesforce_resp.done != true]">
+				<ee:transform doc:name="Error" doc:id="e51b8958-2983-4af8-865c-a60fd9c2a262" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var cause = ((vars.salesforce_resp default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": if(sizeOf(vars.salesforce_resp)!=1) "INTERNAL_SERVER_ERROR" else vars.salesforce_resp[0].errorCode  default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<choice doc:name="Choice" doc:id="48eccc98-1341-44bb-a770-6c717e1f921a" >
+					<when expression='#[vars.salesforce_resp.records[0].Id != null]'>
+						<ee:transform doc:name="Set response" doc:id="a53920ba-cb74-4619-9d6a-1cc8e30ef8a7" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	idCanal: vars.salesforce_resp.records[0].Name,
+	canal: vars.salesforce_resp.records[0].Canal__c,
+	idCuenta: vars.salesforce_resp.records[0].Cuenta__r.Id,
+ 	externalIdCuenta: vars.salesforce_resp.records[0].Cuenta__r.External_Id__c,
+	externalIdCuenta: vars.salesforce_resp.records[0].Cuenta__r.External_Id__c,
+	integracionIdCuenta: vars.salesforce_resp.records[0].Cuenta__r.Identificador_Cuenta_Mongo__c,
+	tipoDocumentoCuenta: vars.salesforce_resp.records[0].Cuenta__r.Tipodedocumento__c,
+	numeroDocumentoCuenta: vars.salesforce_resp.records[0].Cuenta__r.AccountNumber,
+	nombreCuenta: vars.salesforce_resp.records[0].Cuenta__r.Name,
+	UEN: vars.salesforce_resp.records[0].Cuenta__r.UEN__c,
+  	segmento: vars.salesforce_resp.records[0].Cuenta__r.Segmento__c,
+  	bloqueo: vars.salesforce_resp.records[0].Cuenta__r.LTE_CausalRestriccionVenta__c,
+ 	idContacto: vars.salesforce_resp.records[0].Contacto__r.Id,
+	tipoDocumento: vars.salesforce_resp.records[0].Contacto__r.Tipodedocumento__c,
+	numeroDocumento: vars.salesforce_resp.records[0].Contacto__r.NumerodeIdentificacion__c,
+	nombres: vars.salesforce_resp.records[0].Contacto__r.FirstName,
+	apellidos: vars.salesforce_resp.records[0].Contacto__r.LastName,
+	correo: vars.salesforce_resp.records[0].Contacto__r.Email,
+	celular: vars.salesforce_resp.records[0].Contacto__r.MobilePhone,
+	habeasData: vars.salesforce_resp.records[0].Contacto__r.Autoriza_Tratamiento_de_Datos_Personales__c,
+	autorizado: vars.salesforce_resp.records[0].Contacto__r.Contactoautorizadoparaopercciales__c,
+	integrationId: vars.salesforce_resp.records[0].Contacto__r.Identificador_Contacto_Mongo__c,
+	fechaRegistro: vars.salesforce_resp.records[0].FechaRegistro__c,
+	fechaIngreso: vars.salesforce_resp.records[0].CreatedDate,
+	fechaModificacion: vars.salesforce_resp.records[0].LastModifiedDate
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="NOT_FOUND" doc:id="47a2f606-7008-4576-9d19-ccf1cdb2b09c" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "No se encontraron datos",
+  "cause": [
+    {
+      "origin": "salesforce-sapi-services",
+      "message": ""
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-digitalRecords-orchestratorSub_Flow" doc:id="4e95f4f3-bc5d-4b42-9c73-53dfc34397ae" >
+		<ee:transform doc:name="Set request body" doc:id="6b5ede69-dda3-473d-a302-347eea2dc453">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Name": vars.inputPayload.idCanal,
+	"Canal__c": vars.inputPayload.Canal,
+	"Cuenta__c": vars.inputPayload.idCuenta,
+	"Contacto__c": vars.inputPayload.idContacto,
+	"FechaRegistro__c": vars.inputPayload.FechaRegistro	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="45bf1691-7ea2-4515-9b15-3f239bf9f35a" name="post-digitalRecords-salesforce-clientSub_Flow" target="salesforce_resp"/>
+		<choice doc:name="Choice" doc:id="34ce0b09-de9f-4fd4-b543-4cbcf1cc2446" >
+			<when expression="#[vars.salesforce_resp.success != true]">
+				<ee:transform doc:name="Error" doc:id="b8c11102-6ae4-41b3-958e-d0950a5db7ac" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var cause = ((vars.salesforce_resp default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": if(sizeOf(vars.salesforce_resp)!=1) "INTERNAL_SERVER_ERROR" else vars.salesforce_resp[0].errorCode  default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<when expression='#[(vars.headers.source != "WebChatEmpresas" and&#10;vars.headers.source != "WhatsappEmpresas") &#10;or vars.salesforce_resp.id == null]'>
+				<ee:transform doc:name="Set response" doc:id="4a7f28f4-5295-4a57-8001-f5dfce05318c">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Id" : ""
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set response" doc:id="1311bf01-efea-4625-ab21-1793ece6381b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Id" : vars.salesforce_resp.id
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
