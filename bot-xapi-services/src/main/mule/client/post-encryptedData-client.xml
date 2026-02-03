@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-encryptedData-clientSub_Flow" doc:id="fb687833-b8d2-4578-88e3-2a418aac9410" >
+		<ee:transform doc:name="Set payload encrypted" doc:id="783edabe-288c-4b8e-ac47-93b9d404e6da" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Channel": vars.headers.source,
+	"CorrelationID": vars.headers."x-correlation-id",
+	"WSRequestHeader": {
+		"System": {
+			"Name": vars.headers.source,
+			"CorrelationID": vars.headers."x-correlation-id",
+			"ProcessingServer": vars.headers.source
+		},
+		"Property": [{
+			"Name": "FLUJO",
+			"Value": payload.order.flow
+		}]
+	},
+	"WSRequestBody": vars.encryptedRequest[0]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="WARN" doc:name="Envio_bot" doc:id="471779bc-fd6b-48b4-96b3-dde041860a69" message="#[payload]" />
+		<http:request method="POST" doc:name="bot-sapi-services" doc:id="45608274-248f-4d2c-9d5b-54351a278551" path="${bot-sapi.encrypted.path}" config-ref="HTTP_Request_configuration_bot-sapi">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('bot-sapi.client_secret'),
+	"client_id" : p('bot-sapi.client_id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."x-correlation-id",
+	"source": vars.headers.source,
+	"x_civ_request" : vars.encryptedRequest[1],
+	"processname" : vars.variablesRequest.processname,		 
+	"systemId" : vars.headers.systemid
+}]]]></http:headers>
+		</http:request>
+		<set-variable value='#[(attributes.headers["x_civ_response"])]' doc:name="Set x_civ_response" doc:id="5eaee0be-a1e3-41da-bda2-c49416f21d4e" variableName="x_civ_response"/>
+	</sub-flow>
+</mule>

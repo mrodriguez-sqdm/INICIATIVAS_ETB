@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="get-customers-orchestratorSub_Flow" doc:id="fabf6b09-b7df-4e82-935b-ea9afdc3d7d1" >
+		<flow-ref doc:name="Go to client" doc:id="cb904e29-3b56-4d00-a330-b6471d1e2693" name="get-customers-clientSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="get-saleOrderCustomer-orchestratorSub_Flow" doc:id="f11fb882-8ab6-4a28-962f-4aabd5f86eab" >
+		<set-variable value="#[attributes.headers]" doc:name="Set initial headers" doc:id="cc639b2f-4466-4b7f-9ce7-f655fff0fb53" variableName="headers"/>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    processname: "getSaleOrderCustomer",&#10;    documentNumber: attributes.queryParams.documentNumber,&#10;    documentType: attributes.queryParams.documentType&#10;}]' doc:name="Set variables" doc:id="b93fb2f1-adbe-4058-94cc-fc2d160d401c" variableName="variablesRequest"/>
+		<set-variable value='#[%dw 2.0&#10;output text/plain&#10;---&#10;write({&#10;	"Audit": {&#10;		"Canal": vars.headers.name&#10;	},&#10;	"Document_Type": vars.variablesRequest.documentType,&#10;	"Document_Number": vars.variablesRequest.documentNumber&#10;},&#10;"application/json"&#10;)]' doc:name="Set request info" doc:id="2810b86e-5997-41a6-9f52-df2900d58d97" variableName="requestInfo" />
+		<flow-ref doc:name="get azure secret" doc:id="cbc223f7-804a-4bca-a8d4-2e450531cb4b" target="secret" name="fetch-azureKeySecret"/>
+		<java:invoke-static doc:name="get encrypted body and iv" doc:id="e9f62170-daea-4f3f-bc86-d3ea3493a870" target="encryptedRequest" class="com.etb.Encryption" method="AESEncrypter(java.lang.String,java.lang.String)">
+			<java:args ><![CDATA[#[{
+	text: vars.requestInfo,
+	secret: vars.secret.secret
+}]]]></java:args>
+		</java:invoke-static>
+		<try doc:name="Try" doc:id="509471b3-2d4d-4958-a199-d588e35c18fb" >
+			<flow-ref doc:name="Go to client" doc:id="daf90863-3854-42ff-86be-08a902dd85b5" name="post-encryptedData-clientSub_Flow" />
+			<choice doc:name="Choice" doc:id="b7507e3a-33e6-4b83-b11e-f4e2b0434a5d" >
+				<when expression="#[payload.WSResponseBody == null]">
+					<flow-ref doc:name="Flow Reference" doc:id="18acac07-0f44-4ab3-bcde-20512ab88905" name="encrypted-noResponseSub_Flow"/>
+				</when>
+				<otherwise >
+					<java:invoke-static doc:name="get decrypted body and iv" doc:id="80418cf3-6fe3-47d5-a81e-6bcc2e1083df" class="com.etb.Encryption" method="AESDecrypter(java.lang.String,java.lang.String,java.lang.String)" target="decryptedResponse">
+			<java:args><![CDATA[#[{
+	text: payload.WSResponseBody,
+	ivBase64: vars.x_civ_response,
+	secret: vars.secret.secret
+}]]]></java:args>
+		</java:invoke-static>
+					<flow-ref doc:name="Flow Reference" doc:id="f309f051-9a9c-4f79-a8a7-f323de98d4fc" name="decrypted-ResponseSub_Flow"/>
+				</otherwise>
+			</choice>
+		</try>
+	</sub-flow>
+</mule>

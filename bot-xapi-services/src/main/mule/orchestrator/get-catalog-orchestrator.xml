@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="get-catalog-orchestratorSub_Flow" doc:id="b51e1c46-670c-4dff-bde7-653be06c18d6">
+	<set-variable value="#[attributes.headers]" doc:name="Set initial headers" doc:id="357ac10d-c98b-4d5c-bf8f-566ba2815e04" variableName="headers"/>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    processname: "getSaleOrderCatalog",&#10;    zone: attributes.queryParams.zone,&#10;    stratum: attributes.queryParams.stratum,&#10;    technology: attributes.queryParams.technology,&#10;    orderType: attributes.queryParams.orderType,&#10;    uen: attributes.queryParams.uen&#10;}]' doc:name="Set variables" doc:id="f6b31ee1-b64c-4c97-9b56-98d402840664" variableName="variablesRequest"/>
+		<set-variable value='#[%dw 2.0&#10;output text/plain&#10;---&#10;write({&#10;	"Audit": {&#10;		"Canal": vars.headers.name&#10;	},&#10;	"Filter": {&#10;		"Zone": vars.variablesRequest.zone,&#10;		"Stratum": (vars.variablesRequest.stratum as Number),&#10;		"Technology": vars.variablesRequest.technology,&#10;		"Order_Type": vars.variablesRequest.orderType,&#10;		"UEN": vars.variablesRequest.uen&#10;	} filterObject ((value, key) -&gt; value != null)&#10;},&#10;"application/json"&#10;)]' doc:name="Set request info" doc:id="82c72d1a-adcf-464f-a876-e7dd17121be4" variableName="requestInfo" />
+		<flow-ref doc:name="get azure secret" doc:id="6e964646-ab69-49a3-8a85-f2f6aee51c15" target="secret" name="fetch-azureKeySecret"/>
+		<java:invoke-static doc:name="get encrypted body and iv" doc:id="a255639b-956b-4cb2-92e2-45e8b97dc5db" class="com.etb.Encryption" method="AESEncrypter(java.lang.String,java.lang.String)" target="encryptedRequest">
+			<java:args ><![CDATA[#[{
+	text: vars.requestInfo,
+	secret: vars.secret.secret
+}]]]></java:args>
+		</java:invoke-static>
+		<try doc:name="Try" doc:id="59d300a5-66b9-49a4-ac4c-ff87892daa7b" >
+			<flow-ref doc:name="Go to client" doc:id="c40c0e03-b157-4dd3-b4f1-754fcd21f13e" name="post-encryptedData-clientSub_Flow" />
+			<choice doc:name="Choice" doc:id="ad947ede-005c-4d63-b1fa-2d9b3c0929aa" >
+				<when expression="#[payload.WSResponseBody == null]">
+					<flow-ref doc:name="Flow Reference" doc:id="e89b0ee2-e675-41a3-b444-a92465f0bd65" name="encrypted-noResponseSub_Flow"/>
+				</when>
+				<otherwise >
+					<java:invoke-static doc:name="get decrypted body and iv" doc:id="924ec9c4-4f32-48d4-9cc3-f6d9d6fc892d" class="com.etb.Encryption" method="AESDecrypter(java.lang.String,java.lang.String,java.lang.String)" target="decryptedResponse">
+						<java:args ><![CDATA[#[{
+	text: payload.WSResponseBody,
+	ivBase64: vars.x_civ_response,
+	secret: vars.secret.secret
+}]]]></java:args>
+					</java:invoke-static>
+					<flow-ref doc:name="Flow Reference" doc:id="342e1a10-6fb9-433b-b894-dc29f948422e" name="decrypted-ResponseSub_Flow"/>
+				
+</otherwise>
+			</choice>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-catalog-orchestratorSub_Flow_v2" doc:id="40a7b980-96ba-4dc7-b940-26d8deefcfc1" >
+		<set-variable value="#[attributes.headers]" doc:name="Set initial headers" doc:id="0853aa7f-487d-43ce-9935-7c8142a304b0" variableName="headers" />
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    processname: "getSaleOrderCatalog",&#10;    bundletype: (&#10;        ((attributes.queryParams.bundle_type default "") as String)&#10;        splitBy "," &#10;        map ((item) -&gt; trim(item)) &#10;        filter ((item) -&gt; item != "")&#10;    ),&#10;    zone: attributes.queryParams.zone,&#10;    stratum: attributes.queryParams.stratum,&#10;    technology: attributes.queryParams.technology,&#10;    orderType: attributes.queryParams.orderType,&#10;    uen: attributes.queryParams.uen&#10;}]' doc:name="Set variables" doc:id="a0378173-f660-432c-afe1-48d0df0af1e8" variableName="variablesRequest" />
+		<set-variable value='#[%dw 2.0&#10;output text/plain&#10;---&#10;write({&#10;	"Audit": {&#10;		"Canal": vars.headers.name&#10;	},&#10;	"Filter": {&#10;		"Bundle_type": vars.variablesRequest.bundletype,&#10;		"Zone": vars.variablesRequest.zone,&#10;		"Stratum": if (vars.variablesRequest.stratum != null) &#10;                 (vars.variablesRequest.stratum as Number) &#10;               else &#10;                 null,&#10;		"Technology": vars.variablesRequest.technology,&#10;		"Order_Type": vars.variablesRequest.orderType,&#10;		"UEN": vars.variablesRequest.uen&#10;	} filterObject ((value, key) -&gt; value != null)&#10;},&#10;"application/json"&#10;)]' doc:name="Set request info" doc:id="227c1dc5-993b-4924-b204-bbb878122b7d" variableName="requestInfo" />
+		<flow-ref doc:name="get azure secret" doc:id="16653905-fd5a-4462-8d7c-ef7f988cb6f8" name="fetch-azureKeySecret" target="secret" />
+		<java:invoke-static method="AESEncrypter(java.lang.String,java.lang.String)" doc:name="get encrypted body and iv" doc:id="da2e13d7-74af-47bd-8693-6e95bc30415e" class="com.etb.Encryption" target="encryptedRequest" >
+			<java:args ><![CDATA[#[{
+	text: vars.requestInfo,
+	secret: vars.secret.secret
+}]]]></java:args>
+		</java:invoke-static>
+		<try doc:name="Try" doc:id="1d9b5646-f8b7-47c8-b912-47faf141f1f3" >
+			<flow-ref doc:name="Go to client" doc:id="30737779-810b-4d03-b4bc-c9abfed5c5b8" name="post-encryptedData-clientSub_Flow" />
+			<choice doc:name="Choice" doc:id="128a1011-41ec-4964-bf06-d0fa51457f79" >
+				<when expression="#[payload.WSResponseBody == null]" >
+					<flow-ref doc:name="Flow Reference" doc:id="313b83e5-c04f-465a-83aa-b7d882a1f168" name="encrypted-noResponseSub_Flow" />
+				</when>
+				<otherwise >
+					<java:invoke-static method="AESDecrypter(java.lang.String,java.lang.String,java.lang.String)" doc:name="get decrypted body and iv" doc:id="f1ce26ea-96a7-4207-902d-6a9d96819e56" class="com.etb.Encryption" target="decryptedResponse" >
+						<java:args ><![CDATA[#[{
+	text: payload.WSResponseBody,
+	ivBase64: vars.x_civ_response,
+	secret: vars.secret.secret
+}]]]></java:args>
+					</java:invoke-static>
+					<flow-ref doc:name="Flow Reference" doc:id="444e5fff-fca4-4345-9236-66f1283d4b6b" name="decrypted-ResponseSub_Flow" />
+				</otherwise>
+			</choice>
+		</try>
+	</sub-flow>
+</mule>

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="parameters-noResponseSub_Flow" doc:id="c3e98f5a-0a62-487a-9c10-df41587ae94e" >
+		<ee:transform doc:name="Transform Message" doc:id="91e2bb35-67fa-415a-bd56-5f96c5416c1b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+
+fun camelizeArray(payload) =
+  payload map ((item) ->
+    if (item is Object)
+        item mapObject ((value, key) ->
+        if (value is Object)
+            {
+            (camelize(key replace "_" with "")): parsePayload(value)
+            } filterObject ((value, key) -> value != null)
+        else if (value is Array)
+            {
+            (camelize(key replace "_" with "")): camelizeArray(value)
+            } filterObject ((value, key) -> value != null)
+        else
+            {
+            (camelize(key replace "_" with "")): value
+            } filterObject ((value, key) -> value != null))
+    else
+        item
+)
+
+fun parsePayload(payload) =
+  if (payload is Array)
+    camelizeArray(payload)
+  else
+    payload mapObject ((value, key) -> if (value is Object)
+        {
+          (camelize(key replace "_" with "")): parsePayload(value)
+        } filterObject ((value, key) -> value != null)
+      else if (value is Array)
+        {
+          (camelize(key replace "_" with "")): camelizeArray(value)
+        } filterObject ((value, key) -> value != null)
+      else
+        {
+          (camelize(key replace "_" with "")): value
+        } filterObject ((value, key) -> value != null))
+output application/json  
+---
+{
+  "responseHeader": parsePayload(payload.WSResponseHeader) filterObject ((value, key) -> value != null)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="parameters-responseSub_Flow" doc:id="ba0a1c09-422c-43a4-bbff-79ded50a3d30" >
+		<ee:transform doc:name="Transform Message" doc:id="d002e37b-c942-4c17-b795-e586d75db3c0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+
+var resultJson = read((vars.decryptedResponse as String default "{}"), "application/json")
+
+fun camelizeArray(payload) =
+  payload map ((item) ->
+    if (item is Object)
+        item mapObject ((value, key) ->
+        if (value is Object)
+            {
+            (camelize(key replace "_" with "")): parsePayload(value)
+            } filterObject ((value, key) -> value != null)
+        else if (value is Array)
+            {
+            (camelize(key replace "_" with "")): camelizeArray(value)
+            } filterObject ((value, key) -> value != null)
+        else
+            {
+            (camelize(key replace "_" with "")): value
+            } filterObject ((value, key) -> value != null))
+    else
+        item
+)
+
+fun parsePayload(payload) =
+  if (payload is Array)
+    camelizeArray(payload)
+  else
+    payload mapObject ((value, key) -> if (value is Object)
+        {
+          (camelize(key replace "_" with "")): parsePayload(value)
+        } filterObject ((value, key) -> value != null)
+      else if (value is Array)
+        {
+          (camelize(key replace "_" with "")): camelizeArray(value)
+        } filterObject ((value, key) -> value != null)
+      else
+        {
+          (camelize(key replace "_" with "")): value
+        } filterObject ((value, key) -> value != null))
+output application/json  
+---
+{
+  "responseHeader": parsePayload(payload.WSResponseHeader) filterObject ((value, key) -> value != null),
+  "responseBody": parsePayload(payload.WSResponseBody)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
