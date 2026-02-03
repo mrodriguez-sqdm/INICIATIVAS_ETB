@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-createIncident-orchestratorSub_Flow" doc:id="4adca180-4747-4ca8-9278-fc9c53e49caa" >
+		<ee:transform doc:name="Validate Enums" doc:id="1aa03138-55ca-4ad4-9fd0-16940f41c6d9">
+					<ee:message>
+					</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="validateEnums" ><![CDATA[%dw 2.0
+output application/json
+var inputBody = payload.CreateIncidentInput.Create
+---
+if(!(["Entrada directa", 
+    "Correo electrónico", 
+    "Escalación externa", "Fax", "Autoservicio", 
+    "Administración de sistemas", "Teléfono", 
+    "Correo de voz", "Presencial", "Web", "Otro", 
+    "Evento de BMC Impact Manager", 
+    "Correo Ordinario", "Redes Sociales",
+    null] contains(inputBody.IN_Fuente_Reportada)))
+    "CreateIncident.Create.IN_Fuente_Reportada is not valid enum value"
+else if(!(["Restauración de servicio a usuario", 
+          "Petición de serv. por el usuario", 
+          "Restauración de infraestructura", 
+          "Evento de infraestructura", 
+          null] contains inputBody.IN_Tipo_de_Incidencia))
+          "CreateIncident.Create.IN_Tipo_de_Incidencia is not valid enum value"
+else if (!(["1-Crítica", 
+          "2-Alta", 
+          "3-Medio", 
+          "4-Baja",
+          null] contains inputBody.IN_Urgencia))
+"CreateIncident.Create.IN_Urgencia is not valid enum value"
+else false]]></ee:set-variable>
+			</ee:variables>
+				</ee:transform>
+		<choice doc:name="Choice" doc:id="805f4aec-2ad9-4aea-b03a-b18270ba8c2e" >
+			<when expression="#[vars.validateEnums != false]">
+				<raise-error doc:name="Raise error" doc:id="89b8c754-6809-49b0-9f26-fdea2d7ee398" type="APP:BAD_REQUEST" description="#[vars.validateEnums]"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Mapping Request Remedy" doc:id="adb70eac-31d9-431c-ad33-11fa272f15b2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Strings
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+var inputBody = payload.CreateIncidentInput.Create
+output application/xml writeDeclaration=false
+---
+soapenv#Envelope @("xmlns:urn": "urn:ETB_IntegracionMDM_WS"): {
+    soapenv#Header: {
+        "urn:AuthenticationInfo": {
+			"urn:userName": p('mdm-remedy.credentials.user'),
+            "urn:password": p('mdm-remedy.credentials.password'),
+            "urn:authentication": null,
+            "urn:locale": null,
+            "urn:timeZone": null
+        }
+    },
+    soapenv#Body: {
+            "urn:Create": inputBody mapObject  (value,key,index) -> { 
+                    ("urn:" ++ key) : value }
+    } 
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Go to Client" doc:id="8ee7da73-b153-4903-bd1e-11a55fca84f8" name="post-createIncident-clientSub_Flow" />
+				<ee:transform doc:name="Map Output" doc:id="ecd56213-e13c-49cd-93e3-1d7192f3f773">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "CreateIncidentOutput": {
+    "WSResponseHeader2": {
+      "System": {
+        "name": "MuleSoft",
+        "correlationID": correlationId,
+        "processingServer": "MuleSoft MDM"
+      },
+      "Service": {
+        ("status": "PASS") if(payload.Envelope.Body.CreateResponse.Aknowledge == "Exitoso"),
+        "responseDate": now() >> "America/Bogota"
+      }
+    },
+    "CreateResponse": payload.Envelope.Body.CreateResponse
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

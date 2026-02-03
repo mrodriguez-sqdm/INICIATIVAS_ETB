@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-assign_technician-orchestratorSub_Flow" doc:id="588f2b6f-0c44-48cb-b9c4-dc17931302dd" >
+		<ee:transform doc:name="Mapping to WS" doc:id="fe3c6232-0e14-422b-8c3f-160b91c64608" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false
+---
+'soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:PCD_IntegracionTOA_WS"':{
+	"soapenv:Header":{
+		"urn:AuthenticationInfo":{
+			"urn:userName": "INT_TOA",
+			"urn:password": "R3m3dyTOA13"
+		}
+	},
+	"soapenv:Body":{
+		"urn:Create_ActualizaTecnico":{
+			"urn:IN_message_id": payload.IN_message_id,
+			"urn:IN_appt_number": payload.IN_appt_number,
+			"urn:IN_external_id": payload.IN_external_id,
+			"urn:IN_resource_name": payload.IN_resource_name,
+			"urn:IN_time_slot": payload.IN_time_slot,
+			"urn:IN_resource_name_2": payload.IN_resource_name_2,
+			"urn:ACCION": p('remedy-toa.assignTechnician.accion')
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="97d61cc5-eee6-465a-aa61-bdeb066d6cb9" name="post-assign_technician-clientSub_Flow"/>
+		<ee:transform doc:name="Map Output" doc:id="88c2f0e6-6dbd-4b71-95b2-04f9250b481f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+import * from dw::core::Strings
+var data = payload.Envelope.Body.Create_ActualizaTecnicoResponse
+---
+{
+	message_id: (substringAfter(data.OUT2_message_id,"INC") as Number as String) default null,
+    status: data.OUT2_status default "failed" ,
+    Date: data.OUT2_Date default null
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload.Envelope.Body.Create_ActualizaTecnicoResponse.OUT2_status == "delivered") 200 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

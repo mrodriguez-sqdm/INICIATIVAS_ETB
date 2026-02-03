@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-createIncidentNote-orchestratorSub_Flow" doc:id="41c6556e-254a-446f-9917-324f30b9034b" >
+		<ee:transform doc:name="payload to remedy" doc:id="ee5403ee-373d-47ae-b617-3cf80bb92db9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns urn urn:ETB_WebServicesCreateNotesHPD
+
+---
+soapenv#Envelope: {
+	soapenv#Header:{
+		urn#AuthenticationInfo:{
+			urn#userName:p('mdm-remedy.credentials.user'),
+			urn#password:p('mdm-remedy.credentials.password')
+		}
+	},
+	soapenv#Body:{
+		urn#Create_Note_HPD:{
+			urn#Status: payload.status,
+			urn#Origen: payload.origen,
+			urn#Description: payload.description,
+			urn#Detail_Description: payload.detailDescription,
+			urn#Submit_Date: payload.submitDate, 
+			urn#Incident_Number: payload.incidentNumber, 
+			urn#Work_Log_type: payload.workLogType,
+			urn#View_Access: payload.viewAccess,
+			urn#Secure_Work_Log: payload.secureWorkLog
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go To MDM" doc:id="b537c846-a08f-456f-85ce-e19800e11c21" name="post-createIncidentNote-serviceSub_Flow"/>
+		<ee:transform doc:name="Payload" doc:id="19f6ab04-890c-4656-94a3-ad9c78310b04" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="298fa17e-d57f-451e-b03d-2b5d50ddf21b" >
+			<when expression="#[!isEmpty(payload.Envelope.Body.Create_Note_HPDResponse.Work_Log_ID)]">
+				<set-variable value="201" doc:name="httpStatus" doc:id="2917556d-3a37-488d-a53d-81d6a9d41dd4" variableName="httpStatus"/>
+				<ee:transform doc:name="payload response" doc:id="19e417b1-ba2c-445e-ba6b-680e8f5d2e9e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "createIncidentNoteOut": {
+    "status": "EXITOSO",
+    "workLogId": payload.Envelope.Body.Create_Note_HPDResponse.Work_Log_ID
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="Set Variable" doc:id="df26458e-16df-45eb-84bc-ce994286ac59" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform Message" doc:id="6b5b41e2-08c3-4a73-9f38-6fc91d23de75" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "createIncidentNoteOut": {
+    "status": "ERROR",
+    "description": "ERROR (408): El tipo de datos de selección requiere una especificación de límite.; Field ID - HPD:WorkLog &lt;1000000761"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

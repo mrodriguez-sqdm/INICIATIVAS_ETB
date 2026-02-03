@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-mdm-schedule-handlerSub_Flow" doc:id="7fa97815-09ee-42be-ab7a-f6d320c822d9" >
+		<set-variable value="#[attributes.uriParams.incidence_id]" doc:name="incidence_id" doc:id="4c76dfc3-c0ef-48ee-8192-8ee346b0af29" variableName="incidence_id"/>
+		<set-variable value="#[attributes.uriParams.schedule_id]" doc:name="schedule_id" doc:id="43d1e991-9d62-4ce5-99d3-a3df9f19903e" variableName="schedule_id"/>
+		<ee:transform doc:name="Set Variables" doc:id="43c35ceb-7a99-40c1-bdf9-4e21ff6a1de7">
+			<ee:message>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="message" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.message]]></ee:set-variable>
+				<ee:set-variable variableName="franja" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.Franja]]></ee:set-variable>
+				<ee:set-variable variableName="scheduleDate" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.scheduleDate]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to Orchestrator" doc:id="586bc397-e79b-4667-a28a-4bbf3136c64c" name="patch-mdm-schedule-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="patch-schedule-handlerSub_Flow" doc:id="29920604-e777-4048-a365-b87245002b1a" >
+		<ee:transform doc:name="Transform Message" doc:id="8d81231c-7e22-4d96-8696-4252ac6367d2" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="myTime" ><![CDATA[%dw 2.0
+output application/json
+---
+now()]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="b94a2673-08b4-4529-8c71-20ad48c893ed" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="myTime2" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.myTime]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="SHA Login" doc:id="cc5efe5e-7938-4e4c-8c93-9011d92dd526" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="shaLogin" ><![CDATA[%dw 2.0
+import java!com::etb::utils::ConvertSHAJavaCode
+
+output application/java
+
+var clientId = p('eta.client_id')
+---
+
+ConvertSHAJavaCode::encryptInput(clientId)
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="SHA pass + login" doc:id="9fb1a12b-cd8e-491d-a6f7-5ac1f779b61f" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="shaPassLogin" ><![CDATA[%dw 2.0
+import java!com::etb::utils::ConvertSHAJavaCode
+
+output application/java
+
+var passLogin = p('eta.client_secret') ++ vars.shaLogin
+
+---
+
+ConvertSHAJavaCode::encryptInput(passLogin)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="SHA auth" doc:id="15e1a9ca-ba0b-4331-90d8-2091643b18f8" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="shaAuth" ><![CDATA[%dw 2.0
+import java!com::etb::utils::ConvertSHAJavaCode
+
+output application/java
+
+var timeString = vars.myTime2 as String
+
+---
+
+ConvertSHAJavaCode::encryptInput(timeString ++ vars.shaPassLogin)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to Orchestrator" doc:id="57090fb3-62d1-4046-b8e9-0a2a93ce3566" name="put-updateSchedule-orchestrator"/>
+	</sub-flow>
+	
+</mule>

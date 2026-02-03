@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" 
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+		<sub-flow name="get-entries-bmc-clientSub_Flow" doc:id="ced657e4-6d8c-4062-aa94-d223a220d87e" >
+		<async doc:name="Async" doc:id="b7c93a63-e40a-46e9-aca3-0c928b298869">
+			<flow-ref doc:name="Call logger before" doc:id="179a9d27-eae6-40ba-96f8-abf552147ad0" name="loggin-client-call" />
+		</async>
+		<http:request method="GET" doc:name="get entries" doc:id="6ef128e7-f3d4-4742-bbae-8618de491cbb" config-ref="HTTP_Request_configuration_bmc" path="${remedy-bmc.path.entry.create}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.token,
+	"X-AR-Client-Type" : 34
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"q" : "'Problem Investigation ID'=\"" ++ vars.entryId ++ "\"",
+	"fields": "values(Sys-Problem Investigation ID,ETB_EDO_REQ,ETB_FechaAprobacionComite)"
+}]]]></http:query-params>
+		</http:request>
+		<ee:transform doc:name="Transform Message" doc:id="9de9abae-1518-4b19-a8e3-232fdb6be577" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="8f693c23-c89d-420f-bf64-68b94bd5e401" >
+			<flow-ref doc:name="Call logger before" doc:id="0dab385a-1894-4363-bd68-e93bea2d29db" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<sub-flow name="put-entries-bmc-clientSub_Flow" doc:id="2dd798e6-594c-4d25-98f2-5ee6a140133d" >
+		<async doc:name="Async" doc:id="b22edb63-53d6-4744-a3f6-2128b1ef645b">
+			<ee:transform doc:name="Transform Message" doc:id="6b00b393-5d57-48d0-baea-f574089f487b" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call logger before" doc:id="9b401615-2eb0-4745-8b88-82c2cf2e84be" name="loggin-client-call" />
+		</async>
+		<try doc:name="Try" doc:id="e2592962-b2ff-4a8b-9b78-9c024be23e1b" >
+			<http:request method="PUT" doc:name="update entries" doc:id="f3401ff1-a02b-4339-8c9d-a4609875d7be" config-ref="HTTP_Request_configuration_bmc" path="${remedy-bmc.path.entry.update}">
+			<http:body><![CDATA[#[vars.inputPayload]]]></http:body>
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.token
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"id" : vars.entryId,
+	"formName" : vars.formName
+}]]]></http:uri-params>
+		</http:request>
+		<ee:transform doc:name="Transform Message" doc:id="192e0097-cc63-4bf8-8abe-7c6afc33296b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<error-handler>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="01bfd1b5-c28e-47e5-9cfd-2882407e061e" >
+					<ee:transform doc:name="Transform Message" doc:id="2ec70897-5390-4110-a916-59b37a169aa6">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+error.muleMessage.typedValue
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				</on-error-continue>
+		</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="4ebc5257-76ce-4b5b-a6eb-2f22b8b24aaf" >
+			<flow-ref doc:name="Call logger before" doc:id="365d514d-f882-44e0-82d9-8b2fdcabc496" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<sub-flow name="bmc-authenticator-clientSub_Flow" doc:id="0b9dca69-154b-4c59-b2cf-d3e3ae1cf976" >
+		<ee:cache doc:name="Cache" doc:id="2f41601e-ffc7-4296-8247-293f28286a2d" cachingStrategy-ref="Caching_Strategy">
+			<http:request method="POST" doc:name="get token" doc:id="afb31d7e-073a-4afd-9d20-27d83e637e3e" config-ref="HTTP_Request_configuration_bmc" path="${remedy-bmc.path.auth}">
+			<http:body><![CDATA[#[output application/x-www-form-urlencoded
+---
+{
+	username: p('remedy-bmc.username'),
+	password: p('remedy-bmc.password')
+}]]]></http:body>
+		</http:request>
+		</ee:cache>
+		<ee:transform doc:name="Transform Message" doc:id="5c361fc7-1fc7-49a1-9078-8aa2276f5e29">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="token"><![CDATA[%dw 2.0
+output application/java
+---
+"AR-JWT " ++ payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

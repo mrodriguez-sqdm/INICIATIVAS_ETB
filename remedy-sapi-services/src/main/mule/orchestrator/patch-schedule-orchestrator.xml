@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-mdm-schedule-orchestratorSub_Flow" doc:id="3800ce9b-a505-43d8-8045-449ccb2058ea" >
+		<parse-template doc:name="JSON to XML" doc:id="9ac50b29-991a-47d4-bcdc-a1483c95d122" location="soap\schemas\templates\soap-mdm-schedule.xml" />
+		<flow-ref doc:name="Go to Client" doc:id="2ab7d129-959d-494c-9639-fa6407bea467" name="patch-schedule-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="1ccdbe53-f8ff-4c62-b384-52725e2f81d7" >
+			<when expression='#[payload.Envelope.Body.Set_OperationResponse.Aknowledge == "OK - Exitoso"]'>
+				<ee:transform doc:name="Sucess" doc:id="d65ae87a-83c3-47bb-9a21-fd671cd0eb88" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Resultado": "EXITOSO"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="200" doc:name="httpStatus 200" doc:id="e34bee86-af68-49b6-bf84-b0cb35025558" variableName="httpStatus"/>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Error msg" doc:id="cf54d390-2e51-4982-bb8b-c957e4b866e2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var fault = payload.Envelope.Body.Fault
+---
+if(fault != null){
+    "code": "ERROR",
+    "fault": fault.faultstring
+}else{
+    "code": "ERROR",
+    "fault": payload.Envelope.Body.Set_OperationResponse.Error
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[500]" doc:name="httpStatus 500" doc:id="6f2ebecd-7f9e-4352-a278-0599e38d00c9" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="put-updateSchedule-orchestrator" doc:id="ff13ee88-d533-4e45-8ef8-9a9aadf8f702" >
+		<ee:transform doc:name="Transform Message" doc:id="bd7821ef-f20b-4d80-bac8-da4d94dc74e2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns urn urn:toatech:InboundInterface:1.0
+---
+soapenv#Envelope: {
+    soapenv#Header: {},
+    soapenv#Body: {
+        urn#inbound_interface_request: {
+            user: {
+                now: vars.myTime2,
+                login: "d84e890edec6c5138c007e487f6bab8a3d92be53",
+                company: p('eta-inbound.company'),
+                auth_string: vars.shaAuth
+            },
+            head: {
+                processing_mode: "appointment_only",
+                upload_type: "incremental",
+                date: now() >> "America/Bogota",
+                allow_change_date: "yes",
+                appointment: {
+                    keys: {
+                        field: "appt_number"
+                    }
+                },
+                inventory: {
+                    keys: {
+                        field: "invsn"
+                    },
+                    upload_type: "incremental"
+                },
+                properties_mode: "update"
+            },
+            data: {
+                commands: {
+                    command: {
+                        date: payload.UpdateScheduleRequest.Input.UpdateScheduleInput.Payload.Appointment.date,
+                        'type': "update_appointment",
+                        appointment: {
+                            appt_number: payload.UpdateScheduleRequest.Input.UpdateScheduleInput.Payload.Order.id,
+                            time_slot: payload.UpdateScheduleRequest.Input.UpdateScheduleInput.Payload.Appointment.timeSlot,
+                            duration: payload.UpdateScheduleRequest.Input.UpdateScheduleInput.Payload.Appointment.duration,
+                            properties: {
+                                (property: {
+                                    label: "XA_Action_Type",
+                                    value: payload.UpdateScheduleRequest.Input.UpdateScheduleInput.Payload.Order.actionType
+                                }) if (payload.UpdateScheduleRequest.Input.UpdateScheduleInput.Payload.Order.actionType != null),
+                                (property: {
+                                    label: "XA_UEN",
+                                    value: payload.UpdateScheduleRequest.Input.UpdateScheduleInput.Payload.Customer.uen
+                                }) if (payload.UpdateScheduleRequest.Input.UpdateScheduleInput.Payload.Customer.uen != null)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="d061fd9a-9c44-4b0e-a557-fec8c8eeaf82" name="put-updateSchedule-client"/>
+		<ee:transform doc:name="Payload Response" doc:id="aaac4b88-3098-4eca-b8b8-4d0cb6542d08" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var status = payload.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.message.result
+---
+{
+	("Report": {
+		"appointmentId": payload.Envelope.Body.inbound_interface_response.data.commands.command.appointment.aid
+	}) if (status == 'success'),
+	"Result":{
+		"status": if (status == 'success') "PASS" else "FAIL",
+		"code": payload.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.message.result,
+		"description": payload.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.message.description
+	}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	
+</mule>

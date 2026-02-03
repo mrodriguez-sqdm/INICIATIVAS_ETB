@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-incident-orchestratorSub_Flow" doc:id="7d0612a8-3fb1-45db-88b4-9803c02e955f" >
+		<ee:transform doc:name="Transform to Xml" doc:id="fe183260-1f53-4299-9afe-3c68fba0f37e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import p from Mule
+output text/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+---
+soapenv#Envelope @('xmlns:urn' : 'urn:ETB_Integracion_SF_RMD_Create'): {
+    soapenv#Header: 
+       'urn:AuthenticationInfo' : {
+           'urn:userName':p('mdm-remedy.credentials.user'),
+           'urn:password':p('mdm-remedy.credentials.password'),
+           'urn:authentication':null,
+           'urn:locale':null,
+           'urn:timeZone':null,
+       },
+    soapenv#Body: 
+        'urn:Create':
+            payload..*Create map ((item, index) -> 
+                item mapObject ('urn:$$' : $) 
+            )
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go client" doc:id="6c8350b6-8cbb-4d73-8fbb-72533faaf46c" name="post-create-incident-remedy-clientSub_Flow"/>
+		<ee:transform doc:name="Transform to Json" doc:id="c9c2ce9d-6cd8-4831-a9e4-1d0c45a58117" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var out = payload.Envelope.Body.CreateResponse
+---
+{
+	"Incident_ID": out.OUT_Incident_ID,
+	"Message": out.OUT_Error_Mensaje default "Proceso Completo",
+	"Result": out.Aknowledge
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="outboundHeaders" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.outboundHeaders ++ {
+	'name': 'Mulesoft',
+	'processingServer': 'Mulesoft MDM',
+	'status': 'PASS',
+	'responseDate': now(),
+	'correlationID': vars.idSalesforce
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

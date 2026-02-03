@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateVias-orchestrator" doc:id="4c105a54-c92b-4623-8ec2-96a145b07213" >
+		<parse-template doc:name="Parse Template" doc:id="2e87a155-d80e-419f-ac49-b423bc2d72ce" location="soap\schemas\templates\updateVias-request.xml" outputMimeType="application/xml"/>
+		<flow-ref doc:name="Go To MDM" doc:id="cb13d116-5ffc-4699-a412-155f3ab618a0" name="patch-updateVias-service"/>
+		<ee:transform doc:name="payload" doc:id="6940b20e-68dc-427c-9211-4f88d25dcc04" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="441a3c60-255d-41f1-99ae-8cf0ebbe9f2e" >
+			<when expression='#[payload.Envelope.Body.Set_OperationResponse.Aknowledge == "OK - Exitoso"]'>
+				<set-variable value="200" doc:name="Set Variable" doc:id="f8e9b4f9-4e10-4321-8fed-048d4f320428" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform Message" doc:id="c8d4c4b4-4f77-4ee9-9cac-d6dcce656a6c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+"UpdateViasOUT": {
+   "Resultado": "EXITOSO",
+   "Descripcion": "EXITOSO"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="Set Variable" doc:id="65e2eb0f-d380-4408-a496-7d2ac2b2f1b0" variableName="httpStatus" />
+				<ee:transform doc:name="Transform Message" doc:id="d9fd5a18-36c3-43cd-b53b-5e7eb859cad8">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"UpdateViasOUT": {
+   "Resultado": "ERROR",
+   "Descripcion":payload.Envelope.Body.Set_OperationResponse.Error
+   }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
