@@ -46,4 +46,64 @@ if(isEmpty(payload)) 404 else 200]]></ee:set-variable>
 			<flow-ref doc:name="Logger after" doc:id="0499ce9a-4652-4042-98fb-61cb3620fae8" name="loggin-client-call" />
 		</async>
 	</sub-flow>
+	<sub-flow name="get-mdm-cd-orden-clientSub_Flow" doc:id="ac5b159b-2a51-41ac-92d1-637a947d8cb6" >
+			<try doc:name="Try" doc:id="b72bde30-35ca-4758-9cd1-711b34b1644f" >
+			<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="b4f7478c-9c38-43c8-9384-369dedecddad" variableName="parameters" />
+			<choice doc:name="Choice" doc:id="056043c2-2bd0-4254-9dad-b6715f46a8db" >
+				<when expression="#[(vars.parameters.OrderNumber != null) or (vars.parameters.CustomerId != null) or (vars.parameters.CustomerIdType != null)]" >
+					<set-variable value="#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;  &quot;aggregate&quot;: p('mongoDb-mdm.mayoristas.collection-order'),&#10;  &quot;pipeline&quot;: [&#10;    {&#10;      &quot;\$match&quot;: {&#10;        // Filtros dinámicos: Solo se agregan si el parámetro existe&#10;        ( &quot;Numero_Orden&quot;: vars.parameters.OrderNumber ) if (vars.parameters.OrderNumber != null),&#10;        ( &quot;Cliente_Tramite.Numero_Documento&quot;: vars.parameters.CustomerId ) if (vars.parameters.CustomerId != null),&#10;        ( &quot;Cliente_Tramite.Tipo_Documento&quot;: vars.parameters.CustomerIdType ) if (vars.parameters.CustomerIdType != null),&#10;        &#10;        // Filtros del objeto Agendamiento&#10;        &quot;Agendamiento.Agenda&quot;: true,&#10;        &#10;        // El rango de fechas también puede ser opcional&#10;        ( &quot;Agendamiento.Fecha_Agenda&quot;: {&#10;          &quot;\$gte&quot;: { &quot;\$date&quot;: vars.parameters.StartDate },&#10;          &quot;\$lte&quot;: { &quot;\$date&quot;: vars.parameters.EndDate }&#10;        }) if (vars.parameters.StartDate != null and vars.parameters.EndDate != null)&#10;      }&#10;    },&#10;    {&#10;      &quot;\$sort&quot;: { &#10;        &quot;Agendamiento.Fecha_Agenda&quot;: -1 &#10;      }&#10;    },&#10;    {&#10;      &quot;\$skip&quot;: vars.parameters.OffSet as Number default 0&#10;    },&#10;    {&#10;      &quot;\$limit&quot;: vars.parameters.Limit as Number default 10&#10;    }&#10;  ],&#10;  &quot;cursor&quot;: {}&#10;}]" doc:name="Set Variable" doc:id="425580cb-8077-4fde-b5a9-dd6b7a43adb5" variableName="executeQuery"/>
+					<mongo:execute-command doc:name="Execute command" doc:id="ab394106-2938-4ce3-a6a7-dde84253d2b0" config-ref="mdm_db_Config">
+						<mongo:command ><![CDATA[#[vars.executeQuery]]]></mongo:command>
+					</mongo:execute-command>
+					<ee:transform doc:name="Set Response Body" doc:id="82267cd0-50b5-4d9a-b7cf-34f6bc795065" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "200",
+	message: if(!isEmpty(payload.cursor.firstBatch)) "Operacion exitosa" else "No se obtuvieron resultados",
+	agendas: payload.cursor.firstBatch
+}
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Response Fail Parameters" doc:id="8b10a748-74ce-4c7a-bfdc-2c61a70ed7fb" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 400,
+	code: "BAD REQUEST",
+	message: "indicar un parametro de consulta"
+	
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="400" doc:name="Set status code" doc:id="c7a96ef9-8cdc-4184-82b7-f4041636154c" variableName="httpStatus" />
+				</otherwise>
+			</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="05e23c94-66ba-42e7-9135-64851b9c574a" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="57aa4de2-34c7-4984-850d-8d489256c7c7" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 500,
+	code: "INTERNAL SERVER ERROR",
+	message: error.description,
+	messageServer: error.detailedDescription
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="2557e368-0245-46c1-ac5b-b02e7f11f5d1" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
 </mule>

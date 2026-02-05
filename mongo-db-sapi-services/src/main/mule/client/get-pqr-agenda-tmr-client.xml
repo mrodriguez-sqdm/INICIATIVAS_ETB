@@ -5,51 +5,33 @@
 	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
-	<sub-flow name="get-pqr-agenda-tmr-clientSub_Flow" doc:id="7911ac7d-3dca-47ec-b951-74cf74637a06" >
-		<try doc:name="Try" doc:id="e8f2dde3-1ddb-4f6a-b9be-a58530aa18ed" >
-			<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="b422bd06-60bd-4896-9605-d32c78a1a309" variableName="parameters" />
-			<choice doc:name="Choice" doc:id="1dfc4ec6-ca7f-48e5-a786-80ac05a8b5c2">
-				<when expression="#[(vars.parameters.OrderNumber != null) or (vars.parameters.CustomerId != null) or (vars.parameters.CustomerIdType != null)]">
-				<ee:transform doc:name="Set Query Payload" doc:id="b53986bd-b4f7-4805-998c-fbdf2586d05e">
-				<ee:message>
-					<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-if(!isEmpty(vars.parameters.CustomerIdType) and !isEmpty(vars.parameters.CustomerId)){ 
- "customer_document_number": vars.parameters.CustomerId,
- "customer_document_type": vars.parameters.CustomerIdType
-}
-else
-{
-   "order_number": vars.parameters.OrderNumber
-    
-}]]></ee:set-payload>
-				</ee:message>
-			</ee:transform>
-					<mongo:find-documents collectionName="${mongoDb-mdm.agendas.collection-pqr-agenda-tmr}" fields="," doc:name="Find documents" doc:id="18e89e46-522c-4461-92c9-694b0a203738" config-ref="mdm_db_Config">
-						<mongo:query><![CDATA[#[%dw 2.0
-output application/json
----
-payload]]]></mongo:query>
-					</mongo:find-documents>
-					<ee:transform doc:name="Set Response Body" doc:id="44b0e4f3-e951-47d2-81c0-6498ff724241">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
+	<sub-flow name="get-pqr-agenda-tmr-clientSub_Flow" doc:id="9427c3e8-5bee-48f9-b111-6702467ccfdb" >
+		<try doc:name="Try" doc:id="a7a93ba4-94eb-461c-ab3c-9d9e553c40e0" >
+			<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="95137557-5d96-442f-9939-d32b4e8b7d02" variableName="parameters" />
+			<choice doc:name="Choice" doc:id="e66ed430-3b66-4861-9adb-d52d68954b56" >
+				<when expression="#[(vars.parameters.OrderNumber != null) or (vars.parameters.CustomerId != null) or (vars.parameters.CustomerIdType != null)]" >
+					<set-variable value="#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;  &quot;aggregate&quot;: p('mongoDb-mdm.agendas.collection-pqr-agenda-tmr'),&#10;  &quot;pipeline&quot;: [&#10;    {&#10;      &quot;\$match&quot;: {&#10;        // Filtros de cabecera condicionales&#10;        ( &quot;customer_document_type&quot;: vars.parameters.CustomerIdType ) if (vars.parameters.CustomerIdType != null),&#10;        ( &quot;customer_document_number&quot;: vars.parameters.CustomerId ) if (vars.parameters.CustomerId != null),&#10;        ( &quot;order_number&quot;: vars.parameters.OrderNumber ) if (vars.parameters.OrderNumber != null),&#10;        &#10;        // El elemMatch solo se agrega si al menos un criterio del array viene&#10;        ( &quot;agendas_tmr&quot;: {&#10;          &quot;\$elemMatch&quot;: {&#10;            ( &quot;estado_agenda&quot;: vars.parameters.Status ) if (vars.parameters.Status != null),&#10;            ( &quot;fecha_creacion&quot;: {&#10;              &quot;\$gte&quot;: { &quot;\$date&quot;: vars.parameters.StartDate },&#10;              &quot;\$lte&quot;: { &quot;\$date&quot;: vars.parameters.EndDate }&#10;            }) if (vars.parameters.StartDate != null and vars.parameters.EndDate != null)&#10;          }&#10;        }) if (vars.parameters.Status != null or vars.parameters.StartDate != null)&#10;      }&#10;    },&#10;    {&#10;      &quot;\$addFields&quot;: {&#10;        &quot;agendas_tmr&quot;: {&#10;          &quot;\$filter&quot;: {&#10;            &quot;input&quot;: &quot;\$agendas_tmr&quot;,&#10;            &quot;as&quot;: &quot;item&quot;,&#10;            &quot;cond&quot;: {&#10;              &quot;\$and&quot;: [&#10;                // Si Status es null, usamos true para que no filtre por ese campo&#10;                if (vars.parameters.Status != null) { &quot;\$eq&quot;: [&quot;\$\$item.estado_agenda&quot;, vars.parameters.Status] } else true,&#10;                // Si las fechas son null, usamos true&#10;                if (vars.parameters.StartDate != null and vars.parameters.EndDate != null) {&#10;                  &quot;\$and&quot;: [&#10;                    { &quot;\$gte&quot;: [&quot;\$\$item.fecha_creacion&quot;, { &quot;\$date&quot;: vars.parameters.StartDate }] },&#10;                    { &quot;\$lte&quot;: [&quot;\$\$item.fecha_creacion&quot;, { &quot;\$date&quot;: vars.parameters.EndDate }] }&#10;                  ]&#10;                } else true&#10;              ]&#10;            }&#10;          }&#10;        }&#10;      }&#10;    },&#10;    {&#10;      &quot;\$addFields&quot;: {&#10;        &quot;agendas_tmr&quot;: {&#10;          &quot;\$sortArray&quot;: { &#10;            &quot;input&quot;: &quot;\$agendas_tmr&quot;, &#10;            &quot;sortBy&quot;: { &quot;fecha_creacion&quot;: -1 } &#10;          }&#10;        }&#10;      }&#10;    },&#10;    { &quot;\$skip&quot;: vars.parameters.OffSet as Number default 0 },&#10;    { &quot;\$limit&quot;: vars.parameters.Limit as Number default 10 }&#10;  ],&#10;  &quot;cursor&quot;: {}&#10;}]" doc:name="Set Variable" doc:id="eed15314-7563-4d01-8405-91f2492e56b4" variableName="execute"/>
+					<mongo:execute-command doc:name="Execute command" doc:id="af455069-9b36-4c5b-aab3-c822638f6540" config-ref="mdm_db_Config">
+						<mongo:command ><![CDATA[#[vars.execute]]]></mongo:command>
+					</mongo:execute-command>
+					<ee:transform doc:name="Set Response Body" doc:id="2096aa00-931c-4ef8-a1c4-566e094af99e" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 {
 	code: "200",
-	message: if(!isEmpty(payload)) "Operacion exitosa" else "No se obtuvieron resultados",
-	agendas: payload
+	message: if(!isEmpty(payload.cursor.firstBatch)) "Operacion exitosa" else "No se obtuvieron resultados",
+	orden: payload.cursor.firstBatch
 }
 ]]></ee:set-payload>
 						</ee:message>
 					</ee:transform>
 				</when>
-				<otherwise>
-					<ee:transform doc:name="Response Fail Parameters" doc:id="98a74731-bf5f-4b95-8063-414eebebd0b8">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
+				<otherwise >
+					<ee:transform doc:name="Response Fail Parameters" doc:id="8d45585a-f2f2-4051-a72e-6bd6cef72f8d" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -60,12 +42,12 @@ output application/json
 }]]></ee:set-payload>
 						</ee:message>
 					</ee:transform>
-					<set-variable value="400" doc:name="Set status code" doc:id="110c1a9d-b716-40ee-9278-e6205569bed4" variableName="httpStatus" />
+					<set-variable value="400" doc:name="Set status code" doc:id="beab7ef2-0616-41c7-8bdd-33a6cf0e26ff" variableName="httpStatus" />
 				</otherwise>
 			</choice>
 			<error-handler >
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4dad161b-78df-43eb-bb31-a9027d1ae153" type="ANY" >
-					<ee:transform doc:name="Set Response Fail Body" doc:id="daed1fc1-23a7-457c-a626-b5d3258d334f" >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="2ff2cdd8-c819-4096-b3ab-43fc3add9375" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="3bd7a23b-5a78-477b-a596-c37371c7620f" >
 						<ee:message >
 							<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
@@ -78,7 +60,7 @@ output application/json
 }]]></ee:set-payload>
 						</ee:message>
 					</ee:transform>
-					<set-variable value="500" doc:name="Set http status code" doc:id="145dbf48-bbad-42e0-b8e5-2a7934fbad4a" variableName="httpStatus" />
+					<set-variable value="500" doc:name="Set http status code" doc:id="def0a910-652f-4a6b-9f5d-0ceb72c664e3" variableName="httpStatus" />
 				</on-error-continue>
 			</error-handler>
 		</try>
