@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd">
+	<sub-flow name="mayoristas-mdmServices-clientSub_Flow" doc:id="cb3aa6d5-9967-488a-8cfa-b5921cff7095" >
+		<ee:transform doc:name="Prepare input" doc:id="6192011d-b98d-41a9-b3db-08cd8610e806" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.action == "add")
+{
+	"Caracteristica_Servicio" : payload.characteristics << {
+		"Caracteristica": payload.newCharacteristic,
+		"Valor": payload.newValue
+	}
+}
+else null]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="79922690-129f-4cbd-be24-2bc12b79afca" >
+			<when expression="#[payload == null]" >
+				<ee:transform doc:name="set bad request response" doc:id="51f031b1-9d7c-44cc-b85c-58bca8d069fe" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  response: {
+    result: {
+      code: "FAIL",
+      description: "The field to update does not exists"
+    },
+    responseDate: now(),
+    idServiceAccount: vars.idServiceAccount
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<async doc:name="Async" doc:id="f22c6c6c-b409-487a-af0c-5457bb37bd33" >
+					<choice doc:name="Choice" doc:id="771b8086-da92-4d28-aa5d-9191b7b91290" >
+						<when expression="#[p('logging.mayoristas.servicios') == &quot;ON&quot;]">
+							<flow-ref doc:name="Call logger before" doc:id="17915b8a-7312-45ea-adfb-49a1e7a09e4d" name="loggin-client-call" />
+						</when>
+						<otherwise >
+							<ee:transform doc:name="Map request log" doc:id="0872c3e3-7d3d-4f74-aae5-e9cfe966329a">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+							<flow-ref doc:name="audits-client_log-audits-information" doc:id="96b4b04a-b63c-4c2e-baa5-b972f87e4c49" name="post_log_audits-sapi-clientSub_Flow" />
+						</otherwise>
+					</choice>
+				</async>
+				<mongo:update-documents collectionName="${mongoDb-mdm.mayoristas.collection-services}" doc:name="Update MDM_CD_SERVICIO " doc:id="ce1c6e90-6dcd-4e1e-b6cb-789adbf649cf" config-ref="mdm_db_Config" >
+					<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{ 
+	'Id_Cuenta_Servicio': vars.idServiceAccount
+}]]]></mongo:query>
+					<mongo:content-to-update ><![CDATA[#[%dw 2.0
+output application/json
+---
+payload]]]></mongo:content-to-update>
+				</mongo:update-documents>
+				<async doc:name="Async1" doc:id="684b92cc-43b9-4127-a0bc-d920642d0cc2" >
+					<choice doc:name="Choice" doc:id="404e81fa-6d3d-4242-bac3-675500f3daa4" >
+						<when expression="#[p('logging.mayoristas.servicios') == &quot;ON&quot;]" >
+							<flow-ref doc:name="Call logger after" doc:id="847d21f2-5e38-4bbe-aa28-def4a97852d9" name="loggin-client-call" />
+						</when>
+						<otherwise >
+							<ee:transform doc:name="Map request log" doc:id="e352be5d-1521-4b90-b96d-57802a5b909b">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+							<flow-ref doc:name="audits-client_log-audits-information" doc:id="aa4a4302-772f-4aff-a30c-1b1074cb6f8b" name="post_log_audits-sapi-clientSub_Flow" />
+						</otherwise>
+					</choice>
+				</async>
+				<ee:transform doc:name="set response" doc:id="b46c55ed-13b5-47cd-9dca-dee5b41ec663" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+var resultCode = if(payload.modified > 0) 'SUCCESS' else "FAIL"
+var resultDescription = if(payload.modified > 0) "Service updated"
+	else "The service could not be updated, it has already been updated"
+output application/json
+---
+{
+  response: {
+    result: {
+      code: resultCode,
+      description: resultDescription
+    },
+    responseDate: now(),
+    idServiceAccount: vars.idServiceAccount
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.modified > 0) 200 else 404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

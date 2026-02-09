@@ -1,0 +1,1892 @@
+#%RAML 1.0
+title: mongo-sapi-services
+baseUri: mongo-sapi-services-dev.us-e2.cloudhub.io/mongo
+description: The following API will be in charge of the comunications towards the mongo database
+mediaType: 
+ - application/json
+uses:
+  productOrder-lib: libraries/productOrder-library.raml
+  order-lib: libraries/orderById-library.raml
+  viabilityResponse-lib: libraries/viabilityResponse-library.raml
+  viabilityResponseGET-lib: libraries/viabilityResponseGET-library.raml
+  provisioningResponse-lib: libraries/provisioningResponse-library.raml
+  provisioningResponseGET-lib: libraries/provisioningResponseGET-library.raml
+  notifyOrderFinished-lib: libraries/notifySFOrderBillingFinished-library.raml
+version: "1"
+protocols:
+  - HTTP
+types:
+  productOrderState: !include datatypes/requests/productOrderStateType.raml
+  patchOrderStatus: !include datatypes/requests/patchOrderRequest.raml
+  patchOrderProvisioning: !include datatypes/requests/patchOrderRequest-provisioning.raml
+  patchOrderConfirmProvisioning: !include datatypes/requests/patchOrderRequest-confirmProvisioning.raml
+  patchOrderProvisioningCharacteristic: !include datatypes/requests/patchOrderRequest-provisioningCharacteristic.raml
+  putOrderRequestCoverage: !include datatypes/requests/putOrderRequest.raml
+  putOrderRequestAvailability: !include datatypes/requests/putOrderRequest_Availability.raml
+  putOrderRequestAvailabilityVenta: !include datatypes/requests/putOrderRequest_Availability_Venta.raml
+
+traits:
+  security_client_id: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/security-clientid/1.0.2/security-clientid.raml
+  request_headers: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.6/tibcorequestheaders.raml
+  httpCodes: !include traits/httpCodes.raml
+  commonHeaders: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/commonheaders/1.0.0/commonheaders.raml
+
+/v1:
+  /send-message:
+    post:
+      displayName: Enviar mensaje
+      description: Enviar mensaje notificación detección de IMEI 
+      is: [security_client_id, request_headers]
+      body:
+        type: !include datatypes/requests/post-send-message.raml  
+        example:
+          value: !include examples/request/post-send-message.json
+      responses:
+        200:
+          body:
+            type: !include datatypes/responses/post-send-message.raml
+            example:
+              value: !include examples/responses/post-send-message.json
+        500:
+          body:
+              type: !include datatypes/responses/ErrorResponseDataType.raml
+  /promoUser:
+    post:
+      is: [security_client_id,request_headers]
+      displayName: Set promos provisioned to a user
+      description: Service to save the promos provisioned to a user     
+      body:
+        application/json:
+          example: {}         
+      responses:
+        200:
+          body:
+            application/json:
+              example: []
+        500:
+          body:
+              type: !include datatypes/responses/ErrorResponseDataType.raml
+  /promo:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: Get promos for sva
+      description: Service to get list of available promos for svas
+      responses:
+        200:
+          body:
+            application/json:
+              example: []
+        500:
+          body:
+              type: !include datatypes/responses/ErrorResponseDataType.raml
+    /pkg:
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get promos per package
+        description: Service to get the list of packages related to a promotion
+        responses:
+          200:
+            body:
+              application/json:
+                example: []
+          500:
+            body:
+                type: !include datatypes/responses/ErrorResponseDataType.raml
+  /ms:
+    /token:
+      post:
+        is: [security_client_id,request_headers]
+        displayName: Save token in DB
+        description: Service to save token in MongoDB
+        body:
+          application/json:
+            properties:
+              token:
+                type: string
+                required: true
+                example: "mnvbjgremnfdmtr"
+        responses:
+          200:
+            body:
+              application/json:
+                example: {"token": "mnvbjgremnfdmtr"}
+    /clients:
+      /{id}:
+        uriParameters:
+          id:
+            type: string
+            example: "Identificador del cliente"
+        get:
+          is: [security_client_id,request_headers]
+          displayName: Get Client of mulesoft from DB
+          description: Service to get client from mulesoft in MongoDB
+          responses:
+            200:
+              body:
+                application/json:
+                  example: []
+    /systems:
+      /{name}:
+        uriParameters:
+          name:
+            type: string
+            example: "System name"
+        get:
+          is: [security_client_id,request_headers]
+          displayName: Get Systems from DB
+          description: Service to get systems from mulesoft in MongoDB
+          responses:
+            200:
+              body:
+                application/json:
+                  example: !include examples/responses/get-ms-system.json
+  /notifySFOrderBillingFinished:
+    post:
+      is: [security_client_id,request_headers]
+      displayName: Insert order finished
+      description: Service to insert order in MongoDB
+      body:
+        type: notifyOrderFinished-lib.notifySFOrderBillingFinishedType
+        example: !include examples/request/notifySFOrderBillingFinishedRequest.json
+      responses:
+        201:
+          body:
+            type: !include datatypes/responses/notifySFOrderBillingFinishedResponse.raml
+  /or_orders/{order_om}:
+    uriParameters: 
+      order_om: 
+        type: string
+        example: TESTTT92
+    patch:
+      is: [security_client_id,request_headers]
+      displayName: Update Mongo
+      description: Service to update order in MongoDB
+      body:
+      responses:
+        200:
+          body:
+              type: !include datatypes/requests/patchUpdate.raml
+  /services:
+    get: 
+      is: [security_client_id,request_headers]
+      displayName: Get services information by tipoDoc and numDoc or numConexionOrCtaFacturacion
+      description: Service to retrieve the service information by tipoDoc and numDoc or billing account or connection number
+      queryParameters:
+        tipoDoc:
+          type: string | nil
+          example: "CC"
+          required: false
+        numeroDoc:
+          type: string | nil
+          example: "12432425"
+          required: false
+        numConexionOrCtaFacturacion:
+          description: Home or mobile service connection number or billing account number
+          type: string | nil
+          example: "15052845858"
+          required: false
+        activo:
+          description: Retrieve information of MDM_SERVICIO_ACTIVO Y or  MDM_CD_SERVICIO N
+          type: string | nil
+          example: "Y"
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/getServicesByIdServiceAccount.raml
+              example: !include examples/responses/getServicesByIdServiceAccount.json
+        404:
+          body:
+            application/json:
+              type: !include /datatypes/responses/ErrorResponseNotFound.raml
+        500:
+          body:
+            application/json:
+              type: !include /datatypes/responses/ErrorResponseDataType.raml
+    /{idServiceAccount}:
+      uriParameters:
+        idServiceAccount:
+          type: string
+          example: "GPONMAY_0001"
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get services information
+        description: Service to retrieve the service information by idServiceAccount
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/responses/getServicesByIdServiceAccount.raml
+                example: !include examples/responses/getServicesByIdServiceAccount.json
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseNotFound.raml
+          500:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseDataType.raml
+      patch:
+        is: [security_client_id,request_headers]
+        displayName: Updates services information
+        description: Service to update partially the service information by idServiceAccount
+        body:
+          application/json:
+            type: !include /datatypes/requests/patchServiceUpdateCharacteristic.raml
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include /datatypes/responses/updateServiceResponse.raml
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseNotFound.raml
+    /om_orders:
+      /{number_om}:
+        /oc_orders:
+          /{number_oc}:
+            uriParameters:
+              number_om:
+                type: string
+                example: 1234x
+              number_oc:
+                type: string
+                example: Identificador de la Vialibilidad
+            get:
+              is: [security_client_id,request_headers]
+              displayName: Check Billable Services
+              description: Service to get the check billable services
+              #responses:
+                #200:
+                  #body:
+                    #application/json:
+                      #type:
+    /{numero}:
+      uriParameters:
+        numero:
+          type: string
+          example: "15052845858"
+      get: 
+        is: [security_client_id,request_headers]
+        displayName: Get services by number
+        description: Service to retrieve the service information by conection number or billing account number
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include examples/responses/getServicesByIdServiceAccount.json
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseNotFound.raml
+          500:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseDataType.raml
+    /active/{integrationId}:
+      uriParameters:
+        integrationId:
+          type: string
+          example: "1-EIOHS9G"
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get services information
+        description: Service to retrieve the service information by integrationId
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include examples/responses/getServicesActiveByIntegrationId.json
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseNotFound.raml
+          500:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseDataType.raml
+
+  /bills:
+    /homologations:
+      /{product_code}:
+        uriParameters:
+          product_code:
+            type: string
+            example: PR_INTERNET_DEDICADO
+        get:
+          is: [security_client_id,request_headers]
+          displayName: Check Homologation
+          description: Service to get the homologation
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/billingHomologationResponse.raml
+    /duplicate:
+      /{cuentaFacturacion}:
+        uriParameters:
+          cuentaFacturacion:
+            type: string
+            required: true
+            example: "9229778"
+        get:
+          is: [security_client_id, request_headers] 
+          displayName: Get Online Bill.
+          description: This operation retrieves a copy of a bill.
+          queryParameters:
+            periodo:
+              type: string
+              required: true
+              minLength: 6
+              description: "Combinaciï¿½n de aï¿½o y mes (yyyyMM)"
+              example: "202302"
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/getFacturaOnline.raml
+
+  /consecutive:
+    get:
+      is: [security_client_id, request_headers]
+      displayName: Obtain consecutive
+      description: Service to obtain the consecutive from the DB
+      queryParameters:
+        tipo:
+          type: string
+          required: true
+          example: "TEST"
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/consecutiveResponse.raml
+  /parameters:
+    get:
+      is: [security_client_id, request_headers]
+      displayName: Obtain parameters
+      description: Service to obtain the parameters from Mongo DB
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/parameterResponse.raml
+    /{typeParameter}:
+        get:
+          is: [security_client_id, request_headers]
+          displayName: Obtain parameters
+          description: Service to obtain the parameters from Mongo DB
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/typeParameterResponse.raml
+        patch:
+          is: [security_client_id, request_headers]
+          displayName: Update parameters
+          description: Service to update the parameters from Mongo DB
+          body:
+            application/json:
+              type: !include datatypes/requests/typeParameterUpdate.raml
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/typeParameterUpdateResponse.raml
+    /integraciones_tramites:
+        get:
+          is: [security_client_id, request_headers]
+          displayName: Obtain parameters integraciones tramites
+          description: Service to obtain the parameters from Mongo DB
+          queryParameters:
+            codigoProducto:
+              type: string
+              required: false
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/parIntegracionesTramites.raml
+    /par_params:
+      /{name}:
+        get:
+          is: [security_client_id, request_headers]
+          displayName: Obtain parameters by name
+          description: Service to obtain the parameters from PAR_PARAMETROS
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/parParameterResponse.raml
+  /productOrder:
+    post:
+      is: [security_client_id, request_headers]
+      displayName: Insert order
+      description: Service to insert order in the collection 'OR_ORDEN'
+      body:
+        type: productOrder-lib.productOrder
+        example: !include examples/request/productOrderRequest.json
+      responses:
+        201:
+          body:
+            type: !include datatypes/responses/productOrderResponse.raml
+    /{ordenOm}:
+      get:
+        is: [security_client_id, request_headers]   
+        displayName: Get Order
+        description: Get order by his orderOm
+        responses:
+          200:
+            body:
+              application/json:
+                type: order-lib.response
+                example: !include examples/responses/orderRequest.json
+      put:
+        is: [security_client_id, request_headers]   
+        displayName: Patch Order
+        description: Update order by his orderOm
+        responses:
+          200:
+            body:
+              application/json:
+                type: order-lib.response
+                example: !include examples/responses/orderRequest.json
+
+  /productOrderState:
+    post:
+      is: [security_client_id, request_headers]
+      displayName: Insert viability response 
+      description: Service to insert viability response in the collection 'OR_RTA_VIABILIDAD' or 'OR_RESPUESTA'
+      body:
+        type:  viabilityResponse-lib.viabilityResponse | productOrderState
+      responses:
+        201:
+          body:
+            type: !include datatypes/responses/postViabilityResponse.raml
+    /{ordenOm}:
+      get:
+        is: [security_client_id, request_headers]   
+        displayName: Get viability response
+        description: Get viability response by his orderOm and idViabilidad
+        responses:
+          200:
+            body:
+              application/json:
+                type: viabilityResponseGET-lib.response
+                example: !include examples/responses/viabilityResponseRequest.json
+      /{idViabilidad}:
+        get:
+          is: [security_client_id, request_headers]   
+          displayName: Get viability response
+          description: Get viability response by his orderOm and idViabilidad
+          responses:
+            200:
+              body:
+                application/json:
+                  type: viabilityResponseGET-lib.response
+                  example: !include examples/responses/viabilityResponseRequest.json
+        put:
+          is: [security_client_id, request_headers]   
+          displayName: Update viability response
+          description: Update viability response by his orderOm and idViabilidad
+          responses:
+            200:
+              body:
+                type: !include datatypes/responses/viabilityResponseResponse.raml
+                example: !include examples/responses/productOrderResponse.raml  
+  /provisioning:
+    post:
+      is: [security_client_id, request_headers]
+      displayName: Insert provisioning response 
+      description: Service to insert provisioning response in the collection 'OR_RTA_APROVISIONAMIENTO'
+      body:
+        type:  provisioningResponse-lib.provisioningResponse
+        example: !include examples/request/provisioningPost.json
+      responses:
+        201:
+          body:
+            type: !include datatypes/responses/postProvisioningResponse.raml
+    /{ordenOm}:
+      get:
+        is: [security_client_id, request_headers]   
+        displayName: Get provisioning response
+        description: Get provisioning response by his orderOm
+        responses:
+          200:
+            body:
+              application/json:
+                type: provisioningResponseGET-lib.response
+                example: !include examples/responses/provisioningResponseGET.json
+      /{identificador}:
+        get:
+          is: [security_client_id, request_headers]   
+          displayName: Get provisioning response
+          description: Get provisioning response by his orderOm
+          responses:
+            200:
+              body:
+                application/json:
+                  type: provisioningResponseGET-lib.response
+                  example: !include examples/responses/provisioningResponseGET.json
+        put:
+          is: [security_client_id, request_headers]   
+          displayName: Update provisioning response
+          description: Update provisioning response by his orderOm
+          responses:
+            200:
+              body:
+                type: !include datatypes/responses/provisioningResponse.raml
+                example: !include examples/responses/productOrderResponse.raml 
+                
+  /orders:
+    /statusDescription:
+      post:
+        queryParameters:
+          orderType:
+            type: string
+            example: "ORDEN_COMERCIAL"
+        is: [security_client_id, request_headers]
+        displayName: Get Status Descriptions
+        body:
+          application/json:
+            type: !include datatypes/requests/statusDescription.raml
+            example: !include examples/request/statusDescription.json
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/responses/statusDescription.raml
+                example: !include examples/responses/statusDescription.json
+    /{orderNumber}:
+      uriParameters:
+        orderNumber:
+          type: string
+          example: "MDM-MAY-0001"
+      get:
+        is: [security_client_id, request_headers] 
+        displayName: Get order.
+        description: This operation retrieve a order by orderNumber.
+        queryParameters:
+          collection:
+            type: string
+            required: false
+            example: "MDM_CD_ORDEN_COMPLETADA"
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/order.raml
+                example: !include  examples/order.json
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseNotFound.raml
+      put:
+        is: [security_client_id,request_headers]   
+        displayName: Update order
+        description: This operation update the order specified in orderNumber URI Parameter.
+        queryParameters:
+          updateType:
+            type: string
+            example: "1"
+            description: "Parameter to identify update type (1=coverage 2-availability)"
+        body:
+          application/json:
+            type: putOrderRequestCoverage |  putOrderRequestAvailability | putOrderRequestAvailabilityVenta
+        responses:
+          201:
+            body:
+              type: !include datatypes/responses/updateOrderResponse.raml
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseNotFound.raml
+      post:
+        is: [security_client_id,request_headers]   
+        displayName: Create order
+        description: This operation create the order
+        body:
+          application/json:
+            type: !include datatypes/order.raml
+            example: !include examples/order.json
+        responses:
+          201:
+            body:
+              type: !include datatypes/order.raml
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseNotFound.raml
+
+      patch:
+        is: [security_client_id,request_headers]   
+        displayName: Update order
+        description: This operation updates the order status
+        queryParameters:
+          collection:
+            type: string
+            required: false
+            example: "MDM_CD_ORDEN_COMPLETADA"
+        body:
+          application/json:
+            type: patchOrderStatus | patchOrderProvisioning |patchOrderConfirmProvisioning | patchOrderProvisioningCharacteristic
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include datatypes/responses/updateOrderResponse.raml
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseNotFound.raml
+      /postes:
+        /{idPoste}:
+          uriParameters:
+            idPoste:
+              type: string
+              example: ""
+              required: true
+          patch:
+            is: [security_client_id,request_headers]   
+            displayName: Update parameters in postes
+            description: This operation parameters in postes
+            queryParameters:
+              collection:
+                type: string
+                required: false
+                example: "MDM_CD_ORDEN_COMPLETADA"
+            body:
+              application/json:
+                type: !include datatypes/requests/updateParameters.raml
+                example: !include /examples/request/updateParameteres.json
+            responses:
+              200:
+                body:
+                  application/json:
+                    properties:
+                      codigo:
+                        type: string
+                        example: "200"
+                      descripcion:
+                        type: string
+                        example: "El poste fue actualizado correctamente en la orden 'MDM-MAY-0001'"
+              404:
+                body:
+                  application/json:
+                    type: !include /datatypes/responses/ErrorResponseNotFound.raml
+  /orderExample:
+    get:
+      is: [security_client_id, request_headers] 
+      displayName: Get order example.
+      description: This operation retrieve data about status and an order example.
+      queryParameters:
+        consecutiveType:
+          enum: [interaction, availability]
+        transactType:
+          enum: [VTAM, TESRM, PRCHM, ASEGM]
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/orderExample.raml
+              example: !include examples/responses/orderExample.json
+
+  /address:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: get address description
+      description: This operation retrieves description of given address code
+      queryParameters:
+        departmentId:
+          type: string
+        cityId:
+          type: string
+          required: false
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/addressDescription.raml
+              example: !include examples/responses/addressDescription.json
+            
+  /causal:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: get causal
+      description: This operation retrieves causales
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/causal.raml
+              example: !include examples/responses/causal.json
+  
+  /clients:
+    /{email}:
+      uriParameters:
+        email:
+          type: string
+          example: "aaa@gmail.com"
+      get:
+        is: [security_client_id, request_headers]
+        displayName: get clients
+        description: This operation retrieves clients by email
+        queryParameters:
+          tipoDocumento:
+            type: string
+            example: "CC"
+            required: false
+          numeroIdentificacion:
+            type: string
+            example: "2689845"
+            required: false
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/responses/getMDMClient.raml
+                example: !include examples/responses/getMDMClient.json
+      patch:
+        is: [security_client_id, request_headers]
+        displayName: Update Acceso by Email and document
+        description: This operation update acceso by Email, type and document
+        queryParameters:
+          tipoDocumento:
+            type: string
+            example: "CC"
+            required: true
+          numeroIdentificacion:
+            type: string
+            example: "2689845"
+            required: true
+        body:
+          application/json:
+            type:
+              properties:
+                Accesos:
+                  type: array
+                  required: true
+                  example: [ { "Canal": "TestChannel", "Sistema": "TEST"} ]
+        responses:
+          200:
+            body:
+              application/json:
+                example: { "matched": 1,"modified": 1}
+    get:
+      is: [security_client_id, request_headers]
+      displayName: get clients
+      description: This operation retrieves clients
+      queryParameters:
+        tipoDocumento:
+          type: string
+          example: "CC"
+          required: false
+        numeroIdentificacion:
+          type: string
+          example: "2689845"
+          required: true
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/clients.raml
+              example: !include examples/responses/clients.json
+    post:
+      is: [security_client_id, request_headers]
+      displayName: post new client
+      description: This operation publishes a new client
+      body:
+        application/json:
+          type: !include datatypes/requests/postMDMClient.raml
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/postMDMClient.raml
+    patch:
+      is: [security_client_id, request_headers]
+      displayName: Update client info
+      description: This operation updates a client information
+      queryParameters:
+        tipoDocumento:
+          type: string
+          example: "CC"
+          required: false
+        numeroIdentificacion:
+          type: string
+          example: "2689845"
+          required: true
+      responses:
+        200:
+          body:
+            application/json:
+              type: object
+              properties:
+                matched:
+                  type: number
+                  required: true
+                  example: 1
+                modified:
+                  type: number
+                  required: true
+                  example: 1
+    /channels:
+      get:
+        is: [security_client_id, request_headers]
+        displayName: get clients by channel
+        description: This operation retrieves clients by channel value
+        queryParameters:
+          channelValue:
+            type: string
+            example: "abc@mail.com"
+            required: true
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/responses/getMDMClient.raml
+                example: !include examples/responses/getMDMClient.json
+
+  /statusScript:
+    get:
+      is: [security_client_id, request_headers]
+      displayName: get status script
+      description: This operations retrieves a status script.
+      queryParameters: 
+        transactType:
+          type: string
+          example: "TRAS"
+          required: true
+        initialStatus:
+          type: string
+          example: "O90"
+          required: true
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/statusScript.raml
+              example: !include examples/responses/statusScript.json
+
+  /billingAccounts:
+    get:
+      is: [security_client_id, request_headers]
+      displayName: Get Billing Accounts by document and document's type
+      description: Service to get the list of Billing Accounts by document and document's type
+      queryParameters:
+        tipoDocumento:
+          type: string
+          example: "CC"
+          required: true
+        numeroIdentificacion:
+          type: string
+          example: "2689845"
+          required: true
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/responseGetBilling.raml
+              example: !include examples/responses/getBillingAccounts.json
+    post:
+      is: [security_client_id,request_headers]
+      displayName: Insert Billing Account
+      description: Insert Billing Account in OR_CUENTAS_FACTURACION
+      body:
+        application/json:
+          type: !include datatypes/requests/postBillingAccount.raml
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/responsePostBilling.raml
+    /om:
+      /{ordenOM}:
+        get:
+          is: [security_client_id,request_headers]
+          displayName: Get Account by his ordenOM
+          description: Search Billing Account in OR_CUENTAS_FACTURACION
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/responseGetBilling.raml
+        put:
+          is: [security_client_id,request_headers]
+          displayName: Update Account by his ordenOM
+          description: Update Billing Account in OR_CUENTAS_FACTURACION
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/responsePutBilling.raml
+    /id:
+      /{idCuentaFacturacion}:
+        get:
+          is: [security_client_id,request_headers]
+          displayName: Get Account by its idCuentaFacturacion
+          description: Search Billing Account in OR_CUENTAS_FACTURACION
+          queryParameters:
+            MDM:
+              type: boolean
+              required: false
+              example: false
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/responseGetBilling.raml
+        put:
+          is: [security_client_id,request_headers]
+          displayName: Update Account by his idCuentaFacturacion
+          description: Update Billing Account in OR_CUENTAS_FACTURACION
+          responses:
+            200:
+              body:
+                application/json: 
+                  type: !include datatypes/responses/responsePutBilling.raml
+
+  /RNE:
+    /characteristic:
+      patch:
+        is: [security_client_id,request_headers]
+        displayName: Update characteristic in rne
+        description: Update characteristic in rne
+        body:
+          application/json:
+            type: !include datatypes/requests/rne-characteristic.raml
+            example: !include examples/request/rne-characteristic.json
+        responses:
+          201:
+            body:
+              application/json:
+                properties:
+                  codigo:
+                    type: string
+                    example: "OK"
+                  descripcion:
+                    type: string
+                    example: "Caracteristica actualizada"
+
+  /login:
+    post:
+      is: [security_client_id,request_headers]
+      displayName: Authentication to access Portal Instalador
+      description: Authentication to access Portal Instalador
+      body:
+          application/json:
+            type: !include datatypes/requests/login.raml
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "200"
+                descripcion:
+                  type: string
+                  example: "LOGIN CORRECTO"
+        500:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "500"
+                descripcion:
+                  type: string
+                  example: "ERROR CONSULTA"
+  /productURN:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: Retrieve information of CMP_OFERTA_PRODUCTO
+      description: Retrieve information of CMP_OFERTA_PRODUCTO
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/productURN.json
+        404:
+          body:
+            application/json:
+              type: !include /datatypes/responses/ErrorResponseNotFound.raml
+        500:
+          body:
+            application/json:
+              type: !include /datatypes/responses/ErrorResponseDataType.raml
+  /campanias:
+    /{campania}:
+      uriParameters:
+        campania:
+          type: string
+          example: "deg_tecnico_en_caminoaprovisionamiento_v2"
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get campania by idCampania
+        description: Get campania by idCampania
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/getCampanias.json
+  /message:
+    post: 
+      is: [security_client_id,request_headers]
+      displayName: Send Messages
+      description: Send Messages
+      body:
+        application/json:
+          type: !include datatypes/requests/post-message.raml
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "Mensaje Insertado"
+              
+  /multiusuarios:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: Obtener datos de PORTAL_UNIFICADO_MULTIUSUARIOS
+      description: Obtener datos de PORTAL_UNIFICADO_MULTIUSUARIOS
+      queryParameters:
+        usuarioPadre:
+          type: string
+          example: "123@123"
+        usuarioHijo:
+          type: any
+          example: "123@123"
+          required: false
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/get-multiusuarios.json
+    delete:
+      is: [security_client_id,request_headers]
+      displayName: Cambiar el estado de registros en PORTAL_UNIFICADO_MULTIUSUARIOS
+      description: Cambiar el estado de registros en PORTAL_UNIFICADO_MULTIUSUARIOS
+      queryParameters:
+        usuarioPadre:
+          type: string
+          example: "123@123"
+        usuarioHijo:
+          type: string
+          example: "123@123"
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "Registro eliminado"
+    post:
+      is: [security_client_id,request_headers]
+      displayName: Insercion o modificacion de multiusuario en PORTAL_UNIFICADO_MULTIUSUARIOS
+      description: Insercion o modificacion de multiusuario en PORTAL_UNIFICADO_MULTIUSUARIOS
+      body:
+        application/json:
+          type: !include /datatypes/requests/post-multiusuario.raml
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "Registro insertado o modificado"
+  /usuarios:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: Get user
+      description: Consultar usuario en PORTAL_UNIFICADO_USUARIO
+      queryParameters:
+        tipoDocumento:
+          type: string
+          example: "CC"
+          required: true
+        numeroDocumento:
+          type: string
+          example: "2689845"
+          required: true
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/getUser.json
+    delete:
+      is: [security_client_id,request_headers]
+      displayName: Cambiar el estado de registros en PORTAL_UNIFICADO_USUARIO
+      description: Cambiar el estado de registros en PORTAL_UNIFICADO_USUARIO
+      queryParameters:
+        mail:
+          type: string
+          example: "123@123"
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "Registro eliminado"
+                               
+  /pqrs:
+    /agenda_tmr:
+      /{orderNumber}:
+        uriParameters:
+          orderNumber:
+            type: string
+            example: "MDM-FIBRA-0001"
+        get:
+          is: [security_client_id,request_headers]
+          displayName: Consulta de una pqr segun su numero de orden 
+          description: Consulta de una peticiï¿½n, queja o reclamo segun su numero de orden
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include datatypes/responses/pqrByOrderNumberResponse.raml  
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Consulta de una pqr segun su numero de orden 
+        description: Consulta de una peticiï¿½n, queja o reclamo segun su numero de orden
+        queryParameters:
+          orderNumbers:
+            type: string[]
+            required: false
+            example: ["MDM-PQR-0001111", "MDM-PQR-0000011"]
+          orderTypes:
+            type: string[]
+            required: false
+            example: ["MDM-PQR-0001111", "MDM-PQR-0000011"]
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/responses/pqrByOrderNumberResponse.raml 
+    /compensations:
+      get:
+        is: [security_client_id, request_headers]
+        displayName: Query compensation
+        description: Gets compensation from a pqr
+        queryParameters:
+          Tipo_Documento:
+            type: string
+            required: false
+            example: "CC"
+          Numero_Documento:
+            type: string
+            required: false
+            example: "1033817571"
+          Cuenta_Facturacion:
+            type: string
+            required: false
+            example: "15052898260"
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/responses/getPqrCompensation.raml
+                example: !include examples/responses/getPqrCompensation.json
+    get:
+      is: [security_client_id,request_headers]
+      displayName: Consulta de una peticiï¿½n, queja o reclamo 
+      description: Consulta de una peticiï¿½n, queja o reclamo 
+      queryParameters:
+        id:
+          description: Nï¿½mero de la peticiï¿½n, queja o reclamo 
+          type: string
+          required: false
+          example: "PQR-1234"
+        tipoIdentificacion:
+          description: Tipo de identificaciï¿½n del cliente o prospecto del cliente
+          type: string
+          required: false
+          example: 'CC'
+        numIdentificacion:
+          description: Nï¿½mero de identificaciï¿½n del cliente o prospecto del cliente
+          type: string
+          required: false
+          example: '123456'
+        cun:
+          description: Identificador secundario de una PQR generado
+          type: string
+          required: false
+          example: '1234'
+        idCuentaFacturacion:
+          description: Identificador de cuenta de facturacion del cliente
+          type: string
+          required: false
+          example: '1234'
+      responses:
+        200:
+          body:
+            application/json:
+              displayName: Peticiï¿½n, queja o reclamo 
+              description: Peticiï¿½n, queja o reclamo obtenidas por un cliente o un prospecto 
+              type: !include datatypes/responses/get-pqr-200.raml
+        400:
+          description: Peticiï¿½n, queja o reclamo no existe o no fue encontrado
+          body:
+            application/json:
+              displayName: No fue encontrado la peticiï¿½n, queja o reclamo consultado
+              description: No fue encontrado ninguna peticiï¿½n, queja o reclamo
+              type: !include datatypes/responses/get-pqr-400.raml
+    /fallaMasiva:
+      get:
+        is: [security_client_id, request_headers]
+        displayName: Query compensation
+        description: Gets compensation from a pqr
+        queryParameters:
+          idPqr:
+            type: string
+            required: true
+            example: "MDM-PQR-20000360"
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/get-pqrFallaMasiva.json
+  /billAmont:
+    /{cuentaFacturacion}:
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get amout reported by its cuentaFacturacion
+        description: Search by cuentaFacturacion in MDM_CASAS_COBRANZA
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/getBillAmount.json
+  /activeService:
+    /{id}:
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get state of the active service 
+        description: Search by cuentaFacturacion in MDM_SERVICIO_ACTIVO
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/getActiveService.json
+  /service:
+    /{id}:
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get state of the service 
+        description: Search by cuentaFacturacion in MDM_CD_SERVICIO
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/getService.json
+  /order: 
+    /{cuentaFacturacion}:
+      get:
+        is: [security_client_id,request_headers]
+        queryParameters:
+          type:
+            type: string
+            enum: ["House", "Mobile"]
+            example: "House"
+        displayName: Get the last cancellation of the service by its cuentaFacturacion and type.
+        description: Search by cuentaFacturacion and type in MDM_CD_ORDEN or MDM_ORDEN
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/getOrder.json
+  /orderService:
+    /{cuentaFacturacion}:
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get the detail of the last cancellation of a mobile service by its cuentaFacturacion and type.
+        description: Search by cuentaFacturacion and type in MDM_ORDEN_SERVICIO
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/getOrderService.json
+  /onlineBill:
+    /{cuentaFacturacion}:
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get State of the last bill by its cuentaFacturacion
+        description: Search by cuentaFacturacion in MDM_FACTURA_ONLINE
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/getOnlineBill.json
+  /parametrization:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: Get Parametrization
+      description: Search by CANTIDAD_DIAS_CONSULTA_CONTACTO_FRECUENTE
+      queryParameters:
+        parametro:
+          description: "Retrieve information of MULESOFT_PARAMETROS"
+          type: string
+          example: "nombre del parï¿½metro"
+          required: false
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/parametrizationContacto.json
+    /{code}:
+      get:
+        is: [security_client_id,request_headers]
+        displayName: Get Parametrization
+        description: Search by tipologia in BOT_PARAMETRIZATION
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/parametrization.json
+  /referred:
+    /services:
+      get:
+        is: [security_client_id, commonHeaders]
+        displayName: Get information about MDM_SERVICIO_ACTIVO
+        description: Get information about MDM_SERVICIO_ACTIVO
+        queryParameters:
+          tipoDoc:
+            type: string
+            example: "CC"
+          numeroDoc:
+            type: string
+            example: "79432058"
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/responses/getServicesByIdServiceAccount.raml
+                example: !include examples/responses/getServicesByIdServiceAccount.json
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseNotFound.raml
+          500:
+            body:
+              application/json:
+                type: !include /datatypes/responses/ErrorResponseDataType.raml
+    get:
+      is: [security_client_id, commonHeaders]
+      displayName: Get referral
+      description: Get information about a referral from MDM_REFERIDOS_EMPLEADOS
+      queryParameters:
+        tipoDocumento:
+          type: string
+          required: true
+          example: "CC"
+        numeroIdentificacion:
+          type: string
+          required: true
+          example: "79432058"
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include examples/responses/getReferral.json
+        404:
+          body:
+            application/json:
+              example: !include /examples/error/404error.json
+    patch:
+      is: [security_client_id, commonHeaders]
+      displayName: update referral
+      description: Update information about a referral in MDM_REFERIDOS_EMPLEADOS
+      queryParameters:
+        tipoDocumento:
+          type: string
+          required: true
+          example: "CC"
+        numeroIdentificacion:
+          type: string
+          required: true
+          example: "79432058"
+        tipoDocumentoReferido:
+          type: string
+          required: true
+          example: "CC"
+        numeroDocumentoReferido:
+          type: string
+          required: true
+          example: "19433246"
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include examples/responses/patchReferral.json
+        404:
+          body:
+            application/json:
+              example: !include /examples/error/404error.json
+  /tramites:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: Get Tramites
+      description: Search by "cuenta" in COLL_TRAMITES
+      queryParameters:
+        cuenta:
+          type: string
+          required: true
+          example: "12053989812"
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/tramites.json
+  /token:
+    get:
+      is: [security_client_id]
+      displayName: Get token
+      description: Service to get token from mongodb
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/get-token-response.raml
+    post:
+      is: [security_client_id]
+      displayName: Save token
+      description: Service to save token in mongodb
+      body:
+        application/json:
+          type: !include datatypes/requests/post-token-request.raml
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include examples/responses/post-token-response.json
+  /offers:
+    /{id}:
+      uriParameters:
+        id:
+          type: string
+          example: "identificador"
+      get:
+        is: [security_client_id]
+        displayName: Get offer
+        description: Service to get offer from mongodb
+        responses:
+          200:
+            body:
+              application/json:
+                example: {}
+  /commercialCatalog:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: Get commercial catalog
+      description: Search commercial catalog in CATALOGO_COMERCIAL_SVAS
+      responses:
+        200:
+          body:
+            application/json:
+              example: []
+  /productOfferByGroupingNumber:
+    post:
+      is: [security_client_id,request_headers]
+      displayName: Get product offer by grouping number
+      description: Search product offer by grouping number in CMP_OFERTA_PRODUCTO
+      body:
+        application/json:
+          type: !include datatypes/requests/getProductOfferByGroupingNumber.raml
+      responses:
+        200:
+          body:
+            application/json:
+              example: []
+  /svas:
+    /{id}:
+      uriParameters:
+        id:
+          type: string
+      get:
+        is: [security_client_id]
+        displayName: Get services by SVAs ID in CMP_OFERTA_PRODUCTO.
+        description: Consultar en CMP_OFERTA_PRODUCTO los nï¿½meros de agrupaciï¿½n de los servicios adicionales mediante el id de SVAs
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/get-svas-id.json
+  /active-service:
+    get:
+      queryParameters:
+        nroConexion:
+          type: string
+          description: "Numero de Conexion"
+          example: "12345"
+      is: [security_client_id]
+      displayName: Get Active Service by NroConexion
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/getActiveService.json
+  /portability:
+    /process:
+      post:
+        is: [security_client_id,request_headers]
+        displayName: Insert Portability Process
+        description: Insert in MDM_PORTABILIDAD_PROCESOS
+        body:
+          application/json:      
+            type: !include /datatypes/requests/post-portability-process.raml
+        responses:
+          200:
+            body:
+              application/json:
+                example: {"status": "OK"}
+      /{idProceso}:
+        uriParameters:
+          idProceso:
+            type: string
+            required: true
+            example: "12345"
+        get:
+          is: [security_client_id,request_headers]
+          displayName: Get Portability Process
+          description: Search by idProceso in MDM_PORTABILIDAD_PROCESOS
+          responses:
+            200:
+              body:
+                application/json:
+                  example: !include /examples/responses/get-portability-idProcess.json
+                
+  /interaction:     
+    post:
+      is: [security_client_id]
+      displayName: Post interacción/transacción.
+      description: Almacenar interacción/transacción.  
+      body:    
+        application/json:      
+          type: !include /datatypes/requests/post-interaction.raml
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "Registro insertado"
+    get:
+      is: [security_client_id]
+      displayName: Obtener interacción desde MDM_HSM_INTERACCION.
+      description: Obtener interacción desde MDM_HSM_INTERACCION.  
+      queryParameters:    
+        numeroWhatsapp:      
+          type:  string
+          example: "9999999" 
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/responses/get-interaction.raml
+    patch:
+      is: [security_client_id]
+      displayName: Actualizar interacción en MDM_HSM_INTERACCION.
+      description: Actualizar interacción en MDM_HSM_INTERACCION
+      queryParameters:
+        numeroWhatsapp:
+          type: string
+          example: "999999999"
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "Registro actualizado"
+    delete:
+      is: [security_client_id]
+      displayName: Eliminar interacción en MDM_HSM_INTERACCION y MDM_HSM_INTERACCION_LOG.
+      description: Eliminar interacción en MDM_HSM_INTERACCION y MDM_HSM_INTERACCION_LOG
+      queryParameters:
+        idIteracion:
+          type: string
+          example: "999999999"
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "Registro eliminado"
+    /logs:     
+      post:
+        is: [security_client_id]
+        displayName: Post logs HSM.
+        description: Almacenar Logs HSM.  
+        body:    
+          application/json: 
+            type: !include /datatypes/requests/post-interaction-logs-hcm.raml
+        responses:
+          200:
+            body:
+              application/json:
+                properties:
+                  codigo:
+                    type: string
+                    example: "OK"
+                  descripcion:
+                    type: string
+                    example: "Registro insertado"
+  /dtvProduct:
+    get:
+      is: [security_client_id,request_headers]
+      displayName: Retrieve dtv products information of CMP_OFERTA_PRODUCTO
+      description: Retrieve dtv products information of CMP_OFERTA_PRODUCTO
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/productURN.json
+        404:
+          body:
+            application/json:
+              type: !include /datatypes/responses/ErrorResponseNotFound.raml
+        500:
+          body:
+            application/json:
+              type: !include /datatypes/responses/ErrorResponseDataType.raml
+
+  /manualEquipos:
+    get:
+      is: [security_client_id]
+      displayName: Obtener manual equipos activos de MDM_PI_MANUALEQUIPO
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/responses/get-manualEquipos.raml                  
+  /agreements:
+    post:
+      is: [security_client_id]
+      displayName: Create Agreement
+      body:
+        application/json:      
+          type: !include /datatypes/requests/post-createAgreement.raml
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "Registro insertado"
+    /{acuerdoId}:
+      uriParameters:
+        acuerdoId:
+          type: string
+      get:
+        is: [security_client_id]
+        displayName: Get Agreement
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /datatypes/requests/post-createAgreement.raml
+      patch:
+        is: [security_client_id]
+        displayName: Update Agreement
+        body:
+          application/json:      
+            type: !include /datatypes/requests/post-createAgreement.raml
+        responses:
+          200:
+            body:
+              application/json:
+                properties:
+                  codigo:
+                    type: string
+                    example: "OK"
+                  descripcion:
+                    type: string
+                    example: "Registro actualizado"
+    /logs:  
+      post:
+        is: [security_client_id]
+        displayName: Create Agreement
+        body:
+          application/json:      
+            type: !include /datatypes/requests/post-createAgreement-logs.raml
+        responses:
+          200:
+            body:
+              application/json:
+                properties:
+                  codigo:
+                    type: string
+                    example: "OK"
+                  descripcion:
+                    type: string
+                    example: "Registro insertado"
+  /logMessages:
+    post:
+      is: [security_client_id]
+      displayName: Create LogMessage
+      body:
+        application/json:
+          type: !include /datatypes/requests/post-logMessage.raml
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "Registro insertado"
+    patch:
+        is: [security_client_id]
+        displayName: Update LogMessage
+        body:
+          application/json:
+            type: !include /datatypes/requests/patch-logMessage.raml
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /datatypes/responses/patch-logMessage.raml
+    get:
+      is: [security_client_id]
+      displayName: Get LogMessage
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/responses/logMessage.raml
+
+    /infoMessage:
+      patch:
+        is: [security_client_id]
+        displayName: Patch log message in field on message sent
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /datatypes/requests/patch-logMessage-info.raml
+  /enrutadorMensajes:
+    post:
+      is: [security_client_id]
+      displayName: Cola para administrar los mensajes
+      body:
+        application/json:
+          type: !include /datatypes/requests/post-enrutadorMensaje.raml
+          example: !include /examples/request/post-enrutadorMensaje.json
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/post-enrutadorMensaje-200.json
+        207:
+          body:
+            application/json:
+              example: !include /examples/responses/post-enrutadorMensaje-207.json
+        500:
+          body:
+            application/json:
+              example: !include /examples/responses/post-enrutadorMensaje-500.json
+    get:
+        is: [security_client_id]
+        displayName: Obtener Mensajes en estado pendiente
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/get-enrutadorMensaje-200.json
+          404:
+            body:
+              application/json:
+                example: !include /examples/responses/get-enrutadorMensaje-404.json
+    delete:
+      is: [security_client_id]
+      queryParameters:
+        id:
+          type: string
+          required: false
+          description: MessageId del mensaje a eliminar (opcional)
+          example: "b2b78b77-df3d-48ff-8c06-e72e52317cb0"
+        otpTime:
+          type: string
+          required: false
+          description: Tiempo de eliminación para mensajes OTP (en segundos)
+          example: "3600"
+        regulatoryTime:
+          type: string
+          required: false
+          description: Tiempo de eliminación para mensajes regulatorios (en segundos)
+          example: "3600"
+        campaignTime:
+          type: string
+          required: false
+          description: Tiempo de eliminación para mensajes de campaña (en segundos)
+          example: "3600"
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/delete-enrutadorMensaje-200.json
+        404:
+          body:
+            application/json:
+              example: !include /examples/responses/delete-enrutadorMensaje-404.json
+    /{id}:
+      uriParameters:
+        id:
+          type: string
+          description: MessageId del mensaje a actualizar
+          example: "b2b78b77-df3d-48ff-8c06-e72e52317cb0"
+      patch:
+        is: [security_client_id]
+        displayName: Actualización estado del mensaje
+        body:
+          application/json:
+            type: !include /datatypes/requests/patch-enrutador-mensaje.raml
+            example: !include /examples/request/patch-enrutador-mensaje.json
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/responses/patch-enrutadorMensaje-200.json
+          404:
+            body:
+              application/json:
+                example: !include /examples/responses/patch-enrutadorMensaje-404.json
