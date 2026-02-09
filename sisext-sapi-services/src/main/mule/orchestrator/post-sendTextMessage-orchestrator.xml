@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-sendTextMessage-orchestratorSub_Flow" doc:id="fa2e0fc4-654e-488e-9238-3313d82986cf" >
+		<ee:transform doc:name="Transform Payload to Java" doc:id="b93b2118-5fa9-4572-acae-b99ff2517f20" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<parse-template doc:name="Parse to XML" doc:id="9db4c059-7afd-410d-9199-dc85c536ac31" location="soap/schemas/templates/soap-sendTextMessage-request.xml"/>
+		<flow-ref doc:name="Call to SendMessage" doc:id="c7a208f4-24af-453c-accf-da1fa58cf638" name="post-sendTextMessage-clientSub_Flow"/>
+		<choice doc:name="filter Result Not null" doc:id="c4d13f88-9786-49de-aebf-d34a37ef5ae3" >
+			<when expression="#[payload.Envelope.Body.sendmessageResponseElement.return != null]">
+				<set-variable value="#[202]" doc:name="Set Variable" doc:id="c463f186-de5c-4e21-bdec-57c52a814d7a" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform Message" doc:id="57dd3963-114a-4ed9-88f7-70a7367c38a7" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": vars.httpStatus,
+  "code": p('sendMessage.properties.code'),
+  "response": {
+    "return": payload.Envelope.Body.sendmessageResponseElement.return
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<set-variable value="#[500]" doc:name="Set Variable" doc:id="6cc89d3b-87e3-4e2d-be5e-75acbe1b9fa4" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
