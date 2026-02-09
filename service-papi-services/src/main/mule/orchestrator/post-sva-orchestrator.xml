@@ -1,0 +1,446 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="post-sva-orchestratorSub_Flow" doc:id="6eded36a-695b-46ff-a30d-cc545c8f862f" >
+		<try doc:name="Try" doc:id="98ebbfff-7d13-43a0-ac9d-25810414066f" >
+			<set-variable value="#[vars.inputPayload.msisdn]" doc:name="Set msisdn" doc:id="ba6cde92-5097-492e-8b2f-8835e520a87d" variableName="connectionNumber" />
+			<flow-ref doc:name="Get subscription by msisdn" doc:id="e1693520-52c6-47b2-91db-279574def252" name="get-subscription-client-by-msisdn" />
+			<choice doc:name="Choice" doc:id="fa45ec30-a9c4-4eb5-af62-255a879172e3">
+			<when expression="#[!isEmpty(payload.content)]">
+				<set-variable value="#[payload.content.id[0]]" doc:name="subscriptionId" doc:id="40778282-0a0d-4567-9473-c4c5e7d03a90" variableName="subscriptionId" />
+					<flow-ref doc:name="Add-Operation" doc:id="2bee1210-c4c9-4232-8e5f-f3f10dc6788e" name="add" />
+					<flow-ref doc:name="Delete-Operation" doc:id="f91061d6-1df5-49a7-bc2f-cd37cd7ed0ed" name="delete" />
+					<ee:transform doc:name="Output" doc:id="a566fefd-2847-4aa3-8dc7-007e0852fe7d">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: 0,
+	descripcion: "Procesamiento exitoso" ++ " " ++ (vars.resultAddPromo default ""),
+	(resultIDs: vars.resultAdd) if (!isEmpty(vars.resultAdd)),
+	(idRecarga: vars.orderObject.id) if (vars.recargaPaqueteFlag == "true"),
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Error Output" doc:id="34932bb4-c457-400b-be26-33b766da38c6">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 404,
+	"code": "NOT_FOUND",
+	"message": {
+		"message": "Data not found"
+	},
+	"messageServer": "",
+	"cause": [{
+		"origin": app.name,
+		"message": "org.mule.extension.http.api.request.validator.NotFoundException"
+	}]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="77e20965-c8c8-4243-837b-d6f5bbb21efe" >
+					<ee:transform doc:name="Error response" doc:id="adb47432-bd26-4d59-ab44-debc6965a676" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "",
+	"message": {
+	  "message": (vars.errorMessageOutput default "") ++ " Respuesta JSC: " ++ error.muleMessage.typedValue.message.message default ""
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="add" doc:id="2129be84-8fcf-43e0-b641-c333eb677c7d" >
+		<choice doc:name="Choice" doc:id="29224835-86dd-4628-b654-6737e1802d3d" >
+			<when expression="#[vars.inputPayload.svas.action contains p('variable.add')]" >
+				<ee:transform doc:name="ADD pck´s" doc:id="59e7dbf1-983d-4267-82a4-0cf1b44a8c14">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="adds"><![CDATA[output application/json 
+--- 
+vars.inputPayload.svas filter $.action == p('variable.add')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<os:retrieve doc:name="Retrieve promXpkg" doc:id="8b657bea-bd7b-48cb-832f-d1bc6f2a885b" key="promXpkg" target="promXpkg" >
+					<os:default-value ><![CDATA[#[[]]]]></os:default-value>
+				</os:retrieve>
+				<choice doc:name="Check if promotion flag is True and adds are within promotions" doc:id="9dcf30b0-e53a-4a7f-9f3b-9d4d78395eba">
+					<when expression="#[%dw 2.0&#10;import * from dw::core::Arrays&#10;output application/json&#10;fun isElementInArray(arr1, arr2) =&#10;    sizeOf(arr1 filter ((item) -&gt; (arr2 contains item))) &gt; 0&#10;---&#10;isElementInArray(vars.adds.packageId, vars.promXpkg.Paquete_Seleccionado default []) and &#10;(upper(p('variable.promocionFlag')) == &quot;TRUE&quot;)]">
+						<flow-ref doc:name="Get active service" doc:id="76a01ef1-785b-4389-90d6-7ebe83ecb239" name="get-active-service"/>
+						<ee:transform doc:name="Set dataValPromo" doc:id="31cc26ec-1837-42e2-99b3-0bf1654156e8">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="dataValPromo"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	fechaActivacion: payload[0].Fecha_Activacion..[0]
+}]]></ee:set-variable>
+								<ee:set-variable variableName="ctaFact" ><![CDATA[%dw 2.0
+output application/json
+---
+payload[0].Cuenta_Facturacion]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Get order by ctaFact" doc:id="f245a5a2-c1bd-40d6-af4d-9d0ed07b5ba8" name="get-order-by-ctaFact"/>
+						<ee:transform doc:name="Set condicion" doc:id="afe4dc41-c345-431b-ab62-feeab59519f1">
+							<ee:message>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="dataValPromo" ><![CDATA[%dw 2.0
+output application/json
+---
+(vars.dataValPromo default {}) ++ {condicion:payload[0].Subtipo_Orden}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<os:retrieve doc:name="Retrieve promociones" doc:id="c1de42d4-951d-4235-9387-1880625cf376" key="promociones" target="promociones" >
+							<os:default-value ><![CDATA[#[[]]]]></os:default-value>
+						</os:retrieve>
+						<choice doc:name="Choice" doc:id="2c031dff-de1e-493d-9560-468836188db4">
+							<when expression="#[%dw 2.0&#10;output application/json&#10;var fechaActual = now() &gt;&gt; &quot;America/Bogota&quot; as String {format: &quot;uuuu-MM-dd&quot;}&#10;var fechaActivacion = vars.dataValPromo.fechaActivacion as String {format: &quot;uuuu-MM-dd&quot;}&#10;var promoByCondition = (vars.promociones default []) groupBy ((item, index) -&gt; item.Condicion)&#10;---&#10;//Valida condicion&#10;(upper(vars.dataValPromo.condicion) == p('global.condicionPortado')) and &#10;//Valida Vigencia&#10;((((fechaActual - fechaActivacion) as Number {unit: &quot;days&quot;}) &lt; promoByCondition.&quot;Usuario Portado&quot;[0].Vigencia)) and&#10;//Valida fecha inicio y fin&#10;(fechaActual &lt;= (promoByCondition.&quot;Usuario Portado&quot;[0].Fecha_Fin as Date {format: &quot;dd/MM/yyyy&quot;})) and &#10;(fechaActual &gt;= (promoByCondition.&quot;Usuario Portado&quot;[0].Fecha_Inicio as Date {format: &quot;dd/MM/yyyy&quot;}))]">
+								<ee:transform doc:name="Set new pkg in adds" doc:id="c59ac146-29e5-4f75-ba39-15627a9f57fb" >
+									<ee:message >
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="resultAddPromo" ><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+var promoByCondition = vars.promociones groupBy ((item, index) -> item.Condicion)
+var promoXpkgByCampId = vars.promXpkg filter ((item, index) -> item."CampañaId" == promoByCondition."Usuario Nuevo"[0]."_id")
+---
+//Portado
+//promoXpkgByCampId
+((vars.adds map ((pkg) ->
+    if(promoXpkgByCampId.Paquete_Seleccionado contains(pkg.packageId))
+        "Paquete recibido: " ++ pkg.packageId ++ " Paquete aplicado: " ++ (vars.promXpkg filter ((item, index) -> item.Paquete_Seleccionado == pkg.packageId)).Paquete_Entregar[0]
+    else
+        ""
+)) filter ((item, index) -> !isEmpty(item))) joinBy  ", "]]></ee:set-variable>
+										<ee:set-variable variableName="adds" ><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+var promoByCondition = vars.promociones groupBy ((item, index) -> item.Condicion)
+var promoXpkgByCampId = vars.promXpkg filter ((item, index) -> item."CampañaId" == promoByCondition."Usuario Portado"[0]."_id")
+---
+//Portado
+//promoXpkgByCampId
+vars.adds map ((pkg) ->
+    if(promoXpkgByCampId.Paquete_Seleccionado contains(pkg.packageId))
+        pkg update "packageId" with (vars.promXpkg filter ((item, index) -> item.Paquete_Seleccionado == pkg.packageId)).Paquete_Entregar[0]
+    else
+        pkg
+)
+]]></ee:set-variable>
+										<ee:set-variable variableName="logginData" ><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+var promoByCondition = vars.promociones groupBy ((item, index) -> item.Condicion)
+var promoXpkgByCampId = vars.promXpkg filter ((item, index) -> item."CampañaId" == promoByCondition."Usuario Portado"[0]."_id")
+---
+{
+    "Fecha_aprovision": now() >> "America/Bogota",
+    "IntegrationId": vars.connectionNumber,
+    "packages": ((vars.adds map ((pkg) ->
+        if(promoXpkgByCampId.Paquete_Seleccionado contains(pkg.packageId))
+        {
+            "Paquete_recibido": pkg.packageId,
+            "Paquete_aplicado": (vars.promXpkg filter ((item, index) -> item.Paquete_Seleccionado == pkg.packageId)).Paquete_Entregar[0]
+        }
+        else
+            {}
+    )) filter ((item, index) -> !isEmpty(item))) 
+}
+
+]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</when>
+							<when expression="#[%dw 2.0&#10;output application/json&#10;var fechaActual = now() &gt;&gt; &quot;America/Bogota&quot; as String {format: &quot;uuuu-MM-dd&quot;}&#10;var fechaActivacion = vars.dataValPromo.fechaActivacion as String {format: &quot;uuuu-MM-dd&quot;}&#10;var promoByCondition = (vars.promociones default []) groupBy ((item, index) -&gt; item.Condicion)&#10;---&#10;(upper(vars.dataValPromo.condicion) == p('global.condicionNuevo')) and &#10;((((fechaActual - fechaActivacion) as Number {unit: &quot;days&quot;}) &lt; promoByCondition.&quot;Usuario Nuevo&quot;[0].Vigencia)) and&#10;(fechaActual &lt;= (promoByCondition.&quot;Usuario Nuevo&quot;[0].Fecha_Fin as Date {format: &quot;dd/MM/yyyy&quot;})) and &#10;(fechaActual &gt;= (promoByCondition.&quot;Usuario Nuevo&quot;[0].Fecha_Inicio as Date {format: &quot;dd/MM/yyyy&quot;}))]">
+								<ee:transform doc:name="Set new pkg in adds" doc:id="5e682cfa-d206-4330-b80b-c85ca1a1e88b" >
+									<ee:message >
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="adds" ><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+var promoByCondition = vars.promociones groupBy ((item, index) -> item.Condicion)
+var promoXpkgByCampId = vars.promXpkg filter ((item, index) -> item."CampañaId" == promoByCondition."Usuario Nuevo"[0]."_id")
+---
+//Nuevo
+vars.adds map ((pkg) ->
+    if(promoXpkgByCampId.Paquete_Seleccionado contains(pkg.packageId))
+        pkg update "packageId" with (vars.promXpkg filter ((item, index) -> item.Paquete_Seleccionado == pkg.packageId)).Paquete_Entregar[0]
+    else
+        pkg
+)
+]]></ee:set-variable>
+										<ee:set-variable variableName="resultAddPromo" ><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+var promoByCondition = vars.promociones groupBy ((item, index) -> item.Condicion)
+var promoXpkgByCampId = vars.promXpkg filter ((item, index) -> item."CampañaId" == promoByCondition."Usuario Nuevo"[0]."_id")
+---
+//Portado
+//promoXpkgByCampId
+((vars.adds map ((pkg) ->
+    if(promoXpkgByCampId.Paquete_Seleccionado contains(pkg.packageId))
+        "Paquete recibido: " ++ pkg.packageId ++ " Paquete aplicado: " ++ (vars.promXpkg filter ((item, index) -> item.Paquete_Seleccionado == pkg.packageId)).Paquete_Entregar[0]
+    else
+        ""
+)) filter ((item, index) -> !isEmpty(item))) joinBy  ", "]]></ee:set-variable>
+										<ee:set-variable variableName="logginData" ><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+var promoByCondition = vars.promociones groupBy ((item, index) -> item.Condicion)
+var promoXpkgByCampId = vars.promXpkg filter ((item, index) -> item."CampañaId" == promoByCondition."Usuario Nuevo"[0]."_id")
+---
+{
+    "Fecha_aprovision": now() >> "America/Bogota",
+    "IntegrationId": vars.connectionNumber,
+    "packages": ((vars.adds map ((pkg) ->
+        if(promoXpkgByCampId.Paquete_Seleccionado contains(pkg.packageId))
+        {
+            "Paquete_recibido": pkg.packageId,
+            "Paquete_aplicado": (vars.promXpkg filter ((item, index) -> item.Paquete_Seleccionado == pkg.packageId)).Paquete_Entregar[0]
+        }
+        else
+            {}
+    )) filter ((item, index) -> !isEmpty(item))) 
+}
+
+]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</when>
+						</choice>
+					</when>
+				</choice>
+				<choice doc:name="Choice" doc:id="fcb0aa5b-5249-4fd0-b716-6290b7556b85">
+					<when expression="#[vars.inputPayload != null and vars.inputPayload.gestor != null and !isEmpty(trim(vars.inputPayload.gestor))]">
+						<ee:transform doc:name="Set payload order" doc:id="f4b5a067-4e89-4e4c-9ae8-259385cc5a7d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+fun addDChar(str: String): String =
+  if(str matches /^[0-9]+$/)
+    "D" ++ str
+  else
+    str
+---
+{
+  "type": "RETAIL",
+  "salesChannel": "OWN_CALLCENTER",
+  "salesPerson": vars.inputPayload.gestor,
+  "externalID": vars.inputPayload.gestor,
+  "status": "CONFIRMED",
+  "packages": vars.adds map 
+    {
+      "id": addDChar($.packageId)
+    },
+  "subscription": {
+    "id": vars.subscriptionId
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Set payload order" doc:id="ebaa0060-9816-4125-96ea-26363a3a4311" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+fun addDChar(str: String): String =
+  if(str matches /^[0-9]+$/)
+    "D" ++ str
+  else
+    str
+---
+{
+  "type": "RETAIL",
+  "salesChannel": "OWN_CALLCENTER",
+  "status": "CONFIRMED",
+  "packages": vars.adds map 
+    {
+      "id": addDChar($.packageId)
+    },
+  "subscription": {
+    "id": vars.subscriptionId
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+				<flow-ref doc:name="Create order" doc:id="8b0c3d1c-4f09-416e-8a24-a23ae0ab494b" name="post-order-client" />
+				<ee:transform doc:name="Clean Payload" doc:id="04b63570-9b58-423d-bd98-ea35b44fbb51" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Apply order" doc:id="35dff257-2e27-4521-943a-7089c48827e2" name="patch-endOrder-client" />
+				<ee:transform doc:name="resultAdd" doc:id="47b543ff-3dba-4050-a8c1-3f10dc73d1f8">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="resultAdd"><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Arrays
+---
+(vars.orderObject.packages filter(obj,ind) -> (vars.adds.packageId some $ == obj.id)) map {
+		packageId: $.id,
+		idInstanceJSC: $.packageInstance.id
+	}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<async doc:name="Async" doc:id="6341b309-0249-481e-9026-089e6ed86091" >
+					<choice doc:name="Choice" doc:id="dfcb1cd0-4eb6-4c90-81f1-f72a338afc01">
+					<when expression="#[%dw 2.0&#10;import * from dw::core::Arrays&#10;output application/json&#10;fun isElementInArray(arr1, arr2) =&#10;    sizeOf(arr1 filter ((item) -&gt; (arr2 contains item))) &gt; 0&#10;---&#10;isElementInArray(vars.adds.packageId, vars.promXpkg.Paquete_Entregar) and &#10;(upper(p('variable.promocionFlag')) == &quot;TRUE&quot;)]">
+						<ee:transform doc:name="Set payload for logging" doc:id="27098cef-ab70-476c-aa32-e66a2e578656">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.logginData default {}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Go to log promotions" doc:id="a54a2e60-c0b6-41ef-8ff2-eefc71145001" name="post-pkg-by-promotion" />
+					</when>
+				</choice>
+				</async>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="delete" doc:id="c6567bb6-cdd5-4004-b6e9-5ba551d53a56" >
+		<choice doc:name="Choice" doc:id="fb99c3ba-65df-4d54-a0b3-aa7a44ea4320" >
+			<when expression="#[vars.inputPayload.svas.action contains p('variable.delete')]" >
+				<ee:transform doc:name="DELETE pck´s" doc:id="0a1c8415-c281-47dd-8235-40cdd17dc828" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="deletes" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload.svas filter $.action == p('variable.delete')
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Get pkg by SID" doc:id="525c5222-2d2b-4724-9673-5641df772a63" name="get-pkgibySID-client" />
+				<ee:transform doc:name="idValidation" doc:id="eb3735f0-9373-4618-a4b3-d7546ab24a22" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="idValidation" ><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+---
+(payload.content filter (obj, ind) -> (vars.deletes.packageId some ($ == obj.pkg.id)) and (obj.status != "DELETED")).id]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="161d7033-a2dd-4493-835a-0e0aca58a169" >
+					<when expression="#[!isEmpty(vars.idValidation)]" >
+						<foreach doc:name="For Each" doc:id="44c2acb0-7ab1-410a-95ff-fbd0c907f0bb" collection="#[vars.idValidation]" >
+							<set-variable value="#[payload]" doc:name="idInstance JSC" doc:id="d4e2a692-12b9-465b-b1b1-47d6bbd75b6e" variableName=" idInstanceJSC" />
+							<ee:transform doc:name="Clean Payload" doc:id="2446e1f6-3cb7-4c79-9370-ce608a3ddf24" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<flow-ref doc:name="Delete package instance" doc:id="be337515-f44f-4fe3-9737-149cd7b2d5f7" name="patch-pkgi" />
+						</foreach>
+					</when>
+					<otherwise >
+						<set-variable value='#["The idInstanceJSC does not match with any pkg ids."]' doc:name="errorMessageOutput" doc:id="d747c572-d38e-4885-8287-347dfad1f7d1" variableName="errorMessageOutput"/>
+						<raise-error doc:name="Raise error" doc:id="ff810e4b-0ec4-4bb6-8a71-f40c0167e545" description='#[vars.errorMessageOutput]' type="ERR:NOT_FOUND"/>
+					</otherwise>
+				</choice>
+			</when>
+			<when expression="#[vars.inputPayload.svas.action contains p('variable.modifyPasagigas')]">
+				<ee:transform doc:name="DELETE pck´s" doc:id="1a845ee6-8fc9-4c0a-a60e-91fbbc6b3e56" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="deletes" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload.svas filter $.action == p('variable.modifyPasagigas')
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Get pkg by SID" doc:id="78e01513-660f-4a6b-9f96-43491cc157d3" name="get-pkgibySID-client" />
+				<ee:transform doc:name="idValidation" doc:id="9d9007b1-badc-4ccf-858a-9447f2873d78" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="idValidation" ><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+---
+//para pasagigas se debe comparar con el pkg.id y no con el id virtual del paquete
+(payload.content filter (obj,ind) -> ((vars.deletes.idInstanceJSC some ($ == obj.pkg.id)) and (obj.status == upper(p('variable.active'))))).id]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="ce7265d3-37da-4d10-a1d2-b63c8dcb876e" >
+					<when expression="#[!isEmpty(vars.idValidation)]" >
+						<foreach doc:name="For Each" doc:id="8c9c77a4-f925-4d64-a856-311b20625c10" collection="#[vars.idValidation]" >
+							<set-variable value="#[payload]" doc:name="idInstance JSC" doc:id="f597396f-adb0-4747-aced-b5c1414b6475" variableName=" idInstanceJSC" />
+							<ee:transform doc:name="Clean Payload" doc:id="62d29437-e155-43c0-8f41-84a7f3afaf3f" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<flow-ref doc:name="Delete package instance" doc:id="bacfa203-0f8e-4520-a65b-9c9e59707429" name="patch-pkgi" />
+						</foreach>
+					</when>
+					<otherwise >
+						<set-variable value='#["The idInstanceJSC does not match with any pkg ids."]' doc:name="errorMessageOutput" doc:id="16d2d54c-aeb7-4b91-b759-5730f88845d6" variableName="errorMessageOutput" />
+						<raise-error doc:name="Raise error" doc:id="e44f61ba-5bcd-4f2e-be62-8657d563c666" type="ERR:NOT_FOUND" description="#[vars.errorMessageOutput]" />
+					</otherwise>
+				</choice>
+			</when>
+		</choice>
+	</sub-flow>
+</mule>
