@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-replacement-orchestratorSub_Flow" doc:id="f3e60f3c-97c8-4844-b558-6112df608b2b" >
+		<flow-ref doc:name="Go to client" doc:id="78ba53ac-8ac8-479f-8a67-8b87c29c3e70" name="post-replacement-clientSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="post-subscription-replacement-orchestratorSub_Flow" doc:id="593bbec5-8331-474c-9984-1058f42b2148" >
+		<flow-ref doc:name="Go to client" doc:id="fd7cda7a-899e-4b52-be6a-f6f4c9c8be5e" name="post-subscription-replacement-clientSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="post-replacement-plan-orchestratorSub_Flow" doc:id="2675a4ba-3ad1-4143-b607-b50c5fcd1e90" >
+		<ee:transform doc:name="validation" doc:id="e882842b-9ab9-4c93-b665-38b56167456f" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="validation" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.modalidad == "prepago-pospago") 
+    !isEmpty(payload.pam) 
+else 
+    true]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="e19fdc02-a96b-4785-a07d-24e262bff6ce" >
+			<when expression="#[vars.validation == true]">
+				<flow-ref doc:name="Go to client" doc:id="c6b8e55e-9e95-418b-85e3-47f981840b75" name="post-replacement-plan-clientSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error" doc:id="38932614-7d37-4093-b102-04de3afca96f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": "required key [pam] not found, [pam] can't be empty when [modalidad] is prepago-pospago"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": "mvne-xapi-services",
+      "message": "org.mule.module.apikit.api.exception.BadRequestException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
