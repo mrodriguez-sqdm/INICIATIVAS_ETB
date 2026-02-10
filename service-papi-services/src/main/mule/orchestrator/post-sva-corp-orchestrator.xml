@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-sva-corp-orchestratorSub_Flow" doc:id="5f3f1e27-32ff-4eca-83d7-5774b4b89b50" >
+		<try doc:name="Try" doc:id="9b76fb4e-5cdf-4f8c-9935-ad5b14440898">
+							<set-variable value="#[vars.inputPayload.msisdn]" doc:name="integration Id as connection Number" doc:id="12ffc10f-3eb5-4885-af11-902e33b3f95f" variableName="connectionNumber" />
+			<flow-ref doc:name="Get subscription by external id" doc:id="34d3711b-829a-4fcc-a87c-04b668341c87" name="get-subscription-client-by-msisdn" target="subscription" />
+			<choice doc:name="Choice" doc:id="b9077dd5-565d-4780-8c37-a5eea90e303f">
+			<when expression="#[!isEmpty(vars.subscription.content)]">
+				<choice doc:name="Analize if any ADD or DELETE" doc:id="11a80db3-fc46-41fb-85b4-2ec524080845">
+			<when expression="#[(vars.inputPayload.addonPackage.actionCode contains p('variable.add'))&#10;or&#10;(vars.inputPayload.addonPackage.actionCode contains p('variable.delete'))]">
+						<flow-ref doc:name="Add-Operation" doc:id="2b305c8b-d9ec-4890-a9a9-354757a6b5f3" name="add-operation" />
+						<flow-ref doc:name="Delete-Operation" doc:id="aa48297d-4304-4033-b682-489acc88e92e" name="delete-operation" />
+						<ee:transform doc:name="Output" doc:id="c55d9485-b7cd-4683-abc0-fc9e11cb320c">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 0,
+	"descripcion": "Procesamiento exitoso"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Error Output" doc:id="0182d787-0b93-46c8-bb0c-c9278e097282">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 1,
+	"description": "No recibimos actions con valor ADD o DELETE."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Error Output" doc:id="2eb1e59a-39d1-4a25-86c7-8538dbebd6de">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 1,
+	"description": "El subscription relacionado a la solicitud no existe."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			<error-handler>
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="adda02f6-065b-4169-b085-b2f7a33edac3">
+									<ee:transform doc:name="Error output" doc:id="bd881151-38a3-491d-b153-46bc2ea42814">
+										<ee:message>
+											<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "",
+	"message": {
+	  "message": (vars.errorMessageOutput default "") ++ " Respuesta JSC: " ++ error.muleMessage.typedValue.message.message default ""
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+										</ee:message>
+										<ee:variables>
+											<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+										</ee:variables>
+									</ee:transform>
+								</on-error-continue>
+							</error-handler>
+						</try>
+	</sub-flow>
+	<sub-flow name="add-operation" doc:id="dc152d51-2339-4e8c-8ab3-18721aa7db6c" >
+		<choice doc:name="Add operation" doc:id="1c340e7f-c384-4100-a814-f66d184c83c3" >
+			<when expression="#[vars.inputPayload.addonPackage.actionCode contains p('variable.add')]" >
+				<ee:transform doc:name="ADD pck´s" doc:id="26204e73-6255-4111-b7fc-bd43f74baea9" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="adds" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload.addonPackage filter $.actionCode == p('variable.add')
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Mapping to create Order" doc:id="37c71a7d-5e13-42ed-9858-310bf1bb0595" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"type": "RETAIL",
+	"salesChannel": "OWN_CALLCENTER",
+	"status": "CONFIRMED",
+	"packages": vars.adds map {
+		"id": $.id
+	},
+	"subscription": {
+		"id": vars.subscription.content[0].id
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="CreateOrder" doc:id="cdcb4f04-31df-4692-9a9a-0efac97de171" name="post-order-client" />
+				<ee:transform doc:name="Clean Payload" doc:id="7056cd17-dc9a-4313-8815-0718a0cde9c3" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Apply order" doc:id="ba452661-03ea-4fe3-a3b7-278cdfef4fe9" name="patch-endOrder-client" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="delete-operation" doc:id="45d7aa65-252e-4663-81a3-eb51ab8f7bf8" >
+		<choice doc:name="Delete operation" doc:id="a8a6dd0d-fbab-4b55-a9e9-a978bc3ace75" >
+			<when expression="#[vars.inputPayload.addonPackage.actionCode contains p('variable.delete')]" >
+				<ee:transform doc:name="DELETE pck´s" doc:id="76a93e82-72f7-4dec-8bac-3cc6b3f4915b" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="deletes" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload.addonPackage filter $.actionCode == p('variable.delete')
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<set-variable value="#[vars.subscription.content[0].id]" doc:name="subscriptionId" doc:id="8c78ff9b-18a8-48d6-a352-e74a611f5a21" variableName="subscriptionId" />
+				<flow-ref doc:name="Get pkg by SID" doc:id="7e50939b-b3ef-4dae-aacf-e41bbe325b86" name="get-pkgibySID-withStatus-client" />
+				<ee:transform doc:name="filter pkgs.id" doc:id="00a46962-d764-4a6b-b370-bcc1706504a2" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="idsToDelete" ><![CDATA[%dw 2.0
+output application/json
+---
+(
+	payload.content filter (vars.deletes.id contains $.pkg.id )
+).id]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="6e17e2be-5092-44de-a1ed-c8e2c2df9774" >
+					<when expression="#[!isEmpty(vars.idsToDelete)]" >
+						<foreach doc:name="For Each pkg.id to delete" doc:id="b8725024-0844-41fc-a925-9bedbcb974ad" collection="#[vars.idsToDelete]" >
+							<set-variable value="#[payload]" doc:name="pkg_id" doc:id="cc52bda1-bf80-4cad-bb71-b388f40baf02" variableName="pkg_id" />
+							<ee:transform doc:name="Clean Payload" doc:id="1f09a07c-5cae-4943-99d5-6521b74e8091" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<flow-ref doc:name="Delete pkg instance id" doc:id="b81ecce1-fea1-4436-8f9b-d9f3b4786c70" name="patch-pkg-withStatus" />
+						</foreach>
+					</when>
+					<otherwise >
+						<logger level="INFO" doc:name="Logger" doc:id="e787e086-9187-480a-a4d8-02229ad20d93" message="No hay pkg.id validos para borrar." />
+					</otherwise>
+				</choice>
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="delete-bolsaCompartidaLTECorp-orchestratorSub_Flow" doc:id="a72d1f69-ddfb-4a3c-80a9-df688c5db6a7" >
+		<try doc:name="Try" doc:id="1f12ef7a-20ee-4c96-8a19-e5b6f5d27ea3">
+			<flow-ref doc:name="Get subscription by msisdn" doc:id="50ae313f-2ef2-4d72-8904-91a66ef57477" name="get-subscription-client-by-msisdn" />
+			<choice doc:name="Choice" doc:id="739aa85c-a485-4733-b4ca-55e09e9965c0" >
+				<when expression="#[!isEmpty(payload.content)]">
+					<set-variable value="#[payload.content.id[0]]" doc:name="subscriptionId" doc:id="6f773f73-00b5-4cd5-952d-32e8cf1290d2" variableName="subscriptionId" />
+					<choice doc:name="Choice" doc:id="724def79-d804-44ef-a142-f289554c8153">
+				<when expression='#[!isEmpty(vars.parentMSISDN default "")]'>
+					<set-variable value="#[vars.parentMSISDN]" doc:name="Set msisdn" doc:id="5a5fa3e2-2aac-44e9-bf80-39ce2608632b" variableName="connectionNumber" />
+							<flow-ref doc:name="GET Parent PKG ID" doc:id="ab1ff20e-aaae-4d66-9524-a3f78fadadb5" name="get-subscription-client-by-msisdn" />
+							<set-variable value="#[payload.content[0].packageList.id[0]]" doc:name="Set parentPkgInstanceId" doc:id="42854f4a-a7a0-4a31-a785-7e6824b5de02" variableName="parentPkgInstanceId" />
+							<flow-ref doc:name="Get SID Virtual de un packageInstanceID" doc:id="7ffc2b7a-c4bb-4d25-99b3-a8de32c9b479" name="get-pkgi-client" />
+							<set-variable value='#[payload.groupMember.id replace "#" with "%23"]' doc:name="Set pkgSID" doc:id="0adf69ec-b5d7-42e6-925e-3830a41f89b6" variableName="pkgSID" encoding="UTF-8"/>
+					<flow-ref doc:name="Get groupInstance ID Línea virtual del grupo" doc:id="d786ebb8-0525-4f41-aa0e-9fd0f568fcdb" name="get-subcriptionBySID-client" />
+							<set-variable value="#[payload.groupInstance.id]" doc:name="Set groupInstanceId" doc:id="a5454e31-430e-4964-8b0f-8d76376fedca" variableName="groupInstanceId" />
+					<flow-ref doc:name="Consultar member del group" doc:id="1ba5214f-3b97-440b-a6ee-2ac1f3dedd18" name="get-groupInstanceMember-client" />
+					<set-variable value="#[payload.content.id[0]]" doc:name="Set memberId" doc:id="60c85a67-e588-4afc-afc0-8295cbaa1df9" variableName="memberId" />
+					<flow-ref doc:name="Eliminar linea hija del grupo" doc:id="fb46e716-448b-4617-863b-c6a092b178e7" name="delete-groupInstanceMember-client" />
+					<ee:transform doc:name="Set response" doc:id="c892f82b-b0ea-47e6-ac98-3ccdc8a4398c">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "OK",
+	description: "Eliminación Exitosa"
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+						<otherwise>
+							<ee:transform doc:name="Set response" doc:id="ad7fba39-af6f-4c7a-abd6-82c2be72a7a1" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: "OK",
+  descripcion: "Procesamiento exitoso, no es linea hija de una bolsa compartida"
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+				</otherwise>
+			</choice>
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Error Output" doc:id="85231e8b-d910-413d-ad88-853784684129">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 404,
+	"code": "NOT_FOUND",
+	"message": {
+		"message": "El subscription relacionado a la solicitud no existe."
+	},
+	"messageServer": "",
+	"cause": [{
+		"origin": app.name,
+		"message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</otherwise>
+			</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="512794dc-8c34-497e-bcc4-9bbd04724be4" >
+					<ee:transform doc:name="Error output" doc:id="496cc804-1924-4ece-8a92-2e29eddd824c" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "",
+	"message": {
+	  "message": (vars.errorMessageOutput default "") ++ " Respuesta JSC: " ++ error.muleMessage.typedValue.message.message default ""
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
