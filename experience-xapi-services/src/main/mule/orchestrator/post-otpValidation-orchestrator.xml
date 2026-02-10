@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-otpValidation-orchestratorSub_Flow" doc:id="584198d3-d5f7-4a76-9eab-339807eb6db7" >
+		<os:retrieve doc:name="Retrieve" doc:id="9d39b35e-a148-4816-aad9-52f52e76095a" objectStore="Object_store_OTP" key="#[payload.id_transaccion]">
+			<os:default-value ><![CDATA[#[output application/java --- p('otpParams.nonExistent')]]]></os:default-value>
+		</os:retrieve>
+		<choice doc:name="Choice" doc:id="fd93eebf-283a-4002-ae09-8808f038bd9d" >
+			<when expression="#[payload != p('otpParams.nonExistent')]">
+				<ee:transform doc:name="Validation" doc:id="b7a5e241-c533-46b9-acfa-17ca6789c749" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="validation" ><![CDATA[%dw 2.0
+output application/java
+---
+(payload.aplicacion == vars.inputPayload.aplicacion) and 
+(payload.canal == vars.inputPayload.tipo_canal) and
+(payload.codigo == vars.inputPayload.codigo)]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="e2268800-24ed-4e35-8438-bd466767fad3" >
+					<when expression="#[vars.validation]">
+						<ee:transform doc:name="Prepare Output" doc:id="d6ff5af2-a074-4de8-bb82-d97525388382" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"codigo": "200"
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<raise-error doc:name="Raise error" doc:id="36373e47-2d99-4370-81a3-5ac2a685957d" type="OTP:MISMATCH_ERROR" description="Values do not match."/>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<raise-error doc:name="Raise error" doc:id="a675e71b-da2c-4378-92a3-d7b36e82967d" type="OTP:MISSING_ENTRY" description="Non existent or expired entry"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

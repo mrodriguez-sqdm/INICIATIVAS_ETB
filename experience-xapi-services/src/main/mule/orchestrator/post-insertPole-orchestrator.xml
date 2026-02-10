@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-insertPole-orchestratorSub_Flow" doc:id="9e0df2d6-df02-4700-af67-d2c3a2bcc1d6" >
+		<flow-ref doc:name="Get order" doc:id="a9c5f235-b018-4b38-bec6-e35190f788d3" name="get-cd-order"/>
+		<ee:transform doc:name="Prepare body" doc:id="2056d4c6-741a-4b06-8b56-7edb985c50b3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var poles = payload[0].Orden_Activacion.Postes_Instalacion
+fun getNextPole(arr) = if (arr != null) sizeOf(arr) + 1 else 1
+var newPole = {
+    "ID": "Poste" ++ getNextPole(poles),
+    "Estado" : "CREADO",
+    "DireccionPF" : vars.initialpayload.direccionPF,
+    "Fecha_Creacion": now() >> "America/Bogota",
+    "Fecha_Modificacion": now() >> "America/Bogota",
+    "PF": vars.initialpayload.pf,
+    "Coor_UTMX": vars.initialpayload.coorX default 0,
+    "Coor_UTMY": vars.initialpayload.coorY default 0,
+    "Latitud": vars.initialpayload.latitud,
+    "Longitud": vars.initialpayload.longitud,
+    "MT": vars.initialpayload.mt,
+    "BT": vars.initialpayload.bt,
+    "AP": vars.initialpayload.ap,
+    "Tipo_Intervencion": vars.initialpayload.tipoDeIntervencion,
+    "Altura_Poste": vars.initialpayload.alturaPoste, 
+    "Tipo_Infraestructura": vars.initialpayload.tipoInfraestructura,
+    "Observaciones": vars.initialpayload.observaciones default "",
+    "Tipo" : vars.initialpayload.tipo,
+    "Long_Tramo" : vars.initialpayload.longTramo,
+    "Diametro_Cable" : vars.initialpayload.diametroCable,
+    "Tipo_Cable" : vars.initialpayload.tipoCable,
+    "Apoyo_Utilizar" : vars.initialpayload.apoyoaUtilizar,
+    "Diametro_Apoyo" : vars.initialpayload.diametroApoyo,
+    "Configuracion_Apoyo" : vars.initialpayload.configuracionApoyo, 
+    "Instalacion_Reserva" : vars.initialpayload.instalacionReserva,
+    "Instala_Elemento_Pasivo" : vars.initialpayload.instalaElementoPasivo, 
+    "Localidad" : vars.initialpayload.localidadMunicipio,
+    "Barrio" : vars.initialpayload.barrio 
+  }
+---
+{
+	"updateType": "Poles",
+	"toUpdate": if (poles == null)
+				[newPole]
+				else poles << newPole	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Update poles" doc:id="120da4c0-5c49-47cd-9048-2df45c6986d2" name="patch-cd-order"/>
+		<choice doc:name="Choice" doc:id="984ffa96-c7a6-4993-b8fe-7d1afa62c374" >
+			<when expression='#[payload.response.result.code == "SUCCESS"]'>
+				<ee:transform doc:name="Prepare output" doc:id="38c74b03-32aa-43cc-9517-97c4e6892d63">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "codigo": 201,
+  "descripcion": "El poste fue insertado exitosamente a la orden '" ++ vars.orderNumber ++ "'"
+}]]></ee:set-payload>
+			</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+201]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="550beeb4-b6fb-4616-ba8b-7280c60815a5" type="MONGO:POLE_UPDATE" description="Ocurrio un error al insertar el poste"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

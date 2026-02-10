@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="delete-poles-orchestratorSub_Flow" doc:id="6b340594-d215-4704-a7b1-97509856c3e5" >
+		<flow-ref doc:name="Get order" doc:id="70fc96a3-da68-4ba4-a04f-7f2f3e2ddc8c" name="get-cd-order"/>
+		<choice doc:name="No pole active | inactive" doc:id="fb0b1a92-d0c8-40a7-a3a7-35441ea5e48c">
+			<when expression='#[%dw 2.0&#10;output application/java&#10;import every from dw::core::Arrays&#10;var poles = payload[0].Orden_Activacion.Postes_Instalacion&#10;---&#10;(poles every ($.Estado == "CREADO" or $.Estado == "ACTUALIZADO"))]'>
+				<ee:transform doc:name="Prepare body" doc:id="2dd88e62-3705-421d-99be-77592558620f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"updateType": "Poles",
+	"toUpdate": []
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise>
+				<raise-error doc:name="Raise error" doc:id="7879a05d-fd95-45cd-a4de-5fd3bc70b62c" type="MONGO:POLE_DELETE" description="Hay postes que no cumplen las condiciones para ser eliminados" />
+			</otherwise>
+		</choice>
+		<flow-ref doc:name="Update poles" doc:id="84c8ff71-aa8b-4bdc-b41d-2dd31618dc53" name="patch-cd-order"/>
+		<choice doc:name="Choice" doc:id="0905b8c7-bba6-4719-87f5-ed77c0ab83e0" >
+			<when expression='#[payload.response.result.code == "SUCCESS"]'>
+				<ee:transform doc:name="Prepare output" doc:id="46d58a72-d928-4cf3-ba03-fb94bee8950c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "codigo": 200,
+  "descripcion": "Los postes fueron eliminados exitosamente de la orden '" ++ vars.orderNumber ++ "'"
+}]]></ee:set-payload>
+			</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+200]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="f09c1bfd-7e3a-4b6a-982b-0f2f92e9690d" type="MONGO:POLE_UPDATE" description="Ocurrio un error al insertar el poste"/>
+			</otherwise>
+		</choice>
+	
+</sub-flow>	
+</mule>

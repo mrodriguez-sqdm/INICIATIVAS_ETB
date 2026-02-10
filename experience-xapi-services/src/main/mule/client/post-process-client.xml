@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-process-client" doc:id="1c7475e5-147f-4856-8289-b23979226a81" >
+		<try doc:name="Try" doc:id="624098f5-ed75-4a8c-8979-9daf30cdac55" >
+			<http:request method="POST" doc:name="Request ETB-MDM" doc:id="e4a009e6-a42d-4ee5-a8b8-d3632dba7ee7" config-ref="HTTP_Request_configuration_etb_mdm" path="${etb-mdm.path.process}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"name" : attributes.headers.'name',
+	"X-CORRELATION-ID" : correlationId,
+	"client_secret" : p('etb-mdm.client_secret'),
+	"client_id" : p('etb-mdm.client_id'),
+	"source": attributes.headers.source,
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="fa7ace25-6c22-4dd8-81b4-dbd63ab440c5" type="HTTP:INTERNAL_SERVER_ERROR">
+					<ee:transform doc:name="Response Message" doc:id="1c0c4ea7-ca96-4568-aee3-abf0093893ad" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+error.muleMessage.typedValue
+]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="patch-poleCoords-orchestratorSub_Flow" doc:id="6b340594-d215-4704-a7b1-97509856c3e5" >
+		<flow-ref doc:name="Get order" doc:id="70fc96a3-da68-4ba4-a04f-7f2f3e2ddc8c" name="get-cd-order"/>
+		<java:new constructor="CoordinatesTransform()" doc:name="New" doc:id="fbed0054-1e2d-47f9-94d4-2612377a92d9" class="com.etb.CoordinatesTransform" target="coordTransform"/>
+		<java:invoke doc:name="Invoke" doc:id="d4787dd3-3b83-4eaf-b7bf-09ca4c42fc66" instance="#[vars.coordTransform]" class="com.etb.CoordinatesTransform" method="Deg2UTM(java.lang.Double, java.lang.Double)" target="newCoords">
+			<java:args ><![CDATA[#[{
+	"latitude": vars.latitude,
+	"longitude": vars.longitude
+}]]]></java:args>
+		</java:invoke>
+		<ee:transform doc:name="Prepare body" doc:id="2dd88e62-3705-421d-99be-77592558620f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import update from dw::util::Values
+var poles = payload[0].Orden_Activacion.Postes_Instalacion
+var formatedDate = now() >> "America/Bogota"
+---
+{
+	"updateType": "Poles",
+	"toUpdate": poles map ((item, index) -> 
+		if (item.Estado == "CREADO") 
+		item update "Coor_UTMX" with vars.newCoords[0] 
+			update "Coor_UTMY" with vars.newCoords[1] 
+			update "Latitud" with vars.latitude 
+			update "Longitud" with vars.longitude 
+			update "Fecha_Modificacion" with formatedDate 
+			update "Estado" with "ACTUALIZADO"
+    	else item)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Update poles" doc:id="84c8ff71-aa8b-4bdc-b41d-2dd31618dc53" name="patch-cd-order"/>
+		<choice doc:name="Choice" doc:id="0905b8c7-bba6-4719-87f5-ed77c0ab83e0" >
+			<when expression='#[payload.response.result.code == "SUCCESS"]'>
+				<ee:transform doc:name="Prepare output" doc:id="e0b52ed0-1ed4-4800-9321-eb3c2bc95f35" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "codigo": 200,
+  "descripcion": "Los postes fueron actualizados exitosamente en la orden '" ++ vars.orderNumber ++ "'"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			
+</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="f09c1bfd-7e3a-4b6a-982b-0f2f92e9690d" type="MONGO:POLE_UPDATE" description="Ocurrio un error al actualizar postes"/>
+			</otherwise>
+		</choice>
+	</sub-flow>	
+</mule>

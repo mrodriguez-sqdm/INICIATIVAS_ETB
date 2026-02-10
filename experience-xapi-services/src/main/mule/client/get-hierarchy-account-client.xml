@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="get-hierarchy-account-client" doc:id="c0603a0a-32b9-4f83-9a46-66eec6957ad2" >
+		<try doc:name="Try" doc:id="7759006d-26d2-4cad-a9e4-b9b0a24dc382" >
+			<http:request method="GET" doc:name="Go to portal-fija-sapi-services" doc:id="90149f2d-a7c9-4077-bfec-99f01344acb6" config-ref="HTTP_Request_configuration_portalFija" path="${portal-fija-sapi.pathHierarchyAccounts}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('portal-fija-sapi.client_secret'),
+	"client_id" : p('portal-fija-sapi.client_id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"source": attributes.headers.source,
+	"systemId": vars.systemId
+}]]]></http:headers>
+				<http:query-params><![CDATA[#[output application/json
+---
+{
+	"source_account": payload.source_account,
+	"external_serviceId": payload.external_serviceId,
+	"destination_account": payload.destination_account
+}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="cea667d0-c05b-4f03-900d-4c07ece22599" type="HTTP:INTERNAL_SERVER_ERROR">
+					<ee:transform doc:name="Error Message" doc:id="015c3909-e875-473c-bc3a-2fb870d1a510" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+error.muleMessage.typedValue]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="httpStatus" doc:id="65633c5f-72f7-4fdf-802e-cc11f5dea44d" variableName="httpStatus"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
