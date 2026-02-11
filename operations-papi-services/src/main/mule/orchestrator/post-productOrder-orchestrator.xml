@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-productOrder-orchestratorSub_Flow" doc:id="24dbfb80-55f4-4779-8e02-e2d25d85b471" >
+		<choice doc:name="Choice" doc:id="e5563778-008f-419d-8340-4c7a5222d4c3" >
+			<when expression="#[not isBlank(vars.ordenOm)]">
+				<flow-ref doc:name="Get Order" doc:id="6c6a475c-13f7-410c-a61e-7066f456d7f6" name="obtain-order" target="responseOrderById" />
+				<choice doc:name="Order Exists?" doc:id="74729f3c-9e9f-4e1e-85bb-0d76c0f138dc">
+			<when expression="#[vars.responseOrderById.resultado == 'Positivo']">
+				<choice doc:name="Choice" doc:id="ca9f749a-cf0d-4cab-a14c-dfb767d06ff6">
+							<when expression='#[upper(payload.productOrder.tipoSolicitud) == "APROVISIONAMIENTO"]'>
+								<ee:transform doc:name="check items and its idServices" doc:id="f93aac8b-ccf1-4fb1-9fc9-07398f95e41b">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+import update from dw::util::Values
+output application/json
+var or_items = vars.responseOrderById.resultados[0].items
+---
+{
+	productOrder: payload.productOrder update "items" with (
+	    payload.productOrder.items map ((item, index) -> 
+	        if(or_items.idItem contains item.idItem) do {
+	            var actual = (or_items filter $.idItem == item.idItem)[0]
+	            ---
+	            if(actual.idServicio != null and actual.idServicio != "") (item update "idServicio" with actual.idServicio)
+	            else if(item.idServicio != null) item update "idServicio" with null else item
+	        }
+	        else if(item.idServicio != null) item update "idServicio" with null else item
+	    )
+	)
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+								<flow-ref doc:name="Go to set idServices" doc:id="3dddc437-11aa-45bb-920c-63a72978b1da" name="SetIdServicio" />
+							</when>
+						</choice>
+						<ee:transform doc:name="Order to Update" doc:id="eab196d2-af0c-4fcb-be38-142dd67ba57c">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.productOrder]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to Client (Mongo-Update)" doc:id="b374cbe3-2df8-44d8-8982-ce7d1561aa35" name="updateOrder" />
+						<async doc:name="Async" doc:id="7989fba1-586c-4d40-8759-0d3dbbab0170">
+							<http:request method="POST" doc:name="Process items of order" doc:id="8dd1b8ae-c62b-4a53-ae40-9a0d4346686e" config-ref="HTTP_Request_configuration_processRequest" path="${operation-papi.path-processRequest}">
+								<http:body><![CDATA[#[{
+    "numeroOrden": vars.ordenOm
+}]]]></http:body>
+								<http:headers><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : correlationId,
+	"client_secret" : p('operation-papi.client_secret'),
+	"client_id" : p('operation-papi.client_id'),
+	"systemId": vars.systemId,
+	"source": attributes.headers.'source',
+	"name": attributes.headers.'name'
+}]]]></http:headers>
+							</http:request>
+						</async>
+						<ee:transform doc:name="Output Process" doc:id="c695d3ed-4f70-49ae-b25c-dc9754d70faf">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+---
+{
+	"ordenOm": vars.ordenOM,
+	"registrosAfectados": payload.registrosAfectados,
+	"resultado": payload.resultado,
+	"fecha": payload.fecha,
+	"descripcion": payload.descripcion
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" doc:id="004e8f3f-71c4-48f2-b261-e95b9bb59b48" />
+						<flow-ref doc:name="Insert Order" doc:id="c285185c-8908-4900-b730-807e17039750" name="insertOrder"/>
+			</otherwise>
+		</choice>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="processOrder" doc:id="dc9e4b02-b73b-4f27-89f3-2279d94c282f" name="processOrder" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="processOrder" doc:id="0ff11eb5-72f2-42f6-acd8-99f07c45dbbe" >
+		<flow-ref doc:name="Get Consecutive" doc:id="4ab41c80-64b6-48ad-a491-4ba9ebccbf09" name="getConsecutive" target="consecutive" />
+		<set-variable value="#[vars.consecutive.consecutivo]" doc:name="ordenOm" doc:id="41fe8b8a-89f1-432e-a4b5-1342f29a60e8" variableName="ordenOM" />
+		<ee:transform doc:name="Mapping Body" doc:id="c622fe80-e5aa-48f7-afb6-2c1345d7a00e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+---
+if (payload.productOrder.ordenOM != null) 
+{
+    "productOrder": payload.productOrder update "ordenOM" with vars.ordenOM
+}else{
+    "productOrder": payload.productOrder ++ "ordenOM": vars.ordenOM
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<choice doc:name="Choice" doc:id="8ed5feb0-5618-4d86-b7cb-ff20a1f66ae7" >
+			<when expression='#[upper(payload.productOrder.tipoSolicitud) == "APROVISIONAMIENTO"]'>
+				<flow-ref doc:name="Set Id de Servicio" doc:id="53fc6e71-f81e-40e8-9699-ab1e3818ca4b" name="SetIdServicio" />
+			</when>
+		</choice>
+		<flow-ref doc:name="Insert Order" doc:id="99a8a1ca-8ea7-4171-9671-8c9d78d7367f" name="insertOrder" />
+	</sub-flow>
+	<sub-flow name="SetIdServicio" doc:id="e2ab76ad-5567-44f2-bd1b-99cd7a06b93b" >
+		<ee:transform doc:name="Get ids" doc:id="bd75e52f-b11f-4232-8336-cefa492798f5" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="ids" ><![CDATA[%dw 2.0
+output application/json
+---
+(payload.productOrder.items filter ($.idServicio == null or $.idServicio == "")).idItem]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="ca8c3bc2-ef4d-46df-beac-002847ab277c" >
+			<when expression="#[vars.ids != null]">
+				<set-variable value="#[[]]" doc:name="arrayOfConsecutives" doc:id="de9d128b-855f-4f7f-b7c4-696c4eadaa9d" variableName="arrayOfConsecutives" />
+				<foreach doc:name="For Each" doc:id="9238e82c-ac3c-484f-8981-716dba2cb28a" collection="#[vars.ids]">
+			<flow-ref doc:name="Get Consecutive" doc:id="03346ea2-72fa-4683-8923-e40ed95fcf5a" name="getConsecutiveItems" target="aConsecutive" />
+			<ee:transform doc:name="Transform Message" doc:id="9ce087b8-6d7d-4fde-a5ce-a46fdc2effc6">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="arrayOfConsecutives"><![CDATA[%dw 2.0
+output application/json
+---
+vars.arrayOfConsecutives ++ [vars.aConsecutive.consecutivo]]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		</foreach>
+				<ee:transform doc:name="Transform Message" doc:id="8773c6f1-80ba-4962-bc05-4a5da2c78fad">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::util::Values
+var idsObject = vars.ids map {
+	"idItem": $,
+	"idServicio": vars.arrayOfConsecutives[$$]
+}
+var itemsUpdated = payload.productOrder.items map ((item, index) -> 
+    if(item.idServicio == "") item update "idServicio" with (idsObject filter ((v, i) -> v.idItem == item.idItem))[0].idServicio
+    else if(item.idServicio == null) item ++ "idServicio": (idsObject filter ((v, i) -> v.idItem == item.idItem))[0].idServicio
+    else item
+)
+---
+{
+	"productOrder": payload.productOrder update "items" with itemsUpdated
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="381ad789-f397-401b-8ae7-1046c6035e20" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="insertOrder" doc:id="2ad58e22-3ef3-4a4a-816c-2a661e786940" >
+		<ee:transform doc:name='Set Status to INICIAL' doc:id="eda65db8-173b-4bf4-a3f1-25028758c7a4">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OR0000"]]></ee:set-variable>
+				<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"INICIAL"]]></ee:set-variable>
+				<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"INICIAL"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="a2aab990-6d43-4a4c-822f-245fdae46a6b">
+			<when expression='#[upper(payload.productOrder.tipoSolicitud) == "APROVISIONAMIENTO"]'>
+				<flow-ref doc:name="Go to set idServices" doc:id="b02e4042-919b-46b2-baa1-d5619f93b6be" name="SetIdServicio" />
+			</when>
+		</choice>
+		<flow-ref doc:name="Insert Order (Mongo)" doc:id="81b09fbb-c4a1-4f99-bef6-454b0a278607" name="productOrder" />
+		<flow-ref doc:name="Update Status" doc:id="6e7bc687-3629-4e53-903b-e47b5570e846" name="updateStatus" target="resultUpdateStatus"/>
+		<async doc:name="Async" doc:id="e3ace02b-8ae2-455e-bbff-f973d50ac44e">
+			<http:request method="POST" doc:name="Process items of order" doc:id="6fc8ca8a-7db2-410d-adab-c47b062b1c62" config-ref="HTTP_Request_configuration_processRequest" path="${operation-papi.path-processRequest}">
+				<http:body><![CDATA[#[{
+    "numeroOrden": vars.ordenOm
+}]]]></http:body>
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : correlationId,
+	"client_secret" : p('operation-papi.client_secret'),
+	"client_id" : p('operation-papi.client_id'),
+	"systemId": vars.systemId,
+	"source": attributes.headers.'source',
+	"name": attributes.headers.'name'
+}]]]></http:headers>
+			</http:request>
+		</async>
+		<ee:transform doc:name="Output Process" doc:id="9fc13a3d-e609-4d65-9b42-2158413060dd">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+---
+{
+	"ordenOm": vars.ordenOM,
+	"resultado": payload.resultado,
+	"fecha": payload.fecha,
+	"descripcion": payload.descripcion
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="updateStatus" doc:id="4f237eee-a20a-4a1c-8e24-9ead2d24e1de" >
+		<ee:transform doc:name="Create Status" doc:id="e5e29881-6561-49ef-ba88-2ccd32e201ee" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+"estadoOrden": {
+	"fecha": now(),
+	"codigoEstado": vars.codigoEstado,
+	"nombreEstado": vars.nombreEstado,
+	"observaciones": vars.observaciones
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="update in Mongo" doc:id="74faa737-cd11-4966-9400-303c3e2db0b9" name="updateOrder" />
+	</sub-flow>
+</mule>

@@ -1,0 +1,711 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-interaction-cancelService-changeSpeed-orchestratorSub_Flow" doc:id="56ed8bc1-a824-4802-876e-9149b1c683aa">
+		<flow-ref doc:name="interactionSub_Flow" doc:id="1ef102e3-c150-4b37-8c2b-d039f864346e" name="interactionSub_Flow" />
+		<choice doc:name="Choice" doc:id="a83852d5-d0c1-4d5c-a42a-def014c81381">
+			<when expression="#[isEmpty(payload)]">
+				<ee:transform doc:name="Set response fail salesforce" doc:id="7ffc75fd-6f88-4429-a9fe-478f36167b73">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": "Error trying to retrieve client information by mayoristaId"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<set-variable value="#[payload]" doc:name="Set accountClient" doc:id="312cee7e-b90b-4522-8c4a-9ec1bd5837ec" variableName="accountClient" />
+				<flow-ref doc:name="get-serviceByIdServiceAccount" doc:id="ba508013-9b90-40e3-ac8a-ed482a8abad4" name="get-serviceByIdServiceAccount" target="serviceAccount" />
+				<flow-ref doc:name="createOrderSub_Flow" doc:id="32285199-7503-4969-b1b1-57e3178ae7ab" name="createOrderSub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="createOrderSub_Flow" doc:id="06376c7b-21b0-4d68-a5c7-b0c2255a92cd" >
+		<ee:transform doc:name="Set var clientInformation" doc:id="86df3e6a-9a47-4bef-9897-dead2edc0469">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="clientInformation"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    CodigoUnicoDireccion: (vars.serviceAccount[0].Caracteristica_Servicio filter ((item, index) -> item.Caracteristica == p('interaction-params.characteristics.codigoUnicoDireccion'))).Valor[0],
+    Codigo_Departamento: (vars.serviceAccount[0].Caracteristica_Servicio filter ((item, index) -> item.Caracteristica == p('interaction-params.characteristics.codigoDepartamento'))).Valor[0],
+    Codigo_Municipio: (vars.serviceAccount[0].Caracteristica_Servicio filter ((item, index) -> item.Caracteristica == p('interaction-params.characteristics.codigoMunicipio'))).Valor[0],
+    Direccion_Normalizada: (vars.serviceAccount[0].Caracteristica_Servicio filter ((item, index) -> item.Caracteristica == p('interaction-params.characteristics.direccionNormalizada'))).Valor[0]
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Set request address" doc:id="dabd3323-d663-4d69-9717-3db5bf5fb382">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	departmentId: vars.clientInformation.Codigo_Departamento,
+	cityId: vars.clientInformation.Codigo_Municipio,
+	normalizedAddress: vars.clientInformation.Direccion_Normalizada
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<flow-ref doc:name="mongo-sapi-get-address" doc:id="8a071dac-8050-4ecd-bddb-14c198211f67" name="mongo-sapi-get-address" target="address" />
+		<flow-ref doc:name="mongo-sapi-get-orderExample" doc:id="1e6e1b3c-742c-4ce9-86ee-4de2ad58574f" name="mongo-sapi-get-orderExample" target="orderExample" />
+		<ee:transform doc:name="Get parameter values" doc:id="07feee75-7e4a-4151-b91c-4f720a37c992">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="parameterValues"><![CDATA[%dw 2.0
+output application/java
+---
+read(vars.orderExample.parameter.Valores[0].Codigo[0], "application/json")]]></ee:set-variable>
+				<ee:set-variable variableName="typeParameter" ><![CDATA[%dw 2.0
+output application/java
+---
+p('typeParameter.interaction')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Get type parameter PARAMETROS_MAYORISTA" doc:id="05e57a11-9fb8-4792-b30e-fe76ca8de5c5" name="getTypeParameter" target="valores" targetValue="#[payload[0]]"/>
+		<ee:transform doc:name="Get variable coverage" doc:id="b11e5b7b-de92-402a-be86-33b568d11882" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="coverage" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.valores.Valores filter ((item, index) -> item.Nombre contains( vars.transactType))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="cce46a58-a536-4ee1-937e-81315aba52ac">
+			<when expression="#[!isEmpty(vars.coverage) and vars.coverage[0].Codigo == 'SI']">
+				<flow-ref doc:name="validateCoverage" doc:id="ba6649a1-bf49-473d-a190-75f5bea43fbd" name="validateCoverage"/>
+					</when>
+			<otherwise>
+						<ee:transform doc:name="Request orders" doc:id="3d45dd9c-2e70-452b-acee-629366617263">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Fecha_Creacion": vars.timePetition,
+  "Fecha_Modificacion": vars.timePetition,
+  "Usuario_Modificacion": "",
+  "Usuario_Creacion": vars.parameterValues.Usuario_Creacion,
+  "Actualizacion_Extractor": vars.parameterValues.Actualizacion_Extractor,
+  "Numero_Orden": vars.orderExample.consecutive,
+  "Canal": vars.parameterValues.Canal,
+  "Fase": vars.parameterValues.Fase,
+  "Estado_Orden_Comercial": {
+    "Codigo": "I20",
+    "Descripcion": "Validación Cobertura",
+    "Fecha": vars.timePetition,
+    "Reintentos": vars.parameterValues.Estado_Orden_Comercial.Reintentos,
+    "CodigoExcepcion": vars.parameterValues.Estado_Orden_Comercial.CodigoExcepcion
+  },
+  "Tramite": {
+    "Tipo_Tramite": vars.inputPayload.body.transactType,
+    "Subtipo_Tramite": null,
+    "Fecha_Tramite": vars.timePetition,
+    "Fecha_Reconexion": null,
+    "Fecha_Suspension": null,
+    "Fecha_Ejecucion": vars.timePetition,
+    "Conservar_Numero_Conexion": vars.parameterValues.Tramite.Conservar_Numero_Conexion,
+    "Clausula_Permanencia": vars.parameterValues.Tramite.Clausula_Permanencia,
+    "Valor_Clausula_Permanencia": vars.parameterValues.Tramite.Valor_Clausula_Permanencia,
+    "Causal_Cancelacion": null,
+    "Subcausal_Cancelacion": null,
+    "Descripcion_Cancelacion": null,
+    "MotivosOrden" : null
+  },
+  "Tipo_Servicio": null,
+  "CUN": null,
+  "Cliente_Anterior": null,
+  "Cliente_Tramite": {
+    "Fecha_Creacion": vars.timePetition,
+    "Fecha_Modificacion": vars.timePetition,
+    "Usuario_Modificacion": "",
+    "Usuario_Creacion": null,
+    "Actualizacion_Extractor": null,
+    "Id_Cuenta_Cliente": 0,
+    "Tipo_Documento": vars.accountClient.Tipodedocumento__c[0],
+    "Numero_Documento": vars.accountClient.AccountNumber[0],
+    "Nombres": vars.accountClient.Name[0],
+    "Nombre_Corto_Empresa": vars.accountClient.RazonSocial__c[0],
+    "Primer_Apellido": vars.accountClient.Name[0],
+    "Segundo_Apellido": vars.accountClient.Name[0],
+    "Fecha_Expedicion": null,
+    "Fecha_Validacion_Identidad": null,
+    "Autoriza_Manejo_Datos_Personales": null,
+    "Autoriza_Consulta_Centrales": null,
+    "UEN": vars.accountClient.UEN__c[0],
+    "Segmento_UEN":  vars.accountClient.Segmento__c[0],
+    "Segmento":  vars.accountClient.Segmento__c[0],
+    "Scoring_Fija": null,
+    "Telefono_Fijo":  vars.accountClient.Telefonodecontacto1__c[0] default "",
+    "Extension": null,
+    "Telefono_Movil":  vars.accountClient.OtroTelefonodecontacto2__c[0] default "",
+    "Telefono_Movil2": vars.accountClient.OtroTelefonodecontacto3__c[0] default "",
+    "Email":  vars.accountClient.vlocity_cmt__BillingEmailAddress__c[0] default "",
+    "Contactos": [],
+    "Direcciones": [{
+        "Id_Direccion" : 1, //default
+        "Direccion_Normalizada" : vars.clientInformation.Direccion_Normalizada,
+        "Tipo_Direccion" : "INSTALACION", //default
+        "Codigo_Direccion" : "",
+        "Codigo_Departamento" : vars.clientInformation.Codigo_Departamento,
+        "Codigo_Municipio" : vars.clientInformation.Codigo_Municipio, 
+        "Codigo_Pais" : vars.address.country.id, 
+        "Nombre_Direccion" : "", 
+        "Estado" : vars.parameterValues.Cliente_Tramite.Direcciones[0].Estado, 
+        "Cobertura" : {
+        	"Tipo_Cobertura" : "",
+            "Codigo_Lote" : "",
+            "Localidad" : "",
+            "Estrato" : "0",
+            "Latitud" : "0",
+            "Longitud" : "0",
+            "Direccion_GIS" : vars.clientInformation.CodigoUnicoDireccion,
+            "NombreCobertura" : "",
+            "Olt" : "",
+            "Propietario" : "",
+            "Proposito" : "",
+            "Tecnologia" : "FTTH",
+            "Zona" : "",
+            "TipoDistancia" : "",
+            "TipoDistancia2" : "",
+            "Distrito" : "",
+            "Molecula" : "",
+            "Viable" : false
+        },
+        "Seleccionada" : vars.parameterValues.Cliente_Tramite.Direcciones[0].Seleccionada, 
+        "Departamento" : vars.address.department.description,
+        "Municipio" : vars.address.city.description
+    }],
+    "Cuentas_Facturacion": null,
+    "Cuentas_Servicio": null,
+    "Adjuntos_Cliente": [],
+    "Sistema_Origen": null,
+    "Estado": "",
+    "CarruselMotivo": null,
+    "CarruselSubMotivo": null,
+    "Direccion": vars.clientInformation.Direccion_Normalizada,
+    "Cobertura": null,
+    "Departamento": null,
+    "Ciudad": null
+  },
+  "Servicio_Anterior": vars.serviceAccount[0],
+  "Servicio_Tramite": vars.serviceAccount[0],
+  "Orden_Servicio": null,
+  "Agendamiento": {
+    "Franja_Agenda": "",
+    "Codigo_Instalador": "",
+    "Enriquecida": false,
+    "Agenda": false,
+    "ListaCuotas": []
+  },
+  "Cuenta_Facturacion_Anterior": null,
+  "Cuenta_Facturacion_Tramite": null,
+  "Orden_Requiere_Disponibilidad": false,
+  "Orden_Requiere_Agendamiento": false,
+  "Precio_Total_Orden": null,
+  "Adjuntos_Cliente": null,
+  "Adjuntos_Servicio": null,
+  "Caracteristica_Orden": [    
+  	{
+        "Caracteristica": "MAYORISTA",
+        "Valor": vars.accountClient.External_Id__c[0]
+    },
+    {
+        "Caracteristica": "ID_MAYORISTA",
+        "Valor": vars.inputPayload.body.mayoristaId
+    }
+  ],
+  "Otros": null,
+  "Presencial": false,
+  "OfertaSugerida": [],
+  "Reserva" : null
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</otherwise>
+				</choice>
+		<flow-ref doc:name="mongo-sapi-post-orders" doc:id="fe24028a-bd1c-4183-b43d-4ea3fb7f56e9" name="mongo-sapi-post-orders" />
+		<choice doc:name="Choice" doc:id="1873bd50-1bf8-4981-b139-5b4cc8046f4d" >
+			<when expression="#[vars.transactType == 'TESRM']">
+				<async doc:name="Async" doc:id="4a05429e-d385-40ed-9d3c-749ca072976f">
+					<flow-ref doc:name="Update SalesForce Asset" doc:id="4cc8b633-66c1-49e1-a13d-45e06b5a05b1" name="update-SF-assetSubFlow" />
+				</async>
+				<ee:transform doc:name="Response final" doc:id="fdb6336c-e455-4dcb-bceb-49e4e461e692" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": payload.Estado_Orden_Comercial.Codigo,
+  "orderNumber": vars.orderExample.consecutive,
+  "description": payload.Estado_Orden_Comercial.Descripcion
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[vars.transactType == 'ASEGM']">
+				<ee:transform doc:name="set orchestator request" doc:id="983118f4-c9b2-456e-8e79-79a93548142a">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="orquestatorRequest"><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://tempuri.org/
+ns ns01 http://www.etb.com.co/orquestador
+---
+{
+	ns0#ProcesarOrden: {
+		ns0#solicitudOrden: {
+			ns01#Encabezado: {
+				ns01#Propiedades: {
+					ns01#Propiedad: {
+						ns01#Nombre: "",
+						ns01#Valor: ""
+					}
+				},
+				ns01#Sistema: {
+					ns01#IdCorrelacion: payload.Numero_Orden,
+					ns01#Nombre: "MULESOFT",
+					ns01#Servidor: "MULESOFT"
+				}
+			},
+			ns01#DatosSolicitud: {
+				ns01#EstadoOrden: payload.Estado_Orden_Comercial.Codigo,
+				ns01#NumeroOrden: payload.Numero_Orden,
+				ns01#Tramite: vars.transactType,
+				ns01#UsuarioEvento: ""
+			}
+		}
+	}
+}]]></ee:set-variable>
+						<ee:set-variable variableName="orquestadorOperation"><![CDATA[%dw 2.0
+output application/java
+---
+p('orquestador.operation.procesarOrden')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="post-availability-order-client" doc:id="9ce182cb-7d73-4e57-84a9-0c0cd71a40f6" name="post-availability-order-client" />
+				<ee:transform doc:name="set response" doc:id="db25666d-fb24-4edf-ab17-906e2025b6d8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var status = payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Estado
+---
+if(status == "OK") 
+{
+  "status": payload.ProcesarOrdenResponse.Resultado.Estado.Codigo default payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Codigo,
+  "orderNumber":vars.orderExample.consecutive,
+  "description": payload.ProcesarOrdenResponse.Resultado.Estado.Descripcion default payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.DetalleEstado
+} 
+else 
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": payload.ProcesarOrdenResponse.Resultado.Estado.Descripcion default payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.DetalleEstado
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+var status = payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Estado
+---
+if(status == "OK") 201 else 500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Response final" doc:id="7b9ad3e2-b91e-48c3-adee-243e83e44fca">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": payload.Estado_Orden_Comercial.Codigo,
+  "orderNumber": vars.orderExample.consecutive,
+  "description": payload.Estado_Orden_Comercial.Descripcion
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validateCoverage" doc:id="9726982b-43df-4b81-b344-bbbf5669bc6c" >
+		<flow-ref doc:name="getCoverage" doc:id="c0ac2394-5ac4-4326-a224-d42be4795484" name="getCoverage" />
+		<choice doc:name="Choice" doc:id="a942e565-8f39-4898-9b57-26bbd467f7f3" >
+			<when expression="#[!isEmpty(vars.coverageGIS)]">
+				<ee:transform doc:name="Request coverage" doc:id="84841f20-6478-4a36-ab7c-d0da53274562">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Fecha_Creacion": vars.timePetition,
+  "Fecha_Modificacion": vars.timePetition,
+  "Usuario_Modificacion": "",
+  "Usuario_Creacion": vars.parameterValues.Usuario_Creacion,
+  "Actualizacion_Extractor": vars.parameterValues.Actualizacion_Extractor,
+  "Numero_Orden": vars.orderExample.consecutive,
+  "Canal": vars.parameterValues.Canal,
+  "Fase": vars.parameterValues.Fase,
+  "Estado_Orden_Comercial": {
+    "Codigo": "I20",
+    "Descripcion": "Validación Cobertura",
+    "Fecha": vars.timePetition,
+    "Reintentos": vars.parameterValues.Estado_Orden_Comercial.Reintentos,
+    "CodigoExcepcion": vars.parameterValues.Estado_Orden_Comercial.CodigoExcepcion
+  },
+  "Tramite": {
+    "Tipo_Tramite": vars.inputPayload.body.transactType,
+    "Subtipo_Tramite": null,
+    "Fecha_Tramite": vars.timePetition,
+    "Fecha_Reconexion": null,
+    "Fecha_Suspension": null,
+    "Fecha_Ejecucion": vars.timePetition,
+    "Conservar_Numero_Conexion": vars.parameterValues.Tramite.Conservar_Numero_Conexion,
+    "Clausula_Permanencia": vars.parameterValues.Tramite.Clausula_Permanencia,
+    "Valor_Clausula_Permanencia": vars.parameterValues.Tramite.Valor_Clausula_Permanencia,
+    "Causal_Cancelacion": null,
+    "Subcausal_Cancelacion": null,
+    "Descripcion_Cancelacion": null,
+    "MotivosOrden" : null
+  },
+  "Tipo_Servicio": null,
+  "CUN": null,
+  "Cliente_Anterior": null,
+  "Cliente_Tramite": {
+    "Fecha_Creacion": vars.timePetition,
+    "Fecha_Modificacion": vars.timePetition,
+    "Usuario_Modificacion": "",
+    "Usuario_Creacion": null,
+    "Actualizacion_Extractor": null,
+    "Id_Cuenta_Cliente": 0,
+    "Tipo_Documento": vars.accountClient.Tipodedocumento__c[0],
+    "Numero_Documento": vars.accountClient.AccountNumber[0],
+    "Nombres": vars.accountClient.Name[0],
+    "Nombre_Corto_Empresa": vars.accountClient.RazonSocial__c[0],
+    "Primer_Apellido": vars.accountClient.Name[0],
+    "Segundo_Apellido": vars.accountClient.Name[0],
+    "Fecha_Expedicion": null,
+    "Fecha_Validacion_Identidad": null,
+    "Autoriza_Manejo_Datos_Personales": null,
+    "Autoriza_Consulta_Centrales": null,
+    "UEN": vars.accountClient.UEN__c[0],
+    "Segmento_UEN":  vars.accountClient.Segmento__c[0],
+    "Segmento":  vars.accountClient.Segmento__c[0],
+    "Scoring_Fija": null,
+    "Telefono_Fijo":  vars.accountClient.Telefonodecontacto1__c[0] default "",
+    "Extension": null,
+    "Telefono_Movil":  vars.accountClient.OtroTelefonodecontacto2__c[0] default "",
+    "Telefono_Movil2": vars.accountClient.OtroTelefonodecontacto3__c[0] default "",
+    "Email":  vars.accountClient.vlocity_cmt__BillingEmailAddress__c[0] default "",
+    "Contactos": [],
+    "Direcciones": [{
+        "Id_Direccion" : 1, //default
+        "Direccion_Normalizada" : vars.clientInformation.Direccion_Normalizada,
+        "Tipo_Direccion" : "INSTALACION", //default
+        "Codigo_Direccion" : "",
+        "Codigo_Departamento" : vars.clientInformation.Codigo_Departamento,
+        "Codigo_Municipio" : vars.clientInformation.Codigo_Municipio,
+        "Codigo_Pais" : vars.address.country.id, 
+        "Nombre_Direccion" : "", 
+        "Estado" : vars.parameterValues.Cliente_Tramite.Direcciones[0].Estado, 
+        "Cobertura" : {
+			"Tipo_Cobertura" : vars.coverageGIS.TipoCobertura[0],
+			"Codigo_Lote" : vars.georeference.CodigoLote,
+			"Localidad" : vars.georeference.Localidad,
+			"Estrato" : vars.georeference.Estrato,
+			"Latitud" : vars.georeference.Latitud,
+			"Longitud" : vars.georeference.Longitud,
+			"Direccion_GIS" : vars.clientInformation.CodigoUnicoDireccion, 
+			"NombreCobertura" : vars.coverageGIS.TipoCobertura[0],
+			"Olt" : vars.coverageGIS.NombreOLT[0],
+			"Propietario" : vars.coverageGIS.Propietario[0],
+			"Proposito" : "01",
+			"Tecnologia" : "FTTH",
+			"Zona" : "CHICO",
+			"TipoDistancia" : "",
+			"TipoDistancia2" : "",
+			"Distrito": "",
+			"Molecula" : vars.coverageGIS.TipoCobertura[0],
+			"Viable" : false
+		},
+        "Seleccionada" : vars.parameterValues.Cliente_Tramite.Direcciones[0].Seleccionada, 
+        "Departamento" : vars.address.department.description,
+        "Municipio" : vars.address.city.description
+    }],
+    "Cuentas_Facturacion": null,
+    "Cuentas_Servicio": null,
+    "Adjuntos_Cliente": [],
+    "Sistema_Origen": null,
+    "Estado": "",
+    "CarruselMotivo": null,
+    "CarruselSubMotivo": null,
+    "Direccion": vars.clientInformation.Direccion_Normalizada,
+    "Cobertura": null,
+    "Departamento": null,
+    "Ciudad": null
+  },
+  "Servicio_Anterior": vars.serviceAccount[0],
+  "Servicio_Tramite": vars.serviceAccount[0],
+  "Orden_Servicio": null,
+  "Agendamiento": {
+    "Franja_Agenda": "",
+    "Codigo_Instalador": "",
+    "Enriquecida": false,
+    "Agenda": false,
+    "ListaCuotas": []
+  },
+  "Cuenta_Facturacion_Anterior": null,
+  "Cuenta_Facturacion_Tramite": null,
+  "Orden_Requiere_Disponibilidad": false,
+  "Orden_Requiere_Agendamiento": false,
+  "Precio_Total_Orden": null,
+  "Adjuntos_Cliente": null,
+  "Adjuntos_Servicio": null,
+  "Caracteristica_Orden": [
+  	{
+        "Caracteristica": "MAYORISTA",
+        "Valor": vars.accountClient.External_Id__c[0]
+    },
+    {
+        "Caracteristica": "ID_MAYORISTA",
+        "Valor": vars.inputPayload.body.mayoristaId
+    }
+  ],
+  "Otros": null,
+  "Presencial": false,
+  "OfertaSugerida": [],
+  "Reserva" : null
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Request not coverage" doc:id="6b12b4c0-25ff-418c-a1b2-a2ee00b5fe00">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Fecha_Creacion": vars.timePetition,
+  "Fecha_Modificacion": vars.timePetition,
+  "Usuario_Modificacion": "",
+  "Usuario_Creacion": vars.parameterValues.Usuario_Creacion,
+  "Actualizacion_Extractor": vars.parameterValues.Actualizacion_Extractor,
+  "Numero_Orden": vars.orderExample.consecutive,
+  "Canal": vars.parameterValues.Canal,
+  "Fase": vars.parameterValues.Fase,
+  "Estado_Orden_Comercial": {
+    "Codigo": "I20",
+    "Descripcion": "Validación Cobertura",
+    "Fecha": vars.timePetition,
+    "Reintentos": vars.parameterValues.Estado_Orden_Comercial.Reintentos,
+    "CodigoExcepcion": vars.parameterValues.Estado_Orden_Comercial.CodigoExcepcion
+  },
+  "Tramite": {
+    "Tipo_Tramite": vars.inputPayload.body.transactType,
+    "Subtipo_Tramite": null,
+    "Fecha_Tramite": vars.timePetition,
+    "Fecha_Reconexion": null,
+    "Fecha_Suspension": null,
+    "Fecha_Ejecucion": vars.timePetition,
+    "Conservar_Numero_Conexion": vars.parameterValues.Tramite.Conservar_Numero_Conexion,
+    "Clausula_Permanencia": vars.parameterValues.Tramite.Clausula_Permanencia,
+    "Valor_Clausula_Permanencia": vars.parameterValues.Tramite.Valor_Clausula_Permanencia,
+    "Causal_Cancelacion": null,
+    "Subcausal_Cancelacion": null,
+    "Descripcion_Cancelacion": null,
+    "MotivosOrden" : null
+  },
+  "Tipo_Servicio": null,
+  "CUN": null,
+  "Cliente_Anterior": null,
+  "Cliente_Tramite": {
+    "Fecha_Creacion": vars.timePetition,
+    "Fecha_Modificacion": vars.timePetition,
+    "Usuario_Modificacion": "",
+    "Usuario_Creacion": null,
+    "Actualizacion_Extractor": null,
+    "Id_Cuenta_Cliente": 0,
+    "Tipo_Documento": vars.accountClient.Tipodedocumento__c[0],
+    "Numero_Documento": vars.accountClient.AccountNumber[0],
+    "Nombres": vars.accountClient.Name[0],
+    "Nombre_Corto_Empresa": vars.accountClient.RazonSocial__c[0],
+    "Primer_Apellido": vars.accountClient.Name[0],
+    "Segundo_Apellido": vars.accountClient.Name[0],
+    "Fecha_Expedicion": null,
+    "Fecha_Validacion_Identidad": null,
+    "Autoriza_Manejo_Datos_Personales": null,
+    "Autoriza_Consulta_Centrales": null,
+    "UEN": vars.accountClient.UEN__c[0],
+    "Segmento_UEN":  vars.accountClient.Segmento__c[0],
+    "Segmento":  vars.accountClient.Segmento__c[0],
+    "Scoring_Fija": null,
+    "Telefono_Fijo":  vars.accountClient.Telefonodecontacto1__c[0] default "",
+    "Extension": null,
+    "Telefono_Movil":  vars.accountClient.OtroTelefonodecontacto2__c[0] default "",
+    "Telefono_Movil2": vars.accountClient.OtroTelefonodecontacto3__c[0] default "",
+    "Email":  vars.accountClient.vlocity_cmt__BillingEmailAddress__c[0] default "",
+    "Contactos": [],
+    "Direcciones": [{
+        "Id_Direccion" : 1, //default
+        "Direccion_Normalizada" : vars.clientInformation.Direccion_Normalizada,
+        "Tipo_Direccion" : "INSTALACION", //default
+        "Codigo_Direccion" : "",
+        "Codigo_Departamento" : vars.clientInformation.Codigo_Departamento,
+        "Codigo_Municipio" : vars.clientInformation.Codigo_Municipio,
+        "Codigo_Pais" : vars.address.country.id, 
+        "Nombre_Direccion" : "", 
+        "Estado" : vars.parameterValues.Cliente_Tramite.Direcciones[0].Estado, 
+        "Cobertura" : {
+            "Tipo_Cobertura": "SIN_COBERTURA",
+            "Codigo_Lote": null,
+            "Localidad": null,
+            "Estrato": 0,
+            "Latitud": 0.0,
+            "Longitud": 0.0,
+            "Direccion_GIS": vars.clientInformation.CodigoUnicoDireccion,
+            "NombreCobertura": null,
+            "Olt": null,
+            "Propietario": null,
+            "Proposito": null,
+            "Tecnologia": null,
+            "Zona": null,  
+            "TipoDistancia" : null,
+            "TipoDistancia2": null,
+            "Distrito": null,
+            "Molecula": null,
+            "Viable": false
+        },
+        "Seleccionada" : vars.parameterValues.Cliente_Tramite.Direcciones[0].Seleccionada, 
+        "Departamento" : vars.address.department.description,
+        "Municipio" : vars.address.city.description
+    }],
+    "Cuentas_Facturacion": null,
+    "Cuentas_Servicio": null,
+    "Adjuntos_Cliente": [],
+    "Sistema_Origen": null,
+    "Estado": "",
+    "CarruselMotivo": null,
+    "CarruselSubMotivo": null,
+    "Direccion": vars.clientInformation.Direccion_Normalizada,
+    "Cobertura": null,
+    "Departamento": null,
+    "Ciudad": null
+  },
+  "Servicio_Anterior": vars.serviceAccount[0],
+  "Servicio_Tramite": vars.serviceAccount[0],
+  "Orden_Servicio": null,
+  "Agendamiento": {
+    "Franja_Agenda": "",
+    "Codigo_Instalador": "",
+    "Enriquecida": false,
+    "Agenda": false,
+    "ListaCuotas": []
+  },
+  "Cuenta_Facturacion_Anterior": null,
+  "Cuenta_Facturacion_Tramite": null,
+  "Orden_Requiere_Disponibilidad": false,
+  "Orden_Requiere_Agendamiento": false,
+  "Precio_Total_Orden": null,
+  "Adjuntos_Cliente": null,
+  "Adjuntos_Servicio": null,
+  "Caracteristica_Orden": [
+  	{
+        "Caracteristica": "MAYORISTA",
+        "Valor": vars.accountClient.External_Id__c[0]
+    },
+    {
+        "Caracteristica": "ID_MAYORISTA",
+        "Valor": vars.inputPayload.body.mayoristaId
+    }
+  ],
+  "Otros": null,
+  "Presencial": false,
+  "OfertaSugerida": [],
+  "Reserva" : null
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="update-SF-assetSubFlow" doc:id="dd54d7cb-1f43-4eea-9efc-3cf742502ef8" >
+		<ee:transform doc:name="IdAsset" doc:id="c40b5c4f-bcfa-4d9d-8939-c7c691585944" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="idAsset" ><![CDATA[%dw 2.0
+output application/json
+---
+(vars.serviceAccount.Caracteristica_Servicio[0] 
+    filter (upper($.Caracteristica) == upper("IDASSETSF"))).Valor[0] default null]]></ee:set-variable>
+				<ee:set-variable variableName="orderNumber" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.Numero_Orden]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Mapping Unsubscribe Service" doc:id="029e6788-583d-4021-8990-d84a8c14050f" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="requestSalesforce" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Id: vars.idAsset,
+	estado: "Inactivo",
+	fecha: (now() >> "America/Bogota") as String {format:"YYYY-MM-dd"}
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="get-token" doc:id="1d889a2f-c713-49bd-afad-76a7c96b0f23" name="salesforce-auth" />
+		<flow-ref doc:name="updateAsset" doc:id="3d1827b0-a493-42d6-b77b-328b09eba45e" name="salesforce-updateAsset" target="responseSalesforce" />
+		<ee:transform doc:name="Set status salesforce" doc:id="5d9da89c-5aef-4d1f-9e96-1f015830a561">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="statusSalesforce"><![CDATA[%dw 2.0
+output application/json
+---
+if (vars.responseSalesforce.success) "EXITOSO"
+else "FALLIDO"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="update order" doc:id="ee6f46f7-113d-4382-b88e-1746dc706df9" name="update-order" target="patchOrderResponse" />
+	</sub-flow>
+</mule>

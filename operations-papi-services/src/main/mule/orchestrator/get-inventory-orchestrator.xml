@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-inventory-orchestrator" doc:id="cd718cc9-2427-4c36-aa47-43af6f817c12" >
+		<ee:transform doc:name="Request" doc:id="cf81d191-ace7-4546-83ce-91c70914e503" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://tempuri.org/
+ns ns01 http://www.etb.com.co/orquestador
+ns ns02 http://schemas.xmlsoap.org/soap/envelope/
+---
+{
+		ns0#ConsultarInventario: {
+			ns0#solicitudInventario: {
+				ns01#Encabezado: {
+					ns01#Sistema: {
+						ns01#IdCorrelacion: vars.RequestAttributes.uriParams.idServiceAccount,
+						ns01#Nombre: p('inventory.servidor'),
+						ns01#Servidor: p('inventory.servidor')
+					}
+				},
+				ns01#DatosSolicitud: {
+					ns01#IdCuentaServicio: vars.RequestAttributes.uriParams.idServiceAccount,
+					ns01#Inerno:false,
+					ns01#Tecnologia: p('inventory.tecnologia'),
+					ns01#Actualizar: true
+				}
+			}
+		}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="get-inventory-client" doc:id="0e986771-c1b6-43bd-a909-71dc7c3498f9" name="get-inventory-client"/>
+		<ee:transform doc:name="Response Final" doc:id="6d862009-5c9f-46a0-afd8-4c83c4bde20b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+ns ns0 http://tempuri.org/
+ns ns01 http://www.etb.com.co/orquestador
+---
+if (vars.httpStatus == 500) payload 
+else
+{
+	status: payload.body.ns0#ConsultarInventarioResponse.ns0#Inventario.ns01#Acceso.ns01#Estado_Servicio.ns01#Descripcion default "",
+	nap: (payload.body.ns0#ConsultarInventarioResponse.ns0#Inventario.ns01#Acceso.ns01#Atributos.*ns01#AtributoInventario filter ($.ns01#Atributo=="NAP"))[0].ns01#Valor,
+	portNap: (payload.body.ns0#ConsultarInventarioResponse.ns0#Inventario.ns01#Acceso.ns01#Atributos.*ns01#AtributoInventario filter ($.ns01#Atributo=="NAP_Puerto"))[0].ns01#Valor,
+	olt: (payload.body.ns0#ConsultarInventarioResponse.ns0#Inventario.ns01#Acceso.ns01#Atributos.*ns01#AtributoInventario filter ($.ns01#Atributo=="OLT_SHELF"))[0].ns01#Valor,
+	oltCard: (payload.body.ns0#ConsultarInventarioResponse.ns0#Inventario.ns01#Acceso.ns01#Atributos.*ns01#AtributoInventario filter ($.ns01#Atributo=="TARJETA_OLT"))[0].ns01#Valor,
+	oltPto: (payload.body.ns0#ConsultarInventarioResponse.ns0#Inventario.ns01#Acceso.ns01#Atributos.*ns01#AtributoInventario filter ($.ns01#Atributo=="TARJETA_OLT_Puerto"))[0].ns01#Valor,
+	onuid: ((payload.body.ns0#ConsultarInventarioResponse.ns0#Inventario.ns01#Acceso.*ns01#Servicios_Hijos filter ($.ns01#ServicioInventario.ns01#Clase_Servicio == "Access Equipment Class"))[0].ns01#ServicioInventario.ns01#Atributos.*ns01#AtributoInventario filter ($.ns01#Atributo == "SerialEquipo"))[0].ns01#Valor default "",
+	serviceAccount: vars.RequestAttributes.uriParams.idServiceAccount,
+	objectName: (payload.body.ns0#ConsultarInventarioResponse.ns0#Inventario.ns01#Acceso.ns01#Atributos.*ns01#AtributoInventario filter ($.ns01#Atributo=="objectName"))[0].ns01#Valor
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+</mule>

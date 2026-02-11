@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<sub-flow name="sisext-sapi-get-coverageGIS" doc:id="8230f301-77f5-4b77-91e4-916906fe175a" >
+		<logger level="INFO" doc:name="Logger" doc:id="b5eb886d-72be-43b3-a093-ddd9bf2b5c0d" message="GET coverageGis BEFORE #[payload]"/>
+		<http:request method="GET" doc:name="Call sisext-sapi coveraGIS" doc:id="4edfef60-d640-403f-b414-fb0d38385446" config-ref="HTTP_Request_configuration_sisext" path="${sisext-sapi.coverageGIS.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : correlationId,
+	"client_secret" : p('sisext-sapi.client_secret'),
+	"client_id" : p('sisext-sapi.client_id'),
+	"name": attributes.headers.'name',
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"Latitud" : vars.georeference.Latitud,
+	"Longitud" : vars.georeference.Longitud
+}]]]></http:query-params>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="f2e2b2e2-a03a-4fdf-819c-0835e2c39d49" message="GET coverageGis AFTER #[payload]"/>
+	</sub-flow>
+	<sub-flow name="post-consultNegQuota-clientSub_Flow" doc:id="1a0dcc59-b289-4de7-98de-fc87ca860f33" >
+		<http:request method="POST" doc:name="Call sisext-sapi" doc:id="7d9a8454-04ef-4b13-bf6c-3de3f4b78591" config-ref="HTTP_Request_configuration_sisext" path="${sisext-sapi.borrowingCapacity.path}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('sisext-sapi.client_secret'),
+	"client_id" : p('sisext-sapi.client_id'),
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="sisext-sapi-get-feasibility" doc:id="45c7dd57-6695-41d8-9590-cf00ecb889d5" >
+		<logger level="INFO" doc:name="Logger" doc:id="81e382e8-98ea-4f99-bc0b-a6540bcc9580" message="GET feasibility BEFORE #[payload]"/>
+		<http:request method="GET" doc:name="Call sisext-sapi feasibility" doc:id="7f8fd612-994b-4ac4-9a8c-478cdd9fce03" config-ref="HTTP_Request_configuration_sisext" path="${sisext-sapi.feasibility.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : correlationId,
+	"client_secret" : p('sisext-sapi.client_secret'),
+	"client_id" : p('sisext-sapi.client_id'),
+	"name": attributes.headers.'name',
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"addressCode" : vars.georeference.CodigoDireccion,
+	"mayorista" : vars.accountClient.Name[0]
+}]]]></http:query-params>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="3f134db3-2ab7-4e81-9ef2-c418e44c81fd" message="GET feasibility AFTER #[payload]"/>
+		<ee:transform doc:name="Set factibilidad" doc:id="28020f1f-636c-4cb5-92dc-d6285b2edef8" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="factibilidad" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.feasibilityResponse.outputMessage."M6ConsultarBloquearRecursos-RS".RespuestaFactibilidad.Factible]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

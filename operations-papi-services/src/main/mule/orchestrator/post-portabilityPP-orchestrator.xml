@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-portabilityPP-orchestratorSub_Flow" doc:id="bc933ff0-0c17-4793-a1ab-4e23d530338f" >
+		<try doc:name="Try" doc:id="c192aede-cb1a-4e1d-959d-a33d431ca79b" >
+			<flow-ref doc:name="Go to oracle sapi client Get Process ID" doc:id="e5d30495-1b75-4511-ba50-27710d23a098" name="oracle-sapi-client-Get-Process-ID-Sub_Flow" />
+			<set-variable value="#[output application/json&#10;---&#10;payload[0].processId]" doc:name="Save process ID" doc:id="7c4b5dc7-0d64-474b-a46e-16b0e4621d9a" variableName="IdProceso" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="10c09f22-5ae2-4c04-a16b-3ad0082af76f" >
+					<set-variable value="ERROR" doc:name="Set IdProceso ERROR" doc:id="dee84d78-b28d-4c62-ac41-814832fd972a" variableName="IdProceso" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<flow-ref doc:name="Go to Object Store to set Message ID" doc:id="dc5a444c-ff80-4f9b-beee-0803ce9e09ea" name="get_consecutive_number_Sub_Flow_Message_ID" target="consecutiveNumber2"/>
+		<choice doc:name="is Consecutive Number higher than 99999?" doc:id="e53992fe-7e4d-424d-b9ba-81ac535939f2">
+			<when expression="#[vars.consecutiveNumber2 &gt; 99999]">
+				<set-variable value="MaximoDiarioAlcanzado" doc:name="Maximo diario alcanzado" doc:id="d0e132a2-301f-40c0-b342-15e07a56b5a5" variableName="messageID" />
+			</when>
+			<otherwise>
+				<set-variable value='#[%dw 2.0
+import * from dw::core::Strings
+output application/json
+---
+leftPad(vars.consecutiveNumber2 as String, 5, "0")]' doc:name="Set Message ID Consecutive Number in String" doc:id="8c90a8c1-3ce3-4309-8a91-78692a7b3543" variableName="MessageIDConsecutiveNumber" />
+				<flow-ref doc:name="Go to Generate Message ID" doc:id="caefd4d5-f64d-405d-b8df-0f718e3cfef7" name="generate_message_id_Sub_Flow" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Set output process" doc:id="bb6f3f51-f75a-4d36-869d-b55aebb5a65b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "IdentificadorProceso": vars.IdProceso,
+  "IdentificadorMensaje": vars.messageID,
+  "FechaCreacionMsg": vars.initialPayload.creationDate as DateTime as String { format: "yyyyMMddHHmmss" },
+  "TipoMsg": "1006", 
+  "Emisor": vars.initialPayload.operatorCode,
+  "Observaciones": vars.initialPayload.observations,
+  "FechaVentanaCambio": vars.initialPayload.changeDate
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

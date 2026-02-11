@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-sendNotification-orchestratorSub_Flow" doc:id="9a5a214e-5fe4-4bd3-9c3d-244b1381bf52" >
+		<flow-ref doc:name="get-campaniaByIdCampania" doc:id="c37d5ed3-21d1-455f-b1f9-84de970948b6" name="get-campaniaByIdCampania" />
+		<choice doc:name="Choice" doc:id="89b72707-a700-47fd-a083-737dbfb341d6" >
+			<when expression="#[vars.httpStatus == 404]">
+				<ee:transform doc:name="Response error" doc:id="191ca5ac-b213-45a7-a33d-d9e4373a0be0" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: vars.httpStatus as String,
+	descripcion: payload.message.message
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="validate-plantilla-status" doc:id="ef73ce4c-4787-4b42-9750-f2281a36a0e8" name="Validate-plantilla-status"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="Validate-plantilla-status" doc:id="f17cf195-e087-4b50-a992-a22e1c0d1119" >
+		<choice doc:name="Choice" doc:id="955105a5-01ba-4307-802a-0c728a4e74d8" >
+			<when expression='#[upper(vars.plantilla[0].estado) == upper("activo")]' >
+				<ee:transform doc:name="Get tamanioListField" doc:id="61d6adf8-7ae1-4e31-8f7b-58f5a9afedbe" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="tamanioListField" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.plantilla[0].atributos.numeroPropiedades[0] as Number == sizeOf(vars.inputPayload.listaTemplate)]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="3f9082b7-ee1e-434e-a95f-5926eff23449" >
+					<when expression="#[vars.tamanioListField]" >
+						<flow-ref doc:name="Send notification" doc:id="c3bbff4c-8417-482d-a4ed-461d3290429e" name="sendNotification-salesforce-clientSub_Flow"/>
+						<ee:transform doc:name="Response final" doc:id="f1461f7b-7795-4f7b-a5eb-d17981b4cdbb" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.message == "OK")
+{
+	codigo: "200",
+	descripcion: "Notificación enviada exitosamente"
+}
+else
+{
+	codigo: "500",
+	descripcion: "Se ha generado una exceptión técnica y no fue posible continuar"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.message == "OK") 200
+else 500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Response error" doc:id="091b1326-747a-4766-94e3-9903f84811f2" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	descripcion: "El número de propiedades no coincide con el permitido"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Response error" doc:id="44b8887c-7a48-4421-916e-8edaeb733707" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "404",
+	descripcion: "La plantilla no se encuentra activa"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-orders-orchestratorSub_Flow" doc:id="ac4b1001-150c-430d-93c7-98e7a3c97769" >
+		<choice doc:name="Choice" doc:id="73f51b2a-0bf2-4629-b8b9-dfba3e4a8220" >
+			<when expression='#[upper(vars.accion) == "ADICION" and !isEmpty(vars.inputPayload.servicio.terceros)]'>
+				<ee:transform doc:name="Request Alta SKU" doc:id="aec5188c-e1c2-45eb-959c-b1ba8a2532f0">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "email": vars.inputPayload.cliente.email,
+  "eid": vars.inputPayload.servicio.eid,
+  "cuentaServicio" : vars.inputPayload.servicio.cuentaServicio,
+  "sku": vars.inputPayload.servicio.terceros.sku
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Alta SKU" doc:id="9cb7d58f-3d8b-499a-80ff-8bc075cfefd9" name="post-sku-client" />
+			</when>
+			<when expression='#[upper(vars.accion) == "SUSTITUCION"]'>
+				<ee:transform doc:name="Request Baja SKU" doc:id="c0fe36eb-2b9c-4c94-b458-74c1a472a99e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "eid": vars.inputPayload.servicio.eid,
+  "email": vars.inputPayload.cliente.email,
+  "skus": vars.inputPayload.servicio.terceros.sku
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Bajar SKU" doc:id="8d0ab4f7-f6f3-4bb8-9404-72821a40f117" name="delete-sku-client"/>
+			</when>
+			<when expression='#[upper(vars.accion) == "ELIMINACION"]'>
+				<ee:transform doc:name="Request Baja user" doc:id="4d9d179f-4582-4f29-869e-c45eee594ea3">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "eid": payload.servicio.eid,
+  "email": payload.cliente.email
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Bajar user" doc:id="e09748be-614f-4131-8acc-1e5b611c9149" name="delete-user-client"/>
+			</when>
+			<when expression='#[upper(vars.accion) == "CREARUSUARIO"]'>
+				<ee:transform doc:name="Request Alta user" doc:id="10627184-a999-4e0e-b31a-198c76f7c167">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{   
+  "email": vars.inputPayload.cliente.email,
+  "nombres": vars.inputPayload.cliente.nombres,
+  "apellidos": vars.inputPayload.cliente.apellidos,
+  "direccion": vars.inputPayload.cliente.direccion,
+  "municipio": vars.inputPayload.cliente.municipio,
+  "suites": vars.inputPayload.cliente.suites,
+  "eid": vars.inputPayload.servicio.eid,
+  "cuentaServicio" : vars.inputPayload.servicio.cuentaServicio
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Alta user" doc:id="6a07567f-68e9-4574-b6a1-8f1ce94f0e2c" name="post-user-client" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="a69a0c4c-e7f5-4d8b-91bd-82a638bda679" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "codigo": 500,
+  "descripcion": "Validar Body enviado."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>		
+</choice>
+	</sub-flow>
+</mule>

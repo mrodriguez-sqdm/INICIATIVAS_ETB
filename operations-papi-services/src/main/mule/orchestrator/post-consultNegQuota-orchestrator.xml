@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-consultNegQuota-orchestratorSub_Flow" doc:id="eb505a0b-44fd-42a2-99fe-338f9031c30a" >
+		<ee:transform doc:name="Prepare output sisext" doc:id="bd2cadff-7ba5-4a11-97f0-a0f366f4145a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var stratum = payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyAdditionalInformation.stratum
+---
+{
+    "quoteCalculation": {
+        "calculationObject": {
+            "requestId": payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.requestId,
+            ("companyBasicInformation": payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyBasicInformation) if (payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyBasicInformation != null),
+            ("companyAdditionalInformation": {
+                ("economicActivity": payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyAdditionalInformation.economicActivity) if (payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyAdditionalInformation.economicActivity != null),
+                ("constitutionDate": payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyAdditionalInformation.constitutionDate as DateTime) if (payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyAdditionalInformation.constitutionDate != null),
+                ("stratum": if (stratum > (p('params.consultaCupoNegLISIM.stratum.min') as Number) and stratum <= (p('params.consultaCupoNegLISIM.stratum.max') as Number)) (p('params.consultaCupoNegLISIM.stratum.base') ++ stratum as String) as Number else stratum) if (stratum != null),
+
+                ("zoneId": payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyAdditionalInformation.zoneId) if (payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyAdditionalInformation.zoneId != null)
+            }) if (payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyAdditionalInformation != null),
+            ("legalRepresentative": payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.legalRepresentative) if (payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.legalRepresentative != null),
+            ("generalBalance": payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.generalBalance) if (payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.generalBalance != null),
+            ("statusResults": payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.statusResults) if (payload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.statusResults != null)
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to sisext Client" doc:id="b42126d7-0077-437d-8c3f-a1249bdd3037" name="post-consultNegQuota-clientSub_Flow"/>
+		<async doc:name="Async" doc:id="357042dc-7d42-46bc-8db5-76e93f1c9cfc" >
+			<ee:transform doc:name="Prepare output etb-mdm" doc:id="02de4ea8-e7ba-40e3-a4c4-2cb02f78e71f" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var currentDate = now() >> p('params.consultaCupoNegLISIM.timezone')
+var eventResult = payload.quotaCalculationResponse.quotaCalculationResult.errorId
+---
+{
+    "Identificador_Peticion": vars.headers.'x-correlation-id',
+    "Tipo_Documento": vars.initialPayload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyBasicInformation.identificationType as String,
+    "Numero_Identificacion": vars.initialPayload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyBasicInformation.identification as Number,
+    "Numero_Conexion": "",
+    "Tipo_Transaccion": p('params.consultaCupoNegLISIM.tipoTransaccion'),
+    "Fecha_Inicio": currentDate,
+    "Fecha_Fin": currentDate,
+    "Estado_Transaccion": "",
+    "Sistema_Origen": p('params.consultaCupoNegLISIM.sistemaOrigen'),
+    "Atributos": [
+        {
+            "name": "FechaConsulta",
+            "value": currentDate as String {format: p('params.consultaCupoNegLISIM.formatoFecha')}
+        },
+        {
+            "name": "HoraConsulta",
+            "value": currentDate as String {format: p('params.consultaCupoNegLISIM.formatoHora')}
+        },
+        {
+            "name": "TipoIdentificacion",
+            "value": vars.initialPayload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyBasicInformation.identificationType as String,
+        },
+        ({
+            "name": "NumeroIdentificacion",
+            "value": vars.initialPayload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyBasicInformation.identification
+        }) if (vars.initialPayload.wsNegQuoteQueryRequest.quoteCalculation.calculationObject.companyBasicInformation.identification != null),
+        ({
+            "name": "RazonSocial",
+            "value": payload.quotaCalculationResponse.quotaCalculationResult.businessName
+        }) if ((payload.quotaCalculationResponse.quotaCalculationResult.businessName != null) and (eventResult == 0)),
+        ({
+            "name": "Tramite",
+            "value": vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.TRAMITE
+        }) if (vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.TRAMITE != null),
+        {
+            "name": "TipoConsulta",
+            "value": p('params.consultaCupoNegLISIM.tipoConsulta')
+        },
+        ({
+            "name": "Usuario",
+            "value": vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.USUARIO
+        }) if (vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.USUARIO != null),
+        ({
+            "name": "Canal",
+            "value": vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.CANAL
+        }) if (vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.CANAL != null),
+        ({
+            "name": "Proveedor",
+            "value": vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.PROVEEDOR
+        }) if (vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.PROVEEDOR != null and vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.PROVEEDOR != ""),
+        ({
+            "name": "Departamento",
+            "value": vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.DEPARTAMENTO
+        }) if (vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.DEPARTAMENTO != null),
+        {
+            "name": "EstadoETB",
+            "value": p('params.consultaCupoNegLISIM.estadoETB')
+        } ,
+        ({
+            "name": "SistemaOrigen",
+            "value": vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.SISTEMA_ORIGEN
+        }) if (vars.initialPayload.wsNegQuoteQueryRequest.wsRequestHeader.property.SISTEMA_ORIGEN != null),
+        {
+            "name": "Mensaje",
+            "value": write(payload, 'application/xml')
+        },
+        {
+            "name": "NivelRiesgo",
+            "value": payload.quotaCalculationResponse.quotaCalculationResult.score as String
+        } ,
+        {
+            "name": "Score",
+            "value": payload.quotaCalculationResponse.quotaCalculationResult.score as String
+        } ,
+        {
+            "name": "Cupo",
+            "value": payload.quotaCalculationResponse.quotaCalculationResult.approvedQuota as String
+        } ,
+    ]
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Go to etb-mdm Client" doc:id="495baf0e-abd9-48d3-9dee-128742b7d7f5" name="registerLog"/>
+		</async>
+	</sub-flow>
+</mule>

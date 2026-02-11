@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="remedy-ws" doc:id="0ad5cc91-83c3-4a3e-a4e4-c29f118f4386" >
+		<logger level="INFO" doc:name="Logger" doc:id="f8e16e57-4f27-4b9c-8b1a-79919e91858a" message="POST remedy-ws BEFORE #[payload]"/>
+		<try doc:name="Try" doc:id="5fcf6db0-70af-4421-a927-2451110a6955" >
+<!-- [STUDIO:"Async"]			<async doc:name="Async" doc:id="a8d140ed-8f97-4c7c-a7d2-5894ac6fbb77">
+				<flow-ref doc:name="Call logger before" doc:id="2a43caa3-ddf0-4cda-9716-8184e70304fb" name="loggin-client-call" />
+			</async> [STUDIO] -->
+			<http:request method="POST" doc:name="Call remedy web service" doc:id="657cf46b-1db3-4bfa-97ab-4e6fb098423e" config-ref="HTTP_Request_configuration_remedy_may" path="${remedy-ws.path}" outputMimeType="text/plain" outputEncoding="UTF-8">
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"server" : "appremndes01",
+	"webService" : "ETB_WOIOrder_Create"
+}]]]></http:query-params>
+		</http:request>
+<!-- [STUDIO:"Async"]			<async doc:name="Async" doc:id="7a9083d4-bf65-4274-8f75-69eb842870f5">
+				<flow-ref doc:name="Call logger after" doc:id="56374f6c-e76b-4b75-b122-e8248de4bb9e" name="loggin-client-call" />
+			</async> [STUDIO] -->
+			<logger level="INFO" doc:name="Logger" doc:id="feab4e12-4bbd-43bd-866d-ff5c1ccccb9c" message="POST remedy-ws AFTER #[payload]"/>
+			<ee:transform doc:name="Transform to JSON" doc:id="3375c381-df59-4574-81d3-d3861581c43b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+read(payload, "application/xml")]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="1ffd9708-7d7c-4dbe-beae-5ca03866aeda" type="HTTP:INTERNAL_SERVER_ERROR">
+					<ee:transform doc:name="Transform Message" doc:id="d8d0cee5-a5e1-4082-9eff-2d7ac90f7a7e" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+error.muleMessage.typedValue]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

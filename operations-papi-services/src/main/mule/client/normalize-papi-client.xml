@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<sub-flow name="normalize-papi-clientSub_Flow" doc:id="79b276e6-bf47-44a1-9c07-1a1ab1191388" >
+		<ee:transform doc:name="Request" doc:id="b3584da6-320a-4a13-8c5f-6983f10b2323" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Address": vars.inputPayload.body.normalizedAddress,
+  "MunicipioCode": vars.inputPayload.body.cityId
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="d4756980-0deb-4bc5-a938-45b776af67ab" message="GET normalizedAddress BEFORE #[payload]"/>
+		<http:request method="POST" doc:name="Call normalize-papi-services" doc:id="7b1901ec-765d-4fdf-b9a9-c5e2ec8df9ff" config-ref="HTTP_Request_configuration_normalize" path="${normalize-papi.path.normalizeAddress}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : correlationId,
+	"client_secret" : p('normalize-papi.client_secret'),
+	"client_id" : p('normalize-papi.client_id'),
+	"name": attributes.headers.'name',
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="084f9839-5af9-4446-859e-15dc5f6b1a71" message="GET normalizedAddress AFTER #[payload]"/>
+		<ee:transform doc:name="Get NormalizedAddress" doc:id="67c8c497-8ce6-4ade-8284-a7a6ad918da5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload.NormalizedAddressResponse.NormalizedAddress]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

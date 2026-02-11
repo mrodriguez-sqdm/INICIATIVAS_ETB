@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-provisioning-orchestratorSub_Flow" doc:id="41c9aa51-e8bf-4c99-b81b-757f5139d904" >
+		<flow-ref doc:name="Get Order by ID" doc:id="97e727f5-9689-4d61-ae1d-7bd106ce7419" name="obtain-order" target="responseOrderById" />
+		<choice doc:name="Choice" doc:id="87f32206-5610-434f-abad-1918373b5e6c" >
+			<when expression='#[vars.responseOrderById.resultado == "Positivo"]'>
+				<ee:transform doc:name="orderState  and itemsToUpdate" doc:id="1a1515b9-441b-4f3c-9f3e-0e75b80a0a41">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="orderState"><![CDATA[%dw 2.0
+output application/json
+---
+"OR0020"]]></ee:set-variable>
+						<ee:set-variable variableName="itemsToBeUpdated"><![CDATA[%dw 2.0
+output application/json
+fun deconstruct(data) = data map ((item, index) ->
+       if (!isEmpty(item.subProductos))
+               ([ subProducto : { idItem : item.idItem, idServicio: item.idServicio} ] ++ deconstruct(item.subProductos))
+    else { subProducto : { idItem : item.idItem, idServicio: item.idServicio } } )
+---
+deconstruct(payload.respuestaAprovisionamiento.productos)..subProducto]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Save in OR RTA PROVISIONING" doc:id="d16901f5-5e4a-4b9f-9f75-08efa9f61df0" name="saveOrRtaProvisioning" target="saveOrRtaProvisioning"/>
+				<ee:transform doc:name="Update Items State" doc:id="f2390b40-c64b-414a-ba97-62d3da6e88e4" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="responseOrderById" ><![CDATA[%dw 2.0
+import * from dw::util::Values
+import util::GlobalFunctions as global
+output application/json
+var flag_respuesta_recibida = vars.responseOrderById.resultados[0] update "items" with  global::updateItemsProvisioning(vars.responseOrderById.resultados[0], vars.itemsToBeUpdated.idItem)
+---
+flag_respuesta_recibida update "items" with  global::updateItemsState(flag_respuesta_recibida, vars.itemsToBeUpdated.idItem,"ITM20","RESPUESTA_BACK_EN_PROCESO")]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name='Update Items with "fechaInicioFacturacion"' doc:id="dbdc28bb-4460-45a6-8539-3e99be35b61d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import util::GlobalFunctions as global
+import * from dw::util::Values
+import partition, indexOf from dw::core::Arrays
+
+var fechaInicioFacturacion = global::formatDate(vars.inputBody.respuestaAprovisionamiento.fechaInicioFacturacion) default null
+
+fun updateProducts(prod, index) = do {
+  var categorized = (prod.parametros partition ($.codigo == "ATT_SF_Nemonico"))
+  ---
+  prod update "parametros" with
+  //No parameter with code "ATT_SF_Nemonico" returns same array
+  (if (sizeOf(categorized.success) == 0) prod.parametros
+  //else it updates every attribute (should be only 1) and returns modified array
+  else categorized.failure ++ (categorized.success map $ update "valor" with vars.itemsToBeUpdated[index].idServicio))
+}
+
+fun updateItems() = vars.responseOrderById.items map ((item, index) -> do {
+    var indxItem = indexOf(vars.itemsToBeUpdated, (vars.itemsToBeUpdated filter ($.idItem == item.idItem))[0])
+	---
+	if (indxItem != -1) 
+	  if (item.fechaInicioFacturacion == null) 
+	    (item update "productos" with updateProducts(item.productos, indxItem)) ++ {"fechaInicioFacturacion": fechaInicioFacturacion}
+	  else 
+	    (item update "productos" with updateProducts(item.productos, indxItem)) update "fechaInicioFacturacion" with fechaInicioFacturacion
+	else
+	  if(item.fechaInicioFacturacion == null)
+    	(item ++ {"fechaInicioFacturacion": fechaInicioFacturacion})
+  else
+    item update "fechaInicioFacturacion" with fechaInicioFacturacion
+})
+
+---
+vars.responseOrderById update "items" with updateItems()]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Update order in Mongo" doc:id="8575c50c-dc1f-417b-91a2-e62042099f59" name="updateOrder" target="resultUpdate" />
+				<flow-ref doc:name="Order State Update" doc:id="caebb44a-a82b-4ba4-8f39-4bdebbbab286" name="orderStateProv" target="resultUpdateState" />
+				<async doc:name="Async" doc:id="ef9db776-3abb-4cd3-831f-42f0116d88a9" >
+					<flow-ref doc:name="Send request provisioning to salesforce" doc:id="7c27e937-2b09-4006-8951-a0c4c4f57209" name="sendProvisioningToSalesforce"/>
+				</async>
+				<choice doc:name="Choice" doc:id="663946cd-b52b-4468-ac95-8b92d39fc340" >
+					<when expression='#[vars.saveOrRtaProvisioning.resultado == "Positivo" &#10;and vars.resultUpdateState.resultado == "Positivo" &#10;and vars.resultUpdate.resultado == "Positivo"]' >
+						<set-variable value="OR0060" doc:name="orderState" doc:id="040833e4-b567-48b0-b4d4-3d6007afb888" variableName="orderState" />
+						<flow-ref doc:name="Order State Update OR0020" doc:id="9082290c-59ea-4c3d-8790-5fab4efd9f5d" name="orderStateProv" />
+					</when>
+					<otherwise >
+						<set-variable value="OR0021" doc:name="orderState" doc:id="6afff758-629b-4615-bb2e-91abf77ff8ef" variableName="orderState" />
+						<flow-ref doc:name="Order State Update OR0021" doc:id="0bc5607c-ad88-4b02-9fe1-a813f3c92940" name="orderStateProv" />
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="httpStatus 500" doc:id="320610b8-88d4-472d-8560-3aa9851e849a" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Output" doc:id="9b221a09-a4f3-4008-9651-5bfabe50913c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(vars.resultUpdate != null) vars.resultUpdate
+else {
+    "resultado": "Negativo",
+    "registrosAfectados": 0,
+    "fecha": now(),
+    "descripcion": "No se encontro una orden con ese id."
+}
+
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+if(vars.resultUpdate.resultado == "Negativo") 202 else
+if(vars.httpStatus == 500) 500
+else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="End Logger" doc:id="e02492e4-5c60-43e0-84f5-e91f5a8ca492" message="#[payload]"/>
+	</sub-flow>
+	<sub-flow name="saveOrRtaProvisioning" doc:id="d01b3461-c6d0-486f-942d-7cd52a282189" >
+		<flow-ref doc:name="Get Provisioning Response from Mongo" doc:id="62138b5e-417a-4873-ae17-e00f451bb7e2" name="getProvisioningResponseIdAprov-Order" target="responseOR_Provisioning"/>
+		<ee:transform doc:name="Payload with extra data" doc:id="8304b8e2-179f-42b1-bfb3-14a1a2a7cda7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+var exists = vars.responseOR_Provisioning.resultado == "Positivo"
+output application/json skipNullOn="everywhere"
+---
+vars.inputBody.respuestaAprovisionamiento ++
+{
+	"FechaCreacion" : if(exists == false ) now() else null,
+	"FechaModificacion": if(exists == true ) now() else null,
+	"UsuarioCreacion": p('mongo-sapi-services.user'),
+	"UsuarioModificacion": p('mongo-sapi-services.user'),
+	"ActualizacionExtractor": p('mongo-sapi-services.actualizacionExtractor'),
+	"estadoOpcion":{
+		"fecha": now(),
+		"codigoEstado": "OPC00",
+		"nombreEstado": "INICIAL",
+		"observaciones": "INICIAL"
+	}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="does Provisioning Response exists?" doc:id="88638013-4be0-4d4a-badb-ba73f8ea8443" >
+			<when expression='#[vars.responseOR_Provisioning.resultado == "Positivo"]'>
+				<flow-ref doc:name="update OR RTA Provisioning" doc:id="eb955a13-849a-477b-8012-5b28b5913cf7" name="updateProvisioningResponse"/>
+				<logger level="INFO" doc:name="Logger update" doc:id="54f68475-4648-4247-86df-b43650324ef3" message="#[payload]"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Create Or Rta Provisioning" doc:id="6ee4ca5e-a3cf-4fbc-be12-300919480db6" name="createProvisioningResponse"/>
+				<logger level="INFO" doc:name="Logger create provisioning response" doc:id="866edc00-3603-4f07-bd2c-fb230494e963" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sendProvisioningToSalesforce" doc:id="e70624da-6faf-42cd-9add-a7569dda57e8" >
+		<set-variable value="#[payload.items == null or isEmpty(payload.items)]" doc:name="isNull" doc:id="bfb7201c-ca51-4fa7-9593-1f2ccb612e37" variableName="isNullorEmpty" />
+		<choice doc:name="Choice" doc:id="e3b39bd3-dd07-4677-9060-f697281c1f76" >
+			<when expression="#[vars.isNullorEmpty == false]">
+				<http:request method="POST" doc:name="salesforceProvisioningResponse" doc:id="5a4ca3fe-abdc-40a4-a955-1116fbbea41c" config-ref="HTTP_Request_configuration_processRequest" path="${operation-papi.path-sendProvisioningResponseSalesforce}" >
+					<http:body ><![CDATA[#[{
+    "numeroOrden": vars.ordenOM
+}]]]></http:body>
+					<http:headers ><![CDATA[#[output application/java
+---
+{
+	"source" : p('operation-papi.source.gestor'),
+	"name": attributes.headers.'name',
+	"X-CORRELATION-ID" : vars.correlationId default correlationId,
+	"client_secret" : p('operation-papi.client_secret'),
+	"client_id" : p('operation-papi.client_id'),
+	"systemId": vars.systemId
+}]]]></http:headers>
+				</http:request>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="orderStateProv" doc:id="0f0a277e-c9a9-4282-8c1d-62747c178fec" >
+		<ee:transform doc:name="Mapping Update Body" doc:id="52e87ae1-48f6-40bd-953b-d0417fe37594" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import util::GlobalFunctions as global
+import * from dw::util::Values
+---
+if (vars.orderState == "OR0020"){
+			"estadoOrden": {
+			"fecha": now(),
+			"codigoEstado": "OR0020",
+			"nombreEstado": "EN_PROCESO",
+			"observaciones": "EN_PROCESO"
+			}
+		}
+else if (vars.orderState == "OR0021") {
+			"estadoOrden": {
+			"fecha": now(),
+			"codigoEstado": "OR0021",
+			"nombreEstado": "ERROR_VALIDACION",
+			"observaciones": "ERROR_VALIDACION"
+			}
+		}
+else if (vars.orderState == "OR0060") global::updateOrderState( (payload update "items" with  global::updateItemsState(payload,vars.itemsToBeUpdated.idItem,"ITM30","RESPUESTA_BACK_PROCESADA")),"OR0020","EN_PROCESO")
+else null]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Update order in Mongo" doc:id="323721f5-fa63-44cc-9900-de9ae0882f4a" name="updateOrder" />
+	</sub-flow>
+</mule>

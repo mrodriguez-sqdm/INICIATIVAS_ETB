@@ -1,0 +1,377 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="post-responseViability" doc:id="cd544526-8e1f-4b79-8c64-5c7e72f72983" >
+		<try doc:name="Try" doc:id="aa003b9d-f495-4fa7-b5a6-7c6e1701e556" >
+			<http:request method="POST" doc:name="Request" doc:id="43f36faf-7f25-493f-8317-2325ffd0ec32" config-ref="HTTP_Request_configuration_salesforce_sapi" path="#[p('salesforce-sapi.viability')]" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('salesforce-sapi.client_secret'),
+	"client_id" : p('salesforce-sapi.client_id'),
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"name": attributes.headers.'name',
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			</http:request>
+			<logger level="INFO" doc:name="Logger" doc:id="2a15ecb7-ff3c-472b-aa6f-4fa4342b3ff7" message="#[payload]"/>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="0b26cc43-1dd1-4c4c-9bf7-d0b61d82d8f5" >
+					<set-payload value='#["ERROR"]' doc:name="Error" doc:id="498884d3-95aa-4eeb-b125-041195fb3a55" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-responseProvisioning" doc:id="3b7c571d-4923-444a-9155-f20e11c6cfe0" >
+		<try doc:name="Try" doc:id="89272788-2bf2-41d4-b460-cf656b40e38c" >
+			<http:request method="POST" doc:name="Request" doc:id="0c081315-366f-4857-b7b6-4a7a88fb1c7e" config-ref="HTTP_Request_configuration_salesforce_sapi" path="#[p('salesforce-sapi.provisioning')]" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('salesforce-sapi.client_secret'),
+	"client_id" : p('salesforce-sapi.client_id'),
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"name": attributes.headers.'name',
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			</http:request>
+			<logger level="INFO" doc:name="Logger" doc:id="02bf6830-fdf2-4084-9a23-62af0da6aa51" message="#[payload]" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="a6a8ad79-10a2-4da2-ad68-4c1bc2e000b7" >
+					<set-payload value='#["ERROR"]' doc:name="Error" doc:id="0174a54e-4631-4f68-9f30-3b760820cd59" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-accountClient-salesforce" doc:id="f51ea2ba-a829-482a-a5e5-3dc7abfcb80d" >
+		<async doc:name="Async" doc:id="80569b2e-63e8-4e5d-b72f-e1d006fa572f" >
+			<flow-ref doc:name="Call logger before" doc:id="802f8f62-e95d-4870-896b-f1f0e19a7447" name="loggin-client-call"/>
+		</async>
+				<http:request method="GET" doc:name="Call salesforce by mayoristaId" doc:id="d2e5ac76-cfc9-4af5-94ae-c4e9fe6ea2c7" url="#[vars.instanceUrl ++ p('sfdc.accountClient.queryPath')]">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.authToken
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"q" : p('sfdc.accountClient.query')
+}]]]></http:query-params>
+		
+</http:request>
+		<async doc:name="Async" doc:id="13c46b63-14e1-4603-a54f-d4cfd37d9432">
+				<flow-ref doc:name="Call logger after" doc:id="7b219541-31a4-4448-a0a8-67ea0d7fde85" name="loggin-client-call" />
+			</async>
+	</sub-flow>
+	<sub-flow name="salesforce-auth" doc:id="8ff57f28-e68a-4f25-b27b-25e89fc39ba9" >
+		<os:retrieve doc:name="Retrieve Authorization Token" doc:id="381af5b4-8576-4b65-9985-0db0be2932f1" objectStore="SFDC_Token_Object_store" key="${sfdc.os.key}" target="sfdcToken">
+			<os:default-value ><![CDATA[#[vars.sfdcToken]]]></os:default-value>
+		</os:retrieve>
+		<logger level="INFO" doc:name="token value" doc:id="c9eab21f-697d-4056-a6ab-920306849ccd" message='#[{"Object store value": vars.sfdcToken}]'/>
+		<ee:transform doc:name="set token" doc:id="8f2bfe37-887d-4df5-9c02-6d33682808d6" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="authToken" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.sfdcToken.token]]></ee:set-variable>
+				<ee:set-variable variableName="instanceUrl" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.sfdcToken.url]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="salesforce-getProduct" doc:id="822c66c2-bbfa-4f4b-8cb6-3dc92152d5c0" >
+		<async doc:name="Async" doc:id="66f67141-d0fe-48f4-ab07-86581efb2a7b">
+				<flow-ref doc:name="Call logger before" doc:id="3e7aca95-16cb-4a47-8691-dcabffdbfa4a" name="loggin-client-call" />
+			</async>
+		<logger level="INFO" doc:name="Logger" doc:id="9e47b6d1-d1a9-4c76-8770-28e59190f6c7" message="GET productSF BEFORE #[payload]"/>
+		<http:request method="GET" doc:name="Call Salesforce (Consulta Producto)" doc:id="e39db324-6c40-43f4-b16e-1801a69f6461" target="salesforceResponse" url="#[vars.instanceUrl ++ p('sfdc.consultaProducto.queryPath')]">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.authToken
+}]]]></http:headers>
+				<http:query-params><![CDATA[#[output application/java
+---
+{
+	"q" : p('sfdc.consultaProducto.query') replace "{productId}" with vars.productId
+}]]]></http:query-params>
+		</http:request>
+		<async doc:name="Async" doc:id="0aca1b26-e31e-4e6e-8203-b57ef139af87">
+			<ee:transform doc:name="Transform Message" doc:id="8907704c-ad0e-49b9-8260-632ba809c218">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+vars.salesforceResponse default payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Call logger after" doc:id="b62ab6c9-cdc0-45a6-8c2c-f906f1277e55" name="loggin-client-call" />
+			</async>
+	</sub-flow>
+	<sub-flow name="salesforce-insertAsset" doc:id="6698798a-fb62-48ca-8191-6f2b2eee2fc6" >
+		<async doc:name="Async" doc:id="0cb3ea4d-7db3-4401-a4c5-278344aab6f3">
+			<ee:transform doc:name="Set Payload" doc:id="46eda09f-fe71-4377-b064-2bd032bc8169" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.requestSalesforce default payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call logger before" doc:id="88c86ccf-f702-432d-a239-b99983691a27" name="loggin-client-call" />
+		</async>
+		<try doc:name="Try" doc:id="5027e198-1ffd-470b-9718-9c8917e1a702" >
+			<http:request method="POST" doc:name="Call Salesforce (Insert Asset)" doc:id="97dd39f7-86d8-47ec-9a84-e7b3a7e9cfbf" target="responseSalesforce" url="#[vars.instanceUrl ++ p('sfdc.insertAsset.path')]">
+			<http:body><![CDATA[#[vars.requestSalesforce]]]></http:body>
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.authToken
+}]]]></http:headers>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="3d6d4769-a79b-4052-826f-1f6a33cb3032" >
+					<ee:transform doc:name="Transform Message" doc:id="772252b7-6742-4f42-b2de-347a8720e6e3" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="responseSalesforce" ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="4bf23ad5-e9fa-4966-99ed-fdf8f9b33009" >
+			<ee:transform doc:name="Set Payload" doc:id="533ce71b-2da1-43c8-b40c-06b4694fd10e">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseSalesforce default payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call logger after" doc:id="8c2e3f1d-5c44-413d-bb8a-0a54d7142cf7" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<flow name="salesforce-client-getToken" doc:id="df7b4868-fc8e-4389-863f-ea4cebab2cb7" >
+		<scheduler doc:name="Scheduler" doc:id="2f6ecc1c-8c76-4208-8ff9-b15416fed424" >
+			<scheduling-strategy >
+				<cron expression="${sfdc.scheduler.cron}" timeZone="${sfdc.scheduler.timezone}" />
+			</scheduling-strategy>
+		</scheduler>
+		<http:request method="POST" doc:name="Call Salesforce Authorization" doc:id="e527910d-b914-4a09-b161-282eef927c90" target="authResponse" config-ref="SFDC_Auth" path="${sfdc.auth.url}">
+		</http:request>
+		<ee:transform doc:name="set sfdcToken" doc:id="d009aeb2-9d54-4f52-b7ef-51ce1f988230">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+						<ee:set-variable variableName="sfdcToken"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	token: vars.authResponse.'token_type' ++ " " ++ vars.authResponse.'access_token',
+	url: vars.authResponse.'instance_url'
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="token to store" doc:id="c5bc7ccd-9caf-43fe-8082-fb4203808261" message='#[{"token to store": vars.sfdcToken}]' />
+		<os:store doc:name="Store Authorization Token" doc:id="768c7455-b322-41cf-973c-8c1b62bac7db" key="${sfdc.os.key}" objectStore="SFDC_Token_Object_store">
+					<os:value><![CDATA[#[vars.sfdcToken]]]></os:value>
+				</os:store>
+	</flow>
+	<sub-flow name="updateViabilityOrderState" doc:id="e87ce02e-2e0e-418b-bd3a-65c92e2b422a" >
+		<ee:transform doc:name="Mapping Request Payload" doc:id="5e9a40d8-832b-4caa-a058-262ac9e0b803" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	state: vars.state,
+	context: vars.context
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="PUT" doc:name="Request" doc:id="9c6e0058-ecad-4199-81ca-f6008a02794d" config-ref="HTTP_Request_configuration_salesforce_sapi" path="#[p('salesforce-sapi.states.viability.order')]">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('salesforce-sapi.client_secret'),
+	"client_id" : p('salesforce-sapi.client_id'),
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"name": attributes.headers.'name',
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	orderNumber : vars.subAgrupador
+}]]]></http:uri-params>
+			</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="2c155f9b-417d-416c-9292-a087025c5398" message="#[payload]" />
+	</sub-flow>
+	<sub-flow name="updateProvisioningOrderState" doc:id="167c7a42-e665-4ae1-8eb8-6e0c45ebb3e2" >
+		<ee:transform doc:name="Mapping Request Payload" doc:id="79423b8e-62ca-4fbc-994b-965192865744" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	state: vars.state,
+	context: vars.context
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="PUT" doc:name="Request" doc:id="0cfaa067-db24-423f-9278-c36eb0ae4f37" config-ref="HTTP_Request_configuration_salesforce_sapi" path="#[p('salesforce-sapi.states.provisioning.order')]">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('salesforce-sapi.client_secret'),
+	"client_id" : p('salesforce-sapi.client_id'),
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"name": attributes.headers.'name',
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	orderNumber : vars.idOrigen
+}]]]></http:uri-params>
+			</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="610efeb3-3ce4-48c5-8648-c454ce7553ce" message="#[payload]" />
+	</sub-flow>
+	<sub-flow name="updateViabilityItemState" doc:id="2b60abac-f4c9-4bd9-bf99-62f946ae1421" >
+		<ee:transform doc:name="Mapping Request Payload" doc:id="644efb7b-fbc9-4365-94f4-4432847f9730" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	state: vars.state,
+	context: vars.context
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="PUT" doc:name="Request" doc:id="921323a8-4b00-46c1-973c-a679070aa697" config-ref="HTTP_Request_configuration_salesforce_sapi" path="#[p('salesforce-sapi.states.viability.item')]">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('salesforce-sapi.client_secret'),
+	"client_id" : p('salesforce-sapi.client_id'),
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"name": attributes.headers.'name',
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	idItem : vars.idItem
+}]]]></http:uri-params>
+			</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="4b14fad0-48b3-48d7-8660-a245553ffeef" message="#[payload]" />
+	</sub-flow>
+	<sub-flow name="salesforce-updateAsset" doc:id="09b0b8ac-9a49-4e21-8ed2-37ef9a8ffa5f" >
+		<async doc:name="Async" doc:id="dabed394-20cf-4aa5-adfc-cc20378cbaa2" >
+			<ee:transform doc:name="Set Payload" doc:id="311546cd-bb43-4471-84b2-422375f0e2a2">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.requestSalesforce default payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call logger before" doc:id="06de830e-a87d-4a72-becd-c4ecb042eef0" name="loggin-client-call" />
+		</async>
+		<try doc:name="Try" doc:id="6281b2b2-1549-4802-9112-ace5678c22a3" >
+			<http:request method="PATCH" doc:name="Call Salesforce (Update Speed)" doc:id="7eccf1da-9971-42db-a015-f5b368b0e8fc" url="#[vars.instanceUrl ++ p('sfdc.updateAsset.path')]">
+			<http:body><![CDATA[#[vars.requestSalesforce]]]></http:body>
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.authToken
+}]]]></http:headers>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="3a8fd661-15eb-48e9-8329-f00714fb6a3c" >
+					<ee:transform doc:name="Transform Message" doc:id="6a0c0be2-bf48-4fcb-b903-95eb46d73cf1" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="responseSalesforce" ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="972e02df-6c98-4cf6-b517-bd44ee68cbfa" >
+			<ee:transform doc:name="Set Payload" doc:id="15a4faa6-f0e5-4fcc-a81a-ea0841933f8e">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseSalesforce default payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call logger after" doc:id="71be38d6-ad8e-45b6-855c-b1a8bf5cf62e" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<sub-flow name="sendNotification-salesforce-clientSub_Flow" doc:id="97b0e07c-8257-4a5b-8113-16d37e6e085f" >
+		<ee:transform doc:name="Mapping request" doc:id="dfa70ab6-378f-47eb-9539-2b61de34acc6">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "wm": {
+        "idPlantilla": vars.campania,
+        "numeroEnvio": vars.plantilla[0].atributos.numeroEnvio[0],
+        "fechaHoraEnvio": (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
+        "listconacto": [
+            {
+                "nombres": vars.inputPayload.nombres,
+                "apellidos": vars.inputPayload.apellidos,
+                "numeroCelular": vars.inputPayload.numeroCelular,
+                "NumerodeIdentificacion": vars.inputPayload.numeroDocumento,
+                "Tipodedocumento": vars.inputPayload.tipoDocumento,
+                "listFieldTemplate": vars.inputPayload.listaTemplate map (value, index) -> {
+                    "apiField": "DEG_templatefield" ++ (index + 1) ++ "__c",
+                    "textField": value.textField
+                }
+            }
+        ]
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="Send notification" doc:id="acb69b45-856e-48ff-a0ba-43e02df0394c" config-ref="HTTP_Request_configuration_salesforce_sapi" path="${salesforce-sapi.sendNotification}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('salesforce-sapi.client_secret'),
+	"client_id" : p('salesforce-sapi.client_id'),
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"name": attributes.headers.'name',
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+</mule>

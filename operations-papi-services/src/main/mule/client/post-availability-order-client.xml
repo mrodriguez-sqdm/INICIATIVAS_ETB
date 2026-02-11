@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-availability-order-client" doc:id="108167dd-a586-44cb-be2a-95315d235656" >
+<!-- [STUDIO:"Async"]		<async doc:name="Async" doc:id="7360fa88-be23-40e5-a43e-6f08fd2cd827">
+			<ee:transform doc:name="Set Payload" doc:id="6aeb79bb-c3af-48dc-a3b3-91063c0ea3bd" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+vars.orquestatorRequest default payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call logger before" doc:id="4e7f4c39-9694-4e53-bdc7-ea9d78873899" name="loggin-client-call" />
+		</async> [STUDIO] -->
+		<logger level="INFO" doc:name="Logger" doc:id="e52eb6ef-f68c-4a8d-ae3c-75b7eb436219" message="POST availability-orderclient BEFORE #[vars.orquestatorRequest default payload]"/>
+		<wsc:consume doc:name="Consume OrquestadorService" doc:id="59411166-9997-427d-af10-e8c09c82369d" operation="#[vars.orquestadorOperation]" config-ref="Orquestador_Web_Service_Consumer_Config">
+			<wsc:message>
+				<wsc:body><![CDATA[#[vars.orquestatorRequest]]]></wsc:body>
+			</wsc:message>
+		</wsc:consume>
+		<logger level="INFO" doc:name="Logger" doc:id="d8937312-6058-45b2-b0d1-c0d742e931b6" message="POST availability-orderclient AFTER #[payload]"/>
+<!-- [STUDIO:"Async"]		<async doc:name="Async" doc:id="8a926fa9-2c30-494b-93b8-b34f38184020">
+			<flow-ref doc:name="Call logger after" doc:id="8cd81a8f-f9ea-482c-a22b-3cbb757008ce" name="loggin-client-call" />
+		</async> [STUDIO] -->
+		<ee:transform doc:name="set response to JSON" doc:id="dfdffd75-24b5-46d7-ba24-414558afaf2f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.body]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-provisioning-order-client" doc:id="990d8c84-9021-4609-8288-b877c1fab8ef" >
+<!-- [STUDIO:"Async"]		<async doc:name="Async" doc:id="e745bfdb-4fb8-49ce-ac95-f5a5a130e880" >
+			<ee:transform doc:name="Set Payload" doc:id="b1a5a78d-7249-4d09-a5ca-03222f230fba">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+vars.orquestatorRequest default payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call logger before" doc:id="2066821d-b6d2-4860-8b61-4e56deb3631b" name="loggin-client-call" />
+		</async> [STUDIO] -->
+		<logger level="INFO" doc:name="Logger" doc:id="e40182cd-59dc-4089-a338-ebc47b008a87" message="POST provisioning-orderclient BEFORE #[vars.orquestatorRequest default payload]"/>
+		<try doc:name="Try" doc:id="a16cd4f8-a4b7-4a84-b1e8-e21b0ed44a51" >
+			<wsc:consume operation="#[vars.orquestadorOperation]" doc:name="Consume OrquestadorService" doc:id="cac7d2a0-df20-45eb-8f04-84a487cc3f30" config-ref="Orquestador_Web_Service_Consumer_Config" >
+				<wsc:message >
+					<wsc:body ><![CDATA[#[vars.orquestatorRequest]]]></wsc:body>
+				</wsc:message>
+			</wsc:consume>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="2be19bbd-192d-4e17-ac14-5ae1786025a1" type="WSC:TIMEOUT" >
+					<async doc:name="Async - Add order characteristic" doc:id="bd53e9fb-c02b-4d6e-bdbe-d1e452a075bd" >
+						<ee:transform doc:name="orderStatus add characteristic" doc:id="35c85457-20f9-46a1-b782-1e7952c3e863" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="orderStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "updateStateCharateristic": "add",
+    "updateComponent" : "orquestador",
+    "characteristics": vars.orderData[0].Caracteristica_Orden
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Go to update order" doc:id="382021aa-01e6-44a3-82a7-c3d9a4d785ba" name="patchOrderByOrderNumber" target="patchOrderResponse"/>
+					</async>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+<logger level="INFO" doc:name="Logger" doc:id="87535160-5c24-4cba-9da8-41e4c5654e7d" message="POST provisioning-orderclient AFTER #[payload]"/>
+		<!-- [STUDIO:"Async"]		<async doc:name="Async" doc:id="b14416e7-2797-4adc-9d99-0cb6e19a2d7a" >
+			<flow-ref doc:name="Call logger after" doc:id="a54f47b6-96d8-4538-8c90-5cfc3d56e132" name="loggin-client-call" />
+		</async> [STUDIO] -->
+		<ee:transform doc:name="set response to JSON" doc:id="0657eec3-b5c0-454a-871d-901dd1480ef5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.body]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

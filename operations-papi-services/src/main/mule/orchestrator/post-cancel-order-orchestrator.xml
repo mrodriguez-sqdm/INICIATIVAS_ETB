@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-cancel-order-orchestrator" doc:id="a50c583c-b111-42a6-81aa-e92903d69084" >
+		<flow-ref doc:name="patchOrderByOrderNumber" doc:id="e09dcfe6-ed83-44b6-838c-afdcb5220fe3" name="patchOrderByOrderNumber"/>
+		<choice doc:name="Choice" doc:id="edde8e40-09cf-4e2c-adbf-73e2c0f494b0" >
+			<when expression='#[vars.httpStatus == 500]' >
+				<ee:transform doc:name="set error Response" doc:id="2da6d344-848c-4738-8938-eb1b46f0c208" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": payload.response.result.description
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="getOrderByOrderNumber" doc:id="d9213f6e-9ee9-4d96-8b8d-b4f38e8714c5" name="getOrderByOrderNumber" />
+				<flow-ref doc:name="orquestadorService-process-order-cancel" doc:id="c2cf0087-f5c3-4d2e-b7b3-949b9d538d97" name="orquestadorService-process-order-cancel" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="orquestadorService-process-order-cancel" doc:id="57a47fa8-5da5-40b0-b4d8-3261a50a12d4" >
+		<ee:transform doc:name="set orchestrator request" doc:id="dabc5d8e-6e86-41d4-8aa6-28012cd8f6e2" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="orquestatorRequest" ><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://tempuri.org/
+ns ns01 http://www.etb.com.co/orquestador
+---
+{
+	ns0#ProcesarOrden: {
+		ns0#solicitudOrden: {
+			ns01#Encabezado: {
+				ns01#Propiedades: {
+					ns01#Propiedad: {
+						ns01#Nombre: "",
+						ns01#Valor: ""
+					}
+				},
+				ns01#Sistema: {
+					ns01#IdCorrelacion: vars.orderNumber,
+					ns01#Nombre: "MULESOFT",
+					ns01#Servidor: "MULESOFT"
+				}
+			},
+			ns01#DatosSolicitud: {
+				ns01#EstadoOrden: vars.orderStatus.status,
+				ns01#NumeroOrden: vars.orderNumber,
+				ns01#Tramite: vars.orderData[0].Tramite.'Tipo_Tramite',
+				ns01#UsuarioEvento: ""
+			}
+		}
+	}
+}]]></ee:set-variable>
+				<ee:set-variable variableName="orquestadorOperation" ><![CDATA[%dw 2.0
+output application/java
+---
+p('orquestador.operation.procesarOrden')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Process Order" doc:id="482fec51-9010-47d2-bc53-eca962544278" name="post-availability-order-client"/>
+		<ee:transform doc:name="set response" doc:id="0296ea56-1e87-4b57-b298-fa48d0a6762f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var status = payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Estado
+var detalle = payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.DetalleEstado
+var manexepcion = payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Codigo default ""
+---
+if(status == "OK")
+{
+  "status": status,
+  "orderNumber": vars.orderNumber,
+  "idServiceAccount": vars.orderData[0]."Servicio_Tramite"."Id_Cuenta_Servicio"
+}
+else if(manexepcion == "10609")
+{
+  "status": "OK",
+  "orderNumber": vars.orderNumber,
+  "idServiceAccount": vars.orderData[0]."Servicio_Tramite"."Id_Cuenta_Servicio",
+  "message": detalle
+}
+else
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": detalle
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+var status = payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Estado
+var manexepcion = payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Codigo default ""
+---
+if(status == "OK" or manexepcion == "10609") 201 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>
