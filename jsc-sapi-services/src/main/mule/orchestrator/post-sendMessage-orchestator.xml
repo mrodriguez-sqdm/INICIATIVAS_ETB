@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-sendMessage-orchestatorSub_Flow" doc:id="468db29c-e752-46a8-b17e-83dab92ebfc8" >
+		<set-variable value="#[payload]" doc:name="Set Variable originalPayload" doc:id="fc7445cd-3d02-4528-84bc-511ff26cff6c" variableName="originalPayload"/>
+		<ee:transform doc:name="Set payload smpp client" doc:id="37b4dbb2-de86-4ba2-9ee2-d15add0dc1cf">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	phoneNumber: payload.destination,
+	message: payload.message
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		<flow-ref doc:name="Call smpp client" doc:id="d14b19de-a28f-49d0-ba31-9134c1998101" name="post-sendMessage-clientSub_Flow" />
+		<ee:transform doc:name="Set Response" doc:id="3d3fe338-cfce-43ff-92a2-aa5fcdf9fec7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[output application/json
+---
+{
+  destination: vars.originalPayload.destination,
+  status: if (payload == null) "error" else "success",
+  details: if (payload == null) "Error send message to SMPP" else "Message sent successfully",
+  smscId: payload,
+  fechaRespuesta: (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},
+  respuestaSMSC: 'DELIVERED',
+  metadata: {
+    prioridad: vars.originalPayload.priority,
+    canalEnvio: "Directo",
+    tipoMensaje: "Transaccional",
+    origenIP: ""
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
