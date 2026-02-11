@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-rechargeLine-orchestratorSub_Flow" doc:id="21c9d047-cbf0-4c2b-ba69-857b8e729c84" >
+		<ee:transform doc:name="Map Body" doc:id="645ada9d-a6ef-4c6b-b9d2-2572ff0ab8a0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "amount": {
+    "amount": vars.inputPayload.amount,
+    "currency": p('jsc-sapi.recharge.currency')
+  },
+  "msisdn": vars.inputPayload.msisdn,
+  "externalID": vars.inputPayload.gestor
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<try doc:name="Try" doc:id="0842ca13-d5c5-49b7-ad46-88d33ca11e52" >
+			<flow-ref doc:name="Go to Client" doc:id="c2efbc10-36c1-48a2-a6d7-f11860e0769b" name="post-rechargeLine-client" />
+			<ee:transform doc:name="Map Out" doc:id="cc47c26d-f692-4e48-b4f9-225354d0cf35" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	id: vars.billingAccountObject.id,
+	status: "Successful"
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="56a082d0-e757-44c4-aeda-dd5a6dbb21f9" >
+					<ee:transform doc:name="Error output" doc:id="d0401732-aa85-4d85-8a39-66a81476c403">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "LINE_RECHARGE",
+	"message": {
+	  "message": vars.errorMessageOutput
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	
+	
+	<sub-flow name="get-balance-structured-orchestratorSub_Flow">
+
+    <try>
+
+        <flow-ref name="get-subscription-client-by-msisdn" />
+
+        <ee:transform doc:name="Set request subscription">
+            <ee:variables>
+                <ee:set-variable variableName="request">
+                    <![CDATA[
+%dw 2.0
+output application/java
+---
+{
+    size: p('jsc-sapi.balance-structured.size'),
+    subscription: payload.content[0].id,
+    status: p('jsc-sapi.balance-structured.status')
+}
+                    ]]>
+                </ee:set-variable>
+
+                <ee:set-variable variableName="parentPkgInstanceId">
+                    <![CDATA[
+%dw 2.0
+output application/java
+---
+(payload.content default [])[0].packageList[0].id default null
+                    ]]>
+                </ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <flow-ref name="get-pkgi-client" />
+
+        <ee:transform doc:name="Set request groupMember">
+            <ee:variables>
+                <ee:set-variable variableName="requestPkgi">
+                    <![CDATA[
+%dw 2.0
+output application/java
+---
+{
+    size: p('jsc-sapi.balance-structured.size'),
+    subscription: payload.groupMember.id,
+    status: p('jsc-sapi.balance-structured.status')
+}
+                    ]]>
+                </ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <ee:transform doc:name="Build balance requests">
+            <ee:variables>
+                <ee:set-variable variableName="balanceRequests">
+                    <![CDATA[
+%dw 2.0
+output application/java
+---
+[
+    vars.request,
+    vars.requestPkgi
+] filter ($.subscription != null)
+                    ]]>
+                </ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <foreach doc:name="For Each" doc:id="6f1575b2-ae23-4c5c-8d29-cbcd573be4c2" collection="#[vars.balanceRequests]">
+				<set-variable value="#[payload]" doc:name="Set Variable" doc:id="bbdb0c4b-6dd4-43b2-b7b8-821e86234a57" variableName="request"/>
+				<flow-ref doc:name="Get Balance" doc:id="d0c15fbf-7eee-410f-b65c-a28fe0838231" name="get-balance-structured-client" />
+			</foreach>
+			<ee:transform doc:name="Map Out">
+            <ee:message>
+                <ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+{
+    ExternalId: vars.connectionNumber,
+    description: "Consulta Exitosa",
+    Content:
+        payload
+            flatMap $.content
+            map (item) -> {
+                name: item.name,
+                trafficLimitValueOrig: item.trafficLimitValueOrig default 0,
+                trafficLimitValue: item.trafficLimitValue default 0,
+                trafficLimitValueRenewal: item.trafficLimitValueRenewal default 0,
+                category: item.category,
+                "type": item.'type',
+                trafficLimitValueOnRenewal: item.trafficLimitValueOnRenewal default 0
+            }
+}
+                    ]]>
+                </ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler>
+            <on-error-continue logException="true">
+                <ee:transform doc:name="Error output">
+                    <ee:message>
+                        <ee:set-payload>
+                            <![CDATA[
+%dw 2.0
+output application/json
+---
+{
+    status: 500,
+    code: "GET_BALANCE_STRUCTURED",
+    message: {
+        message: vars.errorMessageOutput
+    },
+    messageServer: "Error obtaining subscription balance",
+    cause: [
+        {
+            origin: app.name,
+            message: "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+        }
+    ]
+}
+                            ]]>
+                        </ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">
+                            <![CDATA[
+%dw 2.0
+output application/java
+---
+500
+                            ]]>
+                        </ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-continue>
+        </error-handler>
+
+    </try>
+
+</sub-flow>
+	
+
+</mule>

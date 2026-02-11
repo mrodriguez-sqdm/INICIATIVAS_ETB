@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-cambioSuscriptorLTECorp-orchestratorSub_Flow" doc:id="9451d083-6537-4514-99d7-bd2b2321fd7b" >
+		<try doc:name="Try" doc:id="07b6d856-e440-4aa8-872c-3d3a7ecd6aa2" >
+			<ee:transform doc:name="Set connectionNumber (msisdn)" doc:id="79aff93b-f53d-48e0-a89d-95b369fcc4bc">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="connectionNumber"><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputPayload.msisdn]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+			<flow-ref doc:name="Go to get subscription client (subscriptionResp)" doc:id="ac2169ee-f001-4dfc-a30c-af220f3adc8f" name="get-subscription-client-by-msisdn" target="subscriptionResp" />
+			<choice doc:name="Choice" doc:id="8c03d525-4a41-4051-b01c-46bf16836ac1">
+			<when expression="#[isEmpty(vars.subscriptionResp.content default []) or (vars.subscriptionResp.content[0].id == null)]">
+				<ee:transform doc:name="Error" doc:id="5ce39154-4d64-4845-b7d9-b1ea7d17555a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "response": {
+    "code": 1,
+    "description": "El subscription relacionado a la solicitud no existe."
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Go to consult subscriber destination" doc:id="7b4470eb-3b47-4e8a-8e8a-591d7aa51686" name="post-cambioSuscriptorLTECorp-consultSubscriberDestination" />
+			</otherwise>
+		</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="71883ba8-158f-433c-8614-0033f2828bbc" >
+					<ee:transform doc:name="Error output" doc:id="df63f0f4-1cb8-453e-805b-43c021a6ae04" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "",
+	"message": {
+	  "message": (vars.errorMessageOutput default "") ++ " Respuesta JSC: " ++ error.muleMessage.typedValue.message.message default ""
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-cambioSuscriptorLTECorp-consultSubscriberDestination" doc:id="12f3f78d-0b97-42eb-8b4d-4362def61d68" >
+		<flow-ref doc:name="Go to get subscriber client (subscriberObject)" doc:id="aca8caf2-a331-4ce6-84e2-cdda4b3901c4" name="get-subscriber-client" />
+		<choice doc:name="Choice" doc:id="fda168c0-ebd4-45e3-a9cd-5ab816e84316" >
+			<when expression="#[isEmpty(vars.subscriberObject.content default [])]">
+				<ee:transform doc:name="Set request body" doc:id="07638acc-bafa-4e25-adca-d1172f3581e9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "externalID": vars.inputPayload.documentType ++ vars.inputPayload.documentNumber,
+  "subscriberType": "EXTERNAL",
+  "document": {
+    "documentType": "EXTERNAL",
+    "fiscalID" : vars.inputPayload.documentType ++ vars.inputPayload.documentNumber
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Go to create subscriber client (subscriberObject)" doc:id="74ebbd67-6805-4e1d-8d68-ea383be0bede" name="post-subscriber-client" target="postSubscriberResp"/>
+			</when>
+		</choice>
+		<flow-ref doc:name="Go to consult billing account destination" doc:id="6fa0f9ab-e00f-46c4-9f9c-1471d6e55ee5" name="post-cambioSuscriptorLTECorp-consultBillingAccountDestination" />
+	</sub-flow>
+	<sub-flow name="post-cambioSuscriptorLTECorp-consultBillingAccountDestination" doc:id="b1792e60-6cee-4e50-8ee3-5be34e125d26" >
+		<flow-ref doc:name="Go to consult billing account destination client (billingAccountInfo)" doc:id="fe585831-d4e5-4655-ac29-7e122da056f9" name="get-billingBA-client"/>
+		<choice doc:name="Choice" doc:id="db749a8c-f81d-4997-be9e-6749d33a2e57" >
+			<when expression="#[vars.billingAccountInfo.content[0].id == null]" >
+				<ee:transform doc:name="Set request body" doc:id="c1e928f1-0e05-4a4f-a3f6-eaf4a3da4eef" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "name": "Creating a new BillingAccount",
+  "externalID": vars.inputPayload.billingAccountNumber,
+  "subscriber": {
+    "id": if(isEmpty(vars.subscriberObject.content default [])) vars.postSubscriberResp.externalID else vars.subscriberObject.content[0].id
+  },
+  "cycleConfig": {
+    "cycleDay": vars.inputPayload.PAM
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to create billing account destination with cicle (billingAccountObject)" doc:id="6e508aad-73c4-4b3b-861a-2197ebfd93fe" name="post-billingBA-client" />
+			</when>
+		</choice>
+		<flow-ref doc:name="Go to asign subscriber destination to subscription" doc:id="128633d8-0cc6-4b4f-a965-6ab3c7473d63" name="post-cambioSuscriptorLTECorp-asignSubscriberDestinationToSubscription" />
+	</sub-flow>
+	<sub-flow name="post-cambioSuscriptorLTECorp-asignSubscriberDestinationToSubscription" doc:id="0880c23e-4fda-4dfc-ac8b-eea4e7125808" >
+		<flow-ref doc:name="Go to asign subscriber destination to subscription client (subtorToSubtionResp)" doc:id="fafe14c9-5ace-446b-8ea0-d9f44a552f89" name="post-assignSubscriptionToSubscriber-client"/>
+		<ee:transform doc:name="Set request body" doc:id="893dc7a4-ca65-44c6-8f4d-11a9bdcb8509">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "defaultBillingAccount": {
+        "id" : if(vars.billingAccountInfo.content[0].id == null) vars.billingAccountObject.id else vars.billingAccountInfo.content[0].id,
+        "name"  : "Moving subscription to billing account cycle"
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Set subscription_id" doc:id="d7710f47-affc-4dfc-964a-9dd5a90cbbb6" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="orderObject" ><![CDATA[%dw 2.0
+output application/java
+---
+
+{
+	"subscription": {
+		"id": vars.subscriptionResp.content[0].id
+	}
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Set action" doc:id="bd8139af-759f-44b5-b002-104ed3c113bb" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="subscriptionAction" ><![CDATA[%dw 2.0
+output application/java
+---
+"MODIFY"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to move subscription to billing account destination" doc:id="26e0a62e-0c8a-44a1-bbe1-0c6f2c104e1b" name="patch-billingSubscription-client"/>
+		<ee:transform doc:name="Set httpStatus" doc:id="87373b7b-f734-4386-931a-8d395aa019d2" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

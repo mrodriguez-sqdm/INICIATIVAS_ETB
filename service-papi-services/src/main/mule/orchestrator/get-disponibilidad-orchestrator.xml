@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-disponibilidad-orchestratorSub_Flow" doc:id="63e56f4b-8027-4a7e-8423-2adc60739658" >
+		<choice doc:name="Choice" doc:id="0302f67e-22ea-4ab7-ae48-9765a2727873" >
+			<when expression="#[!isEmpty(attributes.queryParams.Subtipo_Orden) and ((p('orderSubType') splitBy &quot;;&quot;) contains attributes.queryParams.Subtipo_Orden)]">
+				<flow-ref doc:name="Go to get-disponibilidad-venta-orchestrator-subflow" doc:id="7f7483cd-b414-4164-9c25-74dfe295e681" name="get-disponibilidad-venta-orchestrator-subflow"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to get-disponibilidad-orchestrator-normal-subflow" doc:id="39226e02-f03f-4fec-af9a-ebd278cb21d4" name="get-disponibilidad-orchestrator-normal-subflow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-disponibilidad-venta-orchestrator-subflow" doc:id="b9076a3a-4424-4008-b666-c7bd1b6e52ad" >
+		<choice doc:name="Choice"
+			doc:id="c2df05aa-c763-44a9-bae1-f5cf3dc1f6b2">
+			<when
+				expression="#[vars.msisdn != null and vars.sim != null]">
+				<scatter-gather doc:name="Scatter-Gather"
+					doc:id="e5b80728-3b18-4aa2-9367-a365cb56a751">
+					<route>
+						<flow-ref doc:name="get-disponibilidad-msisdn-client"
+							doc:id="ed0262b3-0bcb-4478-ae87-5c532b14c093"
+							name="get-disponibilidad-msisdn-client" />
+					</route>
+					<route>
+						<flow-ref doc:name="get-disponibilidad-simcard-client" doc:id="3a049b83-a7e9-4fda-ba37-504379550dbf" name="get-disponibilidad-simcard-client" />
+					</route>
+
+				</scatter-gather>
+				<choice doc:name="Choice" doc:id="496bcb3a-3860-4e1e-8a6f-8f03423674f4">
+			<when expression='#[( isEmpty(payload."0".payload.id) or (((attributes.queryParams.Subtipo_Orden default "") contains "NCP"))) and !isEmpty(vars.msisdn)]'>
+				<ee:transform doc:name="Set payload" doc:id="f5d9052c-66f8-4d31-a732-f4bbec86e217">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+  id: vars.msisdn,
+  name: "LTE PREACTIVADO",
+  status: "FREE",
+  storeStatus: "FREE",
+  pool: {
+  	id: p('jsc-sapi.msisdn.pool.name'),
+    name: p('jsc-sapi.msisdn.pool.name')
+  },
+  sourcePool: {
+  	id: p('jsc-sapi.msisdn.sourcePool.name'),
+    name: p('jsc-sapi.msisdn.sourcePool.name')
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="7367882b-e25f-41a2-8de8-eac18fcb436d" message="#[crearMsisdn: payload]" />
+				<flow-ref doc:name="Go to post-msisdn-client" doc:id="72659448-8e43-4354-93a7-73393c3859ea" name="post-msisdn-client" />
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" doc:id="79fd0093-ed24-4690-9bb6-d457874c84f8" message="No lo crea" />
+						<ee:transform doc:name="Response Final" doc:id="e1b9e55a-bc74-4997-92bd-831aa3315429">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var responseMsisdn = payload."0".payload 
+var responseSim = payload."1".payload
+---
+if(responseMsisdn.id == null and  responseSim.id == null)
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "Data not found"
+  },
+  "messageServer": responseMsisdn.message ++ ". " ++ responseSim.message,
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}
+else
+{
+  ("sim": {
+    "id": responseSim.id,
+    "imsi": responseSim.imsi.id,
+    "status": responseSim.status
+  }) if(responseSim.id != null),
+  ("msisdn": {
+    "id": responseMsisdn.id,
+    "status": responseMsisdn.status
+  }) if(responseMsisdn.id != null) 
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+var responseMsisdn = payload."0".payload 
+var responseSim = payload."1".payload
+---
+if(responseMsisdn.id == null and  responseSim.id == null) 404 else 200]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			</when>
+			<when
+				expression="#[vars.msisdn == null and vars.sim != null]">
+				<flow-ref doc:name="get-disponibilidad-simcard-client" doc:id="058bfb99-6975-4c2c-a6db-0ef1886ad04e" name="get-disponibilidad-simcard-client" />
+				<ee:transform doc:name="Response"
+					doc:id="e69d9ade-6cd7-4372-ac36-f5ed815b19eb">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.id != null )
+{
+    "id" : payload.id,
+	"simCode" : payload.simCode,
+	"puk" : payload.puk,
+	"status" : payload.status,
+	"storeStatus" : payload.storeStatus,
+	"pool" : payload.pool,
+	"sourcePool" : payload.sourcePool,
+	"imsi" : payload.imsi,
+	"links" : payload.links
+}
+else
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "Data not found"
+  },
+  "messageServer": payload.message,
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload.id != null ) 200 else 404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<when
+				expression="#[vars.msisdn != null and vars.sim == null]">
+				<flow-ref doc:name="get-disponibilidad-msisdn-client"
+					doc:id="a9b7a72d-53fc-4875-a069-1a05888e5cd9"
+					name="get-disponibilidad-msisdn-client" />
+				<choice doc:name="Choice" doc:id="0c6a0620-ccf4-424b-928e-6cb666f2c50c" >
+					<when expression='#[(!isEmpty(vars.msisdn) or (((attributes.queryParams.Subtipo_Orden default "") contains "NCP")))]' >
+						<ee:transform doc:name="Set payload" doc:id="44f93e33-16ff-4248-9230-b66997e3f9ff" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+  id: vars.msisdn,
+  name: "LTE PREACTIVADO",
+  status: "FREE",
+  storeStatus: "FREE",
+  pool: {
+  	id: p('jsc-sapi.msisdn.pool.name'),
+    name: p('jsc-sapi.msisdn.pool.name')
+  },
+  sourcePool: {
+  	id: p('jsc-sapi.msisdn.sourcePool.name'),
+    name: p('jsc-sapi.msisdn.sourcePool.name')
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<logger level="DEBUG" doc:name="Logger" doc:id="43fede60-5657-40ac-b166-e623ce4d641e" message="#[crearMsisdn: payload]" />
+						<flow-ref doc:name="Go to post-msisdn-client" doc:id="26f4507c-4ea7-4ae2-bda6-00979284e8c8" name="post-msisdn-client" />
+					</when>
+					<otherwise >
+						<logger level="INFO" doc:name="Logger" doc:id="1a2c0f0b-938d-4140-9206-585a34fb8ede" message="No lo crea" />
+						<ee:transform doc:name="Response" doc:id="79c7101d-8b31-4dc9-a206-97968a493236">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.id != null)
+{
+    "id" : payload.id,
+    "status" : payload.status,
+    "storeStatus" : payload.storeStatus,
+    "pool" : payload.pool,
+    "sourcePool" : payload.sourcePool,
+    "links" : payload.links
+}
+else
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "Data not found"
+  },
+  "messageServer": payload.message,
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.id != null) 200 else 404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					</otherwise>
+				</choice>
+
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-disponibilidad-orchestrator-normal-subflow"
+		doc:id="3afb0b70-dcd9-4210-a5e7-aa005bbad831">
+		<choice doc:name="Choice"
+			doc:id="e292d3e4-1ad3-4c44-aafa-451259821feb">
+			<when
+				expression="#[vars.msisdn != null and vars.sim != null]">
+				<scatter-gather doc:name="Scatter-Gather"
+					doc:id="5cc36376-db33-418f-a811-ef022ba8ec74">
+					<route>
+						<flow-ref doc:name="get-disponibilidad-msisdn-client"
+							doc:id="a2814bc7-d9d2-445d-b345-a8ca78f0ce1c"
+							name="get-disponibilidad-msisdn-client" />
+					</route>
+					<route>
+						<flow-ref doc:name="get-disponibilidad-simcard-client" doc:id="1014716c-e931-40a4-bcab-563c203e7fe4" name="get-disponibilidad-simcard-client" />
+					</route>
+
+				</scatter-gather>
+				<ee:transform doc:name="Response Final"
+					doc:id="60fe4c84-414c-49cd-a18a-f7446421db12">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var responseMsisdn = payload."0".payload 
+var responseSim = payload."1".payload
+---
+if(responseMsisdn.id == null and  responseSim.id == null)
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "Data not found"
+  },
+  "messageServer": responseMsisdn.message ++ ". " ++ responseSim.message,
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}
+else
+{
+  ("sim": {
+    "id": responseSim.id,
+    "imsi": responseSim.imsi.id,
+    "status": responseSim.status
+  }) if(responseSim.id != null),
+  ("msisdn": {
+    "id": responseMsisdn.id,
+    "status": responseMsisdn.status
+  }) if(responseMsisdn.id != null) 
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+var responseMsisdn = payload."0".payload 
+var responseSim = payload."1".payload
+---
+if(responseMsisdn.id == null and  responseSim.id == null) 404 else 200]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<when
+				expression="#[vars.msisdn == null and vars.sim != null]">
+				<flow-ref doc:name="get-disponibilidad-simcard-client" doc:id="f12c77dd-21db-468f-8d1a-53474dcbd8f1" name="get-disponibilidad-simcard-client" />
+				<ee:transform doc:name="Response"
+					doc:id="7c1169d5-d0d5-465a-9d5f-8ddf99ee7e03">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.id != null )
+{
+    "id" : payload.id,
+	"simCode" : payload.simCode,
+	"puk" : payload.puk,
+	"status" : payload.status,
+	"storeStatus" : payload.storeStatus,
+	"pool" : payload.pool,
+	"sourcePool" : payload.sourcePool,
+	"imsi" : payload.imsi,
+	"links" : payload.links
+}
+else
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "Data not found"
+  },
+  "messageServer": payload.message,
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload.id != null ) 200 else 404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<when
+				expression="#[vars.msisdn != null and vars.sim == null]">
+				<flow-ref doc:name="get-disponibilidad-msisdn-client"
+					doc:id="58d0a73d-d5da-4258-89f7-ad8d859cbbee"
+					name="get-disponibilidad-msisdn-client" />
+<ee:transform doc:name="Response" doc:id="03e49e7c-487e-4b72-bcb0-39783bcc92f6">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.id != null)
+{
+    "id" : payload.id,
+    "status" : payload.status,
+    "storeStatus" : payload.storeStatus,
+    "pool" : payload.pool,
+    "sourcePool" : payload.sourcePool,
+    "links" : payload.links
+}
+else
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "Data not found"
+  },
+  "messageServer": payload.message,
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.id != null) 200 else 404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

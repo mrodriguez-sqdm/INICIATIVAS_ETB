@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-activate-eSim-orchestratorSub_Flow" doc:id="8925cd13-18b6-4bba-abc9-48117a585bba" >
+		<flow-ref doc:name="Get activaciones esim" doc:id="d2b52165-bfe7-4e50-8af3-2460bea97b4c" name="Obtener-activaciones"/>
+		<choice doc:name="Choice" doc:id="a15862a5-a887-47cb-9d13-80ec373a1a60" >
+			<when expression='#[payload.Fecha_Activacion == null and payload.Estado == "RESERVADO"]'>
+				<ee:transform doc:name="Set variables" doc:id="efe133b0-a6e6-4e9f-9652-1dda8ac564ae">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="tramite" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.Tramite]]></ee:set-variable>
+						<ee:set-variable variableName="orderNumber" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.Numero_Orden]]></ee:set-variable>
+						<ee:set-variable variableName="usuario" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.Usuario_Modificacion]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Get orden" doc:id="61786f49-14d7-4ddc-b599-0bd3b982ba61" name="Obtener-ordenes"/>
+				<ee:transform doc:name="Set isPortabilidad" doc:id="521311ef-bf65-4887-82a8-c2f9c131afc5" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="isPortabilidad" ><![CDATA[%dw 2.0
+output application/java
+---
+!isEmpty(payload.Caracteristicas_Orden filter ($.Valor contains p('parameters-esim.portabilidad')))]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="6183d485-723e-44d2-888d-9abbe87ea758" >
+					<when expression="#[vars.isPortabilidad]">
+						<ee:transform doc:name="Set isFechaValida" doc:id="afda90be-8c47-48ea-9836-0f4cf75445de" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="isFechaValida" ><![CDATA[%dw 2.0
+output application/java
+
+var fechaEjecucion = (payload.Fase_Orden filter ($.Fase == p('parameters-esim.fase-portacion')))[0].Fecha_Ejecucion
+---
+if(fechaEjecucion == null) false else (fechaEjecucion splitBy ("."))[0] < now() 
+]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<choice doc:name="Choice" doc:id="0acbaa8a-abc8-4b93-b59e-55a6f2088be5" >
+							<when expression="#[vars.isFechaValida]">
+								<ee:transform doc:name="Request orquestador" doc:id="75a9ed3d-399d-4b47-86fd-9a0f714a43ff">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	id: if(vars.tramite == "VTA") p('parameters-esim.id-vta') else p('parameters-esim.id-reno'),
+	orderNumber: vars.orderNumber,
+	iccid: vars.iccid,
+	usuario: vars.usuario
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<flow-ref doc:name="Call orquestador" doc:id="82f88dbb-b217-4fb0-96ae-cf5a65e1280e" name="orquestador-sapi-clientSub_Flow"/>
+								<ee:transform doc:name="Response" doc:id="9f9ae045-20b2-4095-b41c-ff04bd088f4b" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: payload.Code,
+	description: payload.DescCustom
+}]]></ee:set-payload>
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.Status == "ERROR") 500 else 201
+]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</when>
+							<otherwise >
+								<ee:transform doc:name="Error response" doc:id="ce11abbd-08b4-4ff1-9c2a-9b62c5b58007" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "500",
+	description: "La Fecha_Ejecucion de la Portación no es válida"
+}]]></ee:set-payload>
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</otherwise>
+						</choice>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Error response" doc:id="354b48f4-97d7-44b8-b716-f65774094fcb" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "500",
+	description: "La orden no está asociada a un proceso de PORTABILIDAD."
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error response" doc:id="b85686d0-f755-4ed0-82f2-b0f9e8040721" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "500",
+	description: "No se encontró registro de ICCID para activación o la SIMCARD ya fue activada."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
