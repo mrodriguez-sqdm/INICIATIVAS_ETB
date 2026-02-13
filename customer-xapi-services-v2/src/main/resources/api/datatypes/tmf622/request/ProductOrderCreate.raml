@@ -1,0 +1,774 @@
+#%RAML 1.0 DataType
+# TMF622 Product Order Management API - Create Request
+type: object
+description: |
+  Request para crear ProductOrder TMF622 con orquestación basada en estados.
+
+  IMPORTANTE: Los estados en orderState determinan automáticamente qué procesos ejecutar.
+
+  CAMPOS GENERADOS AUTOMÁTICAMENTE (no enviar en el request):
+  - orderNumber/Numero_Orden: Generado por el Process API según categoría
+    - FIXED_SERVICE: MDM-FIBRA-XXXXXXXXX (desde MDM_CD_CONSECUTIVOS)
+    - MOBILE_SERVICE: MDM_MOV-XXXXXX (desde PAR_CONSECUTIVOS)
+  - orderId en respuesta: Generado como identificador de la orden
+  - Fecha_Creacion, Fecha_Modificacion: Timestamps automáticos
+  - Usuario_Creacion: Extraído del contexto de autenticación
+
+  DERIVACIÓN DE TIPO DE TRÁMITE:
+  El tipoTramite se deriva automáticamente de productOrderItem[].action:
+  - add → VTA (Venta)
+  - modify → PRCH (Cambio de plan)
+  - delete → CEST (Cambio de estado)
+
+  CAMPOS OPCIONALES QUE PUEDEN VENIR VACÍOS O NULL:
+  Todos los campos marcados como required: false aceptan null o pueden omitirse.
+  Serán mapeados a las colecciones correspondientes según category:
+  - FIXED_SERVICE → MDM_CD_ORDEN
+  - MOBILE_SERVICE → MDM_ORDEN + MDM_ORDEN_SERVICIO
+
+  ESTADOS COMERCIALES:
+  - I10: Interaction Created → Inicializa orden (OBLIGATORIO para creación)
+  - I30: Catalog → Consulta catálogo (TMF620)
+  - I40: Fraud Inquiry → Validación de fraude
+  - I50: Customer Validation → Valida cliente (TMF629, TMF717)
+  - I60: Central Risk → Consulta centrales de riesgo (TMF696)
+  - I61: Identity Validation → Validación de identidad
+  - I62: Business Quota Validation → Validación de cupo comercial
+  - I70: Plan Selection → Procesa selección de plan (TMF620, TMF671)
+  - 005: Customer Data → Actualiza datos de cliente
+  - I90: Completed → Finaliza orden
+
+  ESTADOS DE SERVICIO:
+  - 000: Initial
+  - 010: Validate Availability → Valida disponibilidad técnica (TMF641)
+  - 040: Pending Appointment → Consulta disponibilidad de agenda (TMF626)
+  - 050: Appointment Programming → Programa cita de instalación
+  - 060: Successful Appointment → Confirma agenda
+  - 070: Pending Orchestration → Envía a orquestadores backend
+  - 100: Completed → Completa aprovisionamiento
+
+properties:
+  cun:
+    type: string | nil
+    required: false
+    description: |
+      Código Único de Negocio (CUN) asociado a la orden.
+      Puede venir vacío o null en la creación y podrá ser actualizado
+      posteriormente mediante PATCH.
+    example: "4347190002507473"
+    
+  orderNumber:
+    type: string
+    required: false
+    description: |
+      Número de orden. Campo opcional.
+
+      COMPORTAMIENTO:
+      - POST (crear): Si se envía, valida que NO exista (idempotencia).
+        Si ya existe, retorna error 409 Conflict.
+        Si no se envía, se genera automáticamente.
+      - PATCH (actualizar): Si se envía, valida que SÍ exista.
+        Si no existe, retorna error 404 Not Found.
+
+      FORMATO según categoría:
+      - FIXED_SERVICE: MDM-FIBRA-XXXXXXXXX
+      - MOBILE_SERVICE: MDM_MOV-XXXXXX
+    example: "MDM-FIBRA-639052"
+
+  priority:
+    type: string
+    required: false
+    description: Prioridad de la orden
+    enum: [ "1", "2", "3", "4" ]
+    default: "4"
+    example: "1"
+
+  description:
+    type: string
+    required: false
+    description: Descripción de la orden
+    maxLength: 1000
+    example: "Orden de servicio FTTH para cliente residencial"
+
+  category:
+    type: string
+    required: true
+    description: |
+      Categoría del producto/servicio.
+
+      VALORES VÁLIDOS:
+      - FIXED_SERVICE: Servicios fijos (FTTH, COBRE)
+      - MOBILE_SERVICE: Servicios móviles (LTE)
+      - FIXED_MOBILE: Convergente (fijo + móvil)
+      - DTH: Televisión satelital
+      - VALUE_ADDED: Servicios de valor agregado (SVA)
+    enum: [ FIXED_SERVICE, MOBILE_SERVICE, FIXED_MOBILE, DTH, VALUE_ADDED ]
+    example: "FIXED_SERVICE"
+
+  orderState:
+    type: object
+    required: true
+    description: |
+      Estados actuales de la orden.
+
+      CRÍTICO: Estos estados determinan qué procesos ejecutar automáticamente.
+      El Process API interpreta los estados y orquesta las llamadas correspondientes.
+    properties:
+      commercialState:
+        type: string
+        required: true
+        default: "I10"
+        enum: [ I10, I30, I40, I50, I60, I61, I62, I70, "005", I90, C10, R10 ]
+        description: |
+          Estado comercial de la orden. OBLIGATORIO.
+          Para creación de órdenes debe enviarse I10 (Interaction Created).
+          Los demás estados se usan en actualizaciones (PATCH).
+        example: "I10"
+
+      serviceState:
+        type: string
+        required: false
+        enum: [ "000", "010", "020", "030", "035", "040", "050", "055", "060", "061", "070", "100" ]
+        description: Estado de servicio/aprovisionamiento
+        example: "010"
+
+      activationState:
+        type: string
+        required: false
+        enum: [ EN_PROCESO, APROBADA, RECHAZADA, EN_EVALUACION ]
+        description: Estado de activación
+        example: "EN_PROCESO"
+
+  relatedParty:
+    type: array
+    required: false
+    description: Partes relacionadas con la orden (clientes, contactos)
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Identificador de la parte
+          example: "123456789"
+
+        role:
+          type: string
+          description: Rol de la parte en la orden
+          enum: [ Customer, BillPayer, Contact, Subscriber ]
+          example: "Customer"
+
+        name:
+          type: string
+          required: false
+          description: Nombre de la parte
+          example: "Juan Pérez"
+
+        documentType:
+          type: string
+          required: false
+          description: Tipo de documento
+          enum: [ CC, CE, TI, NIT, PASSPORT ]
+          example: "CC"
+
+        documentNumber:
+          type: string
+          required: false
+          description: Número de documento
+          example: "123456789"
+
+        firstName:
+          type: string
+          required: false
+          description: Primer nombre (se puede derivar de name si no se envía)
+          example: "Juan"
+
+        lastName:
+          type: string
+          required: false
+          description: Primer apellido
+          example: "Pérez"
+
+        secondLastName:
+          type: string
+          required: false
+          description: Segundo apellido
+          example: "García"
+
+        shortCompanyName:
+          type: string
+          required: false
+          description: Nombre corto de empresa (solo para documentType NIT)
+          example: "ACME Corp"
+
+        documentExpeditionDate:
+          type: date-only
+          required: false
+          description: Fecha de expedición del documento
+
+        authorizeDataManagement:
+          type: boolean
+          required: false
+          default: false
+          description: Autoriza manejo de datos personales (HABEAS DATA)
+
+        authorizeCentralsQuery:
+          type: boolean
+          required: false
+          default: false
+          description: Autoriza consulta a centrales de riesgo
+
+        uen:
+          type: string
+          required: false
+          description: Unidad Estratégica de Negocio
+          enum: [ "Hogares y MiPymes", "Empresas", "Gobierno" ]
+          default: "Hogares y MiPymes"
+
+        segmentUen:
+          type: string
+          required: false
+          description: Segmento dentro de la UEN
+          example: "Hogares"
+
+        segment:
+          type: string
+          required: false
+          description: Segmento del cliente
+          example: "Hogares"
+
+        accountId:
+          type: string
+          required: false
+          description: ID de cuenta del cliente (si ya existe)
+          example: "ACC-123456"
+
+        scoring:
+          type: object
+          required: false
+          description: Información de scoring/riesgo del cliente
+          properties:
+            scoringValue:
+              type: number
+              required: false
+              description: Valor del scoring
+            scoringDate:
+              type: datetime
+              required: false
+              description: Fecha del scoring
+            scoringClassification:
+              type: string
+              required: false
+              description: Clasificación del scoring
+            scoringType:
+              type: string
+              required: false
+              description: Tipo de scoring
+            sourceSystem:
+              type: string
+              required: false
+              description: Sistema origen del scoring
+
+        contactMedium:
+          type: array
+          required: false
+          description: Medios de contacto
+          items:
+            type: object
+            properties:
+              mediumType:
+                type: string
+                enum: [ Email, Phone, Address ]
+                example: "Phone"
+
+              characteristic:
+                type: object
+                properties:
+                  emailAddress:
+                    type: string
+                    required: false
+                    example: "juan.perez@example.com"
+
+                  phoneNumber:
+                    type: string
+                    required: false
+                    example: "3001234567"
+
+                  street:
+                    type: string
+                    required: false
+                    example: "KR 66 2 05"
+
+                  city:
+                    type: string
+                    required: false
+                    example: "FACATATIVA"
+
+                  stateOrProvince:
+                    type: string
+                    required: false
+                    example: "CUNDINAMARCA"
+
+                  country:
+                    type: string
+                    required: false
+                    example: "CO"
+
+  productOrderItem:
+    type: array
+    required: true
+    minItems: 1
+    description: Items de la orden (productos/servicios solicitados)
+    items:
+      type: object
+      properties:
+        orderId:
+          type: string
+          description: Identificador único del item
+          example: "ITEM-001"
+
+        action:
+          type: string
+          required: true
+          description: Acción a realizar sobre el producto/servicio
+          enum: [ add, modify, delete, noChange ]
+          example: "add"
+
+        quantity:
+          type: integer
+          required: false
+          default: 1
+          minimum: 1
+          description: Cantidad del producto/servicio
+          example: 1
+
+        product:
+          type: object
+          required: true
+          description: Producto/servicio solicitado
+          properties:
+            id:
+              type: string
+              required: false
+              description: ID del producto si ya existe
+              example: "PROD-FTTH-100MB"
+
+            name:
+              type: string
+              required: false
+              description: Nombre del producto
+              example: "Internet FTTH 100 Mbps"
+              
+            serviceAccountId:
+              type: string
+              required: false
+              description: |
+                ID de cuenta de servicio. Si no se envía, se genera automáticamente.
+                Mapea a Servicios[].Id_Cuenta_Servicio en MDM_CD_ORDEN.
+              example: "CS-123456"
+
+            productSpecification:
+              type: object
+              required: false
+              description: Especificación del producto desde catálogo
+              properties:
+                id:
+                  type: string
+                  description: ID de la especificación en catálogo
+                  example: "SPEC-FTTH-100"
+
+                name:
+                  type: string
+                  required: false
+                  description: Nombre de la especificación
+                  example: "FTTH 100 Mbps Residencial"
+
+            productCharacteristic:
+              type: array
+              required: false
+              description: Características técnicas del producto
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: Nombre de la característica
+                    example: "bandwidth"
+
+                  value:
+                    type: string
+                    description: Valor de la característica
+                    example: "100"
+
+                  valueType:
+                    type: string
+                    required: false
+                    description: Tipo de dato del valor
+                    example: "integer"
+
+            place:
+              type: array
+              required: false
+              description: Lugares relacionados (instalación, facturación)
+              items:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    enum: [ InstallationAddress, BillingAddress, ServiceAddress ]
+                    example: "InstallationAddress"
+
+                  street:
+                    type: string
+                    required: false
+                    example: "KR 66 2 05"
+
+                  city:
+                    type: string
+                    required: false
+                    example: "FACATATIVA"
+
+                  stateOrProvince:
+                    type: string
+                    required: false
+                    example: "CUNDINAMARCA"
+
+                  postcode:
+                    type: string
+                    required: false
+                    example: "250040"
+
+                  country:
+                    type: string
+                    required: false
+                    example: "CO"
+
+                  coverage:
+                    type: object
+                    required: false
+                    description: Información de cobertura técnica
+                    properties:
+                      coverageType:
+                        type: string
+                        required: false
+                        description: Tipo de cobertura (FTTH, HFC, etc.)
+                        example: "FTTH"
+
+                      lotCode:
+                        type: string
+                        required: false
+                        description: Código del lote
+                        example: "LOT-001"
+
+                      locality:
+                        type: string
+                        required: false
+                        description: Localidad
+                        example: "FACATATIVA"
+
+                      stratum:
+                        type: integer
+                        required: false
+                        minimum: 1
+                        maximum: 6
+                        description: Estrato socioeconómico (1-6)
+                        example: 3
+
+                      latitude:
+                        type: number
+                        required: false
+                        description: Latitud geográfica
+                        example: 4.8133
+
+                      longitude:
+                        type: number
+                        required: false
+                        description: Longitud geográfica
+                        example: -74.3575
+
+                      gisAddress:
+                        type: string
+                        required: false
+                        description: Dirección normalizada GIS
+                        example: "KR 66 2 05 FACATATIVA"
+
+                      coverageName:
+                        type: string
+                        required: false
+                        description: Nombre de la cobertura
+                        example: "FACATATIVA_FTTH_01"
+
+                      olt:
+                        type: string
+                        required: false
+                        description: OLT asignado
+                        example: "OLT-FACATATIVA-01"
+
+                      technology:
+                        type: string
+                        required: false
+                        description: Tecnología disponible
+                        enum: [ FTTH, HFC, COBRE, WIRELESS ]
+                        example: "FTTH"
+
+                      zone:
+                        type: string
+                        required: false
+                        description: Zona geográfica
+                        example: "ZONA_NORTE"
+
+                      district:
+                        type: string
+                        required: false
+                        description: Distrito
+                        example: "DISTRITO_1"
+
+                      viable:
+                        type: boolean
+                        required: false
+                        description: Indica si la dirección es viable técnicamente
+                        default: false
+                        example: true
+
+        itemState:
+          type: object
+          required: false
+          description: Estados específicos del item (pueden diferir de la orden general)
+          properties:
+            commercialState:
+              type: string
+              required: false
+              enum: [ I10, I30, I40, I50, I60, I61, I62, I70, "005", I90, C10, R10 ]
+              example: "I50"
+
+            serviceState:
+              type: string
+              required: false
+              enum: [ "000", "010", "020", "030", "035", "040", "050", "055", "060", "061", "070", "100" ]
+              example: "010"
+
+  note:
+    type: array
+    required: false
+    description: Notas y comentarios sobre la orden
+    items:
+      type: object
+      properties:
+        author:
+          type: string
+          required: false
+          description: Autor de la nota
+          example: "system"
+
+        date:
+          type: datetime
+          required: false
+          description: Fecha de la nota
+          example: 2025-11-20T10:30:00Z
+
+        text:
+          type: string
+          description: Texto de la nota
+          example: "Orden creada desde canal web"
+
+  channel:
+    type: object
+    required: false
+    description: Canal desde el cual se origina la orden
+    properties:
+      id:
+        type: string
+        description: ID del canal
+        example: "WEB"
+
+      name:
+        type: string
+        required: false
+        description: Nombre del canal
+        enum: [ WEB, MOBILE_APP, CALL_CENTER, STORE, PARTNER ]
+        example: "WEB"
+
+  transaction:
+    type: object
+    required: false
+    description: |
+      Información del trámite. Solo aplica para FIXED_SERVICE.
+      Si no se envía, el tipo de trámite se deriva de productOrderItem[].action:
+      - add → VTA (Venta)
+      - modify → PRCH (Cambio de plan)
+      - delete → CEST (Cambio de estado)
+    properties:
+      subTransactionType:
+        type: string
+        required: false
+        description: Subtipo de trámite (ej. UPGRADE, DOWNGRADE)
+        example: "UPGRADE"
+
+      executionDate:
+        type: datetime
+        required: false
+        description: Fecha de ejecución programada
+
+      reconnectionDate:
+        type: datetime
+        required: false
+        description: Fecha de reconexión (solo para reconexiones)
+
+      suspensionDate:
+        type: datetime
+        required: false
+        description: Fecha de suspensión (solo para suspensiones)
+
+      keepConnectionNumber:
+        type: boolean
+        required: false
+        default: false
+        description: Indica si se conserva el número de conexión
+
+      permanenceClause:
+        type: boolean
+        required: false
+        default: true
+        description: Indica si aplica cláusula de permanencia
+
+      permanenceClauseValue:
+        type: number
+        required: false
+        default: 0.0
+        description: Valor de la cláusula de permanencia
+
+      cancellationReason:
+        type: string
+        required: false
+        description: Causal de cancelación (solo para cancelaciones)
+
+      cancellationSubReason:
+        type: string
+        required: false
+        description: Subcausal de cancelación
+
+      cancellationDescription:
+        type: string
+        required: false
+        description: Descripción de la cancelación
+
+  mobileServiceConfig:
+    type: object
+    required: false
+    description: |
+      Configuración específica para servicios móviles (MOBILE_SERVICE).
+      Ignorado para otras categorías.
+    properties:
+      distributorId:
+        type: integer
+        required: false
+        description: ID del distribuidor
+        example: 0
+
+      planType:
+        type: string
+        required: false
+        enum: [ Prepago, Postpago ]
+        default: "Postpago"
+        description: Tipo de plan móvil
+
+      billingCycle:
+        type: string
+        required: false
+        description: Ciclo de facturación
+        example: "90"
+
+      invoiceDeliveryType:
+        type: string
+        required: false
+        description: Tipo de entrega de factura
+        example: "EMAIL"
+
+      sendReceiptFlag:
+        type: boolean
+        required: false
+        default: false
+        description: Indica si se envía recibo
+
+      portability:
+        type: object
+        required: false
+        description: Información de portabilidad (si aplica)
+        properties:
+          operatorCode:
+            type: string
+            required: false
+            description: Código del operador donante
+          portabilityPhone:
+            type: string
+            required: false
+            description: Número a portar
+          donorPlanType:
+            type: string
+            required: false
+            description: Tipo de plan en operador donante
+
+      billingAccount:
+        type: string
+        required: false
+        description: Cuenta de facturación asignada
+
+      prepaidPayment:
+        type: number
+        required: false
+        description: Monto de pago anticipado
+
+      collectionValue:
+        type: number
+        required: false
+        description: Valor de recaudo
+
+example:
+  category: "FIXED_SERVICE"
+  orderState:
+    commercialState: "I50"
+    serviceState: "010"
+  relatedParty:
+    - id: "123456789"
+      role: "Customer"
+      documentType: "CC"
+      documentNumber: "123456789"
+      name: "Juan Pérez"
+      contactMedium:
+        - mediumType: "Phone"
+          characteristic:
+            phoneNumber: "3001234567"
+        - mediumType: "Email"
+          characteristic:
+            emailAddress: "juan.perez@example.com"
+        - mediumType: "Address"
+          characteristic:
+            street: "KR 66 2 05"
+            city: "FACATATIVA"
+            stateOrProvince: "CUNDINAMARCA"
+            country: "CO"
+  productOrderItem:
+    - orderId: "ITEM-001"
+      action: "add"
+      quantity: 1
+      product:
+        name: "Internet FTTH 100 Mbps"
+        productSpecification:
+          id: "SPEC-FTTH-100"
+          name: "FTTH 100 Mbps Residencial"
+        productCharacteristic:
+          - name: "bandwidth"
+            value: "100"
+            valueType: "integer"
+          - name: "technology"
+            value: "FTTH"
+            valueType: "string"
+        place:
+          - role: "InstallationAddress"
+            street: "KR 66 2 05"
+            city: "FACATATIVA"
+            stateOrProvince: "CUNDINAMARCA"
+            postcode: "250040"
+            country: "CO"
+  channel:
+    id: "WEB"
+    name: "WEB"
