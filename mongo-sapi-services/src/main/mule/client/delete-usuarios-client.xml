@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="delete-usuarios-clientSub_Flow" doc:id="89aaa224-e75f-4fdb-b61f-ddec9e27c344" >
+		<async doc:name="Async" doc:id="7c1f5145-b330-4dd2-bd5b-24665baa3a11" >
+			<flow-ref doc:name="Call logger before" doc:id="7175b63c-f6e7-4b62-812a-13f092e8231a" name="loggin-client-call" />
+		</async>
+		<ee:transform doc:name="Payload to update" doc:id="25345d3c-d060-421b-a35c-d540493aa8e5">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Estado: false,
+	Fecha_Actualizacion: now() >> "America/Bogota"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<mongo:update-documents collectionName="${mongoDb-mdm.ecommerce.collection-users}" doc:name="Update documents" doc:id="a5fc8e40-caf6-444c-95fc-847beda7bac4" config-ref="mdm_db_Config">
+			<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+	'Mail' : attributes.queryParams.mail, 
+}]]]></mongo:query>
+		</mongo:update-documents>
+		<ee:transform doc:name="Map Out" doc:id="d473bbc0-0ebc-45cb-8aa0-e10f5b4e51b6">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.modified > 0) {
+  "codigo": "OK",
+  "descripcion": "Registro actualizado"
+} else {
+  "codigo": "OK",
+  "descripcion": "Registro no se pudo actualizar o no existe"
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.modified > 0) 201 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="57396648-be64-4ec5-aade-c920963ec472" >
+			<flow-ref doc:name="Call logger after" doc:id="8e5f73e6-5c60-4a7a-8348-62d431a2673d" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+</mule>

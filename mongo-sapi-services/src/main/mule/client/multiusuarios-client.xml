@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-multiusuarios-clientSub_Flow" doc:id="ab1623da-26e8-40e6-81d2-9e68c18c5594" >
+		<async doc:name="Async" doc:id="a2396ec2-306a-4f88-9102-3f7c8f488111">
+			<flow-ref doc:name="Call logger before" doc:id="f5922a47-014f-4ae2-8863-4e85edf80879" name="loggin-client-call" />
+		</async>
+		<choice doc:name="Choice" doc:id="6983d4a4-ec63-418c-bf2a-c9b9792a884a" >
+			<when expression="#[isEmpty(vars.usuarioHijo) or vars.usuarioHijo == null]">
+				<mongo:find-documents collectionName="${mongoDb-mdm.ecommerce.collection-multiuser}" fields="," doc:name="Consulta basica" doc:id="a4952f50-79d3-43ce-a85f-db0d6320ea0e" config-ref="mdm_db_Config" >
+					<mongo:query ><![CDATA[#["{Usuario_Padre : '" ++ vars.usuarioPadre ++  "'}"]]]></mongo:query>
+				</mongo:find-documents>
+			</when>
+			<otherwise >
+				<mongo:find-documents doc:name="Consulta avanzada" doc:id="61bd8b6f-ad01-48a4-9293-64b7e43f7640" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.ecommerce.collection-multiuser}" fields=",">
+			<mongo:query><![CDATA[#["{Usuario_Padre : '" ++ vars.usuarioPadre ++ "', Usuario_Hijo : '" ++ vars.usuarioHijo ++ "'}"]]]></mongo:query>
+		</mongo:find-documents>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Transform Message" doc:id="e2070dce-873d-427e-b5ef-73ff3f72ec7c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="98326704-c976-4887-8913-1f705cd438ff" >
+			<flow-ref doc:name="Call logger after" doc:id="ea7c6cf2-5f6f-46ac-aec8-5069943228ef" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<sub-flow name="delete-multiusuarios-clientSub_Flow" doc:id="8907140b-19e4-4cd4-b8d3-496ecced54dc" >
+		<async doc:name="Async" doc:id="3a426630-2ce5-4954-9b8d-9b78d92c1ce0">
+			<flow-ref doc:name="Call logger before" doc:id="87d72c33-06a9-4a08-a1dc-d1fbbce5e419" name="loggin-client-call" />
+		</async>
+		<ee:transform doc:name="Transform Message" doc:id="2120f88b-924e-412f-8546-b50fe08f4d05" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Estado: "Inactivo",
+	Fecha_Actualizacion: now() >> "America/Bogota",
+	Fecha_Retiro: now() >> "America/Bogota"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<mongo:update-documents collectionName="${mongoDb-mdm.ecommerce.collection-multiuser}" doc:name="Update documents" doc:id="784044f4-5bd6-447c-97ea-54702ea26183" config-ref="mdm_db_Config">
+			<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+	'Usuario_Padre' : vars.usuarioPadre, 
+	'Usuario_Hijo' :vars.usuarioHijo
+}]]]></mongo:query>
+		</mongo:update-documents>
+		<ee:transform doc:name="Transform Message" doc:id="3073df08-af48-4df9-a39c-23989a012be7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.modified > 0) {
+  "codigo": "OK",
+  "descripcion": "Registro actualizado"
+} else {
+  "codigo": "OK",
+  "descripcion": "Registro no se pudo actualizar o no existe"
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.modified > 0) 201 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="c5624ce6-0894-4bdb-ba9c-edcaffe5824f" >
+			<flow-ref doc:name="Call logger after" doc:id="44c23681-3323-4dfe-8443-b22d279c5621" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<sub-flow name="post-multiusuarios-clientSub_Flow" doc:id="08058e57-47cb-4a05-b766-8417f4149ce6" >
+		<async doc:name="Async" doc:id="1846360e-9f82-4dbd-9d1b-68fbe78ff4f0">
+			<flow-ref doc:name="Call logger before" doc:id="a21201fb-ca89-44a6-a356-ca57cb6b0aa4" name="loggin-client-call" />
+		</async>
+		<mongo:update-documents doc:name="Update documents" doc:id="2b27e763-127d-4786-9415-ba844222bf2d" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.ecommerce.collection-multiuser}">
+			<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+	'Usuario_Padre' : payload.Usuario_Padre, 
+	'Usuario_Hijo' :payload.Usuario_Hijo
+}]]]></mongo:query>
+			<mongo:content-to-update ><![CDATA[#[%dw 2.0
+output application/json
+---
+payload -'_id']]]></mongo:content-to-update>
+		</mongo:update-documents>
+		<ee:transform doc:name="Transform Message" doc:id="94c6b06f-c6fc-4226-90b4-df8d0f165124" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.modified > 0) {
+  "codigo": "OK",
+  "descripcion": "Registro actualizado"
+} else {
+  "codigo": "OK",
+  "descripcion": "Registro no se pudo actualizar o no existe"
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.modified > 0) 201 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="9b8ca6dc-0e90-49f1-87f7-2dcb2868a374" >
+			<flow-ref doc:name="Call logger after" doc:id="f2ca2004-45be-4a00-b45a-48267731a47a" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+</mule>
