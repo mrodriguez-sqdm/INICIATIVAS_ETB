@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-subscribers-orchestratorSub_Flow" doc:id="411b4c92-4291-44d8-8aad-2d654f290eb0" >
+		<ee:transform doc:name="Json to XML" doc:id="cf8febbd-2caf-4e33-a70e-378efb6f7d7f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+
+fun dynAttrNs(xsi: Namespace, value: Any) = { subscribers @(xsi#noNamespaceSchemaLocation: "xsd/ModificarDatosCuentaInput.xsd"): value }
+var namespace1 = {uri: "http://www.w3.org/2001/XMLSchema-instance", prefix: "xsi"} as Namespace
+
+var data = payload.subscribers.subscriber_particulars
+---
+
+dynAttrNs(namespace1,{
+        subscriber_particulars: {
+            subscriber_data @(action: data.subscriber_data.action): {
+                user: data.subscriber_data.user,
+                subscriber_id: data.subscriber_data.subscriber_id,
+                first_name: data.subscriber_data.first_name,
+                last_name: data.subscriber_data.last_name,
+                subscriber_name: data.subscriber_data.subscriber_name
+            },
+            billing_address_data @(action: data.billing_address_data.action):{
+                bill_address1: data.billing_address_data.bill_address1,
+                bill_city: data.billing_address_data.bill_city,
+                bill_country_code: data.billing_address_data.bill_country_code,
+                bill_state_code: data.billing_address_data.bill_state_code
+            },
+            address_data @(action: data.address_data.action):{
+                address1: data.address_data.address1,
+                address_geo_code: data.address_data.address_geo_code,
+                city: data.address_data.city,
+                country_code: data.address_data.country_code,
+                state_code: data.address_data.state_code
+            },
+            email_data @(action: data.email_data.action):{
+                email_address: data.email_data.email_address,
+                email_is_primary_flag: data.email_data.email_is_primary_flag
+            },
+            invoice_method_data @(action: data.invoice_method_data.action):{
+                invoice_method_name: data.invoice_method_data.invoice_method_name,
+                invoice_delivery_name: data.invoice_method_data.invoice_delivery_name
+            }
+        }
+    })
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="xml to string" doc:id="f1c8a46f-d436-4a76-bc47-9a2d50a4b669" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="xmlString" ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output text/plain
+---
+replaceAll(write(payload, "application/xml"), "<","&lt;")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<parse-template doc:name="Parse Template" doc:id="b656017e-f8dc-40fe-82e9-7c10a0ed281d" location="soap\schemas\templates\template-revchain-updateSubscriber-soap.xml"/>
+		<logger level="INFO" doc:name="xml" doc:id="da011e78-1c32-4639-9c80-c29111d59be1" message="#[payload]"/>
+		<flow-ref doc:name="patch-subscriber-Sub_Flow" doc:id="7586f0a6-12ed-4b60-b849-7fd002b4e209" name="patch-subscriber-Sub_Flow"/>
+		<ee:transform doc:name="XML to Json" doc:id="8d219e9e-9983-4a43-a542-e1ec80ee5fe9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	operation: payload.response.@operation,
+	result: payload.response.@result,
+	system: payload.response.@system,
+	faults:
+	{
+		subscriber_id: payload.response.faults.subscriber_id,
+		fault_detail: payload.response.faults.fault_detail.@
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
