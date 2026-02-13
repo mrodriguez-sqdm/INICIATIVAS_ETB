@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="delete-cancelSchedule-client" doc:id="a3db1d92-b02c-41db-a886-46ebb1ea8357" >
+		<async doc:name="Async" doc:id="027846ca-4207-4692-8fef-5291649e47c1">
+				<flow-ref doc:name="Call logger before" doc:id="c2d864f7-543a-47cf-8733-e17a4911ae5a" name="loggin-client-call" />
+			</async>
+		<try doc:name="Try" doc:id="032eaecc-698c-47d9-a3b0-411273b7afd3" >
+			<http:request method="POST" doc:name="Request" doc:id="a1d76140-894b-41fc-96e0-58503f0fa48a" config-ref="mdm-ws-schedule" path="#[p('mdm-ws-schedule.path')]" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : p('mdm-ws-schedule.headers.contentTypeAction')
+}]]]></http:headers>
+				<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"server" : p('mdm-ws-schedule.queryParams.server'),
+	"webService" : p('mdm-ws-schedule.queryParams.webService')
+}]]]></http:query-params>
+			</http:request>
+			<choice doc:name="Choice" doc:id="84b168ad-9426-4c39-974d-335931d4643a" >
+				<when expression="#[payload.Envelope.Body.Set_OperationResponse.Aknowledge == 'OK - Exitoso']">
+					<ee:transform doc:name="Transform Message" doc:id="2921e57b-9037-43ab-8abb-cfa3041e3fea" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Resultado": "Exitoso",
+  "Descripcion": "Sin errores"
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<when expression="#[payload.Envelope.Body.Set_OperationResponse.Error != null]">
+					<ee:transform doc:name="Transform Message" doc:id="5e13bd4a-f243-4327-be1f-0367548eabb6" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Resultado": "ERROR",
+  "Descripcion": payload.Envelope.Body.Set_OperationResponse.Error
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Transform Message" doc:id="3d8aeca9-a5b2-49b8-b802-6428d40aee14" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Resultado": "ERROR",
+  "Descripcion": payload.Envelope.Body.Set_OperationResponse.Error_Remedy
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</otherwise>
+			</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6d562660-0dd7-4bcd-b328-f8e86afc181f" type="HTTP:INTERNAL_SERVER_ERROR" when="error.muleMessage.typedValue.Envelope.Body.Fault != null" >
+					<ee:transform doc:name="Xml to Json" doc:id="e79ee233-4fa0-44ad-a8b0-245d6a760347" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+error.muleMessage.typedValue]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="f52c0c78-bd6e-4d3b-87ad-0511e28546db">
+				<flow-ref doc:name="Call logger after" doc:id="abe7e3cc-3de6-4ded-8c25-43752df51a60" name="loggin-client-call" />
+			</async>
+	</sub-flow>
+</mule>
