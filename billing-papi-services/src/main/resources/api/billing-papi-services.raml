@@ -1,0 +1,185 @@
+#%RAML 1.0
+title: billing-papi-services
+version: v1
+uses:
+  billing-api-services: libraries/billing-papi-services-library.raml
+
+  definitions: libraries/library.raml
+  
+mediaType: 
+  - application/json
+  - application/xml
+types:
+  CreateBillingAccount: !include datatypes/requests/createBillingAccount.raml
+  CreateBillingAccountGestor: !include datatypes/requests/createBillingAccountGestor.raml
+  ProcessResponse: !include datatypes/requests/postProvisioningAccount.raml
+  AccountCreationResponse: !include datatypes/requests/accountCreationResponse.raml
+  post-billing-conceptosFactura: !include datatypes/requests/post-billing-conceptosFactura.raml
+  post-billing-variacionFactura: !include datatypes/requests/post-billing-variacionFactura.raml
+  response-billing-conceptosFactura: !include datatypes/responses/post-billing-conceptosFactura.raml
+  response-billing-variacionFactura: !include datatypes/responses/post-billing-variacionFactura.raml
+  
+/v1:
+  /servicios:
+    /{id}:
+      /estadocuenta:
+        /certificado:
+          get:
+            is:
+              - billing-api-services.security-clientId-trait
+              - billing-api-services.RequestHeaders
+            displayName: Expedición del estado de cuenta
+            description: Expedición del estado de cuenta
+            responses: 
+              200:
+                description: Estado de cuenta o paz y salvo generados exitosamente
+                body: 
+                  application/json:
+                    example: {"url":"https://etb.com.co/accesodocumento.pdf"}
+              400:
+                description: Servicio no existe o no fue encontrado
+                body: 
+                  application/json:
+                    displayName: No fue encontrado el servicio consultado
+                    description: No fue encontrado ningún servicio con el número de la cuenta de facturación
+                    example: {  "codigo": "400",
+                                "titulo":"Servicio no fue encontrado",
+                                "detalle":"Al consultar el servicio por el número de la cuenta de facturación, este no fue encontrado"}
+  /billing:
+    /provisioningAccount:
+      post:
+        is:
+          - billing-api-services.security-clientId-trait
+          - billing-api-services.RequestHeaders
+        displayName: Start of billing process.
+        description: Start of billing process. 
+        body: 
+          application/json:
+            type: ProcessResponse
+        responses:
+          200:
+            body:
+              type: !include datatypes/responses/provisioningAccountResponse.raml
+    /products:
+      post:
+        is:
+          - billing-api-services.security-clientId-trait
+          - billing-api-services.RequestHeaders
+        displayName: Service to check in products.
+        description: Service to check in products.
+        queryParameters: 
+          billeable:
+            description: Products billeable or non billeable.
+            type: string
+            required: false
+            example: "true"
+        body: 
+          application/json:
+            type: ProcessResponse | AccountCreationResponse
+        responses:
+          200:
+            body:
+              type: !include datatypes/responses/provisioningAccountResponse.raml
+              
+    /{tipoConsulta}:
+      uriParameters:
+        tipoConsulta:
+          type: string
+      post:
+        is: 
+          - billing-api-services.security-clientId-trait
+          - billing-api-services.RequestHeaders
+        queryParameters:
+          tipoDocumento:
+            type: string
+            example: "CC"
+            required: false
+          numeroIdentificacion:
+            type: string
+            example: "2689845"
+            required: false
+        displayName: API para obtener los conceptos de facturacion o variacion de facturas
+        description: API para obtener los conceptos de facturacion o variacion de facturas
+        body:
+          application/json: post-billing-conceptosFactura | post-billing-variacionFactura
+        responses:
+          200:
+            body:
+              application/json: 
+                type: response-billing-conceptosFactura | response-billing-variacionFactura
+                
+  /accounts:
+    /revchain:
+      patch:
+        is:
+          - billing-api-services.security-clientId-trait
+          - billing-api-services.RequestHeaders
+        displayName: Notificación  Facturación Cuenta
+        description: Notificación  Facturación Cuenta
+        body:
+            application/xml:
+              type: definitions.Revchain_Respuesta_Proceso
+  
+  /billing_accounts:
+    post:
+      displayName: Create billing account
+      is:
+        - billing-api-services.security-clientId-trait
+        - billing-api-services.RequestHeaders
+        - billing-api-services.httpCodes
+      body:
+        application/json:
+          type: CreateBillingAccount | CreateBillingAccountGestor
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include datatypes/responses/createBillingAccount.raml
+    patch:
+      displayName: Update Account data system
+      is:
+        - billing-api-services.security-clientId-trait
+        - billing-api-services.RequestHeaders
+        - billing-api-services.httpCodes
+      body:
+        application/json:
+          type: !include datatypes/requests/patch-updateAccountData.raml
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include datatypes/responses/patch-updateAccountDataResponse.raml
+  /rmca-accounts:
+    post:
+    type:
+      billing-api-services.collection
+    
+  /mdm-accounts:
+    post:
+    type:
+      billing-api-services.collection
+      
+  /billDuplicate:
+    /{billingAccount}:
+      uriParameters:
+        billingAccount:
+          type: string
+          description: "Numero de la cuenta de facturacion"
+          example: "9229778"
+      get:
+        displayName: Create a bill duplicate
+        is:
+          - billing-api-services.security-clientId-trait
+          - billing-api-services.RequestHeaders
+        queryParameters:
+          periodo:
+            type: string
+            description: "Combinacion de año y mes (yyyyMM)"
+            minLength: 6
+            required: true
+            example: "202302"
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include datatypes/responses/createBillDuplicate.raml

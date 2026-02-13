@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-noBilleableProducts-orchestratorSub_Flow" doc:id="15acd778-82da-48ef-89ed-18cdc8482c60" >
+		<flow-ref doc:name="Get Order" doc:id="3c5c1df8-b217-4130-9532-d2a2521bc77c" name="obtain-order" target="responseById" />
+		<ee:transform doc:name="Appliying Validations" doc:id="c37349f2-e03b-4ef6-a6ac-1a801185a504" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="validations" ><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+var orden = vars.responseById.resultados[0]
+output application/json
+---
+orden.estadoOrden.codigoEstado == "OR0040"
+and (orden.items.estadoItem.codigoEstado every ($ == "ITM160"))
+and upper(orden.tipoSolicitud) == "APROVISIONAMIENTO"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Verifying validations" doc:id="5c67bc56-2281-4fb5-a360-04f35c120a73" >
+			<when expression="#[vars.validations == true]">
+				<set-variable value="#[[]]" doc:name="Response" doc:id="0df2c901-fc06-49ba-8675-c7d39be9242f" variableName="response"/>
+				<choice doc:name="Type of search" doc:id="3464f684-cf82-49f1-8819-2a1a032c3696" >
+					<when expression="#[payload.Revchain_Respuesta_Proceso.WsRequestBody.orden_om != null]">
+						<flow-ref doc:name="Search by IdOrigen" doc:id="fedcef0b-8391-49ab-92c0-7e6d4807a817" name="searchByIdOrigen"/>
+					</when>
+					<otherwise >
+						<flow-ref doc:name="Search by IdItem" doc:id="b543efc3-3bde-43a6-a15a-d56d4e1960b6" name="searchByIdItem"/>
+					</otherwise>
+				</choice>
+				<ee:transform doc:name="Output" doc:id="ebae4e13-edfd-4f22-a711-faafcc453446">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Arrays
+---
+{
+  ordenOM: vars.ordenOM,
+  agrupador: vars.responseById.resultados[0].agrupador,
+  resultado: if (vars.response every ($.resultado == "Positivo") == true ) "Positivo" else "Negativo",
+  fecha: now() >> "America/Bogota",
+  descripcion: ""
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+---
+if (vars.response every ($.resultado == "Positivo") == true) 200 else 500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error Output" doc:id="cd4fedcb-bb7e-4be0-9617-f938e823f639">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ordenOM: vars.ordenOM,
+	agrupador: vars.responseById.resultados[0].agrupador,
+	resultado: "Negativo",
+	fecha: now(),
+	descripcion: "La orden " ++ vars.ordenOM  ++ " no cumple con los requisitos."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="searchByIdItem" doc:id="84e3926f-66b1-421e-b010-a97a02853c9d" >
+		<foreach doc:name="For Each Items" doc:id="608f4bb3-249d-466b-9d65-a38509170d57" collection="#[payload.items]">
+			<ee:transform doc:name="itemValidation" doc:id="118e8c03-e4e2-4ef0-a948-cb8e2959370c" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="itemValidation" ><![CDATA[%dw 2.0
+var items = vars.responseById.resultados[0].items
+var validation = (items filter ($.idItem == payload.idItem)).productos.parametros
+                            filter ($.codigo == "ATT_SF_Facturable" and (trim($.valor) as Boolean) == true)
+output application/json
+---
+!isEmpty(validation)]]></ee:set-variable>
+					<ee:set-variable variableName="idItem" ><![CDATA[%dw 2.0
+var items = vars.responseById.resultados[0].items
+output application/json
+---
+ (items filter ($.idItem == payload.idItem)).idItem[0]]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<choice doc:name="If item is Facturable" doc:id="33a91dc5-b313-414a-8779-5b778781cc07" >
+				<when expression="#[vars.itemValidation == true]">
+					<logger level="INFO" doc:name="Pendiente Definicion" doc:id="199be6cc-5ead-4283-b012-9b9d76218299" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Body SF NO Facturable" doc:id="b6ac5099-3c83-4957-80e2-f3bb662fd97d" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var orden = vars.responseById.resultados[0]
+var item = (orden.items filter ($.idItem == payload.idItem))[0]
+var cuentaFacturacion = (orden.cuentasFacturacion filter ($.idCuentaFacturacion == item.idCuentaFacturacion))[0]
+---
+{
+ accounts: {
+	 idBussines: orden.cliente.idCuenta default "", 
+     billingAccounts: [{
+             Id: cuentaFacturacion.idCuentaFacturacion default "",
+             ciclodeFacturacion: cuentaFacturacion.cicloFacturacion default "" ,
+             numberBillingAccount: cuentaFacturacion.cuentaFacturacion default "" ,
+			 billingCreationDate: cuentaFacturacion.fechaCreacion default ""
+         }
+     ]
+     
+ },
+ items: [{
+         idItem: item.idItem default "",
+         statusProvisioning: "FacturacionManual",
+         billingStartDate: item.fechaInicioFacturacion default "",
+		 billingCreationDate: item.fechaInicioFacturacion default ""
+     }
+ ]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="Send Body To SF" doc:id="f41ca886-34cf-46d4-bbcf-f2f1a5e0bc80" name="sendBodyToSF" />
+				</otherwise>
+			</choice>
+		</foreach>
+	</sub-flow>
+	<sub-flow name="searchByIdOrigen" doc:id="28535b00-3499-4b59-a9c4-13297e0691f9" >
+		<ee:transform doc:name="ItemValidation" doc:id="48cc91f9-0d86-4dbb-9cf6-a4ad87b8fdd0" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="itemValidation" ><![CDATA[%dw 2.0
+var orden = vars.responseById.resultados[0]
+var validation = (orden.items filter ($.idOrigen == payload.Revchain_Respuesta_Proceso.WsRequestBody.orden_comercial))[0].productos.parametros 
+								filter ($.codigo == "ATT_SF_Facturable" and (trim($.valor) as Boolean) == true)
+output application/json
+---
+!isEmpty(validation)]]></ee:set-variable>
+				<ee:set-variable variableName="idItem" ><![CDATA[%dw 2.0
+var items = vars.responseById.resultados[0].items
+output application/json
+---
+(items filter ($.idOrigen == payload.Revchain_Respuesta_Proceso.WsRequestBody.orden_comercial))[0].idItem]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="If item is Facturable" doc:id="0d9d82bb-a4dd-46ba-8dda-daa2ea4c7a3e" >
+			<when expression="#[vars.itemValidation == true]">
+				<logger level="INFO" doc:name="Pendiente Definicion" doc:id="069c761b-6964-4968-9b4d-729a88219210" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Body SF NO Facturable" doc:id="5786869a-aa5b-4f46-a5da-fb1e7e06c607" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var orden = vars.responseById.resultados[0]
+var item = (orden.items filter ($.idOrigen == payload.Revchain_Respuesta_Proceso.WsRequestBody.orden_comercial))[0]
+var cuentaFacturacion = (orden.cuentasFacturacion filter ($.idCuentaFacturacion == item.idCuentaFacturacion))[0]
+---
+{
+ accounts: {
+	 idBussines: orden.cliente.idCuenta default "", 
+     billingAccounts: [{
+             Id: cuentaFacturacion.idCuentaFacturacion default "",
+             ciclodeFacturacion: cuentaFacturacion.cicloFacturacion default "" ,
+             numberBillingAccount: cuentaFacturacion.cuentaFacturacion default "" ,
+			 billingCreationDate: cuentaFacturacion.fechaCreacion default ""
+         }
+     ]
+     
+ },
+ items: [{
+         idItem: item.idItem default "",
+         statusProvisioning: "FacturacionManual",
+         billingStartDate: (item.fechaInicioFacturacion splitBy "T")[0] default "",
+		 billingCreationDate: (item.fechaInicioFacturacion splitBy "T")[0] default "",
+     }
+ ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Send Body To Sf" doc:id="0a1a7194-568b-4d0c-a789-b4a18de7e017" name="sendBodyToSF"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sendBodyToSF" doc:id="aea05827-fdff-4aad-b4a0-48be72402999" >
+		<flow-ref doc:name="Request to salesforce-sapi" doc:id="6be60fa2-bef2-4cbf-ab33-d5859634bffd" name="post-responseProvisioning" target="resp_salesforce"/>
+		<choice doc:name="Evaluate Response SF" doc:id="b3ea1033-c7f7-4e8a-89ac-15f3e96e695b" >
+			<when expression='#[vars.resp_salesforce== "ERROR"]'>
+				<ee:transform doc:name="Item State to ITM211 Error" doc:id="9ef3a691-702d-445b-b462-4eae3b62d3fc" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="codigoEstado" ><![CDATA["ITM211"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado" ><![CDATA["ERROR-ENVIO_RESPUESTA_FACT_SF"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones" ><![CDATA["ERROR-ENVIO_RESPUESTA_FACT_SF"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to State Manager" doc:id="1639b764-bd75-4979-ac53-6a193bfe418b" name="stateManager" />
+				<ee:transform doc:name="Error Response" doc:id="d5be0d34-f015-4b68-9e38-5bdee743b242" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.response + {
+	"ordenOM": vars.ordenOM,
+	"agrupador": vars.responseById.resultados[0].agrupador,
+	"resultado": "Negativo",
+	"fecha": now(),
+	"descripcion": ""
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<async doc:name="Async" doc:id="9c2a02aa-177b-491c-b9be-01390ffe0090" >
+					<ee:transform doc:name="Set Item Status SF ITM211" doc:id="bdee1b25-1267-4dbb-9d59-bc78e66260d0" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="state" ><![CDATA["ERROR-ENVIO_RESPUESTA_FACT_SF"]]></ee:set-variable>
+							<ee:set-variable variableName="context" ><![CDATA["Contexto Integrador OM: ITM211 ERROR-ENVIO_RESPUESTA_FACT_SF"]]></ee:set-variable>
+							<ee:set-variable variableName="idOrigen" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseById.resultados[0].items.idOrigen[0]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="Update Provisioning state in SF" doc:id="6492dcb7-3f0d-4b4e-87a5-38ab054cde0a" name="updateProvisioningOrderState" />
+				</async>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Item State to ITM210 ENVIO_RESPUESTA_FACT_SF" doc:id="e5c521ca-5609-4afd-98e7-93e2b44533e1" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="codigoEstado" ><![CDATA["ITM210"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado" ><![CDATA["ENVIO_RESPUESTA_FACT_SF"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones" ><![CDATA["ENVIO_RESPUESTA_FACT_SF"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to State Manager" doc:id="b94c6254-82f8-47b6-899d-8746b3598486" name="stateManager" />
+				<ee:transform doc:name="Positive Output" doc:id="5dd68909-8a03-4982-ae37-0f2cc51bf30f" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.response +
+{
+	"ordenOM": vars.ordenOM,
+	"agrupador": vars.responseById.resultados[0].agrupador,
+	"resultado": "Positivo",
+	"fecha": now(),
+	"descripcion": ""
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

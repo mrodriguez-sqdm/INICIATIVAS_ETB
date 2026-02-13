@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd">
+	<sub-flow name="get-billDuplicate-orchestratorSub_Flow" doc:id="91cc7e12-4a47-4aa9-99b6-5f626a740dc9" >
+		<flow-ref doc:name="Get factura online" doc:id="98d6dc4b-706a-478e-ad3a-1fb57859c1da" name="getFacturaOnline" target="facturaOnline"/>
+		<choice doc:name="Choice" doc:id="039d757e-7ff7-4cff-ac19-cc87220f3ebe" >
+			<when expression='#[vars.facturaOnline.resultado == "Positivo"]'>
+				<ee:transform doc:name="Factura Online" doc:id="5d6ace1b-dde8-41bb-b0c1-ba5e11baac8c" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="facturaOnline" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.facturaOnline.resultados[0]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Get cuenta facturacion" doc:id="349ad316-4b27-4987-aed1-44108ebf5f20" name="getBillingAccountMDM" target="billingAccountMDM"/>
+				<choice doc:name="Choice" doc:id="f492a52e-7734-4da1-a12b-6505454eff6f" >
+					<when expression='#[vars.billingAccountMDM.resultado == "Positivo"]'>
+						<ee:transform doc:name="Cuenta facturacion" doc:id="203d2012-0694-47ab-88c2-ea8749674d3b" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="billingAccountMDM" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.billingAccountMDM.resultados[0]]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<etbutilities:generate-barcode doc:name="Generate barcode" doc:id="e8fe4bbb-9cb2-4743-a9a4-2e12e7154982" data='#[vars.facturaOnline.codigo_barras replace "(" with "*" replace ")" with "("]' width="#[p('numbers.width')]" height="#[p('numbers.height')]" />
+						<ee:transform doc:name="Parse HTML" doc:id="65ea04c6-bbfa-48cd-8d5b-e768fcac5b2a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0 output application/json 
+import * from dw::Runtime
+fun prettyBarCode (str) = try(() -> do {
+    "(" ++ str[0 to 2] ++ ")" ++ str[3 to 15] ++
+    "(" ++ str[16 to 19] ++ ")" ++ str[20 to 33] ++
+    "(" ++ str[34 to 37] ++ ")" ++ str[38 to 47] ++
+    "(" ++ str[48 to 49] ++ ")" ++ str[50 to 57]
+}) orElse (() -> "")
+---
+'<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8"/>
+		<meta name="viewport"
+		      content="width=device-width, initial-scale=1.0"/>
+		<title>Document</title>
+		<style>
+		@page {
+			margin: 5px;
+		}
+	    label {
+			word-wrap: break-word;
+		}
+        table {
+            table-layout: fixed;
+	    }
+        body {
+            max-width: 264px;
+        }
+		p img {
+			
+			width: 14cm;
+			height: auto;
+			margin-top: -0.2cm;
+			margin-bottom: -0.5cm;
+			margin-right: 0cm;
+			margin-left: 0cm;
+        }
+		
+		.contenedor {
+            max-width: 13cm; /* Ancho de 7 centímetros */
+            height: 13cm;
+            transform: rotate(90deg); /* Girar el texto 90 grados a la derecha */
+			margin-top: 0cm;
+			margin-bottom: 0cm;
+			margin-right: 0cm;
+			margin-left: -6cm;
+			width: 13cm
+        }
+		table.solid {
+			border-style: solid;
+			border-width: 1px 1px 1px 1px;
+		 }
+		 div.a{
+			text-align: center;
+		 }
+		 .contenedor2 {
+            max-width: 14cm; /* Ancho de 7 centímetros */
+            height: 14cm;
+            transform: rotate(90deg); /* Girar el texto 90 grados a la derecha */
+			margin-top: 0cm;
+			margin-bottom: 0cm;
+			margin-right: 0cm;
+			margin-left: -7cm;
+			width: 14cm
+        }
+	</style>
+	</head>
+	<body>
+		<div class="contenedor" id="1">
+			<div id="Nit1">
+				<div class="a">
+					<label>Empresa de Telecomunicaciones de Bogotá - ETB SA ESP NIT: 899999115 </label>
+					<br/>
+				</div>
+			</div>
+			<div id="cuentaa">
+				<table border="1">
+					<thead>
+						<tr>
+							<th style="width:18%">Teléfono</th>
+							<th style="width:25%">Número de cuenta para pagos</th>
+							<th style="width:25%">Fecha límite de pago para evitar suspensión</th>
+							<th style="width:33%">Total a pagar</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td style="text-align: center;">'++ vars.facturaOnline.numero_conexion ++'</td>
+							<td style="text-align: center;">'++ vars.facturaOnline.numero_cuenta_facturacion ++'</td>
+							<td style="text-align: center;">'++ (vars.facturaOnline.fecha_limite_Pago replace "+0000" with "Z") as DateTime as String {format: "dd-MMM-yyyy"} ++'</td>
+							<td style="text-align: right;">\$ '++ vars.facturaOnline.valor as Number as String {format: "###,###.00", locale: "es"} ++ '</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div id="Letras1">
+				<div>
+					<label style="font-size: 14px;">Si realizas el pago después de la fecha límite, este no se verá reflejado a tiempo, lo que podría generar la suspensión del servicio.
+            Además se generarán intereses de mora</label>
+				</div>
+			</div>
+			<div id="linea">
+				<label style="font-size: 14px;">Cliente: '++ upper(vars.facturaOnline.nombre_cliente) ++'</label>
+				<br/>
+				<label style="font-size: 14px;">Número de factura electrónica de venta: ' ++ vars.facturaOnline.numero_factura ++'</label>
+				<br/>
+			</div>
+			<div id="InfoAdi1">
+				<div>
+					<label style="font-size: 14px;">Pagar tu factura desde la comodidad de tu hogar es muy fácil. 
+		  Realiza el pago en línea visitando etb.com/pagos, antes de la fecha límite
+			</label>
+				</div>
+			</div>
+			<div id="Cliente">
+				<label style="font-size: 14px;">Copia Cliente</label>
+			</div>
+		</div>
+		<div id="division">
+			<div>
+            ------------------------------------------------<br>
+			</div>
+		</div>
+		<div class="contenedor2" id="2">
+			<div id="Nit2">
+				<div class="a">
+					<label>Empresa de Telecomunicaciones de Bogotá - ETB SA ESP NIT: 899999115</label>
+					<br/>
+				</div>
+			</div>
+			<div id="Datos2">
+				<table border="1">
+					<thead>
+						<tr>
+							<th style="width:18%">Teléfono</th>
+							<th style="width:24%">Número de cuenta para pagos</th>
+							<th style="width:26%">Fecha límite de pago para evitar suspensión</th>
+							<th style="width:32%">Total a pagar</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td style="text-align: center;">'++ vars.facturaOnline.numero_conexion ++'</td>
+							<td style="text-align: center;">' ++ vars.facturaOnline.numero_cuenta_facturacion ++ '</td>
+							<td style="text-align: center;">' ++ (vars.facturaOnline.fecha_limite_Pago replace "+0000" with "Z") as DateTime as String {format: "dd-MMM-yyyy"} ++ '</td>
+							<td style="text-align: center;">\$ '++ vars.facturaOnline.valor as Number as String {format: "###,###.00", locale: "es"} ++ '</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<p id="BarCode">
+				<img src="data:image/jpeg;base64,' ++ payload ++ '"/>
+			</p>
+			<div id="NumeroBarras">
+				<label>' ++ (if (sizeOf(vars.facturaOnline.codigo_barras) == 58) prettyBarCode(vars.facturaOnline.codigo_barras) else vars.facturaOnline.codigo_barras) ++ '</label>
+			</div>
+			<div id="InfoAdi2">
+				<div>
+					<label>Recuerde realizar el pago en cualquiera de los puntos autorizados
+		por ETB.</label>
+				</div>
+			</div>
+			<div id="Banco">
+				<label>Copia Banco</label>
+			</div>
+		</div>
+		</body>
+	</html>']]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+						<etbutilities:convert-to-pdf doc:name="Convert to pdf" doc:id="3167376d-9477-41c6-a84e-9cb1979cc5f5" content="#[payload]" isHtml="true" width="#[7]"/>
+						<ee:transform doc:name="Prepare azure input" doc:id="37297205-4651-4ad0-9fc3-c8394c4241c8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output multipart/form-data
+import * from dw::module::Multipart
+---
+parts: {
+    container: field({name: "container", value: (vars.facturaOnline.numero_identificacion as String)}),
+    filename: field({name: "filename", value: vars.facturaOnline.periodo_facturado ++ "_" ++ vars.facturaOnline.numero_cuenta_facturacion ++ ".pdf"}),
+    file: field({name: "file", value: payload, mime: "application/pdf"})
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+						<flow-ref doc:name="Post to Azure storage" doc:id="f163d8fc-b3a6-4550-86a4-300c84c23bea" name="azure-sapi-clientSub_Flow" />
+					</when>
+					<otherwise >
+						<raise-error doc:name="Raise error" doc:id="428a1b65-e0f5-451a-9f70-3182bc7b5f96" type="CUSTOM:ACCOUNT_NOT_FOUND" description="#[vars.billingAccountMDM.descripcion]" />
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="ab67e504-1254-4206-b616-168f84c18577" type="CUSTOM:BILL_NOT_FOUND" description="#[vars.facturaOnline.descripcion]"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-uniqueAccounts-orchestratorSub_Flow" doc:id="55a44ce8-019b-42c9-8f19-d38b25773df7" >
+		<ee:transform doc:name="Request cycles" doc:id="84a160fa-0072-47fe-a45b-ed7d6eedf094" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+
+ {
+  ext_market_typ: vars.mainRequest.EXT_MARKET_TYP,
+  inv_day: vars.mainRequest.INV_DAY,
+  conv_ind: if(!isBlank(vars.mainRequest.CONV_IND)) vars.mainRequest.CONV_IND else p('numbers.zero'),
+  sub_id: vars.mainRequest.SUB_ID,
+  geo_code1: if(!isBlank(vars.mainRequest.Billing_address.DaneCode)) vars.mainRequest.Billing_address.DaneCode ++ p('numbers.zeros') else p('global-var.geoCode'),
+  geo_code2: p('global-var.geoCode2'),
+  geo_code3: vars.mainRequest.GEO_CODE3,
+  order_type: upper(vars.mainRequest.ORDER_TYPE),
+  ct_num: p('empty'),
+  fd: vars.mainRequest.FD,
+  payment_prd: vars.mainRequest.PAYMENT_PRD,
+  billable: if(vars.mainRequest.BILLABLE==p('letters.Y')) p('letters.T') else p('letters.F'),
+  bill_prnt_sub_id: vars.mainRequest.BILL_PRNT_SUB_ID
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to revchain-sapi-cycles" doc:id="2f3fe11a-be6d-4293-b755-65d13ae5e2b4" name="post-cycles-client_SubFlow" />
+		<choice doc:name="Choice" doc:id="6dab2ee8-4a52-4757-aadd-d4e2c9f20e94" >
+			<when expression="#[payload.response.result == 'S']">
+				<flow-ref doc:name="Go to parallel common" doc:id="473e261e-8f8b-4a6b-ade9-25c7803cc6fe" name="parallel_common"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Self call" doc:id="62d9209a-327f-4978-ab9f-6f7370171fce" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "InvokeEJBURevChainOut": {
+      "response": {
+         "system": vars.responseRevchain.system ,
+         "operation": vars.responseRevchain.operation,
+         "result": vars.responseRevchain.result,
+         "faults": vars.responseRevchain.faults
+      }
+   }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="parallel_common" doc:id="cc164215-2aeb-42cf-a13c-6c1cbbdcf6fc" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="aba726df-f286-4095-8ed0-add0a8dc4740" >
+			<route >
+				<ee:transform doc:name="Set input first request" doc:id="cc0d1f65-1b67-409f-b036-d1ee03ab211b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[output application/json
+---
+{
+	"id_nit" : vars.mainRequest.DocType,
+	"id_catalog" : p('catalog.firstHomologate')
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to common-sapi-client_first" doc:id="b7d55fa0-f935-4b8b-b3a9-1966120120ac" name="common-sapi-client-catalogSub_Flow" />
+			</route>
+			<route >
+				<ee:transform doc:name="Set input second request" doc:id="cdc6c9d3-1050-4be4-a6d2-a1c687b0b771" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[output application/json
+---
+{
+	"id_nit" : vars.mainRequest.DocType,
+	"id_catalog" : p('catalog.secondHomologate')
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to common-sapi-client_second" doc:id="c134bbfa-3a55-4156-aa11-0a4279f9eea5" name="common-sapi-client-catalogSub_Flow" />
+			</route>
+		</scatter-gather>
+		<flow-ref doc:name="Go to homologate" doc:id="73446d24-b156-4179-b63c-c6016067ee83" name="homologate_subFlow"/>
+	</sub-flow>
+	<sub-flow name="homologate_subFlow" doc:id="1449f9c2-d209-4607-9526-239cad301aa9" >
+		<ee:transform doc:name="Map Homologate" doc:id="7e50ac9d-0e75-4033-92c7-e869dd4144d5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	cat01: payload[0].payload[0].CATALOG,
+	cat02: payload[1].payload[0].CATALOG,
+	id01: payload[0].payload[0].ID,
+	id02: payload[1].payload[0].ID,
+	resp01: payload[0].payload[0],
+	resp02: payload[1].payload[0]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Request Homologate" doc:id="a0f2807d-a203-45c1-8efa-9f703a81bd1c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+   "Output": {
+      "DocTypeId":  
+        if(isBlank(payload.resp01.VALOR_HOMOLOGADO) or isEmpty(payload.resp01.VALOR_HOMOLOGADO)) p('docTypeId-default')
+            else payload.resp01.VALOR_HOMOLOGADO,
+      "DocTypeName": 
+        if(isBlank(payload.resp02.VALOR_HOMOLOGADO) or isEmpty(payload.resp02.VALOR_HOMOLOGADO)) p('docTypeName-default')
+            else payload.resp02.VALOR_HOMOLOGADO
+   }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to subscriber" doc:id="52afcbc7-ab91-42fc-8d30-26de9f606f4a" name="subscriber_data_subFlow"/>
+	</sub-flow>
+	<sub-flow name="subscriber_data_subFlow" doc:id="e455ae68-3e31-4157-a7e6-031891a76f5e" >
+		<ee:transform doc:name="Subscriber map" doc:id="aa59429a-153c-4509-81dc-497cd7f43d83">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+
+import substring, leftPad , substringBefore, substringAfterLast from dw::core::Strings
+import * from dw::core::Arrays
+var array = []
+output application/json
+---
+
+{
+	subscriber_particulars: {
+        subscriber_data: {
+        	action: "add",
+        	parent_id: if(!isBlank(vars.mainRequest.SUB_ID)) vars.mainRequest.SUB_ID else array,
+        	billable_parent_id: if(!isBlank(vars.mainRequest.BILL_PRNT_SUB_ID)) vars.mainRequest.BILL_PRNT_SUB_ID else array,
+            business_unit: vars.responseRevchain.faults.subscriber_data.business_unit,
+            invoice_day: if(isBlank(vars.responseRevchain.faults.subscriber_data.invoice_day)) p('numbers.zero') else vars.responseRevchain.faults.subscriber_data.invoice_day,
+            market_type_name: vars.responseRevchain.faults.subscriber_data.market_type_name,
+            reason_code: vars.responseRevchain.faults.subscriber_data.reason_code default "",
+            period: vars.responseRevchain.faults.subscriber_data.period,
+            subscriber_type_name: vars.responseRevchain.faults.subscriber_data.subscriber_type_name,
+            term_type_name: vars.responseRevchain.faults.subscriber_data.term_type_name,
+            first_name: substring(if(!isBlank(vars.mainRequest.Customer.first_name)) vars.mainRequest.Customer.first_name else if(isBlank(substringBefore(vars.mainRequest.Customer.BillBillingName,p('space')))) vars.mainRequest.Customer.BillBillingName else substringBefore(vars.mainRequest.Customer.BillBillingName,p('space')),0,25),
+            last_name: substring(if(!isBlank(vars.mainRequest.Customer.surname)) vars.mainRequest.Customer.surname else if(isBlank(substringAfterLast(vars.mainRequest.Customer.BillBillingName,p('space')))) vars.mainRequest.Customer.BillBillingName else substringAfterLast(vars.mainRequest.Customer.BillBillingName,p('space')),0,35),
+            subscriber_name: if(!isBlank(vars.mainRequest.Customer.BillBillingName)) vars.mainRequest.Customer.BillBillingName else "$(vars.mainRequest.Customer.first_name) $(vars.mainRequest.Customer.second_name) $(vars.mainRequest.Customer.surname) $(vars.mainRequest.Customer.second_surname)",
+            subscriber_info1: if(!isBlank(vars.mainRequest.Customer.second_name)) vars.mainRequest.Customer.second_name else array,
+            subscriber_info2: if(!isBlank(vars.mainRequest.Customer.second_surname)) vars.mainRequest.Customer.second_surname else array,
+            subscriber_info4: if(!isBlank(vars.mainRequest.Billing_address.postcode)) vars.mainRequest.Billing_address.postcode ++ p('numbers.zeros')  else p('global-var.geoCode'),
+            billing_entity_id: vars.responseRevchain.faults.subscriber_data.billing_entity_id,
+            start_date: {
+                month: if(vars.mainRequest.start_date.day == p('numbers.one') and vars.mainRequest.start_date.month == p('numbers.two') and vars.mainRequest.start_date.year == p('numbers.three')) leftPad(now().month,2,p('numbers.zero')) else leftPad(vars.mainRequest.start_date.month,2,p('numbers.zero')),
+    			day: if(vars.mainRequest.start_date.day == p('numbers.one') and vars.mainRequest.start_date.month == p('numbers.two') and vars.mainRequest.start_date.year == p('numbers.three')) leftPad(now().day,2,p('numbers.zero')) else leftPad(vars.mainRequest.start_date.day,2,p('numbers.zero')),
+    			year: if(vars.mainRequest.start_date.day == p('numbers.one') and vars.mainRequest.start_date.month == p('numbers.two') and vars.mainRequest.start_date.year == p('numbers.three')) leftPad(now().year,2,p('numbers.zero')) else leftPad(vars.mainRequest.start_date.year,2,p('numbers.zero'))
+            },
+            billable: if(vars.mainRequest.BILLABLE == p('letters.Y'))  p('letters.T') else p('letters.F')
+        },
+        tax_plan_data: {
+        	action: "add",
+            type_name: vars.responseRevchain.faults.subscriber_data.tax_plan_data.type_name,
+			geocode: if(!isBlank(vars.mainRequest.Billing_address.DaneCode)) vars.mainRequest.Billing_address.DaneCode ++ p('numbers.zeros') else p('global-var.geoCode'),
+			tax_plan_vendor: if(!isBlank(vars.responseRevchain.faults.subscriber_data.tax_plan_data.tax_plan_vendor)) vars.responseRevchain.faults.subscriber_data.tax_plan_data.tax_plan_vendor else array
+        },
+        billing_address_data: {
+        	action: "add",
+            bill_address1: vars.mainRequest.Billing_address.LineOne,
+            bill_address_geo_code: if(!isBlank(vars.mainRequest.Billing_address.DaneCode)) vars.mainRequest.Billing_address.DaneCode ++ p('numbers.zeros') else p('global-var.geoCode'),
+            bill_city: vars.mainRequest.Billing_address.CityName,
+            bill_country_code: p('country-col'),
+            bill_state_code: leftPad(vars.mainRequest.Billing_address.StateCode,2,p('numbers.zero')),
+            bill_billing_name: if (!isBlank(vars.mainRequest.Customer.BillBillingName)) vars.mainRequest.Customer.BillBillingName else "$(vars.mainRequest.Customer.first_name default "") $(vars.mainRequest.Customer.second_name default "") $(vars.mainRequest.Customer.surname default "") $(vars.mainRequest.Customer.last_name default "")"
+        },
+        address_data: {
+        	action: "add",
+			address1: vars.mainRequest.Billing_address.LineOne,
+            address_geo_code: if(!isBlank(vars.mainRequest.Billing_address.DaneCode)) vars.mainRequest.Billing_address.DaneCode ++ p('numbers.zeros') else p('global-var.geoCode'),
+            city: vars.mainRequest.Billing_address.CityName,
+            country_code: p('country-col'),
+            state_code: leftPad(vars.mainRequest.Billing_address.StateCode,2,p('numbers.zero'))
+        },
+        currency_data: {
+        	action: "add",
+			currency_code: vars.mainRequest.CURR_CODE
+        },
+        phone1_data: 
+        {
+        	action: "add",
+            number1: if(!isBlank(vars.mainRequest.Customer.ContactInfo.PhoneNumber) and vars.mainRequest.Customer.ContactInfo.PhoneNumber !=null) substring(vars.mainRequest.Customer.ContactInfo.PhoneNumber,0,10) else p('empty')
+        },
+        email_data: {
+        	action: "add",
+			email_address: if(!isBlank(vars.mainRequest.Customer.ContactInfo.ContactEmailAdd) and vars.mainRequest.Customer.ContactInfo.ContactEmailAdd !=null) vars.mainRequest.Customer.ContactInfo.ContactEmailAdd else p('empty')
+        },
+        characteristics_data: [
+        {
+        	action: "add",
+        	characteristic_group: p('global-var.characteristicGroup'),
+        	characteristic_type: payload.Output.DocTypeId,
+        	characteristic_value: payload.Output.DocTypeName
+        },
+        {
+        	action: "add",
+        	characteristic_group: p('global-var.characteristicGroup'),
+        	characteristic_type: p('global-var.characteristicTypeCC'),
+        	characteristic_value: vars.mainRequest.Customer.ContactInfo.DocumentNo
+        },
+        {
+        	action: "add",
+        	characteristic_group: p('global-var.characteristicGroup'),
+        	characteristic_type: p('global-var.characteristicTypeDet'),
+        	characteristic_value: p('global-var.characteristicValDet')
+        }
+        ],
+        
+        invoice_method_data: if(vars.mainRequest.BILLABLE == p('letters.Y')) 
+        {
+        	action: "add",
+            bill_or_statement: vars.responseRevchain.faults.subscriber_data.invoice_method_data.bill_or_statement,
+            invoice_method_name: if(contains(p('global-var.lteOrderSubtypes'),p('pipes') ++ vars.mainRequest.OrderSubType ++ p('pipes'))) vars.mainRequest.InvoiceMethod else vars.responseRevchain.faults.subscriber_data.invoice_method_data.invoice_method_name,
+            invoice_delivery_name: vars.mainRequest.invoice_delivery_name,
+            invoice_format_name: vars.responseRevchain.faults.subscriber_data.invoice_method_data.invoice_format_name,
+            invoice_format_class_name: vars.responseRevchain.faults.subscriber_data.invoice_method_data.invoice_format_class_name
+        }  
+        else {
+        	action: p('empty'),
+            bill_or_statement:  p('empty'),
+            invoice_method_name: p('empty'),
+            invoice_delivery_name: p('empty'),
+            invoice_format_name: p('empty'),
+            invoice_format_class_name: p('empty')
+        }
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to revchain-sapi-subscriber" doc:id="bf90d5ad-265b-4f3b-b322-df12a0756d57" name="post-subscriber-client_Sub_Flow"/>
+		<ee:transform doc:name="Self call" doc:id="47a329db-269e-468a-a221-152251d6f9ee">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "InvokeEJBURevChainOut": {
+      "response": {
+         "system": payload.system ,
+         "operation": payload.operation,
+         "result": payload.result,
+         "faults": {
+            "subscriber_id": payload.faults.subscriber_id,
+            "account_id": vars.map.CreateSystemsAccountsBody.Customer.AccountIdentificationID,
+            "plan_impuestos": {
+               "type_name": vars.responseRevchain.faults.subscriber_data.tax_plan_data.type_name,
+               "tax_plan_vendor": vars.responseRevchain.faults.subscriber_data.tax_plan_data.tax_plan_vendor,
+            },
+            "ciclo_facturacion": vars.responseRevchain.faults.subscriber_data.billing_entity_id,
+            "fault_detail": payload.faults.fault_detail
+         }
+      }
+   }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
