@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="publish-to-JMS" doc:id="1e1ad10c-5ac3-48d1-b25f-51b780a1b928" >
+		<jms:publish doc:name="Publish" doc:id="687083f5-1afb-4a2d-9ab2-03d0009f570e" config-ref="JMS_Config" destination="#[vars.destinationQueue]"/>
+		<ee:transform doc:name="set logs response" doc:id="80f35949-5dd5-4697-9a39-3446f69ab20d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  logMsgOutput: {
+    wsResponseHeader2: {
+      system: {
+        name: p('template.processingServer'),
+        correlationID: vars.correlationId,
+        processingServer: p('template.processingServer')
+      },
+      service: {
+        status: p('template.status'),
+        responseDate: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss"}
+      }
+    },
+    logOut: {
+      result: "OK",
+      description: "Proceso Ejecutado Exitosamente"
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<flow name="jms-auditsLogs-clientFlow" doc:id="f68e6e16-3a08-473a-924a-fff07214c650" >
+		<jms:listener doc:name="On New Message" doc:id="06ba5bd2-1644-4962-8c3d-9ab5adcaf6f3" config-ref="JMS_Config" destination="${auditLogs.queue}" ackMode="IMMEDIATE"/>
+		<set-variable value="#[p('auditLogs.queue')]" doc:name="Set Variable" doc:id="f736c153-89d8-4f07-b3a0-c2ac4bd9c9c2" variableName="destinationQueue"/>
+		<flow-ref doc:name="Go to sftp orchestration" doc:id="34df4558-41e6-4282-a59e-127e0fe3d9cc" name="post-auditLogs-orchestrator"/>
+	</flow>
+	<flow name="jms-spnpqrLogs-clientFlow" doc:id="64b600e5-4468-4353-90be-b2e895dc4ee0" >
+        <jms:listener doc:name="On New Message" doc:id="51be2f37-b0f3-477c-a980-520bee4e08fb" config-ref="JMS_Config" destination="${spnpqrLogs.queue}" ackMode="IMMEDIATE"/>
+        <set-variable value="#[p('spnpqrLogs.queue')]" doc:name="Set Variable" doc:id="e784d6fa-8c4a-4d5d-95fd-22883f108d00" variableName="destinationQueue"/>
+        <flow-ref doc:name="Go to sftp orchestration" doc:id="40da24d3-7e15-4c50-8b9f-a0a1885a57af" name="post-spnpqrLogs-orchestrator"/>
+    </flow>
+    <flow name="jms-conversationLogs-clientFlow" doc:id="47e86624-0a31-4096-a2c1-a8dda11f6d7e" >
+        <jms:listener doc:name="On New Message" doc:id="3ea3c2ae-ac3d-4158-8c36-ed1df5900198" config-ref="JMS_Config" destination="${conversationLogs.queue}" ackMode="IMMEDIATE"/>
+        <set-variable value="#[p('conversationLogs.queue')]" doc:name="Set Variable" doc:id="0dd9a144-ce6c-4f1a-a5a6-1cadffd6d850" variableName="destinationQueue"/>
+        <flow-ref doc:name="Go to sftp orchestration" doc:id="96ae90ac-e626-438b-8341-f86b2dc242ce" name="post-conversationLogs-orchestrator"/>
+    </flow>
+    <flow name="jms-sumaLogs-clientFlow" doc:id="bc4ac351-c1af-466a-824a-00fd24fc1d8d" >
+        <jms:listener doc:name="On New Message" doc:id="2059f922-08e6-4e02-bd6f-b6fae525f99d" config-ref="JMS_Config" destination="${sumaLogs.queue}" ackMode="IMMEDIATE"/>
+        <set-variable value="#[p('sumaLogs.queue')]" doc:name="Set Variable" doc:id="72149b00-824e-41c2-b6b9-61f0c95c8145" variableName="destinationQueue"/>
+        <flow-ref doc:name="Go to sftp orchestration" doc:id="0632a454-0cea-4136-be32-37907ef71f63" name="post-sumaLogs-orchestrator"/>
+    </flow>
+    <flow name="jms-convertibilityLogs-clientFlow" doc:id="cb13c2fc-1a8a-4470-b977-c07b94d28722" >
+        <jms:listener doc:name="On New Message" doc:id="54840af1-0b32-4fb7-a425-85d30a46d078" config-ref="JMS_Config" destination="${convertibilityLogs.queue}" ackMode="IMMEDIATE"/>
+        <set-variable value="#[p('convertibilityLogs.queue')]" doc:name="Set Variable" doc:id="cb88dd0e-584f-4039-8510-492fbfcefcd5" variableName="destinationQueue"/>
+        <flow-ref doc:name="Go to sftp orchestration" doc:id="e9f8d2c6-2fd8-4a6d-979b-2887a15ae7a4" name="post-convertibilityLogs-orchestrator"/>
+    </flow>
+    <flow name="jms-traceabilityLogs-clientFlow" doc:id="56fa8b58-052b-43e1-b416-1b5931f99b9d" >
+        <jms:listener doc:name="On New Message" doc:id="edd90576-6628-426f-a7df-a062aa914c28" config-ref="JMS_Config" destination="${traceabilityLogs.queue}" ackMode="IMMEDIATE"/>
+        <set-variable value="#[p('traceabilityLogs.queue')]" doc:name="Set Variable" doc:id="ddd8c219-e781-40bf-bbd6-7413e499a725" variableName="destinationQueue"/>
+        <flow-ref doc:name="Go to sftp orchestration" doc:id="a04fa23e-624c-4ccb-940e-d4b5c49d122a" name="post-traceabilityLogs-orchestrator"/>
+    </flow>
+	
+	
+</mule>
