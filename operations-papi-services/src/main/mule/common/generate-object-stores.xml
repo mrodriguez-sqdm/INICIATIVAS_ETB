@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns="http://www.mulesoft.org/schema/mule/core"
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns="http://www.mulesoft.org/schema/mule/core"
 	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
 	<os:object-store name="Object_store_messageId" doc:name="Object store" doc:id="b91cf06a-44e7-4dba-b485-1c40ba9a8635" />
 	<os:object-store name="Object_store:_documentId" doc:name="Object store" doc:id="2242bcf7-77a5-4e84-be29-29fea51da94d" />
 	<os:object-store name="Object_store_processId" doc:name="Object store" doc:id="94f972ce-0a83-4a28-b5d6-e20c85643d75" />
+	<os:object-store name="Object_store_originId" doc:name="Object store" doc:id="63761fe3-8db0-4243-8129-82ec16d561da" entryTtl="5" entryTtlUnit="DAYS"/>
 	
 	<sub-flow name="get_consecutive_number_Sub_Flow_Process_ID" doc:id="9f49149b-263b-45ef-b7fd-583bad9d46a0" >
 		<os:contains doc:name="Contains Current Number" doc:id="3ad25774-3cb7-45c4-97c5-f8a3f60dab3e" key="currentNumber" objectStore="Object_store_processId" targetValue="#[vars.nipGenerationId]" />
@@ -59,5 +62,63 @@ http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/cu
 		<os:remove doc:name="Remove Process ID" doc:id="d7ca5497-d4a1-4cd6-a352-4eed54c53345" key="currentNumber" objectStore="Object_store_processId"/>
 		<os:remove doc:name="Remove Message ID" doc:id="1cd4039a-9df7-481b-b30e-e6025587c738" objectStore="Object_store_messageId" key="currentNumber"/>
 		<os:remove doc:name="Remove Document ID" doc:id="74e2fcdf-a0f3-462b-b1aa-3d86bf870229" objectStore="Object_store:_documentId" key="currentNumber"/>
+	</sub-flow>
+	<sub-flow name="store-key-order-number-Sub-Flow" doc:id="dd6cf2cb-832e-4d4a-9731-c742e4cb1c1b" >
+		<ee:transform doc:name="Transform Message" doc:id="2a7da78c-f0a5-4af2-812f-c3f34a70179c" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="result" ><![CDATA[%dw 2.0
+output application/json
+
+var normalizeOrigin =
+    upper(
+        if (isEmpty(vars.originInput default ""))
+            "TIGO"
+        else
+            vars.originInput
+    )
+
+var keyObjectStore =
+    normalizeOrigin ++ "_" ++ payload.orderNumber
+
+---
+keyObjectStore]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<os:store doc:name="Store Result Key Value" doc:id="fc07d04a-91bf-4144-8a5e-9143df256da1" key="#[vars.result]" objectStore="Object_store_originId"/>
+	</sub-flow>
+	<sub-flow name="get-key-order-number-Sub-Flow" doc:id="e994cc5b-b940-4cd2-85de-3f645ba67a20" >
+		<ee:transform doc:name="Transform Message" doc:id="9024dfcf-b2be-4478-8be0-ac6b8527ae77">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="result" ><![CDATA[%dw 2.0
+output application/json
+var normalizeOrigin =
+    upper(
+        if (isEmpty(attributes.headers.origin default ""))
+            "TIGO"
+        else
+            attributes.headers.origin
+    )
+
+var baseKey =
+    (
+        [
+            payload.orderNumber,
+            payload.idServiceAccount,
+            attributes.uriParams.serviceAccount,
+            attributes.uriParams.orderNumber
+        ]
+        filter (!isEmpty($))
+    )[0] default ""
+
+var keyObjectStore =
+  	normalizeOrigin ++ "_" ++ baseKey 
+---
+keyObjectStore]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<os:contains doc:name="Contains Result Key Value" doc:id="b8805cc8-1c48-4181-a6aa-4d5d2486614d" key="#[vars.result]" objectStore="Object_store_originId"/>
 	</sub-flow>
 </mule>
