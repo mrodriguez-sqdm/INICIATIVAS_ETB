@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-identityValidation" doc:id="632af391-01ba-46b3-b1c0-9bbb9de2ea8e" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="5c89f09b-701f-4281-b026-b0737b3fca79" variableName="headers"/>
+		<ee:transform doc:name="Set Payload Lisim identity" doc:id="f4fedc05-1919-4c94-baec-28f21d07510d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "DocumentType": payload.documentType,
+    "DocumentNumber": payload.documentNumber,
+    "DateExpedition": (payload.dateExpedition as Date) as String {format: "yyyy-MM-dd"},
+    "Surname": payload.surname,
+    "Cellphone": payload.cellphone,
+    "Adviser": payload.adviser,
+    "Channel": payload.channel,
+    "Provider": payload.provider,
+    "Portal": payload.portal
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="lisim-sapi-client" doc:id="b5b4d97b-f0df-4972-b6fa-7a30e0fca848" name="lisim-sapi-identity-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="dcac126d-4d25-48b8-b9ea-0a8462e01e61" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: "200",
+  message: payload.messageServer default "validacion exitosa",
+  result: (
+    {
+      "id": payload.id,
+      "type": payload."type",
+      "questions": payload.questions,
+      "otpCode": payload.otpCode,
+      "matchType": payload.matchType
+    }
+  ) filterObject ((value, key) -> value != null)
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-score" doc:id="3e332f93-31d2-45d8-8dde-f5afc737adff" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="cd3ca82d-d09e-4c1f-82e3-2eb6385c02ec" variableName="headers" />
+		<ee:transform doc:name="Set Payload Lisim score" doc:id="2f3655c7-6dc2-4e96-a64b-a9350bb635b1">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "IdentityValidationId": payload.id,
+    "Model": payload.model,
+    "Stratum": payload.stratum,
+    "Department": payload.department,
+    "City": payload.city
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="lisim-sapi-client" doc:id="c5d751a9-9943-41b9-b3bb-9ecd22356f64" name="lisim-sapi-score-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="558689f7-2184-46a4-8cfe-5b44da6f2be6" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+ "code" : "200",
+ message: payload.messageServer default "operacion exitosa",
+  result: ({
+    "score": payload.score,
+    "offer": payload.offer
+  }
+  ) filterObject ((value, key) -> value != null)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-otp-resend" doc:id="b308112f-8056-47d9-8d9e-fbd2715dab0b" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="4f11082c-bf3a-4e02-9e9f-ec7d6682c41f" variableName="headers" />
+		<ee:transform doc:name="Set Payload Lisim otp resend" doc:id="abcf8447-b06f-4768-a579-7351ab11421b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "IdentityValidationId": payload.id,
+	"Type": payload."type"
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="lisim-sapi-client" doc:id="7c379148-7c24-47da-8bed-4bb644d62476" name="lisim-sapi-otp-resend-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="b7d1efc0-400c-4a29-90d1-4c2ccca8eb00" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+ "code" : "200",
+ message: payload.messageServer default "envio exitoso",
+  result: ({
+    "id": payload.id,
+    "type": payload."type",
+    "questions": payload.questions,
+    "otpCode": payload.otpCode,
+    "matchType": payload.matchType
+  }
+  ) filterObject ((value, key) -> value != null)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-otp-validation" doc:id="fa88ac04-21cd-44fa-9226-882507e976bf" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="5e9cac34-692c-47b0-ab36-50d3de161861" variableName="headers" />
+		<ee:transform doc:name="Set Payload Lisim otp validate" doc:id="9bc523eb-dd79-45d9-aba7-78b93ebb08c1">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "IdentityValidationId": payload.id,
+	"Code": payload.otpCode
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="lisim-sapi-client" doc:id="0ea2be00-e67a-4a80-a036-25a39c8ed8b7" name="lisim-sapi-otp-validate-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message1" doc:id="0cbe4c57-90d2-42ca-b89e-474eca2c99f2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var isStringResult = payload.result is String
+var isObjectResult = payload.result is Object
+var hasMessageServer =
+  isObjectResult and payload.result.messageServer != null
+
+---
+{
+  code: "200",
+  message:
+    if (isStringResult)
+      payload.result
+    else if (hasMessageServer)
+      payload.result.messageServer
+    else
+      "envio exitoso"
+}
+++
+(
+  if (isStringResult)
+    { result: payload.result }
+  else if (isObjectResult and not hasMessageServer)
+    { result: payload.result }
+  else
+    {}
+)
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-questionnaire" doc:id="f1215533-8a0a-4840-b681-1789ca52e7ae" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="7d72b431-3b9c-4f11-8f95-c60b65fac54f" variableName="headers" />
+		<set-variable value="#[attributes.uriParams]" doc:name="Set Variable UriParams" doc:id="da207ddc-89ff-4128-8100-3fd543a9e080" variableName="uriParams" />
+		<flow-ref doc:name="lisim-sapi-client" doc:id="96fe0220-02f3-4519-9f3f-847ca93d2047" name="lisim-sapi-questionnaire-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="ffae0dae-d367-48db-9e8e-178c3eca70f0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var hasMessageServer = payload.messageServer != null
+
+---
+{
+  code: "200",
+  message:
+    if (hasMessageServer)
+      payload.messageServer
+    else
+      "Questionario generado exitosamente",
+  questions:
+    if (hasMessageServer)
+      []
+    else
+      payload default []
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-questionnaire-validation" doc:id="d5bcfa9c-4b7d-4dd1-95a5-ea052dab9dd3" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="8061ff20-8ad3-4b0c-8c63-2b4ae9126b39" variableName="headers" />
+		<ee:transform doc:name="set payload lisim ques-validate" doc:id="a405fde2-29ec-4dac-82d7-176b2db6644f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    IdentityValidationId: payload.identityValidationId,
+    Answers: payload.answers	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="lisim-sapi-client" doc:id="4d2ddf18-ee4d-464c-baf9-a5b45f675f29" name="lisim-sapi-questionnaire-validate-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="04847a03-acfd-4760-8e5b-326de146fb52" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var hasMessageServer =
+  payload.result is Object and payload.result.messageServer != null
+
+---
+{
+  code: "200",
+  message:
+    if (hasMessageServer)
+      payload.result.messageServer
+    else
+      payload.result
+}
+++
+(
+  if (not hasMessageServer)
+    { result: payload.result }
+  else
+    {}
+)
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-mecna" doc:id="603d46d8-5e65-4700-a589-d4142c8819cc" >
+		<ee:transform doc:name="set request variables" doc:id="84cc4714-3d04-4837-8311-d2a1c07fbcf7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"fields": [],
+	"filters": [{
+		"field": "TipoIdentificacion",
+		"value": attributes.queryParams.document_id_type
+	},
+    {
+		"field": "Identificacion",
+		"value": attributes.queryParams.document_id
+	},
+    {
+		"field": "EstadoRegistro",
+		"value": "Activo"
+	}],
+	"limit": 10
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+				<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.mecna.base-path')]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"collectionName": "MDM_MECNA_ARCHIVO"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mongo-sapi-client" doc:id="87359df1-01bc-498a-bd2e-2133129e0569" name="mongo-db-sapi-post-dynamic-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="8355e52b-9a46-42da-81fc-f577e7ea5266" >
+			<when expression="#[isEmpty(payload)]">
+				<ee:transform doc:name="business payload empty" doc:id="4051575e-9582-4071-8b9c-d59e15d634ec">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": 1,
+  "description": "Sin registros"
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<when expression="#[sizeOf(payload) &gt; 1]">
+				<ee:transform doc:name="last record" doc:id="6fab698b-7475-44ef-b965-401b328afcd6">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var sorted = payload orderBy (
+    (item) -> (item.FechacargaArchivo as Date {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"})
+)
+var sortedDesc =sorted[-1 to 0]
+---
+sortedDesc[0]]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<ee:transform doc:name="business payload negative" doc:id="5a5b9664-e5d2-4c17-a262-9038b6b4df39" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": -1,
+  "description": payload.Observacion default "sin especificar",
+  "error": payload.tipologia default "sin especificar"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="bussiness payload" doc:id="2ae657e9-6f9f-421e-92c5-33375fd29b8e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var obj = payload[0]
+---
+{
+  "code": -1,
+  "description": obj.Observacion default "sin especificar",
+  "error": obj.tipologia default "sin especificar"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
