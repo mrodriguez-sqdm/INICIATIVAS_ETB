@@ -6,22 +6,54 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
 http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
 	<sub-flow name="validation-origin-orderSub_Flow" doc:id="2a6544fc-3dc7-4e31-b5e5-7b28188241de" >
+		<ee:transform doc:name="Transform Message" doc:id="b18fd6d1-0b73-483e-8fe1-8674872defcf">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="result"><![CDATA[%dw 2.0
+output application/json
+
+var normalizeOrigin =
+    upper(
+        if (isEmpty(attributes.headers.origin default ""))
+            "TIGO"
+        else
+            attributes.headers.origin
+    )
+
+var baseKey =
+    if (!isEmpty(attributes.uriParams.idServiceAccount default ""))
+        attributes.uriParams.idServiceAccount
+    else if (!isEmpty(attributes.uriParams.orderNumber default ""))
+        attributes.uriParams.orderNumber
+    else if (!isEmpty(payload.orderNumber default ""))
+        payload.orderNumber
+    else if (!isEmpty(payload.idServiceAccount default ""))
+        payload.idServiceAccount
+    else
+        ""
+
+var keyObjectStore =
+    normalizeOrigin ++ "_" ++ baseKey
+---
+keyObjectStore]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
 		<flow-ref doc:name="Contains Result Key Value" doc:id="90d5325e-5b0a-4ae7-9352-9c5e0a83dd44" name="get-key-order-number-Sub-Flow" target="resultOS" />
 		<choice doc:name="Choice" doc:id="308014d5-779a-4a27-93db-984bd7067220">
 			<when expression="#[vars.resultOS == true]">
 				<logger level="INFO" doc:name="Logger" doc:id="939291b3-9037-4f2a-9103-6ca57845f0d0" message="The Object Store contains a record for the request origin and order." />
 			</when>
 			<otherwise>
-				<flow-ref doc:name="Get Order By Order Number" doc:id="243af34e-cd1e-4c15-8065-cab55ccdbc9d" name="get-order-status-by-order-numberSub_Flow" target="resultDB"/>
+				<flow-ref doc:name="Get Order By Order Number" doc:id="243af34e-cd1e-4c15-8065-cab55ccdbc9d" name="get-order-status-by-order-numberSub_Flow" target="resultDB" />
 				<ee:transform doc:name="Transform Message" doc:id="088d299e-f81e-42ba-a5f2-a53d79fe9562">
 					<ee:message>
 					</ee:message>
 					<ee:variables >
 						<ee:set-variable variableName="filterResultDB" ><![CDATA[%dw 2.0
 output application/json
-var mayorista = payload.Servicio_Tramite.Caracteristica_Servicio filter ($.Caracteristica == "MAYORISTA")
+var mayorista = vars.resultDB.Servicio_Tramite.Caracteristica_Servicio filter ($.Caracteristica == "MAYORISTA")
 ---
-((mayorista[0].Valor default "") ++ "_" ++ (payload.Numero_Orden default "")) == (vars.result default "")
+((mayorista[0].Valor default "") ++ "_" ++ (vars.resultDB.Numero_Orden default "")) == (vars.result default "")
 ]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
