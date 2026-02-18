@@ -1,0 +1,861 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-customer-orchestratorSub_Flow" doc:id="3ee3c998-d194-4c8b-ba01-e57af86e2771" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="fd1c6766-9161-4a9a-827e-b6b1e4f6d6fa" variableName="parameters"/>
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="89df4cf5-b9c2-4469-84c6-7e3477d07d28" variableName="headers"/>
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="4474aaa7-ee68-4384-8d39-873d1b22bbcc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.CUSTOMER_ID_TYPE != null and vars.parameters.CUSTOMER_ID_TYPE != "" &#10;	and vars.parameters.CUSTOMER_ID != null and vars.parameters.CUSTOMER_ID != ""&#10;)&#10; if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;  false&#10; else&#10;  true &#10;else&#10;	if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;	  true&#10;	else&#10;	  false]' doc:name="Set call" doc:id="80eaba17-5c6e-44e8-b56b-51d7350c5773" variableName="call" />
+		<choice doc:name="Choice" doc:id="3e3499b3-fc95-4e33-83ee-87e4b104d3b4" >
+			<when expression="#[vars.call]" >
+				<choice doc:name="Choice" doc:id="91cb2410-ebcb-4e87-bcbf-d77b36c8cb8e">
+					<when expression="#[((p('botAuthorizedOrigins') default &quot;&quot;) splitBy &quot;,&quot; map trim($)) contains (vars.parameters.ORIGIN default &quot;&quot;)]">
+						<ee:transform doc:name="build Payload BOT" doc:id="cd160161-affa-4b13-9023-396457fbc62e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Phone": (payload.filtros.Phone default ""),
+    "Billing_Account" : (payload.filtros.AccountNumber default ""),
+    "Customer": {
+      "Document_Type": (vars.parameters.CUSTOMER_ID_TYPE default ""),
+      "Document_Number": (vars.parameters.CUSTOMER_ID default "")
+    },
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+						<flow-ref doc:name="Flow Reference" doc:id="d8932fba-b438-47d7-8289-92ff481a3d53" name="post-route-clientSub_Flow" />
+						<ee:transform doc:name="Transform Message" doc:id="177ecbf0-f490-41d4-b985-d623e999bc7c">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+fun camelizeKeys(obj) =
+    obj match {
+        case is Object ->
+            obj
+              pluck ((value, key) -> do {
+                var camelKey =
+                  (key replace /_([a-zA-Z0-9])/ with (m) -> upper(m[1]))
+                      replace /^(.)/ with (m) -> lower(m[1])     
+                ---
+                (camelKey): camelizeKeys(value)
+              })
+              reduce ((item, acc = {}) -> acc ++ item)
+        case is Array -> obj map camelizeKeys($)
+        else -> obj
+    }
+
+
+---
+{
+  codeResponse: "200",
+  responseMessage: payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+  customer:
+    if (payload.WSResponseHeader.Service.status == "OK")
+    [
+      {
+        identityData: {
+          firstName: if (payload.WSResponseBody.Customer != null)
+                        payload.WSResponseBody.Customer.Name.Names
+                     else
+                        payload.WSResponseBody.Service.Customer.Name.Names,
+          lastName:  if (payload.WSResponseBody.Customer != null)
+                        payload.WSResponseBody.Customer.Name.Surnames
+                     else
+                        payload.WSResponseBody.Service.Customer.Name.Surnames,
+          documentType: if (payload.WSResponseBody.Customer != null)
+                          payload.WSResponseBody.Customer.Document_Type
+                        else
+                          payload.WSResponseBody.Service.Customer.Document_Type,
+          documentNumber: if (payload.WSResponseBody.Customer != null)
+                            payload.WSResponseBody.Customer.Document_Number
+                          else
+                            payload.WSResponseBody.Service.Customer.Document_Number,
+          gender: if (payload.WSResponseBody.Customer != null)
+                    payload.WSResponseBody.Customer.Gender
+                  else
+                    payload.WSResponseBody.Service.Customer.Gender,
+          maritalStatus: if (payload.WSResponseBody.Customer != null)
+                           payload.WSResponseBody.Customer.Civil_Status
+                         else
+                           payload.WSResponseBody.Service.Customer.Civil_Status,
+          birthDate:
+            if (payload.WSResponseBody.Customer != null)
+              camelizeKeys(payload.WSResponseBody.Customer.Birthday default {})
+            else
+              camelizeKeys((payload.WSResponseBody.Service.Customer default {}).Birthday default {})
+        },
+        contactData: {
+          email:   if (payload.WSResponseBody.Customer != null)
+                     payload.WSResponseBody.Customer.Email
+                   else
+                     payload.WSResponseBody.Service.Customer.Email,
+          phone:   if (payload.WSResponseBody.Customer != null)
+                     payload.WSResponseBody.Customer.Phone
+                   else
+                     payload.WSResponseBody.Service.Customer.Phone,
+          mobile:  if (payload.WSResponseBody.Customer != null)
+                     payload.WSResponseBody.Customer.Mobile_Phone
+                   else
+                     payload.WSResponseBody.Service.Customer.Mobile_Phone,
+          address: if (payload.WSResponseBody.Customer != null)
+                     payload.WSResponseBody.Customer.Address
+                   else
+                     payload.WSResponseBody.Service.Customer.Address,
+          country: if (payload.WSResponseBody.Customer != null)
+                     (payload.WSResponseBody.Customer.Country default {}).Name
+                   else
+                     (payload.WSResponseBody.Service.Customer.Country default {}).Name,
+          state:   if (payload.WSResponseBody.Customer != null)
+                     (payload.WSResponseBody.Customer.Department default {}).Name
+                   else
+                     (payload.WSResponseBody.Service.Customer.Department default {}).Name,
+          city:    if (payload.WSResponseBody.Customer != null)
+                     (payload.WSResponseBody.Customer.City default {}).Name
+                   else
+                     (payload.WSResponseBody.Service.Customer.City default {}).Name
+        },
+        state: payload.WSResponseBody.Customer.State,
+        atdp: {
+          channel: if (payload.WSResponseBody.Customer != null)
+                     (payload.WSResponseBody.Customer.ATDP default {}).Channel
+                   else
+                     (payload.WSResponseBody.Service.Customer.ATDP default {}).Channel,
+          date: camelizeKeys(
+                  if (payload.WSResponseBody.Customer != null)
+                    (payload.WSResponseBody.Customer.ATDP default {}).Date default {}
+                  else
+                    ((payload.WSResponseBody.Service.Customer.ATDP default {}).Date default {})
+                ),
+          decision: if (payload.WSResponseBody.Customer != null)
+                      (payload.WSResponseBody.Customer.ATDP default {}).Decision
+                    else
+                      (payload.WSResponseBody.Service.Customer.ATDP default {}).Decision,
+          pqr: if (payload.WSResponseBody.Customer != null)
+                 (payload.WSResponseBody.Customer.ATDP default {}).PQR
+               else
+                 (payload.WSResponseBody.Service.Customer.ATDP default {}).PQR,
+          user: if (payload.WSResponseBody.Customer != null)
+                  (payload.WSResponseBody.Customer.ATDP default {}).User
+                else
+                  (payload.WSResponseBody.Service.Customer.ATDP default {}).User
+        },
+        ley2300: {
+          contactRegistry: [
+            {
+              channel: "",
+              value: "",
+              authorized: true
+            }
+          ],
+          schedule: ""
+        },
+        segment:
+          if (payload.WSResponseBody.Customer != null)
+            (payload.WSResponseBody.Customer.Segmentation default {}).Segment
+          else
+            ((payload.WSResponseBody.Service.Customer default {}).Segmentation default {}).Segment,
+        customerExperience: {
+          attentionType: payload.WSResponseBody.RecoverExperience.Attention_Type default "",
+          category: payload.WSResponseBody.RecoverExperience.Category default "",
+          customerExperience: payload.WSResponseBody.RecoverExperience.Recover_Experience default ""
+        },
+        services:
+          if ((payload.WSResponseBody default {}) != null and (payload.WSResponseBody.Service default null) != null)
+          [
+            {
+              address: payload.WSResponseBody.Service.Address default null,
+              billing: {
+                address:               (payload.WSResponseBody.Service.Billing default {}).Address       default null,
+                billingAccount:        (payload.WSResponseBody.Service.Billing default {}).Billing_Account        default "",
+                billingAccountFather:  (payload.WSResponseBody.Service.Billing default {}).Billing_Account_Father default "",
+                billingDueDay:         (payload.WSResponseBody.Service.Billing default {}).Billing_Due_Day        default "",
+                billingDueOcsDay:      (payload.WSResponseBody.Service.Billing default {}).Billing_Due_OCS_Day    default "",
+                billingDueDayUser:     (payload.WSResponseBody.Service.Billing default {}).Billing_Due_Day_User   default "",
+                canUpdateDeliveryType: (payload.WSResponseBody.Service.Billing default {}).Can_Update_Delivery_Type default false,
+                cycle:                 (payload.WSResponseBody.Service.Billing default {}).Cycle                  default "",
+                deliveryType:          (payload.WSResponseBody.Service.Billing default {}).Delivery_Type          default "",
+                email:                 (payload.WSResponseBody.Service.Billing default {}).Email                  default "",
+                idSalesforce:          (payload.WSResponseBody.Service.Billing default {}).Id_Salesforce          default "",
+                phone:                 (payload.WSResponseBody.Service.Billing default {}).Phone                  default "",
+                state:                 (payload.WSResponseBody.Service.Billing default {}).State                  default "",
+                stratum:               (payload.WSResponseBody.Service.Billing default {}).Stratum                default "",
+                "type":                (payload.WSResponseBody.Service.Billing default {}).Type                   default ""
+              },
+              bundle:      payload.WSResponseBody.Service.Bundle    default null,
+              charging:    payload.WSResponseBody.Service.Charging  default null,
+              collections: {
+                dates:                 (payload.WSResponseBody.Service.Collections default {}).Dates                 default null,
+                reason:                (payload.WSResponseBody.Service.Collections default {}).Reason                default "",
+                reconnectionAvailable: (payload.WSResponseBody.Service.Collections default {}).Reconnection_Available default false,
+                state:                 (payload.WSResponseBody.Service.Collections default {}).State                 default ""
+              },
+              contractedOffer: camelizeKeys(payload.WSResponseBody.Service.Contracted_Offer default {}),
+              creationDate:        camelizeKeys(payload.WSResponseBody.Service.Creation_Date       default {}),
+              customer:            camelizeKeys(payload.WSResponseBody.Service.Customer            default {}),
+              directvSubscription: camelizeKeys(payload.WSResponseBody.Service.Directv_Subscription default null),
+              files:               camelizeKeys(payload.WSResponseBody.Service.Files               default null),
+              hasFamilyAndFriends: payload.WSResponseBody.Service.Has_Family_And_Friends default false,
+              hasPasaGigas:        payload.WSResponseBody.Service.Has_PasaGigas         default false,
+              home:                camelizeKeys(payload.WSResponseBody.Service.Home      default null),
+              inventory:           camelizeKeys(payload.WSResponseBody.Service.Inventory default null),
+              miEtbUser:           camelizeKeys(payload.WSResponseBody.Service.MiETBUser default {}),
+              ota:                 camelizeKeys(payload.WSResponseBody.Service.OTA       default null),
+              pasaGigas:           camelizeKeys(payload.WSResponseBody.Service.PasaGigas default null),
+              permanenceClause:    camelizeKeys(payload.WSResponseBody.Service.Permanence_Clause default null),
+              rateIncrease:        camelizeKeys(payload.WSResponseBody.Service.Rate_Increase     default null),
+              updateDate:          camelizeKeys(payload.WSResponseBody.Service.Update_Date       default {}),
+              billingAccount: payload.WSResponseBody.Service.Billing_Account default "",
+              integrationId:  payload.WSResponseBody.Service.Integration_Id  default "",
+              lineType:       payload.WSResponseBody.Service.Line_Type       default "",
+              migrated:       payload.WSResponseBody.Service.Migrated        default false,
+              nickname:       camelizeKeys(payload.WSResponseBody.Service.Nickname default {}),
+              phone:          payload.WSResponseBody.Service.Phone           default "",
+              retencion:      payload.WSResponseBody.Service.Retencion       default false,
+              serviceAccount: payload.WSResponseBody.Service.Service_Account default "",
+              state:          camelizeKeys(payload.WSResponseBody.Service.State default {}),
+              technology:     payload.WSResponseBody.Service.Technology      default ""
+            }
+          ]
+          else if ((payload.WSResponseBody default {}) != null and (payload.WSResponseBody.Customer default null) != null and (payload.WSResponseBody.Customer.Services default null) != null)
+            (payload.WSResponseBody.Customer.Services default []) map (svc) -> camelizeKeys(svc)
+          else
+            [],
+        orders:
+          if (payload.WSResponseBody.Orders == null)
+            []
+          else
+            (payload.WSResponseBody.Orders default []) map (order) -> {
+              agenda: {
+                date: order.Agenda.Date default "",
+                timeSlot: order.Agenda.Time_Slot default "",
+                status: order.Agenda.Status default ""
+              },
+              cancelationInfo: {
+                reason: order.Cancelation_Info.Reason default "",
+                date: order.Cancelation_Info.Date default "",
+                user: order.Cancelation_Info.User default ""
+              },
+              channel: order.Channel default "",
+              characteristics: (order.Characteristics default []) map (char) -> {
+                name: char.Name default "",
+                value: char.Value default "",
+                "type": char.Type default ""
+              },
+              creatorUser: order.Creator_User default "",
+              customer: {
+                documentNumber: order.Customer.Document_Number default "",
+                documentType: order.Customer.Document_Type default "",
+                name: order.Customer.Name default ""
+              },
+              modifyingUser: order.Modifying_User default "",
+              newOffer: {
+                name: order.New_Offer.Name default "",
+                "type": order.New_Offer.Type default "",
+                price: order.New_Offer.Price default ""
+              },
+              oldOffer: {
+                name: order.Old_Offer.Name default "",
+                "type": order.Old_Offer.Type default "",
+                price: order.Old_Offer.Price default ""
+              },
+              promotions: {
+                name: order.Promotions.Name default "",
+                "type": order.Promotions.Type default "",
+                discount: order.Promotions.Discount default ""
+              },
+              subChannel: order.Sub_Channel default "",
+              technician: {
+                name: order.Technician.Name default "",
+                id: order.Technician.Id default "",
+                phone: order.Technician.Phone default ""
+              },
+              technology: order.Technology default ""
+            },
+        pqrs:
+          if (payload.WSResponseBody.PQRs == null)
+            []
+          else
+            (payload.WSResponseBody.PQRs default []) map (pqr) -> {
+              agenda: {
+                date: pqr.Agenda.Date default "",
+                timeSlot: pqr.Agenda.Time_Slot default "",
+                status: pqr.Agenda.Status default ""
+              },
+              agendas: (pqr.Agendas default []) map (item) -> {
+                date: item.Date default "",
+                timeSlot: item.Time_Slot default "",
+                status: item.Status default ""
+              },
+              activities: (pqr.Activities default []) map (act) -> {
+                "type": act.Type default "",
+                description: act.Description default "",
+                date: act.Date default ""
+              },
+              assignedUser: pqr.Assigned_User default "",
+              billingAccount: {
+                billingAccount: (pqr.Billing_Account default {}).Billing_Account default "",
+                serviceAccount: (pqr.Billing_Account default {}).Service_Account default "",
+                phone: (pqr.Billing_Account default {}).Phone default ""
+              },
+              characteristics: {
+                name: (pqr.Characteristics default {}).Name default "",
+                value: (pqr.Characteristics default {}).Value default "",
+                "type": (pqr.Characteristics default {}).Type default ""
+              },
+              contactDocumentNumber: pqr.Contact_Document_Number default "",
+              contactDocumentType: pqr.Contact_Document_Type default "",
+              creationDate: {
+                date: (pqr.Creation_Date default {}).Date default "",
+                formattedDate: (pqr.Creation_Date default {}).Formatted_Date default ""
+              },
+              creationUser: pqr.Creation_User default "",
+              isAgendaSuspended: pqr.Is_Agenda_Suspended default "",
+              isSon: pqr.Is_Son default "",
+              notificationMedium: pqr.Notification_Medium default "",
+              modificationDate: {
+                date: (pqr.Modification_Date default {}).Date default "",
+                formattedDate: (pqr.Modification_Date default {}).Formatted_Date default ""
+              },
+              order: {
+                id: (pqr.Order default {}).Id default "",
+                "type": (pqr.Order default {}).Type default "",
+                status: (pqr.Order default {}).Status default ""
+              },
+              radicationDate: {
+                date: (pqr.Radication_Date default {}).Date default "",
+                formattedDate: (pqr.Radication_Date default {}).Formatted_Date default ""
+              },
+              receptionMedium: pqr.Reception_Medium default "",
+              service: {
+                phone: (pqr.Service default {}).Phone default "",
+                technology: (pqr.Service default {}).Technology default "",
+                status: (pqr.Service default {}).Status default ""
+              },
+              subChannel: pqr.Sub_Channel default "",
+              suspensionDetail: {
+                reason: (pqr.Suspension_Detail default {}).Reason default "",
+                date: (pqr.Suspension_Detail default {}).Date default "",
+                status: (pqr.Suspension_Detail default {}).Status default ""
+              },
+              solutionDate: {
+                date: (pqr.Solution_Date default {}).Date default "",
+                formattedDate: (pqr.Solution_Date default {}).Formatted_Date default ""
+              }
+            }
+      }
+    ]
+    else
+      []
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</when>
+					<otherwise>
+						<flow-ref doc:name="Flow Reference" doc:id="8bb8eee4-686a-49f6-b55a-7f62a1f7271d" name="mongo-db-sapi-get-customer-clientSub_Flow"/>
+						<ee:transform doc:name="Transform Message" doc:id="aefc1790-658a-4e64-b12f-a400c325d4c0" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: (payload.codigo default 200) as String,
+    responseMessage: "La solicitud fue exitosa",
+    customer: (payload.customers default []) map (cust) -> (
+        do {
+            var hasFibra = sizeOf((cust.Sistema_Origen default []) filter ((so) -> so.Sistema_Origen == "FIBRA")) > 0
+            ---
+            {
+                identityData: {
+                    name: cust.Nombre_Cliente default "",
+                    documentType: cust.Tipo_Documento default "",
+                    documentNumber: cust.Numero_Identificacion default "",
+                    gender: cust.Genero default "",
+                    maritalStatus: cust.Estado_Civil default "",
+                    birthDate: cust.Fecha_Nacimiento default ""
+                },
+                state: cust.Estado,
+                contactData: {
+                    email: cust.Correo_Electronico default "",
+                    phone: cust.Telefono_Fijo default "",
+                    mobile: cust.Telefono_Movil default "",
+                    address: cust.Direccion default "",
+                    country: cust.Pais default "",
+                    state: cust.Departamento default "",
+                    city: cust.Ciudad default ""
+                }
+            }
+            ++ (if (cust.ATDP?) { atdp: { decision: cust.ATDP default "" } } else {})
+            ++ (if (cust.Autorizacion_Datacredito? or cust.Correo_Electronico? or (cust.Contacto default [])[0]?) { 
+                    ley2300: { 
+                        contactRegistry: (cust.Contacto default []) map (c) -> {
+                            value: c.Email_Contacto default (cust.Correo_Electronico default "")
+                        }
+                    } 
+               } else {})
+            ++ (if (cust.UEN?) { segment: cust.UEN default "" } else {})
+            ++ (if (cust.EsquemaAtencion? or cust.Categoria?) { 
+                    customerExperience: {
+                        attentionType: cust.EsquemaAtencion default "",
+                        category: cust.Categoria default ""
+                    }
+               } else {})
+        }
+    )
+} ]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="56a57492-9ce4-46e1-b06c-441f119cef72" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD REQUEST",
+  "message": {
+    "message": "Error processing your consultation request"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable" doc:id="03cc6963-c0d0-4c54-b321-d1d46b7301b0" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="create-customer-orchestratorSub_Flow" doc:id="51e51285-ddab-466f-865b-23758646e5cb" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="c6c261f4-86e0-48d3-8579-019b60709ff6" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="40b51a51-d1ed-4253-bc49-eb5a4709ced8" variableName="headers" />
+		<ee:transform doc:name="Transform Message" doc:id="8835d94f-eb9a-4832-96f6-257cd15b777d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+ customer: 
+    {
+      actualizacion_extractor: payload.customer.extractorUpdate,
+      Adjuntos_Cliente: payload.customer.customerAttachments map (a) -> {
+        Descripcion: a.description,
+        Enviar: a.send,
+        Nombre_Archivo: a.fileName,
+        Ruta: a.path,
+        Tamano: a.size
+      },
+      ATDP_PN: {
+            CANAL: payload.customer.atdpPn.channel,
+            FECHA: payload.customer.atdpPn.date,
+            HABEAS_DATA: payload.customer.atdpPn.habeasData,
+            PQR_ASOCIADA: payload.customer.atdpPn.associatedPqr,
+            USUARIO: payload.customer.atdpPn.user
+        },
+      ATDP_PJ: payload.customer.atdpPj,
+      Autorizacion_Datacredito: payload.customer.dataCreditAuthorization,
+      Barrio: payload.customer.neighborhood,
+      Categoria: payload.customer.category,
+      Ciudad: payload.customer.city,
+      Ciudad_Exp_Documento: payload.customer.documentIssueCity,
+      Clasificacion_Scoring: payload.customer.scoringClassification,
+      Cliente_Valor: payload.customer.customerValue,
+      Cobertura: payload.customer.coverage,
+      
+      Contacto: payload.customer.contacts map (c) -> {
+        actualizacion_extractor: c.extractorUpdate,
+        Adjuntos_Contacto: c.contactAttachments,
+        Autorizado: c.authorized,
+        Barrio: c.neighborhood default "",
+        Ciudad: c.city,
+        Codigo_DANE: c.daneCode,
+        Departamento: c.department,
+        Direccion_Asociada: c.associatedAddress,
+        Email_Contacto: c.contactEmail,
+        Estado: c.status,
+        Fecha_Modificacion: c.modificationDate,
+        Fecha_Modificacion_Movil: c.mobileModificationDate,
+        Localidad: c.locality,
+        Movil_Contacto: c.mobileContact,
+        Movil_Contacto2: c.mobileContact2 default "",
+        Nombre_Contacto: c.contactName,
+        Nombre_Individual: c.individualName,
+        Numero_Documento: c.documentNumber,
+        Pais: c.country,
+        Primer_Apellido: c.firstLastName,
+        Segundo_Apellido: c.secondLastName,
+        Telefono_Contacto: c.contactPhone,
+        Tipo_Documento: c.documentType
+      },
+      
+      Correo_Electronico: payload.customer.email,
+      
+      Datos_Empresa: {
+        Balance_General: {
+          Inventarios: payload.customer.companyData.balanceSheet.inventory,
+          Total_Activo_Corriente: payload.customer.companyData.balanceSheet.totalCurrentAssets,
+          Total_Activos: payload.customer.companyData.balanceSheet.totalAssets,
+          Total_Pasivo: payload.customer.companyData.balanceSheet.totalLiabilities,
+          Total_Pasivo_Corriente: payload.customer.companyData.balanceSheet.totalCurrentLiabilities,
+          Total_Patrimonio: payload.customer.companyData.balanceSheet.totalEquity
+        },
+        Estado_Resultados: {
+          Costo_Venta: payload.customer.companyData.incomeStatement.salesCost,
+          Cuentas_Por_Cobrar: payload.customer.companyData.incomeStatement.accountsReceivable,
+          Gastos_Operacionales: payload.customer.companyData.incomeStatement.operatingExpenses,
+          Impuestos_Renta_Y_Complementarios: payload.customer.companyData.incomeStatement.incomeTaxes,
+          Ingresos_No_Operacionales_Ano_Anterior: payload.customer.companyData.incomeStatement.nonOperatingIncomePreviousYear,
+          Ingresos_No_Operacionales_Ano_Corriente: payload.customer.companyData.incomeStatement.nonOperatingIncomeCurrentYear,
+          Ingresos_Operacionales_Ano_Anterior: payload.customer.companyData.incomeStatement.operatingIncomePreviousYear,
+          Ingresos_Operacionales_Ano_Corriente: payload.customer.companyData.incomeStatement.operatingIncomeCurrentYear,
+          Obligaciones_Financieras: payload.customer.companyData.incomeStatement.financialObligations,
+          Otros_Egresos: payload.customer.companyData.incomeStatement.otherExpenses,
+          Utilidad_Antes_De_Impuestos: payload.customer.companyData.incomeStatement.profitBeforeTaxes,
+          Utilidad_Neta: payload.customer.companyData.incomeStatement.netProfit,
+          Utilidades_Operacionales: payload.customer.companyData.incomeStatement.operatingProfits
+        },
+        Informacion_Basica: {
+          Actividad_Economica: payload.customer.companyData.basicInformation.economicActivity,
+          Id_Solicitud: payload.customer.companyData.basicInformation.requestId,
+          Plazo: payload.customer.companyData.basicInformation.term,
+          Razon_Social: payload.customer.companyData.basicInformation.businessName,
+          Sector: payload.customer.companyData.basicInformation.sector
+        },
+        Representante_Legal: {
+          Fecha_Expedicion: payload.customer.companyData.legalRepresentative.issueDate,
+          Fecha_Nacimiento: payload.customer.companyData.legalRepresentative.birthDate,
+          Numero_Documento: payload.customer.companyData.legalRepresentative.documentNumber,
+          Primer_Apellido: payload.customer.companyData.legalRepresentative.firstLastName,
+          Primer_Nombre: payload.customer.companyData.legalRepresentative.firstName,
+          Segundo_Apellido: payload.customer.companyData.legalRepresentative.secondLastName,
+          Segundo_Nombre: payload.customer.companyData.legalRepresentative.secondName,
+          Tipo_Documento: payload.customer.companyData.legalRepresentative.documentType
+        },
+        Ubicacion: {
+          Celular: payload.customer.companyData.location.mobile,
+          Codigo_Departamento: payload.customer.companyData.location.departmentCode,
+          Codigo_Municipio: payload.customer.companyData.location.municipalityCode,
+          Departamento: payload.customer.companyData.location.department,
+          Direccion: payload.customer.companyData.location.address,
+          Email: payload.customer.companyData.location.email,
+          Estrato: payload.customer.companyData.location.stratum,
+          Extension: payload.customer.companyData.location.extension,
+          Fecha_Constitucion: payload.customer.companyData.location.constitutionDate,
+          Municipio: payload.customer.companyData.location.municipality,
+          Telefono: payload.customer.companyData.location.phone,
+          Tipo_Negocio: payload.customer.companyData.location.businessType,
+          Zona: payload.customer.companyData.location.zone
+        }
+      },
+      
+      Departamento: payload.customer.department,
+      Depto_Exp_Documento: payload.customer.documentIssueDepartment,
+      Direccion: payload.customer.address,
+      Direcciones: [], // addresses -> Direcciones si lo quieres mapear
+      EsquemaAtencion: payload.customer.attentionScheme,
+      Estado: payload.customer.status,
+      Estado_Civil: payload.customer.maritalStatus,
+      Estrato: payload.customer.stratum,
+      Fecha_Actualizacion: payload.customer.updateDate,
+      Fecha_Expedicion_Documento: payload.customer.documentIssueDate,
+      Fecha_Nacimiento: payload.customer.birthDate,
+      Fecha_Scoring: payload.customer.scoringDate,
+      Genero: payload.customer.gender,
+      Localidad: payload.customer.locality,
+      Modificado_MDM: payload.customer.mdmModified,
+      Nombre_Cliente: payload.customer.customerName,
+      Nombre_Corto_Empresa: payload.customer.companyShortName,
+      Nombres: payload.customer.firstNames,
+      Numero_Identificacion: payload.customer.identificationNumber,
+      Pais: payload.customer.country,
+      Primer_Apellido: payload.customer.firstLastName,
+      Rango_Edad: payload.customer.ageRange,
+      Scoring: payload.customer.scoring,
+      Segmento: payload.customer.segment,
+      Segmento_UEN: payload.customer.uenSegment,
+      Segundo_Apellido: payload.customer.secondLastName,
+      ServiciosPS: payload.customer.servicesPs,
+      Sistema_Origen: payload.customer.sourceSystems map (s) -> {
+        Id_Sistema_Origen: s.sourceSystemId,
+        Sistema_Origen: s.sourceSystem
+      },
+      Telefono_Fijo: payload.customer.landlinePhone,
+      Telefono_Movil: payload.customer.mobilePhone,
+      Tipo_Cliente: payload.customer.customerType,
+      Tipo_Documento: payload.customer.documentType,
+      Tipo_Scoring: payload.customer.scoringType,
+      UEN: payload.customer.uen,
+      Usuario_Creador: payload.customer.createdByUser,
+      Usuario_Modificador: payload.customer.modifiedByUser
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="dea9f305-c7b3-406e-8758-440fc4248571" name="mongo-db-sapi-create-customer-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="80512252-2600-4961-974a-20b850817778" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: payload.codigo,
+  message: payload.mensaje,
+  id: payload.id
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="update-customer-orchestratorSub_Flow" doc:id="b0f64569-147e-4617-9409-a2fef41e16d7" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="6ed0a58a-9e95-492f-b380-5bca16dc31fe" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="a5d4d029-1b85-4f6b-97dd-a6bb47bf6904" variableName="headers" />
+		<ee:transform doc:name="Transform Message" doc:id="f72f46c6-f4b4-4efe-9a9b-3398c462da13">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  customer:
+    ({
+      actualizacion_extractor: payload.customer.extractorUpdate,
+
+      Adjuntos_Cliente:
+        ((payload.customer.customerAttachments default []) map (a) ->
+          ({
+            Descripcion: a.description,
+            Enviar: a.send,
+            Nombre_Archivo: a.fileName,
+            Ruta: a.path,
+            Tamano: a.size
+          } filterObject ($ != null
+      and $ != {}
+      and $ != [])))
+        filter ($ != {}),
+
+      ATDP_PN:
+        ({
+          CANAL: ((payload.customer.atdpPn default {}).channel),
+          FECHA: ((payload.customer.atdpPn default {}).date),
+          HABEAS_DATA: ((payload.customer.atdpPn default {}).habeasData),
+          PQR_ASOCIADA: ((payload.customer.atdpPn default {}).associatedPqr),
+          USUARIO: ((payload.customer.atdpPn default {}).user)
+        } filterObject ($ != null
+      and $ != {}
+      and $ != [])),
+
+      ATDP_PJ: payload.customer.atdpPj,
+
+      Autorizacion_Datacredito: payload.customer.dataCreditAuthorization,
+      Barrio: payload.customer.neighborhood,
+      Categoria: payload.customer.category,
+      Ciudad: payload.customer.city,
+      Ciudad_Exp_Documento: payload.customer.documentIssueCity,
+      Clasificacion_Scoring: payload.customer.scoringClassification,
+      Cliente_Valor: payload.customer.customerValue,
+      Cobertura: payload.customer.coverage,
+
+      Contacto:
+        ((payload.customer.contacts default []) map (c) ->
+          ({
+            actualizacion_extractor: c.extractorUpdate,
+            Adjuntos_Contacto: c.contactAttachments,
+            Autorizado: c.authorized,
+            Barrio: c.neighborhood,
+            Ciudad: c.city,
+            Codigo_DANE: c.daneCode,
+            Departamento: c.department,
+            Direccion_Asociada: c.associatedAddress,
+            Email_Contacto: c.contactEmail,
+            Estado: c.status,
+            Fecha_Modificacion: c.modificationDate,
+            Fecha_Modificacion_Movil: c.mobileModificationDate,
+            Localidad: c.locality,
+            Movil_Contacto: c.mobileContact,
+            Movil_Contacto2: c.mobileContact2,
+            Nombre_Contacto: c.contactName,
+            Nombre_Individual: c.individualName,
+            Numero_Documento: c.documentNumber,
+            Pais: c.country,
+            Primer_Apellido: c.firstLastName,
+            Segundo_Apellido: c.secondLastName,
+            Telefono_Contacto: c.contactPhone,
+            Tipo_Documento: c.documentType
+          } filterObject ($ != null
+      and $ != {}
+      and $ != [])))
+        filter ($ != {}),
+
+      Correo_Electronico: payload.customer.email,
+
+      Datos_Empresa:
+        ({
+          Balance_General:
+            ({
+              Inventarios: ((payload.customer.companyData default {}).balanceSheet default {}).inventory,
+              Total_Activo_Corriente: ((payload.customer.companyData default {}).balanceSheet default {}).totalCurrentAssets,
+              Total_Activos: ((payload.customer.companyData default {}).balanceSheet default {}).totalAssets,
+              Total_Pasivo: ((payload.customer.companyData default {}).balanceSheet default {}).totalLiabilities,
+              Total_Pasivo_Corriente: ((payload.customer.companyData default {}).balanceSheet default {}).totalCurrentLiabilities,
+              Total_Patrimonio: ((payload.customer.companyData default {}).balanceSheet default {}).totalEquity
+            } filterObject ($ != null
+      and $ != {}
+      and $ != [])),
+
+          Estado_Resultados:
+            ({
+              Costo_Venta: ((payload.customer.companyData default {}).incomeStatement default {}).salesCost,
+              Cuentas_Por_Cobrar: ((payload.customer.companyData default {}).incomeStatement default {}).accountsReceivable,
+              Gastos_Operacionales: ((payload.customer.companyData default {}).incomeStatement default {}).operatingExpenses,
+              Impuestos_Renta_Y_Complementarios: ((payload.customer.companyData default {}).incomeStatement default {}).incomeTaxes,
+              Ingresos_No_Operacionales_Ano_Anterior: ((payload.customer.companyData default {}).incomeStatement default {}).nonOperatingIncomePreviousYear,
+              Ingresos_No_Operacionales_Ano_Corriente: ((payload.customer.companyData default {}).incomeStatement default {}).nonOperatingIncomeCurrentYear,
+              Ingresos_Operacionales_Ano_Anterior: ((payload.customer.companyData default {}).incomeStatement default {}).operatingIncomePreviousYear,
+              Ingresos_Operacionales_Ano_Corriente: ((payload.customer.companyData default {}).incomeStatement default {}).operatingIncomeCurrentYear,
+              Obligaciones_Financieras: ((payload.customer.companyData default {}).incomeStatement default {}).financialObligations,
+              Otros_Egresos: ((payload.customer.companyData default {}).incomeStatement default {}).otherExpenses,
+              Utilidad_Antes_De_Impuestos: ((payload.customer.companyData default {}).incomeStatement default {}).profitBeforeTaxes,
+              Utilidad_Neta: ((payload.customer.companyData default {}).incomeStatement default {}).netProfit,
+              Utilidades_Operacionales: ((payload.customer.companyData default {}).incomeStatement default {}).operatingProfits
+            } filterObject ($ != null
+      and $ != {}
+      and $ != [])),
+
+          Informacion_Basica:
+            ({
+              Actividad_Economica: ((payload.customer.companyData default {}).basicInformation default {}).economicActivity,
+              Id_Solicitud: ((payload.customer.companyData default {}).basicInformation default {}).requestId,
+              Plazo: ((payload.customer.companyData default {}).basicInformation default {}).term,
+              Razon_Social: ((payload.customer.companyData default {}).basicInformation default {}).businessName,
+              Sector: ((payload.customer.companyData default {}).basicInformation default {}).sector
+            } filterObject ($ != null
+      and $ != {}
+      and $ != [])),
+
+          Representante_Legal:
+            ({
+              Fecha_Expedicion: ((payload.customer.companyData default {}).legalRepresentative default {}).issueDate,
+              Fecha_Nacimiento: ((payload.customer.companyData default {}).legalRepresentative default {}).birthDate,
+              Numero_Documento: ((payload.customer.companyData default {}).legalRepresentative default {}).documentNumber,
+              Primer_Apellido: ((payload.customer.companyData default {}).legalRepresentative default {}).firstLastName,
+              Primer_Nombre: ((payload.customer.companyData default {}).legalRepresentative default {}).firstName,
+              Segundo_Apellido: ((payload.customer.companyData default {}).legalRepresentative default {}).secondLastName,
+              Segundo_Nombre: ((payload.customer.companyData default {}).legalRepresentative default {}).secondName,
+              Tipo_Documento: ((payload.customer.companyData default {}).legalRepresentative default {}).documentType
+            } filterObject ($ != null
+      and $ != {}
+      and $ != [])),
+
+          Ubicacion:
+            ({
+              Celular: ((payload.customer.companyData default {}).location default {}).mobile,
+              Codigo_Departamento: ((payload.customer.companyData default {}).location default {}).departmentCode,
+              Codigo_Municipio: ((payload.customer.companyData default {}).location default {}).municipalityCode,
+              Departamento: ((payload.customer.companyData default {}).location default {}).department,
+              Direccion: ((payload.customer.companyData default {}).location default {}).address,
+              Email: ((payload.customer.companyData default {}).location default {}).email,
+              Estrato: ((payload.customer.companyData default {}).location default {}).stratum,
+              Extension: ((payload.customer.companyData default {}).location default {}).extension,
+              Fecha_Constitucion: ((payload.customer.companyData default {}).location default {}).constitutionDate,
+              Municipio: ((payload.customer.companyData default {}).location default {}).municipality,
+              Telefono: ((payload.customer.companyData default {}).location default {}).phone,
+              Tipo_Negocio: ((payload.customer.companyData default {}).location default {}).businessType,
+              Zona: ((payload.customer.companyData default {}).location default {}).zone
+            } filterObject ($ != null
+      and $ != {}
+      and $ != []))
+        } filterObject ($ != null
+      and $ != {}
+      and $ != [])),
+
+      Departamento: payload.customer.department,
+      Direccion: payload.customer.address,
+      EsquemaAtencion: payload.customer.attentionScheme,
+      Estado: payload.customer.status,
+      Estrato: payload.customer.stratum,
+      Genero: payload.customer.gender,
+      Localidad: payload.customer.locality,
+      Nombre_Cliente: payload.customer.customerName,
+      Numero_Identificacion: payload.customer.identificationNumber,
+      Pais: payload.customer.country,
+      Primer_Apellido: payload.customer.firstLastName,
+      Segundo_Apellido: payload.customer.secondLastName,
+
+      Sistema_Origen:
+        ((payload.customer.sourceSystems default []) map (s) ->
+          ({
+            Id_Sistema_Origen: s.sourceSystemId,
+            Sistema_Origen: s.sourceSystem
+          } filterObject ($ != null
+      and $ != {}
+      and $ != [])))
+        filter ($ != {}),
+
+      Telefono_Fijo: payload.customer.landlinePhone,
+      Telefono_Movil: payload.customer.mobilePhone,
+      Tipo_Cliente: payload.customer.customerType,
+      Tipo_Documento: payload.customer.documentType,
+      Tipo_Scoring: payload.customer.scoringType,
+      UEN: payload.customer.uen,
+      Usuario_Creador: payload.customer.createdByUser,
+      Usuario_Modificador: payload.customer.modifiedByUser
+
+    } filterObject ($ != null
+    and $ != ""
+    and $ != {}
+    and $ != []))
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="8090e5e0-2048-42f8-922d-bbf43ac62e9d" name="mongo-db-sapi-update-customer-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message" doc:id="4c636c6f-be17-4ffb-a6f5-806223096ecc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: payload.codigo,
+  message: payload.mensaje
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-customer-authorization-orchestratorSub_Flow" doc:id="b72a74c5-dfa7-4a3a-9bb1-8186be2a5407" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="0bba93a8-6694-4a5d-8ada-589cbf67abe4" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="238d3ab2-ade6-4696-8ae4-902033ee43bf" variableName="headers" />
+		<ee:transform doc:name="Set Payload Bot" doc:id="781c47ad-81a3-41c7-a72e-04a8e2a98647" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  WSRequestBody: {
+    Decision: if (payload.approval) "Approved" else "Rejected",
+    Document_Number: payload.documentNumber default "",
+    Document_Type: payload.documentType default "",
+    Expedition_Date: payload.documentIssueDate 
+                     as DateTime {format: "yyyy-MM-dd'T'HH:mm:ss.SSSX"} 
+                     as String {format: "dd/MM/yyyy"} default "",
+    First_Name: payload.firstName default "",
+    Mail: payload.mail default "",
+    Mobile_Phone: payload.mobilePhone default "",
+    Phone: payload.Phone default "",
+    Pre_Order: payload.preOrder default "",
+    Second_Name: payload.secondName default "",
+    Second_Surname: payload.secondLastName default "",
+    Surname: payload.lastName default "",
+    Stratum: payload.segment default "",
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="0ab61a2b-2c53-457a-9f7f-6590d4c3147b" name="post-habeasdata-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="2fd1b655-4628-4c1f-95ec-7532ad5e83ce" variableName="httpStatus"/>
+		<ee:transform doc:name="Set Payload Bot" doc:id="0bb3d813-f316-4f86-97e9-9d5d3639abe9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: vars.httpStatus as String,
+  message: payload.WSResponseHeader.Service.statusDetail[0].errorMessage ++', '++ payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode,
+  detail: {
+    message: payload.WSResponseHeader.Service.statusDetail[0].errorMessageUser
+  }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
