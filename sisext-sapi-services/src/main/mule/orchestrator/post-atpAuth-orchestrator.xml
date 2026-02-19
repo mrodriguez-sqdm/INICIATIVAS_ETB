@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="post-atpAuth-orchestratorSub_Flow" doc:id="63dacfda-4428-4e6e-9cdc-29c95b668a08" >
+		<ee:transform doc:name="Set osKey" doc:id="cb1bce80-fec5-488b-84bd-41c41ae589b5" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="osKey" ><![CDATA[payload.username]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="bdc9a9c9-04b5-4478-996e-8dcc544a48ce" name="post-atpAuth-clientSub_Flow" target="token_response" />
+		<ee:transform doc:name="Set token" doc:id="51d6605c-97bc-4922-8bed-8fcead27c684">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="token"><![CDATA[%dw 2.0
+output application/json
+---
+vars.token_response.response default {}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+		<ee:transform doc:name="Set response" doc:id="dba6588c-3782-434d-b14e-cbeee0741a3b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.token]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-atpResetToken-orchestratorSub_Flow" doc:id="49eae1e7-ebba-4501-a3f3-dbf83cb4ee47">
+		<ee:transform doc:name="Set osKey" doc:id="a00636bf-cde1-4bc0-adb4-0ccc2a842883">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="osKey"><![CDATA[payload.username]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<os:contains doc:name="Contains" doc:id="cdf31f46-25fc-4447-8e61-11f02ce75fcf" key="#[vars.osKey]" objectStore="ATP_Token_Object_store" target="exists" />
+		<choice doc:name="Choice" doc:id="3eca2444-8402-4617-a4ef-eb41b180df4d">
+			<when expression="#[vars.exists]">
+				<os:remove doc:name="Remove" doc:id="79cbfd1b-2cb2-4129-afaa-3e9103e77750" key="#[vars.osKey]" objectStore="ATP_Token_Object_store" />
+			</when>
+		</choice>
+		<flow-ref doc:name="Go to get token" doc:id="285bb9c0-9ad5-4151-bee3-963561635675" name="post-atpAuth-orchestratorSub_Flow" />
+	</sub-flow>
+	<sub-flow name="post-get-token-resetValidate" doc:id="28f91e6f-703d-43b3-9af6-a7c2c469b7bf" >
+		<ee:transform doc:name="Set request body" doc:id="8d17c0ea-5539-4ee1-a19b-66b99fd09024">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "username": p('atp.username'),
+    "password": p('atp.password'),
+    "action": "authenticate"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to get token" doc:id="3bf5c83a-e473-4291-8af3-7f362bef3f3d" name="post-atpAuth-orchestratorSub_Flow" />
+	</sub-flow>
+</mule>

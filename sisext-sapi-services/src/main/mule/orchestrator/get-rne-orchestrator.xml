@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-rne-orchestratorSub_Flow" doc:id="63dacfda-4428-4e6e-9cdc-29c95b668a08" >
+		<ee:transform doc:name="Json to Xml" doc:id="fd346983-1f47-4c7e-8ca8-46beec17607f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+output text/xml
+---
+{
+  soap#"Envelope": {
+    soap#"Body": {
+      "ConsultaRNE" @(xmlns:'VMRWebServiceETB'): {
+        "sMSISDN": attributes.queryParams.sMSISDN
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="bdc9a9c9-04b5-4478-996e-8dcc544a48ce" name="get-vmr-clientSub_Flow"/>
+		<ee:transform doc:name="Xml to Json" doc:id="00dba557-3f82-48bf-9fb5-6a4c17799c4d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var status = payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Codigo
+---
+if (status == null or status == "FAIL") 
+{
+	"Codigo": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Codigo,
+	"Descripcion": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Descripcion
+}
+else 
+{
+	"Codigo": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Codigo,
+	"Descripcion": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Descripcion,
+	"RNEMSISDN": payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.RNE_MSISDNS pluck ($)	
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+var status = payload.Envelope.Body.ConsultaRNEResponse.ConsultaRNEResult.Codigo
+---
+if (status == null or status == "FAIL") 
+400
+else
+200]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+	</sub-flow>
+</mule>
