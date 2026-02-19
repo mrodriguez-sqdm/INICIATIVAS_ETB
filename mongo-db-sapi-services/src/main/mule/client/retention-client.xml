@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd">
+	
+	
+		<sub-flow name="get-consecutive-retenciones-clientSub_Flow" doc:id="9792109a-5d05-4994-87f2-dad7bd765e99" >
+		<!--  <mongo:find-documents doc:name="Get Secuencia" doc:id="fb801542-8350-453d-897c-156e73f8f1da" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-consecutive}" fields="," limit="1">
+			<mongo:query><![CDATA[#["{ 'Serie': '" ++ vars.serie ++ "'}"]]]></mongo:query>
+			<mongo:sort-by><![CDATA[{"Secuencia":"DESC"}]]></mongo:sort-by>
+		</mongo:find-documents>
+		<set-variable value="#[(payload[0].Secuencia  + 1) as String]" doc:name="Set SecuenciaPlusOne" doc:id="ff07d809-f232-4064-943c-c5d2750a0178" variableName="SecuenciaPlusOne" />
+		<mongo:update-documents doc:name="Update Secuencia" doc:id="b237223f-b2f2-41cd-89d4-18b4b8c25f92" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-consecutive}" target="updateResult">
+			<mongo:query><![CDATA[#["{ 'Serie': '" ++ vars.serie ++ "'}"]]]></mongo:query>
+			<mongo:content-to-update><![CDATA[#["{ 'Secuencia': '" ++ vars.SecuenciaPlusOne ++ "'}"]]]></mongo:content-to-update>
+		</mongo:update-documents> -->
+		<ee:transform doc:name="Set Command Update Consecutive" doc:id="edc9048f-3dc1-41a6-af78-6003d07e8d23" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+ findAndModify: p('mongoDb-mdm.retenciones.collection-retencion-consecutivo'),
+ query: { Serie: "SecuenciaRetencionFija"
+  },
+  update: { "\$inc": { Secuencia: 1 } },
+  new: true
+}
+ ]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<mongo:execute-command doc:name="Execute command" doc:id="2a3228ed-d598-4198-b05f-38b3cc415a6b" config-ref="mdm_db_Config"/>
+		<ee:transform doc:name="Set Payload Response" doc:id="52165dc7-3d91-4da5-9682-fe62dfabc1e1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+"Serie": payload.value.Serie,
+"Secuencia": payload.value.Secuencia,
+"Prefijo": payload.value.Prefijo
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-retention-create-clientSub_Flow" doc:id="32687a82-f964-4119-80f0-a8e1c9aea152" >
+		<try doc:name="Try" doc:id="65028351-c492-4c59-bbd8-9984c96b5393" >
+			<mongo:insert-document doc:name="Insert document" doc:id="4caa2717-a4c3-42ba-9c31-d16d9400b136" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.retenciones.collection-retencion}" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="72198501-bff4-4ace-98ea-e2ce1a189c4e" type="ANY">
+					<ee:transform doc:name="Set Response Fail Body" doc:id="f9de7d74-f483-4fbd-8d28-544b0ef0fe5b" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	mensaje: error.description
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="8f8ffe9c-d540-452d-a8ee-70e2b12f34c2" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-retention-update-clientSub_Flow" doc:id="2fcda881-2531-4688-b17f-d0c5988ba374" >
+		<try doc:name="Try" doc:id="f2a1bbff-e7ca-4e55-80d1-7ac6b7b51883" >
+			<mongo:update-documents doc:name="Update documents" doc:id="56bbbb9f-6d0a-432b-b161-4b7e957ff7aa" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.retenciones.collection-retencion}">
+				<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+ "Numero_Retencion": payload.Numero_Retencion
+}]]]></mongo:query>
+			</mongo:update-documents>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="57db0448-13df-4945-ac5a-0a0f4c21d654" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="9ea19da5-fd68-4cc9-9421-fae3680601b9" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	mensaje: error.description
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="684290a5-3732-4d50-bd86-1b4aa9943606" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	
+	
+	
+</mule>

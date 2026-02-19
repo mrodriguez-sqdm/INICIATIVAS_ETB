@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-payment-transaction-client" doc:id="0e9103d1-0d97-4fef-a57d-9fdc92a5a752" >
+		<async doc:name="Async" doc:id="ac0349d0-575a-4a72-9324-01d404e06e01">
+					<flow-ref doc:name="Call logger before" doc:id="79a8fe21-ecc5-4652-81e3-59140a58cf72" name="loggin-client-call" />
+		</async>
+		<mongo:update-documents doc:name="Update Payment Transaction" doc:id="758be585-acde-4036-ba49-27a878a99cbe" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.collection-transaction}">
+			<mongo:query><![CDATA[#["{CUS: '" ++ vars.transactionId ++ "'}"]]]></mongo:query>
+			<mongo:content-to-update><![CDATA[#[%dw 2.0
+output application/json
+---
+payload]]]></mongo:content-to-update>
+		</mongo:update-documents>
+		<async doc:name="Async" doc:id="f2bc4b89-8f79-440e-90b6-e22fbccb5cc1">
+			<flow-ref doc:name="Call logger after" doc:id="3bc9c380-77cd-41fc-8ec3-33a560fc86a0" name="loggin-client-call" />
+		</async>
+		<ee:transform doc:name="set response" doc:id="08900fc2-329e-447f-9d2b-66a6fd50dd40">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var resultCode = if(payload.modified > 0) 'SUCCESS' else "FAIL"
+var resultDescription = if(payload.modified > 0) "Transaction updated" else "The update could not be performed."
+--- 
+{
+  response: {
+    result: {
+      code: resultCode,
+      description: resultDescription
+    },
+    responseDate: now(),
+    transaction: vars.transactionId
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.modified > 0) 200 else 404]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>
