@@ -1,55 +1,260 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
-	<sub-flow name="lisim-customer-papi-orchestrator-v2-identityValidation" doc:id="632af391-01ba-46b3-b1c0-9bbb9de2ea8e" >
-		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="5c89f09b-701f-4281-b026-b0737b3fca79" variableName="headers"/>
-		<ee:transform doc:name="Set Payload Lisim identity" doc:id="f4fedc05-1919-4c94-baec-28f21d07510d" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-identityValidation" doc:id="520b47ac-ee8e-40cb-8cfa-2308846b27dc">
+		<ee:transform doc:name="set variables" doc:id="aefb7d74-3880-424b-b631-b865db8413c0">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="queryParams"><![CDATA[%dw 2.0
 output application/json
 ---
 {
-    "DocumentType": payload.documentType,
-    "DocumentNumber": payload.documentNumber,
-    "DateExpedition": (payload.dateExpedition as Date) as String {format: "yyyy-MM-dd"},
-    "Surname": payload.surname,
-    "Cellphone": payload.cellphone,
-    "Adviser": payload.adviser,
-    "Channel": payload.channel,
-    "Provider": payload.provider,
-    "Portal": payload.portal
-}]]></ee:set-payload>
-			</ee:message>
+	"documentNumber": payload.documentNumber,
+	"documentType": payload.documentType
+}]]></ee:set-variable>
+			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="lisim-sapi-client" doc:id="b5b4d97b-f0df-4972-b6fa-7a30e0fca848" name="lisim-sapi-identity-clientSub_Flow"/>
-		<ee:transform doc:name="Transform Message" doc:id="dcac126d-4d25-48b8-b9ea-0a8462e01e61" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<flow-ref doc:name="mongo-db-sapi-get-identity-validation-sub-flow" doc:id="30290f0f-8c8e-4ae4-b9dc-11dbfa7410d9" name="mongo-db-sapi-get-identity-validation-sub-flow" target="getIdentityResponse" />
+		<ee:transform doc:name="set daysDifference" doc:id="0f244853-b271-41f0-af3f-83a77fa39b68">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="daysDifference"><![CDATA[%dw 2.0
 output application/json
+import daysBetween from dw::core::Periods
+
+var startDate = now() as Date
+var endDate = (vars.getIdentityResponse.identity[0].fecha_consulta as Date) default now() as Date
+
+---
+daysBetween(endDate, startDate)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="identity validation" doc:id="4acd4756-b00d-4ac7-9702-0a96fc5d49b1">
+			<when expression="#[isEmpty(vars.getIdentityResponse.identity)]">
+				<ee:transform doc:name="set lisim post sapi request" doc:id="47c42d7c-badc-477b-bb00-bc8df1a4832a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "DocumentType": vars.initialPayload.documentType,
+    "DocumentNumber": vars.initialPayload.documentNumber,
+    "DateExpedition": (vars.initialPayload.dateExpedition as Date) as String {format: "yyyy-MM-dd"},
+    "Surname": vars.initialPayload.surname,
+    "Cellphone": vars.initialPayload.cellphone,
+    "Adviser": vars.initialPayload.adviser,
+    "Channel": vars.initialPayload.channel,
+    "Provider": vars.initialPayload.provider,
+    "Portal": vars.initialPayload.portal
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="lisim-sapi-identity-clientSub_Flow" doc:id="2abe56f7-4ec4-432f-ae58-4fd2df6ddcb2" name="lisim-sapi-identity-clientSub_Flow" target="postLisimResponse" />
+				<ee:transform doc:name="set mongo post sapi request" doc:id="24740641-5948-4b9b-9c0c-54b3c2168278">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"identityId": vars.postLisimResponse.id,
+	"nombres": vars.initialPayload.names,
+	"apellido": vars.initialPayload.firstLastName,
+	"segundo_apellido": vars.initialPayload.secondLastName,
+	"fecha_exp": vars.initialPayload.dateExpedition,
+	"num_doc": vars.initialPayload.documentNumber,
+	"tipo_doc": vars.initialPayload.documentType,
+	"fecha_consulta": now() as Date,
+	"estado": "NO VIGENTE",
+	"causal": ""
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-post-identity-validation-sub-flow" doc:id="499a3a22-1b8d-469e-8612-954cf0ddb861" name="mongo-db-sapi-post-identity-validation-sub-flow" />
+				<ee:transform doc:name="set validation response" doc:id="33497842-f6b5-4e02-8bbd-6ab9137b36ee">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
 ---
 {
   code: "200",
-  message: payload.messageServer default "validacion exitosa",
-  result: (
-    {
-      "id": payload.id,
-      "type": payload."type",
-      "questions": payload.questions,
-      "otpCode": payload.otpCode,
-      "matchType": payload.matchType
+  message: vars.postLisimResponse.messageServer default "validacion exitosa",
+  result: {
+      "id": vars.postLisimResponse.id,
+      "type": vars.postLisimResponse."type",
+      "questions": vars.postLisimResponse.questions,
+      "otpCode": vars.postLisimResponse.otpCode,
+      "matchType": vars.postLisimResponse.matchType
     }
-  ) filterObject ((value, key) -> value != null)
 }
 ]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression='#[(upper(vars.getIdentityResponse.identity[0].estado) == "VIGENTE" and vars.daysDifference &gt; 30) or (upper(vars.getIdentityResponse.identity[0].estado) == "NO VIGENTE" )]'>
+				<ee:transform doc:name="set lisim post sapi request" doc:id="d571cf40-9e80-401a-884a-cd9739a6bede">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "DocumentType": vars.initialPayload.documentType,
+    "DocumentNumber": vars.initialPayload.documentNumber,
+    "DateExpedition": (vars.initialPayload.dateExpedition as Date) as String {format: "yyyy-MM-dd"},
+    "Surname": vars.initialPayload.surname,
+    "Cellphone": vars.initialPayload.cellphone,
+    "Adviser": vars.initialPayload.adviser,
+    "Channel": vars.initialPayload.channel,
+    "Provider": vars.initialPayload.provider,
+    "Portal": vars.initialPayload.portal
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="lisim-sapi-identity-clientSub_Flow" doc:id="1ea74496-6701-4b99-83f4-53ec88177c60" name="lisim-sapi-identity-clientSub_Flow" target="postLisimResponse" />
+				<ee:transform doc:name="set mongo patch sapi request" doc:id="510245dc-af19-4fba-9a62-2d5d1964d87d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"fecha_consulta": "",
+	"fecha_confronta": "",
+	"estado": "NO VIGENTE",
+	"causal": "",
+	"score_fija": {},
+	"score_movil": {},
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"identityId": vars.postLisimResponse.id
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="b38d735a-4122-4817-ba37-d7064e072e15" name="mongo-db-sapi-patch-identity-validation-sub-flow" />
+				<ee:transform doc:name="set validation response" doc:id="5fcfe0f9-d9bd-4312-adbf-affd1990ae5a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+---
+{
+  code: "200",
+  message: vars.postLisimResponse.messageServer default "validacion exitosa",
+  result: {
+      "id": vars.postLisimResponse.id,
+      "type": vars.postLisimResponse."type",
+      "questions": vars.postLisimResponse.questions,
+      "otpCode": vars.postLisimResponse.otpCode,
+      "matchType": vars.postLisimResponse.matchType
+    }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<os:store doc:name="store validation values" doc:id="65d1e69a-f2fa-4237-8ac5-5373c1a66981" key="#[vars.getIdentityResponse.identity[0].identityId]" objectStore="Validation_Object_Store">
+					<os:value><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+	identityId: vars.getIdentityResponse.identity[0].identityId,
+	documentNumber: vars.initialPayload.documentNumber,
+	documentType: vars.initialPayload.documentType,
+	technology: vars.initialPayload.model.technology,
+	segment: vars.initialPayload.model.segment
+}]]]></os:value>
+				</os:store>
+				<ee:transform doc:name="set mongo get params" doc:id="5b815470-e2ec-4bef-bf52-037644d7ea25">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="queryParams"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"technology": vars.initialPayload.model.technology,
+	"segment": vars.initialPayload.model.segment
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-get-score-variables-sub-flow" doc:id="e7a0c0b6-a250-43e3-8526-cd33e854a80a" name="mongo-db-sapi-get-score-variables-sub-flow" target="getVariablesResponse" />
+				<ee:transform doc:name="set mongo get params" doc:id="a207b628-16bc-4970-b400-8618aee2297d">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="queryParams"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"tableNumber": vars.getVariablesResponse.variables[0].'Tabla_Asignada'
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-get-score-georeference-sub-flow" doc:id="1231254b-847f-4cd6-b1d5-7fa1e13eaf4e" name="mongo-db-sapi-get-score-georeference-sub-flow" target="getGeoreferenceResponse" />
+				<ee:transform doc:name="set validation response" doc:id="6270959f-87f1-48ee-9b03-9cbd87d2fbc8">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var scoreToCheck = if ( vars.intialPayload.model.technology == "LTE" ) 
+	vars.getIdentityResponse.identity[0].'score_movil'.Valor 
+else 
+	vars.getIdentityResponse.identity[0].'score_fija'.Valor
+	
+var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
+
+var matchedRange = rangos filter (rango) -> do {
+	var parts = rango.Codigo splitBy "_"
+	var low   = parts[0] as Number
+	var high  = parts[1] as Number
+	---
+	scoreToCheck >= low and scoreToCheck <= high
+}
+
+var score = (matchedRange[0].Detalle map ((item, index) -> {
+	"Status Score": item.Nombre,
+	"Valor Maximo": item.Valor as Number,
+	"Oferta": vars.intialPayload.model.technology,
+    "Segmento": vars.intialPayload.model.segment,
+}))[0]
+---
+{
+  code: "200",
+  message: "cliente validado exitosamente",
+  result: score
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 	<sub-flow name="lisim-customer-papi-orchestrator-v2-score" doc:id="3e332f93-31d2-45d8-8dde-f5afc737adff" >
-		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="cd3ca82d-d09e-4c1f-82e3-2eb6385c02ec" variableName="headers" />
-		<ee:transform doc:name="Set Payload Lisim score" doc:id="2f3655c7-6dc2-4e96-a64b-a9350bb635b1">
+		<ee:transform doc:name="set variables" doc:id="67b2937b-75b4-4243-9461-6f764d0df081">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set lisim score request" doc:id="2f3655c7-6dc2-4e96-a64b-a9350bb635b1">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -63,23 +268,119 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="lisim-sapi-client" doc:id="c5d751a9-9943-41b9-b3bb-9ecd22356f64" name="lisim-sapi-score-clientSub_Flow"/>
-		<ee:transform doc:name="Transform Message" doc:id="558689f7-2184-46a4-8cfe-5b44da6f2be6" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<flow-ref doc:name="lisim-sapi-client" doc:id="c5d751a9-9943-41b9-b3bb-9ecd22356f64" name="lisim-sapi-score-clientSub_Flow" target="postLisimScoreResponse"/>
+		<os:retrieve doc:name="retrieve validation details" doc:id="2b9f0c0b-ebf6-49e1-b311-78b032e20eb3" key="#[vars.initialPayload.id]" objectStore="Validation_Object_Store" target="osValidationDetail">
+			<os:default-value ><![CDATA[#[null]]]></os:default-value>
+		</os:retrieve>
+		<choice doc:name="identity available" doc:id="e3a9560c-3849-4173-a8c9-03746012b29f" >
+			<when expression="#[vars.osValidationDetail != null]">
+				<ee:transform doc:name="set mongo get params" doc:id="636856c6-9fe5-4621-b2f4-0bcd5c309f55" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"technology": vars.osValidationDetail.technology,
+	"segment": vars.osValidationDetail.segment
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-get-score-variables-sub-flow" doc:id="4710af40-3e09-4e66-b557-a0d182e15071" name="mongo-db-sapi-get-score-variables-sub-flow" target="getVariablesResponse" />
+				<ee:transform doc:name="set mongo get params" doc:id="afe81273-6122-4f1b-8534-25e0057482b5" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"tableNumber": vars.getVariablesResponse.variables[0].'Tabla_Asignada'
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-get-score-georeference-sub-flow" doc:id="4d2243c3-68f7-4752-bbd3-79a5cc256516" name="mongo-db-sapi-get-score-georeference-sub-flow" target="getGeoreferenceResponse" />
+				<ee:transform doc:name="set mongo patch sapi request" doc:id="120b82f5-1ad4-4b44-ae02-9d4948e62ee1">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var score = if ( vars.initialPayload.model == 1 ) {
+	"score_movil": {
+		"Valor": vars.postLisimScoreResponse.score as String,
+		"Fecha": now() as Date
+	}
+} else {
+	"score_fija": {
+		"Valor": vars.postLisimScoreResponse.score as String,
+		"Fecha": now() as Date
+	}
+}
+---
+{
+	"estado": "VIGENTE",
+	"causal": "VALIDACION OBTENIDA EXITOSAMENTE"
+} ++ score]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="uriParams"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"identityId": vars.initialPayload.id
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="965a8267-32dd-4412-b45f-964b97678d40" name="mongo-db-sapi-patch-identity-validation-sub-flow"/>
+				<ee:transform doc:name="set score response" doc:id="c4fab289-27f1-42e7-8d11-369d8116d64a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var scoreToCheck = vars.postLisimScoreResponse.score
+	
+var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
+
+var matchedRange = rangos filter (rango) -> do {
+	var parts = rango.Codigo splitBy "_"
+	var low   = parts[0] as Number
+	var high  = parts[1] as Number
+	---
+	scoreToCheck >= low and scoreToCheck <= high
+}
+
+var score = (matchedRange[0].Detalle map ((item, index) -> {
+	"Status Score": item.Nombre,
+	"Valor Maximo": item.Valor as Number,
+	"Oferta": vars.osValidationDetails.technology,
+    "Segmento": vars.osValidationDetails.segment,
+}))[0]
+---
+{
+  code: "200",
+  message: "cliente validado exitosamente",
+  result: score
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="SCORE_VALIDATION:DETAILS_NOT_FOUND" doc:id="56ee4ea6-c3e0-457e-b9a3-5926865a9529" type="SCORE_VALIDATION:DETAILS_NOT_FOUND" description="the validation details does not exist in OS"/>
+				<ee:transform doc:name="set score response" doc:id="558689f7-2184-46a4-8cfe-5b44da6f2be6">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
  "code" : "200",
- message: payload.messageServer default "operacion exitosa",
+ message: vars.postLisimScoreResponse.messageServer default "operacion exitosa",
   result: ({
-    "score": payload.score,
-    "offer": payload.offer
+    "score": vars.postLisimScoreResponse.score,
+    "offer": vars.postLisimScoreResponse.offer
   }
   ) filterObject ((value, key) -> value != null)
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 	<sub-flow name="lisim-customer-papi-orchestrator-v2-otp-resend" doc:id="b308112f-8056-47d9-8d9e-fbd2715dab0b" >
 		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="4f11082c-bf3a-4e02-9e9f-ec7d6682c41f" variableName="headers" />
@@ -117,8 +418,20 @@ output application/json
 		</ee:transform>
 	</sub-flow>
 	<sub-flow name="lisim-customer-papi-orchestrator-v2-otp-validation" doc:id="fa88ac04-21cd-44fa-9226-882507e976bf" >
-		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="5e9cac34-692c-47b0-ab36-50d3de161861" variableName="headers" />
-		<ee:transform doc:name="Set Payload Lisim otp validate" doc:id="9bc523eb-dd79-45d9-aba7-78b93ebb08c1">
+		<ee:transform doc:name="set variables" doc:id="0a877ae4-f265-4401-8ce9-5829fe4a7f41">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set lisim otp sapi request" doc:id="9bc523eb-dd79-45d9-aba7-78b93ebb08c1">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -130,34 +443,54 @@ output application/json
 ]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="lisim-sapi-client" doc:id="0ea2be00-e67a-4a80-a036-25a39c8ed8b7" name="lisim-sapi-otp-validate-clientSub_Flow"/>
-		<ee:transform doc:name="Transform Message1" doc:id="0cbe4c57-90d2-42ca-b89e-474eca2c99f2">
+		<flow-ref doc:name="lisim-sapi-otp-validate-clientSub_Flow" doc:id="0ea2be00-e67a-4a80-a036-25a39c8ed8b7" name="lisim-sapi-otp-validate-clientSub_Flow" target="postLisimOtpResponse"/>
+		<ee:transform doc:name="set mongo patch sapi request" doc:id="0c097b66-e0f0-42e1-bdf7-263d52f2c576">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"fecha_consulta": now() as Date,
+	"causal": p('causales.causalOtpValidation')
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"identityId": vars.initialPayload.id
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="12d0d550-30d0-4324-9eb1-6693836e4ffe" name="mongo-db-sapi-patch-identity-validation-sub-flow" />
+		<ee:transform doc:name="set otp validation response" doc:id="0cbe4c57-90d2-42ca-b89e-474eca2c99f2">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
-var isStringResult = payload.result is String
-var isObjectResult = payload.result is Object
+var isStringResult = vars.postLisimOtpResponse.result is String
+var isObjectResult = vars.postLisimOtpResponse.result is Object
 var hasMessageServer =
-  isObjectResult and payload.result.messageServer != null
+  isObjectResult and vars.postLisimOtpResponse.result.messageServer != null
 
 ---
 {
   code: "200",
   message:
     if (isStringResult)
-      payload.result
+      vars.postLisimOtpResponse.result
     else if (hasMessageServer)
-      payload.result.messageServer
+      vars.postLisimOtpResponse.result.messageServer
     else
       "envio exitoso"
 }
 ++
 (
   if (isStringResult)
-    { result: payload.result }
+    { result: vars.postLisimOtpResponse.result }
   else if (isObjectResult and not hasMessageServer)
-    { result: payload.result }
+    { result: vars.postLisimOtpResponse.result }
   else
     {}
 )
@@ -195,8 +528,20 @@ var hasMessageServer = payload.messageServer != null
 		</ee:transform>
 	</sub-flow>
 	<sub-flow name="lisim-customer-papi-orchestrator-v2-questionnaire-validation" doc:id="d5bcfa9c-4b7d-4dd1-95a5-ea052dab9dd3" >
-		<set-variable value="#[attributes.headers]" doc:name="Set Variable Headers" doc:id="8061ff20-8ad3-4b0c-8c63-2b4ae9126b39" variableName="headers" />
-		<ee:transform doc:name="set payload lisim ques-validate" doc:id="a405fde2-29ec-4dac-82d7-176b2db6644f" >
+		<ee:transform doc:name="set variables" doc:id="5df1f15a-6def-429c-a2f8-8e0a42ee06d6">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set lisim questionnarie sapi request" doc:id="a405fde2-29ec-4dac-82d7-176b2db6644f" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
@@ -207,28 +552,48 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="lisim-sapi-client" doc:id="4d2ddf18-ee4d-464c-baf9-a5b45f675f29" name="lisim-sapi-questionnaire-validate-clientSub_Flow"/>
-		<ee:transform doc:name="Transform Message" doc:id="04847a03-acfd-4760-8e5b-326de146fb52" >
+		<flow-ref doc:name="lisim-sapi-questionnaire-validate-clientSub_Flow" doc:id="4d2ddf18-ee4d-464c-baf9-a5b45f675f29" name="lisim-sapi-questionnaire-validate-clientSub_Flow" target="postLisimQuestionnarieResponse"/>
+		<ee:transform doc:name="set mongo patch sapi request" doc:id="67654bed-1e8d-48e9-b6cf-7c6c7cb2a6f3">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"fecha_consulta": now() as Date,
+	"causal": p('causales.causalQuestionnaryValidation')
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="uriParams"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"identityId": vars.initialPayload.id
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="e4105c10-e4e7-475d-a377-8f9b3fc54266" name="mongo-db-sapi-patch-identity-validation-sub-flow" />
+		<ee:transform doc:name="set questionnarie validation response" doc:id="04847a03-acfd-4760-8e5b-326de146fb52" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
 var hasMessageServer =
-  payload.result is Object and payload.result.messageServer != null
+  vars.postLisimQuestionnarieResponse.result is Object and vars.postLisimQuestionnarieResponse.result.messageServer != null
 
 ---
 {
   code: "200",
   message:
     if (hasMessageServer)
-      payload.result.messageServer
+      vars.postLisimQuestionnarieResponse.result.messageServer
     else
-      payload.result
+      vars.postLisimQuestionnarieResponse.result
 }
 ++
 (
   if (not hasMessageServer)
-    { result: payload.result }
+    { result: vars.postLisimQuestionnarieResponse.result }
   else
     {}
 )
