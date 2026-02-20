@@ -11,102 +11,90 @@ http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/htt
 
     <try>
 
-        <flow-ref name="get-subscription-client-by-msisdn" />
+        <flow-ref name="get-subscription-client-by-msisdn" doc:name="Get subscription"/>
 
         <ee:transform doc:name="Set request subscription">
             <ee:variables>
-                <ee:set-variable variableName="request">
-                    <![CDATA[
-%dw 2.0
-output application/java
----
-{
-    size: p('jsc-sapi.balance-structured.size'),
-    subscription: payload.content[0].id,
-    status: p('jsc-sapi.balance-structured.status')
-}
-                    ]]>
-                </ee:set-variable>
 
-                <ee:set-variable variableName="parentPkgInstanceId">
-                    <![CDATA[
-%dw 2.0
+                <ee:set-variable variableName="parentPkgInstanceId"><![CDATA[%dw 2.0
 output application/java
 ---
 (payload.content default [])[0].packageList[0].id default null
                     ]]>
                 </ee:set-variable>
-            </ee:variables>
-        </ee:transform>
-
-        <flow-ref name="get-pkgi-client" />
-
-        <ee:transform doc:name="Set request groupMember">
-            <ee:variables>
-                <ee:set-variable variableName="requestPkgi">
-                    <![CDATA[
-%dw 2.0
+					<ee:set-variable variableName="requestSID" ><![CDATA[%dw 2.0
 output application/java
 ---
 {
-    size: p('jsc-sapi.balance-structured.size'),
-    subscription: payload.groupMember.id,
-    status: p('jsc-sapi.balance-structured.status')
+	size: p('jsc-sapi.balance-structured.size'),
+	subscription: payload.content[0].id,
+	status: p('jsc-sapi.balance-structured.status')
 }
-                    ]]>
-                </ee:set-variable>
-            </ee:variables>
+                    ]]></ee:set-variable>
+            
+</ee:variables>
         </ee:transform>
 
-        <ee:transform doc:name="Build balance requests">
-            <ee:variables>
-                <ee:set-variable variableName="balanceRequests">
-                    <![CDATA[
-%dw 2.0
-output application/java
----
-[
-    vars.request,
-    vars.requestPkgi
-] filter ($.subscription != null)
-                    ]]>
-                </ee:set-variable>
-            </ee:variables>
-        </ee:transform>
-
-        <foreach doc:name="For Each" doc:id="6f1575b2-ae23-4c5c-8d29-cbcd573be4c2" collection="#[vars.balanceRequests]">
-				<set-variable value="#[payload]" doc:name="Set Variable" doc:id="bbdb0c4b-6dd4-43b2-b7b8-821e86234a57" variableName="request"/>
-				<flow-ref doc:name="Get Balance" doc:id="d0c15fbf-7eee-410f-b65c-a28fe0838231" name="get-balance-structured-client" />
+        <flow-ref doc:name="Get Balance" doc:id="d0c15fbf-7eee-410f-b65c-a28fe0838231" name="get-balance-structured-client" target="getBalanceResponse"/>
+			<flow-ref name="get-pkgi-client" doc:name="Get PKGI" />
+			<set-variable value="#[[]]" doc:name="Set Variable responsesPacks" doc:id="40536d30-2494-4e1e-9f86-bcd8b6a06829" variableName="responsesPacks" />
+			<foreach doc:name="For Each" doc:id="d70982ae-b755-4593-b4f4-8c8e1da4f4ed" collection="#[payload.packs]">
+				<flow-ref doc:name="GET packs" doc:id="b964dfeb-768b-4a04-9975-5e0d7e38af53" name="jsc-sapi-get-dppi-id-clientSub_Flow" />
+						<foreach doc:name="For Each" doc:id="b1cf4499-2b66-4e87-8bc7-d85c9fc4d24c" collection="#[payload.childs]">
+					<flow-ref doc:name="GET childs" doc:id="fac4f750-3b74-4ffe-8091-42f84b3f00b8" name="jsc-sapi-get-dppi-id-clientSub_Flow" />
+					<set-variable value="#[%dw 2.0&#10;output application/java&#10;---&#10;(vars.responsesPacks default []) ++ [payload]]" doc:name="Set Variable responsesPacks" doc:id="4a4b1919-930d-42fc-a9e4-aef0481a29da" variableName="responsesPacks" />
+				</foreach>
 			</foreach>
 			<ee:transform doc:name="Map Out">
             <ee:message>
-                <ee:set-payload><![CDATA[
-%dw 2.0
+                <ee:set-payload><![CDATA[%dw 2.0
 output application/json
+
+var raw = vars.getBalanceResponse default {}
+var balance = raw["content"] default []
+var packsDetails = vars.responsesPacks default []
+
+fun mapItem(d) = {
+    name: d.name,
+    trafficLimitValueOrig: d.trafficLimitValueOrig default 0,
+    trafficLimitValue: d.trafficLimitValue default 0,
+    trafficLimitValueRenewal: d.trafficLimitValueRenewal default 0,
+    category: d.category,
+    "type": d["type"],
+    trafficLimitValueOnRenewal: d.trafficLimitValueOnRenewal default 0
+}
+
+var nonPacks =
+    (balance filter ((item) -> item["type"] != "PACK"))
+        map ((item) -> mapItem(item))
+
+var packItems =
+    (balance filter ((item) -> item["type"] == "PACK"))
+
+var expandedPacks =
+    flatten(
+        (packItems map ((pack) ->
+            flatten(
+                ((pack["childs"] default []) map ((child) ->
+                    (packsDetails
+                        filter ((p) -> p["id"] == child["id"]))
+                        map ((d) -> mapItem(d))
+                ))
+            )
+        ))
+    )
+
 ---
 {
     ExternalId: vars.connectionNumber,
     description: "Consulta Exitosa",
-    Content:
-        payload
-            flatMap $.content
-            map (item) -> {
-                name: item.name,
-                trafficLimitValueOrig: item.trafficLimitValueOrig default 0,
-                trafficLimitValue: item.trafficLimitValue default 0,
-                trafficLimitValueRenewal: item.trafficLimitValueRenewal default 0,
-                category: item.category,
-                "type": item.'type',
-                trafficLimitValueOnRenewal: item.trafficLimitValueOnRenewal default 0
-            }
-}
-                    ]]>
+    Content: nonPacks ++ expandedPacks
+}]]>
                 </ee:set-payload>
             </ee:message>
         </ee:transform>
-
-        <error-handler>
-            <on-error-continue logException="true">
+			<error-handler >
+				<on-error-continue logException="true">
                 <ee:transform doc:name="Error output">
                     <ee:message>
                         <ee:set-payload>
@@ -143,9 +131,10 @@ output application/java
                     </ee:variables>
                 </ee:transform>
             </on-error-continue>
-        </error-handler>
+			</error-handler>
 
-    </try>
+    
+</try>
 
 </sub-flow>
 	
