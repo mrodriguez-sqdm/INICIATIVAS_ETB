@@ -16,13 +16,18 @@ payload]]></ee:set-variable>
 				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
 output application/json
 ---
-attributes.headers]]></ee:set-variable>
+{
+	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+	"name": attributes.headers.name,
+	"systemId": attributes.headers.systemId,
+	"source": attributes.headers.source
+}]]></ee:set-variable>
 				<ee:set-variable variableName="queryParams"><![CDATA[%dw 2.0
 output application/json
 ---
 {
 	"documentNumber": payload.documentNumber,
-	"documentType": payload.documentType
+	"documentType": payload.documentType as String
 }]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
@@ -52,7 +57,7 @@ output application/json
     "DocumentType": vars.initialPayload.documentType,
     "DocumentNumber": vars.initialPayload.documentNumber,
     "DateExpedition": (vars.initialPayload.dateExpedition as Date) as String {format: "yyyy-MM-dd"},
-    "Surname": vars.initialPayload.surname,
+    "Surname": vars.initialPayload.firstLastName,
     "Cellphone": vars.initialPayload.cellphone,
     "Adviser": vars.initialPayload.adviser,
     "Channel": vars.initialPayload.channel,
@@ -74,7 +79,7 @@ output application/json
 	"segundo_apellido": vars.initialPayload.secondLastName,
 	"fecha_exp": vars.initialPayload.dateExpedition,
 	"num_doc": vars.initialPayload.documentNumber,
-	"tipo_doc": vars.initialPayload.documentType,
+	"tipo_doc": vars.initialPayload.documentType as String,
 	"fecha_consulta": now() as Date,
 	"estado": "NO VIGENTE",
 	"causal": ""
@@ -82,6 +87,18 @@ output application/json
 					</ee:message>
 				</ee:transform>
 				<flow-ref doc:name="mongo-db-sapi-post-identity-validation-sub-flow" doc:id="499a3a22-1b8d-469e-8612-954cf0ddb861" name="mongo-db-sapi-post-identity-validation-sub-flow" />
+				<os:store doc:name="store validation values" doc:id="16e939c9-7e14-4990-abb3-9ad206dabb6a" key="#[vars.postLisimResponse.id]" objectStore="Validation_Object_Store">
+					<os:value><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+	identityId: vars.postLisimResponse.id,
+	documentNumber: vars.initialPayload.documentNumber,
+	documentType: vars.initialPayload.documentType,
+	technology: vars.initialPayload.model.technology,
+	segment: vars.initialPayload.model.segment
+}]]]></os:value>
+				</os:store>
 				<ee:transform doc:name="set validation response" doc:id="33497842-f6b5-4e02-8bbd-6ab9137b36ee">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
@@ -112,7 +129,7 @@ output application/json
     "DocumentType": vars.initialPayload.documentType,
     "DocumentNumber": vars.initialPayload.documentNumber,
     "DateExpedition": (vars.initialPayload.dateExpedition as Date) as String {format: "yyyy-MM-dd"},
-    "Surname": vars.initialPayload.surname,
+    "Surname": vars.initialPayload.firstLastName,
     "Cellphone": vars.initialPayload.cellphone,
     "Adviser": vars.initialPayload.adviser,
     "Channel": vars.initialPayload.channel,
@@ -128,6 +145,7 @@ output application/json
 output application/json
 ---
 {
+	"identityId": vars.postLisimResponse.id,
 	"fecha_consulta": "",
 	"fecha_confronta": "",
 	"estado": "NO VIGENTE",
@@ -141,7 +159,7 @@ output application/json
 output application/json
 ---
 {
-	"identityId": vars.postLisimResponse.id
+	"identityId": vars.getIdentityResponse.identity[0].identityId
 }]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
@@ -208,7 +226,7 @@ output application/json
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
-var scoreToCheck = if ( vars.intialPayload.model.technology == "LTE" ) 
+var scoreToCheck = if ( vars.initialPayload.model.technology == "LTE" ) 
 	vars.getIdentityResponse.identity[0].'score_movil'.Valor 
 else 
 	vars.getIdentityResponse.identity[0].'score_fija'.Valor
@@ -226,8 +244,8 @@ var matchedRange = rangos filter (rango) -> do {
 var score = (matchedRange[0].Detalle map ((item, index) -> {
 	"Status Score": item.Nombre,
 	"Valor Maximo": item.Valor as Number,
-	"Oferta": vars.intialPayload.model.technology,
-    "Segmento": vars.intialPayload.model.segment,
+	"Oferta": vars.initialPayload.model.technology,
+    "Segmento": vars.initialPayload.model.segment,
 }))[0]
 ---
 {
@@ -251,7 +269,12 @@ payload]]></ee:set-variable>
 				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
 output application/json
 ---
-attributes.headers]]></ee:set-variable>
+{
+	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+	"name": attributes.headers.name,
+	"systemId": attributes.headers.systemId,
+	"source": attributes.headers.source
+}]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
 		<ee:transform doc:name="set lisim score request" doc:id="2f3655c7-6dc2-4e96-a64b-a9350bb635b1">
@@ -349,8 +372,8 @@ var matchedRange = rangos filter (rango) -> do {
 var score = (matchedRange[0].Detalle map ((item, index) -> {
 	"Status Score": item.Nombre,
 	"Valor Maximo": item.Valor as Number,
-	"Oferta": vars.osValidationDetails.technology,
-    "Segmento": vars.osValidationDetails.segment,
+	"Oferta": vars.osValidationDetail.technology,
+    "Segmento": vars.osValidationDetail.segment,
 }))[0]
 ---
 {
@@ -363,22 +386,6 @@ var score = (matchedRange[0].Detalle map ((item, index) -> {
 			</when>
 			<otherwise >
 				<raise-error doc:name="SCORE_VALIDATION:DETAILS_NOT_FOUND" doc:id="56ee4ea6-c3e0-457e-b9a3-5926865a9529" type="SCORE_VALIDATION:DETAILS_NOT_FOUND" description="the validation details does not exist in OS"/>
-				<ee:transform doc:name="set score response" doc:id="558689f7-2184-46a4-8cfe-5b44da6f2be6">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
- "code" : "200",
- message: vars.postLisimScoreResponse.messageServer default "operacion exitosa",
-  result: ({
-    "score": vars.postLisimScoreResponse.score,
-    "offer": vars.postLisimScoreResponse.offer
-  }
-  ) filterObject ((value, key) -> value != null)
-}]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
 			</otherwise>
 		</choice>
 	</sub-flow>
@@ -428,7 +435,12 @@ payload]]></ee:set-variable>
 				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
 output application/json
 ---
-attributes.headers]]></ee:set-variable>
+{
+	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+	"name": attributes.headers.name,
+	"systemId": attributes.headers.systemId,
+	"source": attributes.headers.source
+}]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
 		<ee:transform doc:name="set lisim otp sapi request" doc:id="9bc523eb-dd79-45d9-aba7-78b93ebb08c1">
@@ -538,7 +550,12 @@ payload]]></ee:set-variable>
 				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
 output application/json
 ---
-attributes.headers]]></ee:set-variable>
+{
+	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+	"name": attributes.headers.name,
+	"systemId": attributes.headers.systemId,
+	"source": attributes.headers.source
+}]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
 		<ee:transform doc:name="set lisim questionnarie sapi request" doc:id="a405fde2-29ec-4dac-82d7-176b2db6644f" >
