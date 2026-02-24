@@ -2,6 +2,7 @@
 output application/json
 ---
 {
-	"status": "success",
+	"code": "200",
+	"message": "operacion exitosa",
 	"data": payload.transactionResponse
 }

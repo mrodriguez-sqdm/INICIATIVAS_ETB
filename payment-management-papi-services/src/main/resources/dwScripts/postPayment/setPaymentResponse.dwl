@@ -3,11 +3,8 @@ import dwScripts::commons::common
 output application/json
 ---
 {
-	"status": "success",
-	"data": {
-		"mongoResponse": common::camelizeData(vars.mongoResponse),
-		"platformResponse": common::camelizeData(vars.sapiResponse)
-	} 
-	
+	"code": "200",
+	"message": "operacion exitosa",
+	"data":  common::camelizeData(vars.sapiResponse.data)
 }
 

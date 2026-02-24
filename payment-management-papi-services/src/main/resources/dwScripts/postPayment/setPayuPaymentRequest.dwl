@@ -7,9 +7,8 @@ output application/json skipNullOn = "everywhere"
 		accountId: Mule::p("payu-sapi.fields.accountId"),
 		referenceCode: payload.reference,
 		description: payload.description,
-		language: Mule::p("payu-sapi.fields.language"),
-		signature: Mule::p("payu-sapi.fields.signature") default payload.signature,
-		notifyUrl: Mule::p("payu-sapi.fields.notifyUrl") default payload.notifyUrl,
+		language: payload.language,
+		notifyUrl: payload.notifyUrl,
 		additionalValues: (payload.taxes default []) map ((item) -> {
 			(if ( item.code == "CONSUMO" ) "TX_TAX_RETURN_BASE": {
 				value: item.value,
@@ -27,8 +26,8 @@ output application/json skipNullOn = "everywhere"
 		}] reduce ((item, acc = {
 		}) -> item ++ acc),
 		buyer: {
-			merchantBuyerId: "1",
-			fullName: payload.customer.firstname,
+			merchantBuyerId: payload.customer.document.number,
+			fullName: payload.customer.firstname ++ " " ++ payload.customer.lastname,
 			emailAddress: payload.customer.email,
 			contactPhone: payload.customer.phone,
 			dniNumber: payload.customer.document.number,
@@ -42,11 +41,11 @@ output application/json skipNullOn = "everywhere"
 	},
 	// ===== PAYER =====
 	payer: {
-		merchantPayerId: "1",
-		fullName: "First name and second payer name",
-		emailAddress: "payer_test@test.com",
+		merchantPayerId: payload.customer.document.number,
+		fullName: payload.customer.firstname ++ " " ++ payload.customer.lastname,
+		emailAddress: payload.customer.email,
 		contactPhone: payload.customer.phone,
-		dniNumber: "5415668464655",
+		dniNumber: payload.customer.document.number,
 		billingAddress: payload.customer.address ++ {
 			phone: payload.customer.phone
 		}
@@ -59,9 +58,8 @@ output application/json skipNullOn = "everywhere"
 		name: payload.paymentMethod.name
 	},
 	extraParameters: payload.extraParameters,
-	"type": Mule::p("payu-sapi.fields.type"),
-	paymentMethod: Mule::p("payu-sapi.fields.paymentMethod"),
-	paymentCountry: Mule::p("payu-sapi.fields.paymentCountry"),
+	paymentMethod: payload.paymentMethod.code,
+	paymentCountry: payload.paymentCountry,
 	deviceSessionId: payload.deviceSessionId,
 	ipAddress: payload.ipAddress,
 	cookie: payload.cookie,

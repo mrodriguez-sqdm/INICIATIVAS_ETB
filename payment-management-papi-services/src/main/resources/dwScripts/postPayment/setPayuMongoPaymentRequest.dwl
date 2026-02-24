@@ -2,18 +2,15 @@
 output application/json
 ---
 {
-	id_transaccion: vars.payloadOri.correlatorId,
-	CUS: vars.sapiResponse.data.transactionId,
+	id_transaccion: vars.payloadOri.transactionId,
+	CUS: vars.sapiResponse.data.transactionId default "",
 	pasarela: "payu",
 	atributos_pasarela: vars.sapiResponse.data >> [],
 	referencia_pago: vars.payloadOri.reference >> [],
 	tipo_documento: vars.payloadOri.customer.document."type" default "CC",
 	numero_documento: vars.payloadOri.customer.document.number default "",
-	valor_pagar: (vars.payloadOri.amount
-              default
-              (vars.payloadOri.taxes filter $.code == "TX_VALUE")[0].value
-              default 0) as String,
-	valor_impuesto: (sum(vars.payloadOri.taxes.value) default 0) as String,
+	valor_impuesto: ((vars.payloadOri.taxes filter $.code == "IVA")[0].value default 0) as String,
+	valor_pagar: (vars.payloadOri.amount default (sum(vars.payloadOri.taxes.value) default 0)) as String,
 	concepto: vars.payloadOri.description,
 	entidad_bancaria: vars.payloadOri.paymentMethod.bank default "ENTIDAD BANCARIA",
 	pasarela_tipo: vars.paymentMethod,
