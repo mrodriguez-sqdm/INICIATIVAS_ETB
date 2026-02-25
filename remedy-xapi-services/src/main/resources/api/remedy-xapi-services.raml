@@ -1,0 +1,304 @@
+#%RAML 1.0
+title: remedy-xapi-services
+
+version: "1"
+protocols:
+  - HTTPS
+
+baseUri: remedy-xapi-services-{env}.us-e2.cloudhub.io
+
+securitySchemes:
+  etb_oauth_2_0: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/etb-oauth-20/1.0.1/etb-oauth-20.raml
+
+traits:
+  tibcoRequestHeaders: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.4/tibcorequestheaders.raml
+
+/operations:
+  /v1:
+    /objectSF:
+      post:
+        securedBy: [etb_oauth_2_0]
+        is: [tibcoRequestHeaders]
+        displayName: Update object salesforce
+        description: Updates the received object in the salesforce system
+        body:
+          application/json:
+            type: !include dataTypes/request/updateObjectSFType.raml
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include dataTypes/response/updateObjectSF200Response.raml
+          500:
+            body:
+              application/json:
+                type: !include dataTypes/response/updateObjectSF500Response.raml
+    /assurance:
+      /order:
+        post:
+          securedBy: [etb_oauth_2_0]
+          is: [tibcoRequestHeaders]
+          displayName: Create Order in OFSC
+          description: Service to create order in OFSC
+          body:
+            application/json:
+              type: !include dataTypes/request/post-order-assurance.raml
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include dataTypes/response/post-order-assurance-200.raml
+        /{activityId}:
+          get:
+            securedBy: [etb_oauth_2_0]
+            is: [tibcoRequestHeaders]
+            displayName: Sync Order in OFSC
+            description: Service to sync order in OFSC
+            responses:
+              200:
+                body:
+                  application/json:
+                    example: !include /examples/response/get-order-assurance-200.json
+              404:
+                body:
+                  application/json:
+                    example: !include /examples/response/get-order-assurance-404.json
+          patch:
+            securedBy: [etb_oauth_2_0]
+            is: [tibcoRequestHeaders]
+            displayName: Update order OFSC 
+            description: Servicio de actualización de ordenes en OFSC
+            body:
+              application/json:
+                type: !include dataTypes/request/patchAssuranceOrder.raml
+            responses:
+              200:
+                body:
+                  application/json:
+                    example: !include /examples/response/patchAssuranceOrder.json
+    /salesforce:
+      post:
+        securedBy: [etb_oauth_2_0]
+        is: [tibcoRequestHeaders]
+        displayName: ConsultObjectDetails
+        description: Check details of Salesforce objects
+        body:
+          application/json:
+            type: !include dataTypes/request/ConsultObjectDetails.raml
+        responses:
+          200:
+            body:
+              application/xml:
+                type: !include dataTypes/response/ConsultObjectDetails-200.raml
+          500:
+            body:
+              application/xml:
+                type: !include dataTypes/response/ConsultObjectDetails-500.raml
+    /inventory:
+      /{id_inventory}:
+        /details:
+          uriParameters:
+            id_inventory:
+              type: string
+              minLength: 1
+              example: "5dd5ed1f1a2eaf110c0ded1e"
+          get:
+            securedBy: [etb_oauth_2_0]
+            is:
+              - tibcoRequestHeaders
+            displayName: Consult inventory detail.
+            description: Service that returns inventory details.
+            queryParameters:
+              id_transaction:
+                type: string
+                required: false
+                example: "Remedy"
+            responses:
+              200:
+                body:
+                  application/json:
+                    type: !include dataTypes/response/consultInventoryDetail.raml
+                    example: !include examples/response/consultInventoryDetail.raml
+                    
+      /idTransaccion:
+        /{idTransaccion}:
+          get:
+            securedBy: [etb_oauth_2_0]
+            is:
+              - tibcoRequestHeaders
+            displayName: Consult inventory
+            description: Consult inventory
+            queryParameters:
+              idServicio:
+                description: Id service
+                type: string
+                example: CAV30CI1100924
+                required: true
+            responses:
+              201:
+                body:
+                  application/json:
+                    type: !include dataTypes/response/get-inventory200Response.raml
+              404:
+                body:
+                  application/json:
+                    type: !include dataTypes/response/get-inventory404Response.raml
+    /order:
+      /{orderNumber}:
+        uriParameters:
+          orderNumber:
+            type: string
+            example: "MDM-PQR-0001"
+        get:
+          displayName: GetOrderOFSC
+          description: Obtains order from OFSC
+          securedBy: [etb_oauth_2_0]
+          is: [tibcoRequestHeaders]
+          queryParameters:
+            status:
+              type: string
+              example: "pending"
+              required: false
+        /properties:
+          post:
+            displayName: UpdatePropertiesOFSC
+            description: Updates properties from a given order
+            securedBy: [etb_oauth_2_0]
+            is: [tibcoRequestHeaders]
+            body:
+              application/json:
+                type: !include /dataTypes/request/updateProperties.raml
+            responses:
+              200:
+                body:
+                  application/json:
+                    type: !include /dataTypes/response/generalResponse.raml
+                    example: !include /examples/response/updateProperties.raml
+    /customers:
+      /nit:
+        /services:
+          /id_servicio:
+            get:
+              is:
+                - tibcoRequestHeaders
+              securedBy: [etb_oauth_2_0]
+              queryParameters:
+                product_name: 
+                  type: string
+                  example: Plataforma Cx IP
+                  required: false
+                nit: 
+                  type: string
+                  example: "8999991919"
+                  required: false
+                id_servicio: 
+                  type: string
+                  example: CESG-VOZ
+                  required: false               
+                                    
+              displayName: Consult NIT
+              description: Consult the client's services through the NIT
+              responses:
+                200:
+                  body:
+                    application/xml:
+                      type: !include /dataTypes/response/consultServiceByNit.raml 
+/assurance:
+  /v1:
+    /pqrs:
+      post:
+        securedBy: [etb_oauth_2_0]
+        is: [tibcoRequestHeaders]
+        displayName: SetPQR
+        description: Set PQR
+        body:
+          application/json:
+            type: !include dataTypes/request/setPQROpRequest.raml
+        responses:
+          200:
+            description: update order status returned by the method
+            body:
+              application/json:
+                example:
+                  !include /examples/response/setPQROpResponse.json
+          500:
+            description: Response for the status 500 of the update
+            body:
+              application/json:
+                example: !include examples/response/setPQROpResponse500.json
+      /notes:
+        post:
+          securedBy: [etb_oauth_2_0]
+          is: [tibcoRequestHeaders]
+          displayName: Insert PQR notes
+          description: Service to insert notes PQR
+          body:
+            application/json:
+              type: !include dataTypes/request/pqrNotes.raml
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include dataTypes/response/pqrNotes.raml        
+      /massiveFailure:
+        post:
+          securedBy: [etb_oauth_2_0]
+          is: [tibcoRequestHeaders]
+          displayName: Register Massive PQR Failure
+          description: Service to register massive PQR failures
+          body:
+            application/json:
+              type: !include dataTypes/request/pqrMassiveFailure.raml
+          responses:
+            200:
+              body:
+                application/json:
+                  type: !include /dataTypes/response/pqrMassiveFailure.raml  
+
+
+/remedy:
+  /v1:
+    /workItems:
+      /{id}:
+        uriParameters:
+          id:
+            type: number
+            example: 131489
+        get:
+          securedBy: [etb_oauth_2_0]
+          is: [tibcoRequestHeaders]
+          displayName: Get INI associated to PBI
+          description: Get INI associated to PBI
+          responses:
+            200:
+              body:
+                application/json:
+                  example: !include /examples/response/workItem.json
+        post:
+          securedBy: [etb_oauth_2_0]
+          is: [tibcoRequestHeaders]
+          displayName: Update document INI
+          description: Update document INI
+          body:
+            application/json:
+              type: !include /dataTypes/request/create-workItem.raml
+              example: !include /examples/request/create-workItem.json
+          responses:
+            201:
+              body:
+                application/json:
+                  example: !include /examples/response/workItem.json
+      post:
+        securedBy: [etb_oauth_2_0]
+        is: [tibcoRequestHeaders]
+        displayName: Create Work Item 
+        description: Create Work Item
+        body:
+          application/json:
+            type: !include /dataTypes/request/create-workItem.raml
+            example: !include /examples/request/create-workItem.json
+        responses:
+          201:
+            body:
+              application/json:
+                example: !include /examples/response/workItem.json

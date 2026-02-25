@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    
+	<flow name="remedy-xapi-services-main">
+        <http:listener config-ref="remedy-xapi-services-httpListenerConfig" path="/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Go to initial log" doc:id="3516eef9-555f-4320-93f5-d259a3c55a81" name="initial-loggin-Sub_Flow" />
+        <choice doc:name="Choice" doc:id="672a1954-8856-49aa-b4a3-a7e31a5bce17">
+            <when expression="#[p('mainFilter.path') contains attributes.rawRequestUri]">
+                <ee:transform doc:name="Extract unknown characters" doc:id="ba37e467-c6d3-4053-9c85-bbe727cf81b4">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+var filterChars = p('mainFilter.unknownChars') splitBy "|"
+---
+read(filterChars reduce ((item, accumulator=payload.^raw) -> replaceAll(accumulator, item, "")))]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </when>
+        </choice>
+        <apikit:router config-ref="remedy-xapi-services-config" />
+        <async doc:name="Async" doc:id="2a44c0aa-8a4b-404c-adb9-db7cc0f50f84">
+            <flow-ref doc:name="Go to log" doc:id="35302679-d65c-47b7-b89e-43d6b0c317cd" name="loggin-client-call" />
+        </async>
+        <error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="remedy-xapi-services-console">
+        <http:listener config-ref="remedy-xapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="remedy-xapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="get:\operations\v1\inventory\idTransaccion\(idTransaccion):remedy-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="6f8cffa5-c648-4d5b-8285-739a6ea886b0" name="get-consultInventory-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\salesforce:application\json:remedy-xapi-services-config">
+        <flow-ref doc:name="Go to ConsultObjectDetails-handler" doc:id="f21e9889-532c-4c77-b08c-0c57c921e024" name="post-ConsultObjectDetails-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\remedy\v1\workItems\(id):application\json:remedy-xapi-services-config">
+        <flow-ref doc:name="patch-workItems-handlerSub_Flow" doc:id="740b727f-4f4a-41e5-aa87-e27d4153859e" name="patch-workItems-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\remedy\v1\workItems\(id):remedy-xapi-services-config">
+        <flow-ref doc:name="get-workItems-handlerSub_Flow" doc:id="b46b9b9b-5f4d-4e40-a287-dc3a24d10614" name="get-workItems-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\remedy\v1\workItems:application\json:remedy-xapi-services-config">
+        <flow-ref doc:name="post-workItems-handlerSub_Flow" doc:id="24bbb3c5-b4e3-42d1-b445-6c2820fb2cf3" name="post-workItems-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\operations\v1\assurance\order\(activityId):remedy-xapi-services-config" doc:id="43734ec7-adb5-4ab2-81ea-0499c78cbac6">
+        <flow-ref doc:name="Go to Handler" doc:id="0e730e06-d215-4d52-9271-ff3b18f52fd8" name="get-assurance-order-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\assurance\order:application\json:remedy-xapi-services-config" doc:id="3f289273-9029-4feb-a8c9-70a8bee24ac8">
+        <flow-ref doc:name="Go to Handler" doc:id="721557c6-7fe8-4689-af51-a169dba3d61a" name="post-assuranceOrder-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\operations\v1\assurance\order\(activityId):application\json:remedy-xapi-services-config" doc:id="cccb3936-b95a-4a7f-a78e-35ee8ac06c26">
+        <flow-ref doc:name="patch-assurance-order-handlerSub_Flow" doc:id="f378e592-fbf5-4269-bc82-4afa9d52bafe" name="patch-assurance-order-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\operations\v1\order\(orderNumber):remedy-xapi-services-config">
+        <flow-ref doc:name="get-orderOFSC-handlerSub_Flow" doc:id="5c1de4ed-8c8b-40df-ad6d-fba7e98e337f" name="get-orderOFSC-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\order\(orderNumber)\properties:application\json:remedy-xapi-services-config" doc:id="dd51037b-733b-4c78-a985-eb9606a41cc6">
+        <flow-ref doc:name="Go to Handler" doc:id="60582910-e207-4f4c-bc62-c485538b4368" name="post-updateProperties-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\assurance\v1\pqrs:application\json:remedy-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="b1600069-2b4e-4207-ac4a-59b51e27fcc7" name="post-SetPQROp-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\assurance\v1\pqrs\notes:application\json:remedy-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="aa4d8eb5-01e3-479b-93de-92990c14bba9" name="post-pqrNotes-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\assurance\v1\pqrs\massiveFailure:application\json:remedy-xapi-services-config" doc:id="d069258f-da5a-45d0-94ec-2c1c96400a9d">
+		<flow-ref doc:name="Go to Handler" doc:id="94553b78-6b1f-46cc-ab89-27f96e93eb30" name="post-pqrMassiveFailure-handlerSub_Flow" />
+	</flow>
+    <flow name="get:\operations\v1\inventory\(id_inventory)\details:remedy-xapi-services-config" doc:id="55b43746-ffa3-4a6d-95b5-efa6901a3a30">
+        <flow-ref doc:name="Go to Handler" doc:id="1dd8759a-0169-44ab-b76e-3508fbbcb6bc" name="post-consultInventoryDetails-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\operations\v1\customers\(nit)\services\(id_servicio):remedy-xapi-services-config" doc:id="5356e732-254b-4261-9a1d-ec91c4afa13b">
+        <flow-ref doc:name="Go to get-consultServiceByNit-handler" doc:id="4de6ead1-ea1b-47fe-9d15-013ac3a48e0e" name="get-consultServiceByNit-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\objectSF:application\json:remedy-xapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="87452575-2e3c-44d0-9b5e-3bd6952f6e00" name="post-objectSF-handler" />
+    </flow>
+    <flow name="get:\operations\v1\customers\nit\services\id_servicio:remedy-xapi-services-config">
+		<flow-ref doc:name="Go to get-consultServiceByNit-handler" doc:id="4de6ead1-ea1b-47fe-9d15-013ac3a48e0e" name="get-consultServiceByNit-handlerSub_Flow" />
+    </flow>
+</mule>

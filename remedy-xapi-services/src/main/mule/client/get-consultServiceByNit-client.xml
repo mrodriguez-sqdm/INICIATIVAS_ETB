@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-consultServiceByNit-clientSub_Flow" doc:id="7f7d10c8-e890-46b7-a435-f41f1427cb6a" >
+		<try doc:name="Try" doc:id="0abeeda5-8d11-4c95-841a-70343243ed78" >
+			<http:request method="POST" doc:name="Call to http://10.10.0.13:1025/GestorSolicitudes.svc" doc:id="91d76ed5-5fa8-470e-b7b4-c1bf5bbd18b9" path="${gestor.path}" config-ref="HTTP_Request_configuration_gestor" responseTimeout="#[p('configurationTimeout.consultServiceByNit')]">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"SOAPAction" : "http://tempuri.org/IGestorSolicitudes/ConsultarServicioClienteByNit",
+	"Content-Type" : "text/xml"
+}]]]></http:headers>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="109e93ff-a69f-42eb-8a51-bf7ddeba7954" >
+					<ee:transform doc:name="Transform Message" doc:id="1ea16317-4e30-4729-aecf-cfde275a6126" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "ConsultServiceByNitOutput": {
+    "WSResponseHeader2": {
+      "System": {
+        "name":  vars.headers.name ,
+        "correlationID":  vars.headers."x-correlation-id" ,
+        "processingServer": ""
+      },
+      "Service": {
+        "status": p('gestor.ifNull.fail'),
+        "responseDate": now() ,
+        "statusDetail": {
+          "errorCode": p('gestor.ifNull.fail'),
+          "errorMessage": error.description
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

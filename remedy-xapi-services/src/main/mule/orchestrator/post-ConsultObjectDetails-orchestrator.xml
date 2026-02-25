@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow
+		name="post-ConsultObjectDetails-orchestratorSub_Flow"
+		doc:id="00037cf1-5c62-4fe9-ba67-3f06ff797c2d">
+		<flow-ref doc:name="Go to ConsultObjectDetails-client"
+			doc:id="68484016-159c-4bdd-b609-7d0f03e81351"
+			name="post-ConsultObjectDetails-clientSub_Flow" />
+		<ee:transform doc:name="Map for JAR"
+			doc:id="0b3d501e-1023-4bea-928e-b80bc9e113b4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns ns2 http://soap.sforce.com/schemas/class/IntegracionRemedy_ws
+---
+{
+  soap#"Envelope": {
+    soap#"Header": {
+      "SessionHeader": {
+        "sessionId": payload.Envelope.Body.loginResponse.result.sessionId
+      }
+    },
+    soap#"Body": {
+      ns2#"WsConsultaDetalle": {
+        ns2#"MensajeEntrada": {
+          ns2#"Id": vars.firstPayload.Envelope.Body.ConsultObjectDetailsSFInput.WsConsultaDetalle.MensajeEntrada.Id,
+          ns2#"lstObjetosHijosRelacionados": vars.firstPayload.Envelope.Body.ConsultObjectDetailsSFInput.WsConsultaDetalle.MensajeEntrada.lstObjetosHijosRelacionados,
+          ns2#"lstParametros": vars.firstPayload.Envelope.Body.ConsultObjectDetailsSFInput.WsConsultaDetalle.MensajeEntrada.lstObjetosHijosRelacionados.ObjetosHijosRelacionados.lstParametros,
+          ns2#"NombreObjeto": vars.firstPayload.Envelope.Body.ConsultObjectDetailsSFInput.WsConsultaDetalle.MensajeEntrada.NombreObjeto
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="vSystemName"><![CDATA[%dw 2.0
+output application/java
+---
+payload.Envelope.Body.ConsultObjectDetailsSFInput.WSRequestHeader2.System.name]]></ee:set-variable>
+				<ee:set-variable variableName="vProcessingServer"><![CDATA[%dw 2.0
+output application/java
+---
+payload.Envelope.Body.ConsultObjectDetailsSFInput.WSRequestHeader2.System.processingServer]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to ConsultObjectDetails-JAR"
+			doc:id="2a0c63b6-4f72-48f4-bd15-8c2ad1c973ed"
+			name="Flow-for-ConsultObjectDetails-JAR" />
+	</sub-flow>
+	<sub-flow name="Flow-for-ConsultObjectDetails-JAR"
+		doc:id="b5038b1d-35d8-4a7a-aee8-7e3ffa92702a">
+		<flow-ref doc:name="Go to ConsultObjectDetails-JAR"
+			doc:id="1ea6fa15-cdec-4a64-9b8e-f59442640031"
+			name="post-ConsultObjectDetails-JAR" />
+		<choice doc:name="Choice"
+			doc:id="23e17328-ac7a-433b-8ba8-fb68684b85e4">
+			<when
+				expression="#[payload.Envelope.Body.WsConsultaDetalleResponse != null]">
+				<ee:transform doc:name="Transform Message"
+					doc:id="e85683f8-f8c1-444d-8f04-ffc936f7f4f5">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "ConsultObjectDetailsSFOutput": {
+    "WSResponseHeader2": {
+      "System": {
+        "name": vars.vSystemName,
+        "correlationID": correlationId,
+        "processingServer": vars.vProcessingServer
+      },
+      "Service": {
+        "status": "PASS",
+        "responseDate": now()
+      }
+    },
+"result": {
+    "Id": payload.Envelope.Body.WsConsultaDetalleResponse.result.Id,
+    "lstObjetosHijosRelacionados": payload.Envelope.Body.lstObjetosHijosRelacionados,
+    "lstParametros": payload.Envelope.Body.WsConsultaDetalleResponse.result.lstParametros filterObject ((value, key) -> value.Campo != null) pluck ((item, index) -> {
+ Keys:{Campo:(item.Campo),
+ Valor: (item.Valor)
+}
+}
+  
+)
+}}}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message"
+					doc:id="63d3635c-aa19-4121-83cc-236a24df6f34">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Envelope": {
+    "Body": {
+      "ConsultObjectDetailsSFOutput": {
+        "WSResponseHeader2": {
+          "System": {
+	        "name": vars.vSystemName,
+	        "correlationID": correlationId,
+	        "processingServer": vars.vProcessingServer
+          },
+          "Service": {
+            "status": "FAIL",
+            "responseDate": now(),
+            "statusDetail": {
+              "errorCode": "NOK",
+              "errorMessage": ""
+            }
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Transform Message"
+			doc:id="8f9fbff6-0afb-4b84-845e-bb14687a6859">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

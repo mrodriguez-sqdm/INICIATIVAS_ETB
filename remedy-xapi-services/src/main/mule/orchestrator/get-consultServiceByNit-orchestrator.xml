@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-consultServiceByNit-orchestratorSub_Flow" doc:id="13f8c0c3-2dc6-4bb3-a069-04bd8697eb6d" >
+		<ee:transform doc:name="Transform Message" doc:id="ef0e2e3e-fc4b-467f-9270-05b4eb5906f9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+---
+soapenv#Envelope @("xmlns:tem":"http://tempuri.org/"): {
+    soapenv#Header: "",
+        soapenv#Body: {
+            tem#ConsultarServicioClienteByNit:{
+                tem#Nit: attributes.queryParams.nit,
+                tem#nombre_producto: attributes.queryParams.product_name,
+                tem#id_servicio: attributes.queryParams.id_servicio,
+                tem#cliente:""
+            }
+        }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to get-consultServiceByNit-client" doc:id="0c481690-23e1-42bc-b88c-ba27029ede7b" name="get-consultServiceByNit-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="69f19059-8588-426a-b742-00583a49fbd9" >
+			<when expression="#[payload.Envelope.Body.ConsultarServicioClienteByNitResponse.ConsultarServicioClienteByNitResult.svc_PS_SERVICIO_CLIENTE != null]">
+				<ee:transform doc:name="distinctBy $.Id" doc:id="4cbd7973-abf0-4008-8006-40e0ece47146" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Arrays
+---
+{
+    "ConsultServiceByNitOutput": {
+        "WSResponseHeader2": {
+            "System": {
+                "name": vars.headers.name,
+                "correlationID": vars.headers."x-correlation-id",
+                "processingServer": ""
+            },
+            "Service": {
+
+                "status": p('gestor.ifNull.pass'),
+                "responseDate": now()
+            }
+        },
+        "ConsultarServicioClienteByNitResult": "svc_PS_SERVICIO_CLIENTE": payload.Envelope.Body.ConsultarServicioClienteByNitResponse.ConsultarServicioClienteByNitResult..*"svc_PS_SERVICIO_CLIENTE" distinctBy $.Id map (item) -> {
+            "Id": item.Id,
+            "FechaActualizacion": item.FechaActualizacion,
+            "FechaBloqueo": item.FechaBloqueo,
+            "FechaCreacion": item.FechaCreacion,
+            "UsuarioBloqueo": item.UsuarioBloqueo,
+            "UsuarioCreacion": item.UsuarioCreacion,
+            "UsuarioModificacion": item.UsuarioModificacion,
+            "actualizacion_id": item.actualizacion_id,
+            "aliado_colaborador": item.aliado_colaborador,
+            "ancho_banda": item.ancho_banda,
+            "ciudad": item.ciudad,
+            "configuracion_adicional_servicio": (slice(item.configuracion_adicional_servicio.*"PS_VALOR_CAMPO_DINAMICO",0,1) )  map (aux) -> "PS_VALOR_CAMPO_DINAMICO": {
+                "Id": aux.Id,
+                "agrupador": aux.agrupador,
+                "apiname": aux.apiname,
+                "descripcion": aux.descripcion,
+                "es_activo": aux.es_activo,
+                "es_inventario": aux.es_inventario,
+                "es_obligatorio": aux.es_obligatorio,
+                "es_respuesta": aux.es_respuesta,
+                "id_campo_dependiente": aux.id_campo_dependiente,
+                "id_lista": aux.id_lista,
+                "nombre": aux.nombre,
+                "tipo": aux.tipo,
+                "ValorMultiple": aux.ValorMultiple,
+                "id_tarea": aux.id_tarea,
+                "order_visualizacion": aux.order_visualizacion,
+                "tarea": aux.tarea,
+                "valor": aux.valor,
+                "configuracion_servicio": item.configuracion_servicio,
+                "control_versiones": "",
+                "cuenta_cliente": item.cuenta_cliente,
+                "cuenta_facturacion": item.cuenta_facturacion,
+                "datos_adicionales_servicio": item.datos_adicionales_servicio,
+                "disponibilidad_servicio": item.disponibilidad_servicio,
+                "estado": item.estado,
+                "external_service_id": item.external_service_id,
+                "fecha_inicio_facturacion": item.fecha_inicio_facturacion,
+                "historico_modificaciones": item.historico_modificaciones,
+                "id_Aprovisionamiento": item.id_Aprovisionamiento,
+                "id_servicio": item.id_servicio,
+                "medio_ultima_milla": item.medio_ultima_milla,
+                "nit": item.nit,
+                "nombre_producto": item.nombre_producto,
+                "numero_aprovisionamiento": item.numero_aprovisionamiento,
+                "numero_conexion": item.numero_conexion,
+                "numero_viabilidad": item.numero_viabilidad,
+                "opcion_respuesta_viabilidad": item.opcion_respuesta_viabilidad,
+                "plan": item.plan,
+                "proveedor_ultima_milla": item.proveedor_ultima_milla,
+                "servicio_etb": item.servicio_etb,
+                "sucursal": item.sucursal,
+                "tipo_servicio": item.tipo_servicio,
+                "version": item.version
+            }
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Si es error o null" doc:id="5a51c8b1-b02c-4b28-b95c-064870bc74f5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (!isEmpty(payload.ConsultServiceByNitOutput))
+payload
+else
+{
+  "ConsultServiceByNitOutput": {
+    "WSResponseHeader2": {
+      "System": {
+        "name":  vars.headers.name ,
+        "correlationID":  vars.headers."x-correlation-id" ,
+        "processingServer": ""
+      },
+      "Service": {
+        "status": p('gestor.ifNull.fail'),
+        "responseDate": now() ,
+        "statusDetail": {
+          "errorCode": p('gestor.ifNull.fail'),
+          "errorMessage": p('gestor.ifNull.errorMessage')
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

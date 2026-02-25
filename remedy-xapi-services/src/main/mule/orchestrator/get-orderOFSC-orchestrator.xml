@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<validation:config name="Validation_Config" doc:name="Validation Config" doc:id="2a6ead22-9f8a-466f-9e84-a6e88b83201a" i18n="#[vars.evaluateStatus]" />
+	<sub-flow name="get-orderOFSC-orchestratorSub_Flow" doc:id="4e429ede-1e43-4f30-b4ad-dbc9c72940a9" >
+		<flow-ref doc:name="get-orderOFSC-clientSub_Flow" doc:id="837e89e7-5fc1-4019-93bd-0cbd876ea4e5" name="get-orderOFSC-clientSub_Flow" target="responseOrquestador"/>
+		<choice doc:name="Choice" doc:id="88b0653c-8ed0-4bdd-b3f9-1fbb57c7a3c0" >
+			<when expression="#[(vars.responseOrquestador.Cantidad as Number &gt; 0) and !isEmpty(vars.status)]">
+				<ee:transform doc:name="Transform Message" doc:id="c9df84de-55df-4d3b-85da-235523b871b3" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+Orden: (vars.responseOrquestador.Ordenes filter ((value) -> 
+	value.Estado == vars.status))[0]]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<ee:transform doc:name="Transform Message" doc:id="f098ee96-049b-4141-a27d-7b8c5a75e6f1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "PASS",
+  "getOrderOFSCResponse": {
+    "activityId": payload.Orden.ActivityId,
+    "order": vars.orderNumber,
+    "state": payload.Orden.Estado,
+    "position": payload.Orden.Posicion,
+    "aditionalData": payload.Orden.InformacionAdicional
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[(vars.responseOrquestador.Cantidad as Number &gt; 0) and isEmpty(vars.status)]">
+				<ee:transform doc:name="Transform Message" doc:id="b995650d-e507-41de-be24-43f7b28bceaa">
+			<ee:message>
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var splitEstados = splitBy(p('estados'), "|") --  [""]
+var orderCriteria = {(splitEstados map {(($) : ($$))})}
+---
+Orden: (vars.responseOrquestador.Ordenes
+   filter ((value) -> splitEstados contains(value.Estado))
+    orderBy (order) -> orderCriteria[order.Estado])[0]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		</ee:transform>
+				<ee:transform doc:name="Transform Message" doc:id="cedb33f3-0e2b-4e88-b2d9-073efd4ce92b" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="additionalValidate" ><![CDATA[%dw 2.0
+output application/java
+var valueDate = (payload.Orden.InformacionAdicional filter ($.Nombre == "date")).Valor[0]
+---
+(p('dataEnable') as Boolean)
+and !isEmpty(valueDate)
+and (valueDate < (now() >> "America/Bogota") as String)]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Transform Message" doc:id="082035ef-4734-43a0-a191-cbfc0bda7542" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (vars.additionalValidate) {
+	"status": "PASS",
+	"getOrderOFSCResponse": {
+		"actividyId": payload.Orden.ActivityId,
+		"order": vars.orderNumber,
+		"state": "started",
+		"position": payload.Orden.Posicion,
+		"aditionalData": payload.Orden.InformacionAdicional
+	}
+} else 
+{
+	"status": "PASS",
+	"getOrderOFSCResponse": {
+		"actividyId": payload.Orden.ActivityId,
+		"order": vars.orderNumber,
+		"state": payload.Orden.Estado,
+		"position": payload.Orden.Posicion,
+		"aditionalData": payload.Orden.InformacionAdicional
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[vars.responseOrquestador.Cantidad as Number &lt;= 0]">
+				<ee:transform doc:name="Transform Message" doc:id="5cef54a8-f460-4224-873a-9dd29ca9cd12" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (p('noRecords') as Boolean) 
+{
+	"status": "PASS",
+	"getOrderOFSCResponse":{
+		"activityId": "1",
+		"order" : vars.orderNumber,
+		"state": "started",
+		"position": "1",
+		"aditionalData":{
+			"Nombre":"date",
+			"Valor": (now() >> "America/Bogota") as String {format : "uuuu-MM-dd"}
+		}
+	}
+}
+else 
+{
+  "status": 500,
+  "code": "GETORDENER02",
+  "message": {
+      "message": "Registro no encontrado"
+  },
+  "messageServer": "",
+  "cause": [
+      {
+          "origin": app.name,
+          "message": "org.mule.module.raiseException"
+      }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (p('noRecords') as Boolean) 200 else 500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+		</choice>
+	</sub-flow>
+</mule>
