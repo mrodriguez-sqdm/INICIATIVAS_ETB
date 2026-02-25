@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-createAgreements-orchestratorSub_Flow" doc:id="bcad378a-76f2-4be9-846b-a3302c11ea8f" >
+		<flow-ref doc:name="Get parameters" doc:id="736d8ca6-7cd1-4e94-869e-a54ae59e8bd8" name="mongo-sapi-getParameters" target="parameters"/>
+		<ee:transform doc:name="Mapeo AZSign" doc:id="e4256050-25a6-4f99-8c3a-4d05801f2d8c" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="username" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.parameters[0].Valores filter ($.Nombre == 'username'))[0].Codigo]]></ee:set-variable>
+				<ee:set-variable variableName="password" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.parameters[0].Valores filter ($.Nombre == 'password'))[0].Codigo]]></ee:set-variable>
+				<ee:set-variable variableName="requestAZSign" ><![CDATA[%dw 2.0
+output application/xml
+var documentos = p('azsign.typeDocuments') splitBy  ("|")
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns esq http://www.analitica.com.co/AZSign/Esquemas
+---
+{
+  soapenv#Envelope: {
+    soapenv#Header: null,
+    soapenv#Body: {
+      esq#Acuerdo @(
+      	Cuenta: (vars.parameters[0].Valores filter ($.Nombre == 'ID_CUENTA_AZSIGN'))[0].Codigo, 
+        Grupo: (vars.parameters[0].Valores filter ($.Nombre == 'ID_GRUPO_AZSIGN'))[0].Codigo, 
+        Aplicativo: (vars.parameters[0].Valores filter ($.Nombre == 'ID_APLICATIVO_AZSIGN'))[0].Codigo, 
+        Nombre: payload.documento[0].nombreDocumento, 
+        TipoFirma: (vars.parameters[0].Valores filter ($.Nombre == 'ID_TIPO_FIRMA'))[0].Codigo, 
+        Estado: (vars.parameters[0].Valores filter ($.Nombre == 'ID_ESTADO_INICIAL_ACUERDOS'))[0].Codigo, 
+        RefWebHook: "", 
+        SegundoFacAut:"NA",
+        EstamparCronologicamente: "0",
+        Vencimiento: payload.fechaVencimientoAcuerdo,
+        NotificarRemitente: payload.requiereCopiaAsesor,
+        TipoPDF: (vars.parameters[0].Valores filter ($.Nombre == 'TIPO_DOCUMENTO'))[0].Codigo): {
+		(GruposPartcipantes: {
+		    Grupo @(Orden:1, Rol:"F", Nombre:"Cliente"): {
+		    (payload.destinatarios map ({
+	            Participante @(
+	            Email: $.email,
+	            Nombre: $.nombre,
+	            Apellido: $.apellido,
+	            (TipoIdentificacion: $.tipoDocumento) if(documentos contains $.tipoDocumento),
+	            NumeroDocumento: $.numeroDocumento,
+	            Celular: $.movil,
+	            NotificarWhatsApp:"true"): null}
+		    ))}
+		}),
+        Copias: {
+          Copia @(Email:payload.emailAsesor,
+          Nombre: payload.usuario): null
+        },
+        Mensaje: payload.mensajeCorreo,
+        (Documentos: {
+		    (payload.documento map ({
+			    Documento @(Nombre: $.nombreDocumento,
+			    TipoMime: $.tipoDocumento,
+			    Codificacion: "Base64"): $.contenidoDocumento
+			}))
+		})
+      }
+    }
+  }
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="f4a8aead-99f7-4f3a-815c-de03e97b1ffe" name="azsign-clientSub_Flow" target="responseAZSign"/>
+		<choice doc:name="Choice" doc:id="c2bf9b06-4160-4615-9702-2e63607b3c8d" >
+			<when expression="#[vars.responseAZSign.Envelope.Body.AcuerdoRsp != null]">
+				<ee:transform doc:name="Response Final" doc:id="baa21da6-b4d4-4de1-b28b-f40c115819de">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Codigo": "OK",
+  	"AcuerdoRsp": vars.responseAZSign.Envelope.Body.AcuerdoRsp.@,
+  	"Documentos": vars.responseAZSign.Envelope.Body.AcuerdoRsp.Documentos.Documento.@
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Response Error" doc:id="0a6bf17d-7f55-4b9f-bf25-15671e9f770e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Codigo": payload.Envelope.Body.Fault.detail.Errores.Error.@,
+  "Descripcion": payload.Envelope.Body.Fault.detail.Errores.Error
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<async doc:name="Async" doc:id="69a0a09a-dfaa-4199-b8f9-4457b174722f" >
+			<ee:transform doc:name="Request save logs" doc:id="c562776e-d6cd-4501-931c-db569909b8b4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var fecha = now() >> "America/Bogota"
+
+---
+{
+	RequestAcuerdo: write(vars.requestAZSign,"application/xml") ,
+	ResponseAcuerdo: write(vars.responseAZSign,"application/xml"),
+	FechaEnvio: fecha,
+	FechaRespuesta: fecha,
+	Asesor: vars.inputPayload.usuario,
+	Aplicacion: "MULESOFT",
+	NumeroDocumento: vars.inputPayload.destinatarios[0].numeroDocumento
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<flow-ref doc:name="Save logs" doc:id="22eaebd5-205c-4546-8298-0881a97b7134" name="mongo-sapi-post-agreement-logs" />
+		</async>
+	</sub-flow>
+</mule>
