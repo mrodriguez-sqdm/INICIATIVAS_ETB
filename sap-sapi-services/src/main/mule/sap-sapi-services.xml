@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:sap="http://www.mulesoft.org/schema/mule/sap" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd  http://www.mulesoft.org/schema/mule/sap http://www.mulesoft.org/schema/mule/sap/current/mule-sap.xsd">
+    <flow name="sap-sapi-services-main">
+        <http:listener config-ref="sap-sapi-services-httpListenerConfig" path="/sap/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Get systemId" doc:id="1d79d118-a250-4f92-9b44-46775ee305a1" name="processAndSystem-logginSub_Flow" />
+        <apikit:router config-ref="sap-sapi-services-config" />
+        <async doc:name="Async" doc:id="eada74f2-c2e5-4df2-8f6c-9eaf18b83b75" >
+			<flow-ref doc:name="Call logger" doc:id="280d4b3b-cc29-4738-b389-cadb316d16d8" name="loggin-client-call" />
+		</async>
+		<error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="sap-sapi-services-console">
+        <http:listener config-ref="sap-sapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="sap-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\rfc\create_master_data:application\xml:sap-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="fb1dd77e-83b3-4925-a4b3-e12aa53b47f1" name="post-create-master-data-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\health_check:sap-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="fb3923a4-ffd7-4df2-95dc-84df38cc2019" name="get-health-check-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\bills:sap-sapi-services-config">
+        <flow-ref doc:name="get-bills-handlerSub_Flow" doc:id="ab2121dd-821b-4d68-aa06-5ee03d5788b0" name="get-bills-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\rfc\block_invoice:application\xml:sap-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="5aa49545-0aa2-4349-9c3f-d5b1273f9b90" name="post-rfc-block_invoice-handlerSub_Flow"/>
+    </flow>
+    <flow name="post:\v1\rfc\change_invoice:application\xml:sap-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="4c6003bd-707e-418e-a6cc-d67914a2942b" name="post-rfc-change_invoice-handlerSub_Flow"/>
+    </flow>
+    <flow name="post:\v1\rfc\payment_notif:application\xml:sap-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="edbab686-19c1-4627-b258-b3f12614ea03" name="post-rfc-payment_notif-handlerSub_Flow"/>
+    </flow>
+    <flow name="post:\v1\rfc\solfact_checkdata:application\xml:sap-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="0c7ddfca-4dc6-47ac-96e3-de86ce66e7a7" name="post-rfc-solfact_checkdata-handlerSub_Flow"/>
+    </flow>
+    <flow name="put:\v1\materials:application\json:sap-sapi-services-config" doc:id="ee11e340-1ccf-4db2-be72-0b710339b70e">
+        <flow-ref doc:name="Flow Reference" doc:id="ae5f0a5f-ef1d-4b0b-b761-58c17a6f34a0" name="put-updatMaterials-handler" />
+    </flow>
+    <flow name="post:\v1\queryMaterials:application\json:sap-sapi-services-config" doc:id="5d5ba3bc-d7b4-4bcb-9d20-b4cfb7f58846">
+        <flow-ref doc:name="Go to Handler" doc:id="b57bce89-13b4-48eb-a2fa-88f580c0e6af" name="post-queryMaterials-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\rfc\solfact_getdata:application\xml:sap-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="1c9716d9-2e91-4504-81bd-886324f12abf" name="post-rfc-solfact_getdata-handlerSub_Flow"/>
+    </flow>
+    <flow name="patch:\v1\rfc\update_master_data:application\json:sap-sapi-services-config">
+		<flow-ref doc:name="patch-update-master-data-handlerSub_Flow" doc:id="5f1cb22d-c7d5-497c-88e8-752617b7f6db" name="patch-update-master-data-handlerSub_Flow"/>
+    </flow>
+    <flow name="patch:\rmca\v1\process\reconnection:application\json:sap-sapi-services-config">
+        <flow-ref doc:name="Go To Handler" doc:id="1f9fe896-d29b-4870-984e-6209e6394041" name="patch-reconnectionRMCA-handlerSub_Flow" />
+    </flow>
+</mule>

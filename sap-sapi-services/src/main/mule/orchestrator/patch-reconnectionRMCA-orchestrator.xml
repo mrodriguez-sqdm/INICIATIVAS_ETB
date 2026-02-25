@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-reconnectionRMCA-orchestratorSub_Flow" doc:id="b74aaf48-4960-4868-94a8-ea6674d06f92" >
+		<ee:transform doc:name="Transform Message" doc:id="66c74956-eca7-45c4-ab78-4ff23a22b949">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns urn urn:sap-com:document:sap:rfc:functions
+---
+{
+    soapenv#Envelope: {
+        soapenv#Header: null,
+        soapenv#Body: {
+           urn#ZRFC_TRAMITE_RECONEXION: payload.ZRFC_TRAMITE_RECONEXION          
+        }
+    }         
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[attributes.headers.'x-correlation-id']" doc:name="Set Correlation ID" doc:id="607b9728-859b-48dc-b065-4d995f536d58" variableName="correlationID"/>
+		<flow-ref doc:name="Go To Client" doc:id="bce54a47-081b-4aac-ad91-dcea2c7d2c54" name="patch-reconnectionRMCA-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message" doc:id="db3951da-0611-418d-a2b8-18344e55c6d5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+ReconnectionRMCAOutput: {
+    WSResponseHeader2: {
+        System: {
+            name: "MuleSoft",
+            correlationID: vars.correlationID,
+            processingServer: "MuleSoft"
+        },
+        Service: {
+            status: "PASS",
+            responseDate: now() as DateTime as String {format: "yyyy-MM-dd"}
+        }
+    },
+    ZRFC_TRAMITE_RECONEXIONResponse: {
+        T_RETURN: payload.Envelope.Body.ZRFC_TRAMITE_RECONEXIONResponse.T_RETURN..*item
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="fc517ea6-b652-415f-80e8-bb25aedf8f0c" >
+			<when expression='#[payload.ReconnectionRMCAOutput.WSResponseHeader2.Service.status == "PASS"]'>
+				<set-variable value="#[200]" doc:name="httpStatus 200" doc:id="e2c6101d-88d0-40a0-a3cf-042b9ea395ed" variableName="httpStatus"/>
+			</when>
+			<otherwise >
+				<set-variable value="#[500]" doc:name="httpStatus 500" doc:id="f868e788-4588-4815-88db-94f4a73f13e2" variableName="httpStatus" />
+				<ee:transform doc:name="Output 500" doc:id="8359247f-d4b9-42ee-b803-5c25f65c3b65">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+ns ns1 http://www.tibco.com/schemas/ETB.NPLAY.SI.SAP.RMCA.Tx/ETB.NPLAY.SAP.RMCA.Core/ReconnectionRMCA/Schema/Schema.xsd
+ns ns2 urn:sap-com:document:sap:rfc:functions
+---
+{
+    ns1#ReconnectionRMCAOutput: {
+        ns2#WSResponseHeader2: {
+            System: {
+                name: "Tibco",
+                correlationID: "asd",
+                processingServer: "Tibco"
+            },
+            Service: {
+                status: "FAIL",
+                responseDate: now(),
+                statusDetail:{
+                    errorCode: payload.ns1#ReconnectionRMCAOutput.ns2#WSResponseHeader2.Service.statusDetail.errorCode,
+                    errorMessage: payload.ns1#ReconnectionRMCAOutput.ns2#WSResponseHeader2.Service.statusDetail.errorMessage
+                }
+            }
+        }
+    }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="DEBUG" doc:name="Logger" doc:id="3001eb2a-b53a-4a7d-bfc6-2661d68c5449" message="#[payload]"/>
+	</sub-flow>
+</mule>

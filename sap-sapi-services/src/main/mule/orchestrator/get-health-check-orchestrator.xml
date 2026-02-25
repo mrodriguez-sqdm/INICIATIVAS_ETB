@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:sap="http://www.mulesoft.org/schema/mule/sap" xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/sap http://www.mulesoft.org/schema/mule/sap/current/mule-sap.xsd">
+	<sub-flow name="get-health-check-orchestratorSub_Flow" doc:id="07e885d1-f6de-485b-ba1e-f323cdcd7077" >
+		<ee:transform doc:name="SAP vars" doc:id="98f828f9-a826-49bc-aebe-b04b247731a3" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="sapProperties" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"hostname": p('sap.host')
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Call tester" doc:id="52f9ffc8-700e-4555-9eb1-04aeb81d5080" name="orchestrateTesting"/>
+		<ee:transform doc:name="Mapping array of results" doc:id="6424d760-b088-4d97-b82d-35b880967457" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[
+	{
+		host: payload.hostname,
+		status: payload.status
+	}
+]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Mapping size of healthy" doc:id="2ae70a0c-85f0-4df5-9cbb-d3b489ea4ca2" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="healthy" ><![CDATA[%dw 2.0
+output application/java
+---
+sizeOf(payload filter ((value,index) -> (value.status == "Up")))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Mapping response" doc:id="e6ac9971-2b62-49f4-a8a3-4d4df7b4e949" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"application": app.name,
+	"status": if(vars.healthy == 1) "Up" else "Critical",
+	"dependencies": payload	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="orchestrateTesting" doc:id="0e1972bb-b28d-425c-b4b1-2ac413bfd854" >
+		<flow-ref doc:name="Call test channel" doc:id="613f2057-651e-466b-8481-0e2e2b065e39" name="test-channel"/>
+		<ee:transform doc:name="Mapping with test result" doc:id="b80bea23-35f5-4b64-8ca4-829264fa9a67" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+vars.sapProperties ++ { "status": payload }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="test-channel" doc:id="6c467bdf-4aa3-4554-a489-bf8d8ab1ad72" >
+		<try doc:name="Try" doc:id="a339ced5-0481-4857-a441-bae9a0ddcb35" >
+			<sap:get-function doc:name="Get function" doc:id="a2f9661e-5959-40ed-b2cf-00d8cbe1aadf" config-ref="SAP_Config" key="Z_RM_RFC_CREATE_MASTER_DATA">
+		</sap:get-function>
+			<ee:transform doc:name="Payload Up" doc:id="eb7af0c0-4d4a-42f1-ab4b-446a04d0d120" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"Up"]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6b8f0c6d-7047-4504-9e60-9826acc54bb0" >
+					<ee:transform doc:name="Payload Down" doc:id="cab7903a-c7ec-4cd1-b22e-31a4afae6050" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"Down"]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
