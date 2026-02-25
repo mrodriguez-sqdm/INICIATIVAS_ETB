@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd">
+	<sub-flow name="get-mietb-user-orchestratorSub_Flow" doc:id="1765df5d-8254-4ce8-bb26-ecb15ed309bf" >
+		<flow-ref doc:name="Call validate oauth" doc:id="4912b01c-8a77-4634-89a6-a1c4155a315c" name="validate-oAuth-clientSub_Flow" target="resp_validateOauth" />
+		<set-variable value='#[{"name": "MiEtb-ConsultarUsuario"}]' doc:name="name header" doc:id="e51d7d6a-0a5d-4828-bcbe-611d7e62bb5c" variableName="initialHeaders"/>
+		<set-variable value='#["SECRET"]' doc:name="Set key" doc:id="c39cc51c-0171-4b16-bdf3-81adc29d8049" variableName="key" />
+		<flow-ref doc:name="Go to azure-sapi" doc:id="c4da9817-ac87-4dd0-b1e6-04dcf8ef2330" name="get-keyVault" target="secret" />
+		<choice doc:name="Choice" doc:id="8033c75f-b40c-4c22-a517-8291361ff7af">
+			<when expression="#[vars.headers.authorization != null]">
+				<flow-ref doc:name="Go to decrypt token" doc:id="014776b8-1ac5-44cb-ae83-9ef07705ffe4" name="decrypt-token" target="token-decrypted" />
+				<ee:transform doc:name="Set email" doc:id="064a870b-65b9-4ed8-af2e-ecf3b5d94104">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="tipoDocumento"><![CDATA[%dw 2.0
+output application/java
+var tDoc = vars."token-decrypted".tipoDocumento
+---
+if(tDoc != null and tDoc != "") tDoc else vars.tipoDocumento]]></ee:set-variable>
+						<ee:set-variable variableName="email" ><![CDATA[%dw 2.0
+output application/java
+var email = vars."token-decrypted".email
+---
+if(email != null and email != "") email else vars.email]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+		</choice>
+		<flow-ref doc:name="Go to validate system" doc:id="481a3088-39fa-4f4f-9b71-677fe2ee532d" name="validate-systems"/>
+		<flow-ref doc:name="Go to Client" doc:id="abf15636-112b-413b-977d-e9f85a169329" name="get-userByMail_mongo-clientSub_Flow"/>
+		<flow-ref doc:name="Go to encrypt resp to aes" doc:id="e445f128-920e-4121-a37e-f3906894c479" name="log-and-aes-encrypt-response" />
+	</sub-flow>
+</mule>

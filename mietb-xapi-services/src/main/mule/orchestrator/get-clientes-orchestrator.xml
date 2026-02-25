@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd">
+	<sub-flow name="get-clientes-orchestratorSub_Flow" doc:id="63dacfda-4428-4e6e-9cdc-29c95b668a08" >
+		<flow-ref doc:name="Call validate oauth" doc:id="1aabead4-3321-4857-8f30-6bc8e84058cb" name="validate-oAuth-clientSub_Flow" target="resp_validateOauth"/>
+		<set-variable value='#["mongo"]' doc:name="Set logs" doc:id="cbea5934-71b4-46f5-9149-f95e4ab3c5e6" variableName="logs" />
+		<set-variable value='#["SECRET"]' doc:name="key secret" doc:id="135df32d-4dbb-4746-8556-c029ff289f67" variableName="key" />
+		<flow-ref doc:name="Obtain Azure Secret" doc:id="05f30b69-6f57-4572-9d1b-91924b933be4" name="get-keyVault" target="secret" />
+		<choice doc:name="Choice" doc:id="9395c4f4-02cf-4326-adea-328354b98e2d" >
+			<when expression="#[vars.headers.authorization != null]">
+				<flow-ref doc:name="Go to decrypt token" doc:id="f7bfd78c-f48e-4a53-ae3d-1240bfd3ee5f" name="decrypt-token" target="token-decrypted"/>
+				<ee:transform doc:name="Set document type and document number" doc:id="b0e311aa-6688-4d2b-b5d8-6184d0640db1" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="tipoDocumento" ><![CDATA[%dw 2.0
+output application/java
+var tDoc = vars."token-decrypted".tipoDocumento
+---
+if(tDoc != null and tDoc != "") tDoc else vars.tipoDocumento]]></ee:set-variable>
+						<ee:set-variable variableName="numeroDocumento" ><![CDATA[%dw 2.0
+output application/java
+var nDoc = vars."token-decrypted".numeroDocumento
+---
+if(nDoc != null and nDoc != "") nDoc else vars.numeroDocumento]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+		</choice>
+		<flow-ref doc:name="Go to validate system" doc:id="2d56491f-1fc4-4c27-9385-8d01695d0b57" name="validate-systems" />
+		<choice doc:name="Choice" doc:id="7202cbd2-8048-4f25-b65f-a82d8bb9bf6b" >
+			<when expression="#[payload == true]">
+				<flow-ref doc:name="Go to system ok" doc:id="ed8bcd13-67c8-4bf3-add4-e8db826e6f08" name="get-clientes-system-ok"/>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-clientes-system-ok" doc:id="7db41626-6eb5-4cfb-aca0-f8d09a1dd91f" >
+		<flow-ref doc:name="Go to Get client from MDM" doc:id="bdc9a9c9-04b5-4478-996e-8dcc544a48ce" name="get-mdm_client_mongo-clientSub_Flow" target="resp_client" />
+		<choice doc:name="Client == [] ?" doc:id="c31e498e-f362-48b1-a774-eb9d5e84f0fd" >
+			<when expression="#[vars.resp_client == []]">
+				<ee:transform doc:name="Set error" doc:id="fe45b2f5-e895-491a-80ef-056d5889b1c5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "Client not found"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "mietb-xapi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to encrypt resp to aes" doc:id="ff99bff3-447c-475f-b2c4-e235a861df7a" name="log-and-aes-encrypt-response"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to Get user from PORTAL_UNIFICADO_USUARIO" doc:id="124731ba-44fa-4b48-b98b-c314ae198ebd" name="get-usuario_portal_unificado_mongo-clientSub_Flow" target="resp_user"/>
+				<choice doc:name="User == [] ?" doc:id="ac70be47-9aa6-4d3d-92c0-b917406e2d5a">
+					<when expression="#[vars.resp_user == []]">
+						<ee:transform doc:name="Set error" doc:id="f07032e8-701a-4665-ab5e-93e2047f86ed" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "User not found"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "mietb-xapi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Go to encrypt resp to aes" doc:id="c83c1a60-d641-4c02-be65-f9970d98dc3a" name="log-and-aes-encrypt-response" />
+					</when>
+					<otherwise>
+						<flow-ref doc:name="Go to get services (active and not active)" doc:id="5a9e1c24-4a8e-4db3-97e2-5eda8fcb44dd" name="get-services-from-mdm-cd-servicio-and-mdm-servicio-activo"/>
+						<ee:transform doc:name="Set response body to encrypt" doc:id="848330bc-2415-4489-9755-4fe93cd70952" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var MDM_CLIENTE = vars.resp_client[0]
+var PORTAL_UNIFICADO_USUARIO = vars.resp_user[0]
+var MDM_CD_SERVICIO = payload."0".payload
+var MDM_SERVICIO_ACTIVO = payload."1".payload
+---
+{
+  "categoria": MDM_CLIENTE.Categoria,
+  "correoElectronico": MDM_CLIENTE.Correo_Electronico,
+  "correoElectronicoAlterno": PORTAL_UNIFICADO_USUARIO.CorreoElectronicoAlterno,
+  "estadoCivil": MDM_CLIENTE.Estado_Civil,
+  "fechaNacimiento": MDM_CLIENTE.Fecha_Nacimiento,
+  "genero": MDM_CLIENTE.Genero,
+  "hobbies": PORTAL_UNIFICADO_USUARIO.Hobbies,
+  "nivelEducativo": PORTAL_UNIFICADO_USUARIO.Nivel_Educativo,
+  "numeroDocumento": MDM_CLIENTE.Numero_Identificacion,
+  "permiteTratamientoDatos": if(MDM_CLIENTE.ATDP.Habeas_Data == 'False') false else true,
+  "primerApellido": MDM_CLIENTE.Primer_Apellido,
+  "primerNombre": MDM_CLIENTE.Nombres[0],
+  "segmento": MDM_CLIENTE.Segmento,
+  "segundoApellido": MDM_CLIENTE.Segundo_Apellido,
+  "segundoNombre": MDM_CLIENTE.Nombres[1],
+  "segmentoUEN": MDM_CLIENTE.Segmento_UEN,
+  "servicios": (MDM_CD_SERVICIO map {
+    "estado": 
+      if($.Estado.Principal.Codigo == "1") "Activo"
+      else if($.Estado.Principal.Codigo == "2") "Pendiente"
+      else if($.Estado.Principal.Codigo == "4") "Inactivo"
+      else if($.Estado.Principal.Codigo == "5") "Suspendido por fraude"
+      else if($.Estado.Principal.Codigo == "6") "Suspendido por pago"
+      else if($.Estado.Principal.Codigo == "7") "Suspendido por robo o pérdida"
+      else if($.Estado.Principal.Codigo == "8") "Suspendido voluntariamente"
+      else if(($.Estado.Principal.Codigo == "9" or $.Estado.Principal.Codigo == "10") or $.Estado.Principal.Codigo == "11") "Retiro por pago"
+      else if($.Estado.Principal.Codigo == "12" or $.Estado.Principal.Codigo == "18") "Activación en curso"
+      else if(($.Estado.Principal.Codigo == "15" or $.Estado.Principal.Codigo == "16") or $.Estado.Principal.Codigo == "17") "Retiro por fraude"
+      else "",
+    "numeroConexion": $.Bundle.Primarios[0].Numero
+  }) ++ (MDM_SERVICIO_ACTIVO map {
+      "estado": 
+         if($.Estado == "Suspendido" and $.Estado_Fraude == "1") "Suspendido por fraude"
+      else if($.Estado == "Suspendido" and $.Estado_Pago == "1") "Suspendido por pago"
+      else if($.Estado == "Suspendido" and $.Estado_Robo == "1") "Suspendido por robo"
+      else if($.Estado == "Suspendido" and $.Estado_Perdida == "1") "Suspendido por pérdida"
+      else if($.Estado == "Suspendido" and $.Estado_Robo_Perdida == "1") "Suspendido por robo o pérdida"
+      else if($.Estado == "Suspendido" and $.Estado_Voluntaria == "1") "Suspendido voluntariamente"
+      else $.Estado,
+      "numeroConexion": $.Numero_Conexion
+    }),
+  "telefonoAlterno": MDM_CLIENTE.Telefono_Movil2,
+  "telefonoFijo": MDM_CLIENTE.Telefono_Fijo,
+  "telefonoMovil": MDM_CLIENTE.Telefono_Movil,
+  "tipoDocumento": MDM_CLIENTE.Tipo_Documento,
+  "tipoPersona": MDM_CLIENTE.Tipo_Cliente,
+  "uen": MDM_CLIENTE.UEN,
+  "usuario":{
+      "facebook": PORTAL_UNIFICADO_USUARIO.UsuarioFacebook, 
+      "mietb": PORTAL_UNIFICADO_USUARIO.Mail,
+      "twitter": PORTAL_UNIFICADO_USUARIO.UsuarioTwitter
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Go to encrypt resp to aes" doc:id="ff79e9bf-780e-4d76-8036-c8daa00e893f" name="log-and-aes-encrypt-response" />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

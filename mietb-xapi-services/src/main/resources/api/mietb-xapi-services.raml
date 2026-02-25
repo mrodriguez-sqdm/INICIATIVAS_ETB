@@ -1,0 +1,436 @@
+#%RAML 1.0
+title: mietb-xapi-services
+mediaType: 
+- application/json
+
+protocols:
+  - HTTPS
+
+description: This API is the one required to obtain a valid token to consume SFDC services
+baseUri: https://mietb-xapi-services-{env}.us-e2.cloudhub.io/
+
+traits:
+  tibco-headers: !include /exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.4/tibcorequestheaders.raml
+  channel-headers: !include /exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/channelheaders/1.0.1/channelheaders.raml
+
+securitySchemes:
+    etb-oauth: !include /exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/etb-oauth-20/1.0.1/etb-oauth-20.raml
+
+types: 
+  ConsultaBasica: !include /datatypes/responses/get-multiusuario-basic.raml
+  ConsultaAvanzada: !include /datatypes/responses/get-multiusuario-adv.raml
+
+/v1:
+  /mietb:
+    get:
+      is: [channel-headers]
+      displayName: Find User
+      description: Service to find user by its email
+      queryParameters:
+        email:
+          type: string
+          example: "test@user.com"
+          required: false
+      responses:
+        200:
+          body:
+            application/json:
+               example: {"respuesta": "encrypted output"} 
+    /usuario:
+      post:
+        is: [channel-headers]
+        securedBy: etb-oauth
+        displayName: Register User
+        description: Service to register user
+        queryParameters:
+          segmento:
+            type: string
+            example: "hogar"
+            required: true
+        body:
+          application/json:
+            type: 
+              properties:
+                peticion:
+                  type: string
+                  required: true
+                  example: "encrypted input"
+        responses:
+          200:
+            body:
+              application/json:
+                example: {"respuesta": ""} 
+  /seguridad:
+    /oauth:
+      post:
+        is: [channel-headers]
+        displayName: "Request Access Token"
+        description: "Service to request access token"
+        body:
+          application/json:
+            type: 
+              properties:
+                peticion:
+                  type: string
+                  required: true
+                  example: "encrypted input"
+        responses:
+          200:
+            body:
+              application/json:
+                example: {"respuesta": "encrypted output"} 
+  /validarPortafolio:
+    get:
+      is: [tibco-headers]
+      securedBy:
+        - etb-oauth
+      displayName: Validate portfolio
+      description: Validate portfolio
+      queryParameters:
+        id:
+          type: string
+          example: "12345647"
+        idType:
+          type: string
+          example: "2"
+      responses:
+        200:
+          body:
+            application/json:
+              properties:
+                result:
+                  type: string
+                  example: "1"
+  /registrarHogar:
+    post:
+      is: tibco-headers
+      securedBy:
+        - etb-oauth
+      displayName: Registrar Hogar
+      description: Registrar Hogar
+      body:
+        application/json:
+          type: !include datatypes/request/registrarHogar.raml
+      responses:
+        201:
+          body:
+            application/json:
+              properties:
+                result:
+                  type: string
+                  example: "1"
+                description:
+                  type: string
+                  example: "Usuario Creado"
+  /registrarPyme:
+    post:
+      is: tibco-headers
+      securedBy:
+        - etb-oauth
+      displayName: Registrar Pyme
+      description: Registrar Pyme
+      body:
+        application/json:
+          type: !include datatypes/request/registrarPyme.raml
+      responses:
+        201:
+          body:
+            application/json:
+              properties:
+                result:
+                  type: string
+                  example: "1"
+                description:
+                  type: string
+                  example: "Usuario Creado"
+
+  /RNE:
+    get:
+      is: tibco-headers
+      securedBy: etb-oauth
+      displayName: Get RNE
+      description: Get RNE
+      queryParameters:
+        sMSISDN:
+          type: string
+          maxLength: 10
+          minLength: 1
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/responses/GetRNE.raml
+              example:
+                !include examples/responses/GetRNE.json
+
+    post:
+      is: tibco-headers
+      securedBy: etb-oauth
+      displayName: Registrar RNE
+      description: Registrar RNE
+      body:
+        application/json:
+          type: !include datatypes/request/registrarRNE.raml
+          example: !include examples/request/RegistrarRNE.json
+      responses:
+        201:
+          body:
+            application/json:
+              properties:
+                Codigo:
+                  type: string
+                  example: "1"
+                Descripcion:
+                  type: string
+                  example: "RNE Creado"
+
+    /characteristic:
+      patch:
+        is: tibco-headers
+        securedBy: etb-oauth
+        displayName: Update characteristic in rne
+        description: Update characteristic in rne
+        body:
+          application/json:
+            type: !include datatypes/request/rne-characteristic.raml
+            example: !include examples/request/rne-characteristic.json
+        responses:
+          201:
+            body:
+              application/json:
+                properties:
+                  codigo:
+                    type: string
+                    example: "OK"
+                  descripcion:
+                    type: string
+                    example: "Caracteristica actualizada"
+  /facturaciones:
+    /duplicado:
+      /{cuentaFacturacion}:
+        uriParameters:
+          cuentaFacturacion:
+            type: string
+            required: true
+            example: "9229778"
+        get:
+          is: [tibco-headers]
+          securedBy:
+            - etb-oauth
+          displayName: Expedición del duplicado de una factura
+          description: Permite obtener el duplicado de una factura
+          queryParameters:
+            periodo:
+              type: string
+              description: "Combinacion de año y mes (yyyyMM)"
+              required: true
+              minLength: 6
+              example: "202302"
+          responses:
+            200:
+              body:
+                application/json:
+                  properties:
+                    url:
+                      type: string
+                      example: "https://etb.com.co/accesodocumento.pdf"
+              
+  /multiusuarios:
+    get:
+      is: [tibco-headers]
+      securedBy:
+        - etb-oauth
+      displayName: Consulta MultiUsuario de MiEtb
+      description: Consulta MultiUsuario de MiEtb por correo electronico (padre e hijo)
+      queryParameters:
+        usuarioPadre:
+          type: string
+          example: "123@123"
+        usuarioHijo:
+          type: string
+          example: "123@123"
+          required: false
+      responses:
+        200:
+          body:
+            application/json:
+              type: ConsultaAvanzada | ConsultaBasica
+    post:
+      is: [tibco-headers]
+      securedBy:
+        - etb-oauth
+      displayName: Modificación MultiUsuario de MiEtb
+      description: Modificación MultiUsuario de MiEtb por correo electronico
+      body:
+        application/json:
+          type: !include /datatypes/request/post-multiUsuarios.raml
+      responses:
+        201:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "EXITOSO"
+    delete:
+      is: [tibco-headers]
+      securedBy:
+        - etb-oauth
+      displayName: Eliminación MultiUsuario de MiEtb
+      description: Eliminación MultiUsuario de MiEtb por correo electronico
+      queryParameters:
+        usuarioPadre:
+          type: string
+          example: "123@123"
+        usuarioHijo:
+          type: string
+          example: "123@123"
+      responses:
+        201:
+          body:
+            application/json:
+              properties:
+                codigo:
+                  type: string
+                  example: "OK"
+                descripcion:
+                  type: string
+                  example: "EXITOSO"
+
+  /pqrs:   
+    get:
+      is: tibco-headers
+      securedBy: etb-oauth
+      displayName: Consulta de una petición, queja o reclamo 
+      description: Consulta de una petición, queja o reclamo 
+      queryParameters:
+        id:
+          description: Número de la petición, queja o reclamo 
+          type: string
+          required: false
+          example: "PQR-1234"
+        tipoIdentificacion:
+          description: Tipo de identificación del cliente o prospecto del cliente
+          type: string
+          required: false
+          example: 'CC'
+        numIdentificacion:
+          description: Número de identificación del cliente o prospecto del cliente
+          type: string
+          required: false
+          example: '123456'
+        cun:
+          description: Identificador secundario de una PQR generado
+          type: string
+          required: false
+          example: '1234'
+      responses:
+        200:
+          body:
+            application/json:
+              displayName: Petición, queja o reclamo 
+              description: Petición, queja o reclamo obtenidas por un cliente o un prospecto 
+              type: !include datatypes/responses/get-pqr-200.raml
+        400:
+          description: Petición, queja o reclamo no existe o no fue encontrado
+          body:
+            application/json:
+              displayName: No fue encontrado la petición, queja o reclamo consultado
+              description: No fue encontrado ninguna petición, queja o reclamo
+              type: !include datatypes/responses/get-pqr-400.raml
+  /azureOsRefresh: 
+      get:
+        is: tibco-headers
+        securedBy: 
+          - etb-oauth
+        displayName: Refresh Object Store
+        description: Service to refresh object store of azure key vault
+        responses:
+          200:
+            body:
+              application/json:
+                example: {"status": "CLEARED"}
+  /direcciones:   
+    get:
+      is: [channel-headers]
+      securedBy: etb-oauth
+      displayName: Consultar dirección
+      description: Consulta la dirección a partir de tipo y número de documento y el identificador de la dirección 
+      queryParameters:
+        tipoDocumento:
+          description: Tipo de identificación del cliente
+          type: string
+          required: true
+          example: "CC"
+        numeroDocumento:
+          description: Número de identificación del cliente
+          type: string
+          required: true
+          example: '123456'
+        idDireccion:
+          description: Número de identificación de la dirección
+          type: string
+          required: true
+          example: 'test'
+      responses:
+        200:
+          body:
+            application/json:
+              example: {"respuesta": "encrypted output"}
+  /cuentas-de-facturacion:
+    /{id}:
+      uriParameters:
+        id:
+          type: string
+          required: true
+          description: "Identificador de la cuenta de facturacion"
+          example: "123456"
+      get:
+        is: channel-headers
+        displayName: Consulta de cuenta facturacion 
+        description: Consulta de cuenta facturacion para cambios de medios de entrega
+        responses:
+          200:
+            body:
+              application/json:
+                example: {"respuesta": ""} 
+              
+/v2:
+  /clientes:
+    get:
+      is: [channel-headers]
+      displayName: Find Client
+      description: Service to find client by document type and document number
+      queryParameters:
+        tipoDocumento:
+          type: string
+          example: "CC"
+          required: false
+        numeroDocumento:
+          type: string
+          example: "1004321930"
+          required: false
+      responses:
+        200:
+          body:
+            application/json:
+              example: {"respuesta": "encrypted output"}
+  /servicios:
+    /{id}:
+      uriParameters:
+        id:
+          type: string
+          required: true
+          description: "Número de la cuenta de facturación o número de conexión del servicio hogar/móvil."
+      get:
+        is: channel-headers
+        displayName: Consulta servicio
+        description: Consulta un servicio hogar o un servicio móvil a partir del número de conexión o del número de la cuenta de facturación
+        responses:
+          200:
+            body:
+              application/json:
+                example: {"respuesta": ""}

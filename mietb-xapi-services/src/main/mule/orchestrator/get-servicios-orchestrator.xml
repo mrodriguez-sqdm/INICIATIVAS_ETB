@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd">
+	<sub-flow name="get-servicios-orchestratorSub_Flow" doc:id="620becb3-d080-43a8-b6d3-43bf52addc49" >
+		<flow-ref doc:name="Call validate oauth" doc:id="0617a396-67d3-4ded-857a-0d78dbf4ca3f" name="validate-oAuth-clientSub_Flow" target="resp_validateOauth" />
+		<set-variable value='#["mongo"]' doc:name="Set logs" doc:id="58b0a74c-e0b6-409d-9b06-093e2d965ce4" variableName="logs" />
+		<set-variable value='#["SECRET"]' doc:name="key secret" doc:id="e403544b-a9c7-43b8-aa56-ada6a3016356" variableName="key" />
+		<flow-ref doc:name="Obtain Azure Secret" doc:id="c0aa3a9e-59a2-4138-9487-dbdc4e3c68da" name="get-keyVault" target="secret" />
+		<flow-ref doc:name="Go to validate system" doc:id="f517d1ec-a4d9-41da-9b16-3444790585c6" name="validate-systems" />
+		<choice doc:name="Choice" doc:id="0423d6bd-892b-440e-9e34-fc8a4da822c4">
+			<when expression="#[payload == true]">
+				<flow-ref doc:name="Go to system ok" doc:id="b26a0cad-a2c2-40ec-b1cf-acb6a675d714" name="get-servicios-system-ok" />
+			</when>
+		</choice>
+	
+</sub-flow>
+	<sub-flow name="get-servicios-system-ok" doc:id="7b9cdac2-0ef5-4529-9239-8fd2d8b0890d">
+		<flow-ref doc:name="Go to get services" doc:id="b1a3b31b-f3dc-4a2a-b541-d79796695b96" name="get-services-from-mdm-cd-servicio-and-mdm-servicio-activo" />
+		<choice doc:name="Choice" doc:id="6af0fc52-ad6a-4593-8ae7-024d9fcc8668">
+					<when expression='#[(payload."0".payload == []) and (payload."1".payload == [])]'>
+						<ee:transform doc:name="Set error" doc:id="9583ef34-1202-4fb1-a148-48f71ac4ddc3">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "Service not found"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "mietb-xapi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Go to encrypt resp to aes" doc:id="65c49f24-e820-42e0-b850-3b92464390ab" name="log-and-aes-encrypt-response" />
+					</when>
+					<otherwise>
+				<flow-ref doc:name="Go to consult-status in COLL_TRAMITES" doc:id="56f0f613-f854-48c9-90b2-44190242a69f" name="get-status_in_collections_mongo-clientSub_Flow" target="resp_tramites" />
+				<flow-ref doc:name="Go to set response" doc:id="7b3b25fd-72d7-4319-b2a8-16d36fad259c" name="get-servicios-set-response"/>
+					</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="get-servicios-set-response" doc:id="b9b9e121-95ad-4330-ade7-cbc8ab234b57" >
+		<ee:transform doc:name="Set payload to encrypt" doc:id="9b3063c4-301a-4e4e-84d1-126b57dcccf5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(!isEmpty(vars.resp_tramites)) 
+  if(payload."1".payload != []) do {
+    var servicio = payload."1".payload[0]
+    ---
+    {
+      "apodo":{
+        "valor": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_MiETB")[0].Valor,
+        "icono": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_Icono_MiETB")[0].Valor
+      },
+      "cliente":{
+        "tipoDocumento": servicio.Tipo_Documento,
+        "numeroDocumento": servicio.Numero_Identificacion
+      },
+      "cuentaFacturacion": servicio.Cuenta_Facturacion,
+      "cuentaServicio": servicio.Id_Cuenta_Servicio_Origen,
+      "estado": {
+        "codigo": vars.resp_tramites[0].EstadoGeneral,
+        "nombre": if(vars.resp_tramites[0].EstadoGeneral == "Inactivo") "Retiro" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Activo") "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Suspendido") "Suspendido" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Retiro.Estado != null) "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Reconexion.Estado != null) "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Suspension.Estado != null) "Activo" 
+          else vars.resp_tramites[0].EstadoGeneral
+      },
+      "idDireccionInstalacion": "-",
+      "numeroConexion": servicio.Numero_Conexion,
+      "subEstado": if(vars.resp_tramites[0].EstadoGeneral == "Inactivo") "Retiro por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Activo") "Reconectado por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Suspendido") "Suspendido por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Retiro.Estado != null) "Retiro en curso" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Reconexion.Estado != null) "Reconexión en curso" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Suspension.Estado != null) "Suspensión en curso" 
+          else vars.resp_tramites[0].EstadoGeneral,
+      "tecnologia": servicio.Tecnologia,
+      "tipoLinea": servicio.Tipo_Linea
+    }
+  }
+  else do {
+    var servicio = payload."0".payload[0]
+    ---
+    {
+      "apodo":{
+        "valor": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_MiETB")[0].Valor,
+        "icono": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_Icono_MiETB")[0].Valor
+      },
+      "cliente":{
+        "tipoDocumento": servicio.Cliente.Tipo_Documento,
+        "numeroDocumento": servicio.Cliente.Numero_Documento
+      },
+      "cuentaFacturacion": servicio.Id_Cuenta_Facturacion,
+      "cuentaServicio": servicio.Id_Cuenta_Servicio,
+      "estado": {
+        "codigo": vars.resp_tramites[0].EstadoGeneral,
+        "nombre": if(vars.resp_tramites[0].EstadoGeneral == "Inactivo") "Retiro" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Activo") "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Suspendido") "Suspendido" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Retiro.Estado != null) "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Reconexion.Estado != null) "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Suspension.Estado != null) "Activo" 
+          else vars.resp_tramites[0].EstadoGeneral
+      },
+      "idDireccionInstalacion": servicio.Id_Direccion_Instalacion,
+      "numeroConexion": servicio.Bundle.Primarios.Numero,
+      "subEstado": if(vars.resp_tramites[0].EstadoGeneral == "Inactivo") "Retiro por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Activo") "Reconectado por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Suspendido") "Suspendido por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Retiro.Estado != null) "Retiro en curso" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Reconexion.Estado != null) "Reconexión en curso" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Suspension.Estado != null) "Suspensión en curso" 
+          else vars.resp_tramites[0].EstadoGeneral,
+      "tecnologia": servicio.Bundle.Tipo_Servicio,
+      "tipoLinea":"-"
+    }
+  }
+else 
+  if(payload."1".payload != []) do {
+    var servicio = payload."1".payload[0]
+    ---
+    {
+      "apodo":{
+        "valor": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_MiETB")[0].Valor,
+        "icono": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_Icono_MiETB")[0].Valor
+      },
+      "cliente":{
+        "tipoDocumento": servicio.Tipo_Documento,
+        "numeroDocumento": servicio.Numero_Identificacion
+      },
+      "cuentaFacturacion": servicio.Cuenta_Facturacion,
+      "cuentaServicio": servicio.Id_Cuenta_Servicio_Origen,
+      "estado": {
+        "codigo": servicio.Estado,
+        "nombre": servicio.Estado
+      },
+      "idDireccionInstalacion": "-",
+      "numeroConexion": servicio.Numero_Conexion,
+      "subEstado": if(servicio.Estado == "Suspendido")
+            if(servicio.Estado_Fraude == "1") "Suspendido por fraude" else
+            if(servicio.Estado_Pago == "1") "Suspendido por pago" else
+            if(servicio.Estado_Robo == "1") "Suspendido por robo" else
+            if(servicio.Estado_Perdida == "1") "Suspendido por pérdida" else
+            if(servicio.Estado_Robo_Perdida == "1") "Suspendido por robo o pérdida" else
+            if(servicio.Estado_Voluntaria == "1") "Suspendido voluntariamente" else servicio.Estado
+        else servicio.Estado,
+      "tecnologia": servicio.Tecnologia,
+      "tipoLinea": servicio.Tipo_Linea
+    }
+  }
+  else do {
+    var servicio = payload."0".payload[0]
+    ---
+    {
+      "apodo":{
+        "valor": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_MiETB")[0].Valor,
+        "icono": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_Icono_MiETB")[0].Valor
+      },
+      "cliente":{
+        "tipoDocumento": servicio.Cliente.Tipo_Documento,
+        "numeroDocumento": servicio.Cliente.Numero_Documento
+      },
+      "cuentaFacturacion": servicio.Id_Cuenta_Facturacion,
+      "cuentaServicio": servicio.Id_Cuenta_Servicio,
+      "estado": {
+        "codigo": servicio.Estado.Principal.Codigo,
+        "nombre": do {
+          var codigo = servicio.Estado.Principal.Codigo
+          ---
+          if(codigo == "1") "Activo" else 
+          if(codigo == "2" or codigo == "12" or codigo == "18") "Pendiente" else 
+          if(codigo == "4") "Inactivo" else 
+          if(codigo == "5" or codigo == "6" or codigo == "7" or codigo == "8") "Suspendido" else 
+          if(codigo == "9" or codigo == "10" or codigo == "11" or codigo == "15" or codigo == "16" or codigo == "17") "Retiro"
+          else servicio.Estado.Principal.Descripcion
+        }
+      },
+      "idDireccionInstalacion": servicio.Id_Direccion_Instalacion,
+      "numeroConexion": servicio.Bundle.Primarios.Numero,
+      "subEstado": do {
+          var codigo = servicio.Estado.Principal.Codigo
+          ---
+          if(codigo == "1") "Activo" else 
+          if(codigo == "2") "Pendiente" else 
+          if(codigo == "4") "Inactivo" else 
+          if(codigo == "5") "Suspendido por fraude" else 
+          if(codigo == "6") "Suspendido por pago" else 
+          if(codigo == "7") "Suspendido por robo o pérdida" else 
+          if(codigo == "8") "Suspendido voluntariamente" else 
+          if(codigo == "9" or codigo == "10" or codigo == "11") "Retiro por pago" else 
+          if(codigo == "12") "Activación en curso" else 
+          if(codigo == "15" or codigo == "16" or codigo == "17") "Retiro por fraude" else 
+          if(codigo == "18") "Activación en curso" else servicio.Estado.Principal.Descripcion
+        },
+      "tecnologia": servicio.Bundle.Tipo_Servicio,
+      "tipoLinea":"-"
+    }
+  }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to encrypt resp to aes" doc:id="1e1ea96a-bbfb-4ee1-b102-6eb77db68b00" name="log-and-aes-encrypt-response" />
+	</sub-flow>
+
+</mule>

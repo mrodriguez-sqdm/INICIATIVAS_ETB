@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-multiusuarios-orchestratorSub_Flow" doc:id="b06a97a9-7b94-4550-88a0-156b3db8a7d1" >
+		<flow-ref doc:name="get-multiusuarios-clientSub_Flow" doc:id="d0d3b826-a338-4baa-9245-dce174f4f819" name="get-multiusuarios-clientSub_Flow" target="multiuser"/>
+		<ee:transform doc:name="Set Fecha_Retiro" doc:id="3b019269-8d5c-404a-9709-2247a4aaa21b" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="multiuser" ><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+---
+[if (!vars.multiuser[0].Fecha_Retiro?) 
+vars.multiuser[0] ++ {"Fecha_Retiro" : null } 
+else if(isEmpty(vars.multiuser[0].Fecha_Retiro)) 
+vars.multiuser[0] update "Fecha_Retiro" with null
+else vars.multiuser[0]]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[vars.multiuser[0].Servicios]" doc:name="Set Variable" doc:id="799baf19-38d8-46d4-8888-912038bd7848" variableName="services" />
+		<foreach doc:name="For Each" doc:id="2d9525e3-ca75-4b59-8e2c-32bab1219a82" collection="#[payload.permisos]">
+			<logger level="INFO" doc:name="Logger" doc:id="524db353-cd62-4217-93ee-31af007c5f17" message="#[output application/json&#10;---&#10;payload]"/>
+			<ee:transform doc:name="Transform Message" doc:id="463c32b6-5a15-494a-9c99-748ec92890c9" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="services" ><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+import * from dw::util::Values
+
+var indexService = (vars.services indexWhere ($.Cuenta_Servicio == payload.cuentaServicio))
+var dateUpdated = now() >> "America/Bogota"
+
+output application/json
+---
+if(indexService != -1)
+vars.services update index(indexService) with 
+{
+    "Cuenta_Servicio": payload.cuentaServicio,
+    "Facturas": payload.facturas,
+    "Fecha_Creacion": vars.services[indexService].Fecha_Creacion,
+    "Fecha_Actualizacion" : dateUpdated,
+    "Fecha_Retiro": if(payload.estado) null else dateUpdated,
+    "Estado": payload.estado
+}
+else if(indexService == -1 and payload.estado) 
+vars.services ++ [{
+    "Cuenta_Servicio": payload.cuentaServicio,
+    "Facturas": payload.facturas,
+    "Fecha_Creacion": dateUpdated,
+    "Fecha_Actualizacion" : dateUpdated,
+    "Fecha_Retiro": null,
+    "Estado": true
+}] 
+else vars.services]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		</foreach>
+		<ee:transform doc:name="Set data to update" doc:id="0093cd77-7bfe-40bf-a378-d96e72623788" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+---
+vars.multiuser[0]
+update "Fecha_Actualizacion" with (now() >> "America/Bogota")
+update "Servicios" with vars.services]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-multiusuarios-clientSub_Flow" doc:id="fe026753-c1d3-4148-ab9a-9dea15b13161" name="post-multiusuarios-clientSub_Flow"/>
+	</sub-flow>
+</mule>

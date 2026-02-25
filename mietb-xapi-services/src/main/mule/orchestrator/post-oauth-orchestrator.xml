@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities" xmlns:crypto="http://www.mulesoft.org/schema/mule/crypto"
+	xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/crypto http://www.mulesoft.org/schema/mule/crypto/current/mule-crypto.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd">
+	<sub-flow name="post-oauth-orchestratorSub_Flow" doc:id="a2a9173e-eb53-430d-bca3-beadc075312c" >
+		<set-variable value='#["mongo"]' doc:name="logs" doc:id="e041c674-6708-44ff-853f-380558c21497" variableName="logs" />
+		<flow-ref doc:name="Make Validations" doc:id="a8ae5b3b-1bcb-4ef7-858d-c5c3d81af791" name="validation-subFlow" />
+		<ee:transform doc:name="Lower Input Body" doc:id="288a440a-4f1d-4edc-8e1e-c46050620d00" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="inputBody" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputBody mapObject ((value, key, index) -> 
+    { (lower(key)) : value } 
+)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="810c82a6-bd9d-479d-ba2d-0e0244b1ebd2" >
+			<when expression="#[!isBlank(vars.inputBody.username) and !isBlank(vars.inputBody.password) and !isBlank(vars.inputBody.recaptcha)]">
+				<set-variable value="#[vars.inputBody.username]" doc:name="email" doc:id="3bb0e6d6-aa20-4da0-811a-2d5fea984101" variableName="email" />
+				<flow-ref doc:name="Flow Reference to Resources Owner" doc:id="9517df33-937c-424e-9147-001996d2f1a0" name="grantType_ResourcesOwner" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Fail to AES256  Output" doc:id="223d6fe9-6a9f-4a2d-a47e-249f9b5e4479" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+write(
+        {
+			"status": 401,
+			"code": "UNAUTHORIZED",
+			"message": {
+				"message": "Authentication failed"
+			},
+			"messageServer": "Missing fields",
+			"cause": [{
+				"origin": "mietb-xapi-services",
+			}]
+		}
+    )
+
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="4661bf1e-f982-49f1-9251-230e4e58c880" textToEncrypt="#[payload]" secret="#[vars.secret.secret]" target="encryptedResponse" />
+				<ee:transform doc:name="Encrypt out" doc:id="58e04057-ea0e-4038-a8bc-6219dfc62e18" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": vars.encryptedResponse[0]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="outboundHeaders" ><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	"X_CIV_REQUEST": toBase64(vars.encryptedResponse[1]),
+	"X_CORRELATION_ID": vars.headers."x-correlation-id"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="grantType_ResourcesOwner" doc:id="92f43540-dace-450d-b78f-f6fb48e48c19" >
+		<set-variable value='#["AUTOGESTION"]' doc:name="name" doc:id="6100ea24-8221-45c1-8a0e-d6494287266c" variableName="name"/>
+		<flow-ref doc:name="Get Client by Email" doc:id="4050d90c-2c07-49bf-a4d3-690158ee5262" name="get-userOnlyByEmail_mongo-clientSub_Flow" target="responseClient" />
+		<choice doc:name="Choice" doc:id="98f71942-f7b9-43ea-b84f-0e623d98a1fd" >
+			<when expression="#[!isEmpty(vars.responseClient[0])]">
+				<java:invoke-static method="decrypt(java.lang.String, java.lang.String)" doc:name="Decrypt Pass BD" doc:id="566eb56c-e0f7-4e1e-a15b-09b7ada1a9cf" class="com.etb.EncryptionUtils" target="decryptedPasswordDb">
+			<java:args><![CDATA[#[{
+	arg0: vars.responseClient[0].Password,
+	arg1: p('oAuth.key')
+}]]]></java:args>
+		</java:invoke-static>
+				<java:invoke-static method="decrypt(java.lang.String, java.lang.String)" doc:name="Decrypt Pass Input" doc:id="0ecce436-0fe5-4a13-8415-918cb66b061d" class="com.etb.EncryptionUtils" target="decryptedPasswordInput">
+			<java:args><![CDATA[#[{
+	arg0: vars.inputBody.password,
+	arg1: p('oAuth.key')
+}]]]></java:args>
+		</java:invoke-static>
+				<choice doc:name="Is valid Pass?" doc:id="4fa4b83e-c01e-44d7-b26b-c25ddbef06ad">
+			<when expression="#[vars.decryptedPasswordDb == vars.decryptedPasswordInput]">
+				<set-variable value="#[output json --- now()]" doc:name="now" doc:id="9334f2d3-46e8-470c-97e3-42f1eee0b67f" variableName="now" />
+				<crypto:jce-encrypt-pbe doc:name="Jce encrypt data to generate token" doc:id="13e1eb25-da3a-4043-88fb-75c64aab9e59" password="${token-v2.secretBody}">
+					<crypto:content><![CDATA[#[%dw 2.0
+output application/json
+---
+(vars.responseClient[0]."_id"."\$oid" default "vacio")  ++ "||" ++
+(vars.inputBody.username default "vacio") ++ "||" ++
+(vars.responseClient[0].TipoIdentificacion default "vacio") ++ "||" ++
+(vars.responseClient[0].NumIdentificacion default "vacio") ++ "||" ++
+(vars.attr.headers."x-forwarded-for" default "vacio") ++ "||" ++  
+p('env') ++ "||" ++ 
+vars.now]]]></crypto:content>
+				</crypto:jce-encrypt-pbe>
+				<ee:transform doc:name="encrypted result to base64" doc:id="caf99142-cd8f-498c-a83c-469e79c61c2f">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import toBase64 from dw::core::Binaries
+output application/json
+---
+{
+	"data": toBase64(payload)
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+				<flow-ref doc:name="Generate Token" doc:id="ac5e6714-da23-4713-b2d0-f817faff723e" name="oAuth-clientSub_Flow" target="tokenGenerated" />
+				<async doc:name="Async" doc:id="30d136cd-4332-4f56-9e74-581cbae37f37">
+					<ee:transform doc:name="Map Body to Mongo" doc:id="2a5e2deb-755a-4841-96f2-e65ab0c823ca">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "id": app.name,
+  "fechaSolicitud": vars.now,
+  "fechaExpiracion": vars.now + |PT30M|,
+  "token": vars.tokenGenerated.access_token
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="Save Token in MongoDB" doc:id="ce341358-cefb-4ecf-ac07-d5313f3bd0d5" name="save-ms-token" />
+					<ee:transform doc:name="Map New Accesos" doc:id="cd084d20-94ef-4f15-87f1-7198d6f117d5">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if (isEmpty(vars.responseClient[0].Accesos))
+{
+	"Accesos": [{
+			"Canal": vars.headers."X_CHANNEL",
+			"Sistema": vars.headers."X_SYSTEM"
+		}]
+}
+else
+{
+	"Accesos": vars.responseClient[0].Accesos + {
+			"Canal": vars.headers."X_CHANNEL",
+			"Sistema": vars.headers."X_SYSTEM"
+		}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="Patch Access in Mongo" doc:id="752ec441-991e-46dd-b3b0-7df88b342024" name="patch-client-accesos" />
+				</async>
+				<ee:transform doc:name="Token and Response to AES256" doc:id="72f78913-b6f2-4e43-b6b7-0b88f8a47957">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+write({
+	"accessToken" : vars.tokenGenerated.access_token as String,
+	"refreshToken": vars.tokenGenerated.expires_in as String
+})]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+					</ee:variables>
+				</ee:transform>
+				<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="2c85c8c9-cfc6-40cc-98bc-0213ced940a2" textToEncrypt="#[payload]" secret="#[vars.secret.secret]" target="encryptedResponse" />
+				<ee:transform doc:name="Encrypt out" doc:id="3816522b-1edc-445e-a03f-8c6c4204ae25">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": vars.encryptedResponse[0]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	"X_CIV_REQUEST": toBase64(vars.encryptedResponse[1]),
+	"X_CORRELATION_ID": vars.headers."x-correlation-id"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Fail to AES256  Output" doc:id="8d5b4cab-f66d-43e3-860f-0854544f4a9c">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+write(
+        {
+			"status": 401,
+			"code": "UNAUTHORIZED",
+			"message": {
+				"message": "Authentication failed"
+			},
+			"messageServer": "Invalid Credentials",
+			"cause": [{
+				"origin": "mietb-xapi-services",
+			}]
+		}
+    )
+
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="7c73dc34-4761-4241-a1af-4ab647fc8b60" textToEncrypt="#[payload]" secret="#[vars.secret.secret]" target="encryptedResponse" />
+				<ee:transform doc:name="Encrypt out" doc:id="99d6f86a-b8d4-40b0-bde6-ef009235c66a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": vars.encryptedResponse[0]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	"X_CIV_REQUEST": toBase64(vars.encryptedResponse[1]),
+	"X_CORRELATION_ID": vars.headers."x-correlation-id"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Fail to AES256  Output" doc:id="1cc30ba3-4564-4f07-a10e-2c05b9e56ff5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+write(
+        {
+			"status": 401,
+			"code": "UNAUTHORIZED",
+			"message": {
+				"message": "Authentication failed"
+			},
+			"messageServer": "Invalid Username",
+			"cause": [{
+				"origin": "mietb-xapi-services",
+			}]
+		}
+    )
+
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="466b1c26-4b69-4848-936b-c045788c9bd6" textToEncrypt="#[payload]" secret="#[vars.secret.secret]" target="encryptedResponse" />
+				<ee:transform doc:name="Encrypt out" doc:id="bc0804c8-8335-4a58-be31-0806b2705bfe" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": vars.encryptedResponse[0]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="outboundHeaders" ><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	"X_CIV_REQUEST": toBase64(vars.encryptedResponse[1]),
+	"X_CORRELATION_ID": vars.headers."x-correlation-id"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

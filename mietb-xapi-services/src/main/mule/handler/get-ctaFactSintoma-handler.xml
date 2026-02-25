@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-ctaFactSintoma-handlerSub_Flow" doc:id="de40cda4-0400-4334-840a-ceab6c92afd4" >
+		<set-variable value="#[attributes.uriParams.id]" doc:name="ID Cta Fact" doc:id="63bca4a6-f32d-42a2-9681-c019c3f0bd27" variableName="idCuentaFacturacion"/>
+		<set-variable value='#["mongo"]' doc:name="logs" doc:id="25ce06f9-8f2d-4226-96bd-ad8bfeff7581" variableName="logs" />
+		<flow-ref doc:name="Make Validations" doc:id="15e56a60-b2e8-451d-a7e6-c36b5bb6d710" name="validation-bodylessRequests" />
+		<choice doc:name="All ok?" doc:id="1066351e-a3f9-4696-9e2f-eaf21c3584e4" >
+			<when expression="#[vars.httpStatus != 401]" >
+				<flow-ref doc:name="Go to Orchestrator" doc:id="43155907-c493-414c-800c-37fd1a1e9279" name="get-ctaFactSintoma-orchestratorSub_Flow" />
+				<async doc:name="Async" doc:id="92789a38-392f-4147-a377-1e772da10cf3" >
+					<flow-ref doc:name="Call logger after without encrypt" doc:id="5d19d5a1-3072-493a-afb1-86dbb1e50443" name="audits-mongo-log-after" />
+				</async>
+				<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="93e12687-61db-46b4-91f8-b16c9e5d01c8" textToEncrypt="#[output application/java --- write(payload)]" secret="#[vars.secret.secret]" target="encryptedResponse" />
+				<ee:transform doc:name="Encrypt out" doc:id="fc8cbd1e-68b7-46e5-b330-49e2ceeeee6c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": vars.encryptedResponse[0]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="outboundHeaders" ><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	"X_CIV_REQUEST": toBase64(vars.encryptedResponse[1]),
+	"X_CORRELATION_ID": vars.headers."x-correlation-id"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<async doc:name="Async1" doc:id="afecbc48-2bb4-4230-a68f-c8db9151493c" >
+					<flow-ref doc:name="Call logger after encrypted" doc:id="f4d7e45f-3875-4fdf-b320-13325da132b0" name="audits-mongo-log-after" />
+				</async>
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

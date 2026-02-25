@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd">
+	<sub-flow name="get-direcciones-orchestratorSub_Flow" doc:id="1765df5d-8254-4ce8-bb26-ecb15ed309bf" >
+		<flow-ref doc:name="Call validate oauth" doc:id="75760a59-8aac-402e-b618-8e9789fef909" name="validate-oAuth-clientSub_Flow" target="resp_validateOauth" />
+		<set-variable value='#["mongo"]' doc:name="Set logs" doc:id="e31fd350-5d65-4a11-9bd8-1a49cbc8d4ab" variableName="logs" />
+		<set-variable value='#["SECRET"]' doc:name="Set key" doc:id="6a83fe6a-1654-4139-9632-9b1093491504" variableName="key" />
+		<flow-ref doc:name="Go to azure-sapi" doc:id="d9a58050-97b9-4665-82a3-5d7f6bfb349a" name="get-keyVault" target="secret" />
+		<choice doc:name="Choice" doc:id="70627be9-7fa0-4d50-8098-e1509d716583">
+			<when expression="#[vars.headers.authorization != null]">
+				<flow-ref doc:name="Go to decrypt token" doc:id="4f567ca0-bc65-4683-aec9-052a569c3619" name="decrypt-token" target="token-decrypted" />
+				<ee:transform doc:name="Set document type and document number" doc:id="eefa6277-0ecd-4ae8-9f30-39ce1f9bc8f3">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="tipoDocumento"><![CDATA[%dw 2.0
+output application/java
+var tDoc = vars."token-decrypted".tipoDocumento
+---
+if(tDoc != null and tDoc != "") tDoc else vars.tipoDocumento]]></ee:set-variable>
+						<ee:set-variable variableName="numeroDocumento"><![CDATA[%dw 2.0
+output application/java
+var nDoc = vars."token-decrypted".numeroDocumento
+---
+if(nDoc != null and nDoc != "") nDoc else vars.numeroDocumento]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+		</choice>
+		<flow-ref doc:name="Go to validate system" doc:id="b7dfbfd3-e1be-4ebe-8d19-5770e930d8ff" name="validate-systems" />
+		<choice doc:name="Choice" doc:id="e54dc8d6-c06c-4f8c-a96a-9047307f43ff">
+			<when expression="#[payload == true]">
+				<flow-ref doc:name="Go to system ok" doc:id="ca7cc789-f800-4a2f-82fe-cc4dead074b9" name="get-direcciones-system-ok" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-direcciones-system-ok" doc:id="0625f64f-bf56-44b8-a3ad-8c0bab6f1f69" >
+		<flow-ref doc:name="Go to get client" doc:id="abf15636-112b-413b-977d-e9f85a169329" name="get-mdm_client_mongo-clientSub_Flow" target="resp_client" />
+		<choice doc:name="Choice" doc:id="ca8e0b09-0aaf-4eec-98e2-64df683f11b7">
+			<when expression="#[vars.resp_client == []]"><ee:transform doc:name="Set error" doc:id="03e4d1e6-00bb-48f5-a9af-01acb63dd979">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "Client not found"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "mietb-xapi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to encrypt resp to aes" doc:id="8e72b7fc-c3c0-4e81-ad1e-d368b7a0a7bb" name="log-and-aes-encrypt-response" />
+			</when>
+			<otherwise >
+				<choice doc:name="Choice" doc:id="2c9d4f79-a58d-448b-aa83-eb9de7bd5f98" >
+					<when expression="#[output application/json&#10;---&#10;isEmpty(vars.resp_client[0].Direcciones filter (($.Id_Direccion as String) == vars.idDireccion))]">
+						<ee:transform doc:name="Set error" doc:id="5007d3f1-627c-4151-836c-a18a3f7a36a6" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "Address not found"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "mietb-xapi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Go to encrypt resp to aes" doc:id="93779d72-8c20-4e23-9830-cdc08be63232" name="log-and-aes-encrypt-response" />
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Set response body to encrypt" doc:id="da937bae-4a87-442b-8fde-fd7513efc401">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var address = 
+(vars.resp_client[0].Direcciones filter ((item, index) -> (item.Id_Direccion as String) == vars.idDireccion))[0]
+---
+{
+	"direccion": {
+	  "ciudad":{
+	     "codigo": address.Codigo_Municipio default "",
+	     "nombre": address.Municipio default ""
+	  },
+	  "departamento":{
+	     "codigo": address.Codigo_Departamento default "",
+	     "nombre": address.Departamento default ""
+	  },
+	  "normalizada": address.Direccion_Normalizada default ""
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+						<flow-ref doc:name="Go to encrypt resp to aes" doc:id="86eef48c-6a5b-4ea9-a8e9-558e4d66747c" name="log-and-aes-encrypt-response" />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

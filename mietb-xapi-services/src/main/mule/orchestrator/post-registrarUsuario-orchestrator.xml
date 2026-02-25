@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-registrarPyme-orchestratorSub_Flow" doc:id="ca95360f-7d66-4d85-bae4-7f24f1f7b9ba">
+		<flow-ref doc:name="checkForClient" doc:id="d30e9d26-da28-44e6-8de3-06458b60fe58" name="checkForClient" />
+		<choice doc:name="Client exists" doc:id="4c78844a-0970-4b6f-a523-9c616e4758aa">
+			<when expression="#[payload.'_id' != null and payload.products == null]">
+				<ee:transform doc:name="Get information RL" doc:id="52abe23b-dfac-4160-8b74-471ceb19f65e">
+							<ee:message>
+							</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="tipoDocumentoRL" ><![CDATA[%dw 2.0
+output application/json
+---
+payload[0].Datos_Empresa.Representante_Legal.Tipo_Documento]]></ee:set-variable>
+						<ee:set-variable variableName="numeroDocumentoRL" ><![CDATA[%dw 2.0
+output application/json
+---
+payload[0].Datos_Empresa.Representante_Legal.Numero_Documento]]></ee:set-variable>
+					</ee:variables>
+						</ee:transform>
+				<choice doc:name="Choice" doc:id="d737ad36-4f18-4617-b073-b0d9858c7179">
+					<when expression="#[%dw 2.0 output application/json --- p('correspondencia.' ++ vars.initialPayload.tipoIdentificacionRL) == vars.tipoDocumentoRL and vars.initialPayload.identificacionRL == vars.numeroDocumentoRL]">
+						<ee:transform doc:name="Prepare input scoring" doc:id="a67ad29d-8fbb-43c7-b135-9c7e2787f68d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Dates
+var myDate = vars.fechaExpedicion as Date
+---
+{
+  "Properties": {
+    "APELLIDO": upper(vars.initialPayload.apellido),
+    "CIUDAD": "-1",
+    "DEPARTAMENTO": "-1",
+    "MODELO": "2"
+  },
+  "Body": {
+    "GestionClientes": {
+      "head": {},
+      "body": {
+        "Cliente": {
+          "TipoDocumento": vars.initialPayload.tipoIdentificacionRL,
+          "NumeroDocumento": vars.initialPayload.identificacionRL,
+          "FechaExpedicionDocumento": dateTime({year: myDate.year, month: myDate.month, day: myDate.day, hour: 0, minutes: 0, seconds: 0 , timeZone: |-05:00|}),
+          "PrimerApellido": upper(vars.initialPayload.apellido)
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+						<flow-ref doc:name="Go to lisim client" doc:id="a8d34e17-89da-487c-9137-6d65fa57a685" name="lisim-clientSub_Flow" />
+						<flow-ref doc:name="Continue to validate" doc:id="23f3b3c0-f8f7-4e93-b261-72d299fc5a8b" name="validate-expeditionDate" />
+					</when>
+					<when expression="#[payload[0].Datos_Empresa == null or isEmpty(payload[0].Datos_Empresa)]">
+						<ee:transform doc:name="Set output" doc:id="9aac84ea-5809-4cc4-bef9-3f9558b0a2bd" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	result: 0,
+	description: "La empresa no existe."
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Set output" doc:id="1d61ef62-d725-4c51-ae5f-7230f2402599" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	result: 0,
+	description: "Los datos de la empresa no coinciden."
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set output" doc:id="d67df5b3-0456-462b-a40d-3084da91ffac">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	result: 0,
+	description: if (!payload."_id"?) "El cliente no existe." else "El cliente ya cuenta con algún producto asociado."
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-registrarHogar-orchestratorSub_Flow" doc:id="a9beba62-daf4-4fb1-8355-51cd782438bd">
+		<flow-ref doc:name="checkForClient" doc:id="4cf778a9-b0c8-491b-8e22-f2088a3a0aeb" name="checkForClient" />
+		<choice doc:name="Client exists" doc:id="e33ffe2f-0b9b-4fc7-83d2-4f0a007cee3e">
+			<when expression="#[payload.'_id' != null and payload.products == null]">
+				<ee:transform doc:name="Prepare input scoring" doc:id="1a1c57ef-e6c1-4e25-99e2-62eaa96a73e8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Dates
+var myDate = vars.fechaExpedicion as Date
+---
+{
+  "Properties": {
+    "APELLIDO": upper(vars.initialPayload.apellido),
+    "CIUDAD": "-1",
+    "DEPARTAMENTO": "-1",
+    "MODELO": "2"
+  },
+  "Body": {
+    "GestionClientes": {
+      "head": {},
+      "body": {
+        "Cliente": {
+          "TipoDocumento": vars.tipoIdentificacion,
+          "NumeroDocumento": vars.identificacion,
+          "FechaExpedicionDocumento": dateTime({year: myDate.year, month: myDate.month, day: myDate.day, hour: 0, minutes: 0, seconds: 0 , timeZone: |-05:00|}),
+          "PrimerApellido": upper(vars.initialPayload.apellido)
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to lisim client" doc:id="4fbc3fd4-a840-4420-b405-615f1e53ff94" name="lisim-clientSub_Flow"/>
+				<flow-ref doc:name="Continue to validate" doc:id="2e302fec-5c15-4f3a-82de-499cae238b98" name="validate-expeditionDate" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set output" doc:id="4d9cd566-e2a8-4f3b-a576-9fff5e5d21c7">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	result: 0,
+	description: if (!payload."_id"?) "El cliente no existe." else "El cliente ya cuenta con algún producto asociado."
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validate-expeditionDate" doc:id="684bc652-9d75-4f64-b421-1dd489f7d74f" >
+		<choice doc:name="Valid expeditionDate" doc:id="6e0b2501-1a6d-4394-b1b0-f7aaa90b23cb">
+							<when expression="#[payload.WSResponseScoring.GestionClientes.head.Respuesta.CodigoRespuesta == 'VIGENTE']">
+								<flow-ref doc:name="Validate email" doc:id="5b865533-4e74-4f8a-be12-c699209a84bf" name="checkForClientEmail" />
+						<choice doc:name="Email validation" doc:id="c2273372-9f84-4aa5-a04e-0757b820dd4a">
+							<when expression="#[vars.emailValidationOutput == []]">
+								<flow-ref doc:name="Encrypt password" doc:id="539573a4-de9d-4d9e-93aa-15815bf4eaa8" name="encryptPassword" />
+								<flow-ref doc:name="Create new User" doc:id="43021f93-6020-4b9d-9a44-b11e276ede48" name="createNewUser" />
+								<ee:transform doc:name="Set output" doc:id="518dd861-1297-4a8e-a4d9-de1a2664f36a">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	result: 1,
+	description: "Usuario creado."
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<async doc:name="Async" doc:id="6a0277f0-11e9-4bae-ac0d-1fb9ef6fc2ce">
+			<ee:transform doc:name="Set mail params" doc:id="aa2500ea-5f0f-4c72-a663-e5955c7bac5d">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="mailBody"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "tipo_canal": "EMAIL",
+    "addId": p('oracle-sapi.sendMail.addId'),
+    "triggerId": p('oracle-sapi.sendMail.triggerId'),
+    "fields": [
+              "EMAIL_ADDRESS_",
+              "NOMBRE",
+              "CEDULA",
+              "URL_MIETB",
+              "PLAN_OPCIONAL1"
+          ],
+    "records": [
+        vars.initialPayload.usuario,
+        upper(vars.mdmClient[0].Nombre_Cliente),
+        vars.identificacion
+    ],
+    "flagRegistro": true
+  }]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			<flow-ref doc:name="Send email" doc:id="a97faa24-c4bf-4cbd-8c01-bfc3eb570209" name="oracle-clientSub_Flow" />
+		</async>
+							</when>
+							<otherwise>
+								<ee:transform doc:name="Set output" doc:id="593b67f6-4ef8-4bda-b2d3-d80888af879c">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	result: 0,
+	description: "El email ingresado ya se encuentra registrado."
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</otherwise>
+						</choice>
+							</when>
+			<otherwise>
+								<ee:transform doc:name="Set output" doc:id="61db92d7-7357-48e8-a169-0f6b3b069ab5">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	result: 0,
+	description: "La fecha de expedición ingresada no es válida."
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</otherwise>
+						</choice>
+	</sub-flow>
+	<sub-flow name="checkForClient" doc:id="02e7a46d-25ee-4d6c-9aee-19ed82ee12eb" >
+		<set-payload value="#[{}]" doc:name="Empty payload" doc:id="5217a553-5d34-424a-af38-4e5903c55ff6" />
+		<flow-ref doc:name="Search for client" doc:id="584dd26d-8c72-4660-b540-9cd4c5d04888" name="get-client_mongo-clientSub_Flow"/>
+		<set-variable value="#[payload]" doc:name="mdmClient" doc:id="de458c31-7965-4bd4-84a5-f411af76dcaa" variableName="mdmClient"/>
+	</sub-flow>
+	<sub-flow name="checkForClientEmail" doc:id="bbbe8bd5-87c1-47d1-baeb-d9361094899e">
+		<set-payload value="#[{}]" doc:name="Empty payload" doc:id="b3fc6dc6-3b53-4385-9642-8630489ec0a1" />
+		<ee:transform doc:name="Set queryParam" doc:id="4d2dd251-8acd-4d14-a69f-673c772bf0b5" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="queryParam" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"tipoDocumento" : p('correspondencia.' ++ vars.tipoIdentificacion),
+	"numeroIdentificacion" : vars.identificacion
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Search for client" doc:id="aeb254ff-126a-4203-8716-de7b14fb7d3b" name="get-clientByMail_mongo-clientSub_Flow" />
+	</sub-flow>
+	<sub-flow name="encryptPassword" doc:id="0117a120-5460-4b7a-9150-141664df6f52" >
+		<java:invoke-static doc:name="Decrypt" doc:id="b7aad95e-61cb-4749-8609-db1d352d14b9" class="com.etb.EncryptionUtils" method="decrypt(java.lang.String, java.lang.String)" target="decryptedPassword">
+			<java:args ><![CDATA[#[{
+	arg0: vars.initialPayload.password,
+	arg1: p('registrarHogar.key2')
+}]]]></java:args>
+		</java:invoke-static>
+		<java:invoke-static method="encrypt(java.lang.String, java.lang.String)" doc:name="Encrypt" doc:id="261db2c0-6bea-4f45-a9d3-7a049c899b41" class="com.etb.EncryptionUtils" target="encryptedPassword">
+			<java:args ><![CDATA[#[{
+	arg0: vars.decryptedPassword,
+	arg1: p('registrarHogar.key1')
+}]]]></java:args>
+		</java:invoke-static>
+	</sub-flow>
+	<sub-flow name="createNewUser" doc:id="4ed45707-6260-4c6a-af93-e719e3b4131d" >
+		<ee:transform doc:name="Prepare User" doc:id="7d8ddcde-c15f-4397-94e7-91dd26c5773f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "Actualizacion_Contraseña": true,
+    "FechaActivacion": now() >> "America/Bogota",
+    "FechaExpedicion": vars.fechaExpedicion,
+    "Estado": false,
+    "Estado_Registro": "Pre-Registro",
+    "Identificador_Peticion_Creacion": vars.initialHeaders.'X-CORRELATION-ID',
+    "Mail": vars.initialPayload.usuario,
+    "NumIdentificacion": vars.identificacion,
+    "Password": vars.encryptedPassword,
+    "Requiere_Actualizar_Pwd": false,
+    "TipoIdentificacion": p('correspondencia.' ++ vars.tipoIdentificacion),
+    "TipoRegistro": "Registro Light",
+    "Widgets": [
+        {
+            "Application_Date": "2023-01-03T16:07:29.4524664Z",
+            "Widget": {
+                "_id": "6217d775f3893c92053f231e",
+                "Widget": "Servicios"
+            }
+        }
+    ]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Insert new User" doc:id="7e1e7c82-b165-475d-b345-0d93d17b0f2a" name="post-client_mongo-clientSub_Flow"/>
+	</sub-flow>
+</mule>

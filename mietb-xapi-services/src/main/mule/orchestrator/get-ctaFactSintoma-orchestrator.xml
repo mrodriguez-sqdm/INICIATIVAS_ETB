@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-ctaFactSintoma-orchestratorSub_Flow" doc:id="73ad1ed1-fec2-4963-9a94-650c63d853f1" >
+		<flow-ref doc:name="Get cta facturacion" doc:id="4639159d-73dc-4ceb-8f5d-a391d52895fa" name="get-ctaFact-clientSub_Flow"/>
+		<choice doc:name="Exists?" doc:id="4ae25592-5630-4021-99de-cc9f80dccb06" >
+			<when expression='#[payload.resultado == "Positivo"]'>
+				<flow-ref doc:name="Get PQR by cta fact" doc:id="e0f27bd4-c61c-4fac-80e8-af073fba92ed" name="get-pqrByCtaFact-clientSub_Flow" target="userPqrs"/>
+				<ee:transform doc:name="Filter by date" doc:id="f2690139-2b0d-443f-a820-ca4c30893841">
+			<ee:message>
+			</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="userPqrsFiltered" ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Periods
+var time = now() >> "America/Bogota"
+var sixtyDays = time - days(60)
+---
+vars.userPqrs filter (($.fecha_creacion splitBy  "+")[0] < time and ($.fecha_creacion splitBy  "+")[0] > sixtyDays)]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+				<ee:transform doc:name="Prepare output" doc:id="b6ac9f9f-5ba6-4127-a7c1-fbc7f9b663fa">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "cantidadMesesEnMora":payload.resultados[0].Altura_Mora,
+  "cicloFacturacion": payload.resultados[0].Ciclo_Facturacion,
+  "correoElectronico": payload.resultados[0].Correo_Electronico,
+  "idDireccion": payload.resultados[0].Id_Direccion_Facturacion,
+  "fechaCorteFacturacion": payload.resultados[0].Fecha_Corte_Facturacion,
+  "id": payload.resultados[0].Cuenta_Facturacion,
+  "numeroContacto": payload.resultados[0].Celular_Envio,
+  "permiteActualizarTipoEntrega": if(isEmpty(vars.userPqrsFiltered)) "Positivo" else "Negativo",
+  "tipoEntrega": payload.resultados[0].Tipo_Entrega_Factura
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Prepare Output" doc:id="36e4766a-c3b1-42eb-98af-1d83b4b130c9" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+write({
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": payload.descripcion
+  },
+  "messageServer": payload.descripcion,
+  "cause": [
+    {
+      "origin": "mietb-xapi-services",
+    }
+  ]
+})]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

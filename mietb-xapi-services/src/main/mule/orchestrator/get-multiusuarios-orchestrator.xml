@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-multiusuarios-orchestratorSub_Flow" doc:id="d571da7c-fc87-460f-b168-31489edeec88" >
+		<ee:transform doc:name="Set queryParam" doc:id="103c5893-1b54-48d0-a50b-49190c7612ea" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="queryParam" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"tipoDocumento" : "1",
+	"numeroIdentificacion" : "1"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="get-clientByMail_mongo-clientSub_Flow" doc:id="7ee98b50-61b3-4a14-b63e-d8fc9b8e6bf8" name="get-clientByMail_mongo-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="df2383b1-50c9-460d-bccf-208a1ad6d424" >
+			<when expression="#[!isEmpty(vars.emailValidationOutput)]">
+				<flow-ref doc:name="get-multiusuarios-clientSub_Flow" doc:id="c36cdaac-c68d-47c8-a21d-89d53352e42d" name="get-multiusuarios-clientSub_Flow"/>
+				<choice doc:name="Choice" doc:id="ad103f9d-af57-4989-bea9-17e5ddcbfaec" >
+					<when expression="#[isEmpty(vars.usuarioHijo)]">
+						<ee:transform doc:name="Transform Message" doc:id="9cf90fb1-b55a-4cc9-a33b-d4af45c15796" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+usuarios: payload map ({
+    nombre: $.Nombre,
+    usuarioPadre: $.Usuario_Padre,
+    usuarioHijo: $.Usuario_Hijo,
+    estado: $.Estado
+})]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Transform Message" doc:id="0689d4ff-9992-4e79-8d73-440104f56417" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+usuarios: payload map ({
+    nombre: $.Nombre,
+    usuarioPadre: $.Usuario_Padre,
+    usuarioHijo: $.Usuario_Hijo,
+    estado: $.Estado,
+    servicios: $.Servicios
+})]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error response" doc:id="241aeaf5-08e4-4c0f-ba3e-b0b53a6f8118" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "Usuario Padre no se encuentra en PORTAL_UNIFICADO_USUARIO"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": "app.name",
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

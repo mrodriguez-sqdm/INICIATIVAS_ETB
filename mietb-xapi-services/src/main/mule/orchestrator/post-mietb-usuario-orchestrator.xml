@@ -1,0 +1,444 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities" xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd">
+	<sub-flow name="post-mietb-usuario-orchestratorSub_Flow" doc:id="f1d64d43-a740-409a-9244-74916dabb1ac" >
+		<ee:transform doc:name="Validate required fields" doc:id="95f55f99-a73f-4e1e-8689-69c42e11cc4d" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="inputValidations" ><![CDATA[%dw 2.0
+output application/json
+---
+if ( upper(vars.segmento) == "HOGAR" and 
+     !isBlank(vars.inputBody.cliente.fechaExpedicion) and 
+     (isEmpty(vars.inputBody.representanteLegal))
+    )
+   "HOGAR"
+else if ( upper(vars.segmento) == "MIPYMES" and
+          isBlank(vars.inputBody.cliente.fechaExpedicion) and
+          !isEmpty(vars.inputBody.representanteLegal) and
+          !isBlank(vars.inputBody.representanteLegal.fechaExpedicion)
+        )
+    "MIPYMES"
+else "INVALID"
+
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Contains required fields?" doc:id="bcecf521-bcfa-4859-901f-e588313834a5" >
+			<when expression='#[(upper(vars.segmento) == "HOGAR" or upper(vars.segmento) == "MIPYMES")&#10;and&#10;(vars.inputValidations == "HOGAR" or vars.inputValidations == "MIPYMES")]'>
+				<flow-ref doc:name="validateClient" doc:id="696eaf52-0b10-457a-98f2-dd3c41bf3684" name="validateClient"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Negative 400 Bad Request" doc:id="b69cc792-7c5e-46ba-a98e-553d7794fe0a" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+write({
+  "status": 400,
+  "code": "REQUEST_VALIDATION_ERROR",
+  "message": {
+    "message": "Segmento could not be validated with input body"
+  },
+  "messageServer": "Bad Request.",
+  "cause": [
+    {
+      "origin": "mietb-xapi-services",
+    }
+  ]
+})]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validateClient" doc:id="bcb97be0-55f7-4cdd-b66d-ed9f167bb5a6" >
+		<ee:transform doc:name="Save vars tipoIdentificacion and identificacion" doc:id="c298452f-790d-4454-8f46-fe6f97fc0fbd">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="tipoIdentificacion"><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputBody.cliente.tipoIdentificacion default vars.inputBody.representanteLegal.tipoIdentificacion]]></ee:set-variable>
+				<ee:set-variable variableName="identificacion"><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputBody.cliente.numeroIdentificacion default vars.inputBody.representanteLegal.numeroIdentificacion]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="search client in MDM_CLIENTE" doc:id="55475aba-b0b9-4232-9ffb-696f00495299" name="searchClient" />
+		<choice doc:name="Client exists" doc:id="afdd6c58-3bda-4089-8c08-e38dd77fbc8a" >
+			<when expression="#[payload.'_id' == null]" >
+				<ee:transform doc:name="Set variable name, email, tipoDoc and numberDoc" doc:id="25eea3a5-4f00-4d8a-8535-aba14e144323">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="name" ><![CDATA[%dw 2.0
+output application/json
+---
+"Autogestion"]]></ee:set-variable>
+						<ee:set-variable variableName="email" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputBody.cliente.correoElectronico]]></ee:set-variable>
+						<ee:set-variable variableName="tipoDocumento" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputBody.cliente.tipoIdentificacion default vars.inputBody.representanteLegal.tipoIdentificacion]]></ee:set-variable>
+						<ee:set-variable variableName="numeroDocumento" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputBody.cliente.numeroIdentificacion default vars.inputBody.representanteLegal.numeroIdentificacion]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<flow-ref doc:name="Find user by email in PORTAL_UNIF_USUARIO" doc:id="41c54c05-78f4-4ff0-a09a-2973e94949b1" name="get-userOnlyByEmail_mongo-clientSub_Flow" target="getUserByMail"/>
+				<flow-ref doc:name="Find user by type and document in PORTAL_UNIF_USUARIO" doc:id="8242a403-9dc3-4f87-b7c6-c7a44d2b8a36" name="get-userByTypeDoc" target="getUserByTypeDoc"/>
+				<choice doc:name="User exists?" doc:id="4c606a17-0f89-49f1-a641-db32c89f6afc" >
+					<when expression="#[isEmpty(vars.getUserByMail) and isEmpty(vars.getUserByTypeDoc)]">
+						<flow-ref doc:name="Go to Lisim" doc:id="8159e31f-ec5f-41a4-8d83-7ed835fa125a" name="validateLisim"/>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Negative 409 Bad Request" doc:id="11f14ba6-3089-4cf9-8bfe-4a95c7d812d4" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 409,
+  "code": "CONFLICT",
+  "message": {
+    "message": "Client already exists"
+  },
+  "messageServer": "Conflict.",
+  "cause": [
+    {
+      "origin": "mietb-xapi-services",
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+409]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Negative 409 Bad Request" doc:id="38b95637-9153-4064-9d66-f1d92b1e7ae8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 409,
+  "code": "CONFLICT",
+  "message": {
+    "message": "Client already exists"
+  },
+  "messageServer": "Conflict.",
+  "cause": [
+    {
+      "origin": "mietb-xapi-services",
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validateLisim" doc:id="0c10e6d1-3613-40d0-84f3-64b1f2a277f6" >
+		<ee:transform doc:name="Prepare input scoring" doc:id="deb226dd-226d-4f4f-9d19-0ab62bf6bc3b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Dates
+var myDateCL = if(upper(vars.segmento) == "HOGAR") vars.inputBody.cliente.fechaExpedicion as Date {format: "dd/MM/yyyy"} as String {format: "yyyy-MM-dd"} else null
+var myDateRL = if(upper(vars.segmento) == "MIPYMES") vars.inputBody.representanteLegal.fechaExpedicion as Date {format: "dd/MM/yyyy"} as String {format: "yyyy-MM-dd"} else null
+---
+if(upper(vars.segmento) == "MIPYMES") 
+{
+  "Properties": {
+    "CIUDAD": "-1",
+    "DEPARTAMENTO": "-1",
+    "MODELO": "2"
+  },
+  "Body": {
+    "GestionClientes": {
+      "head": {},
+      "body": {
+        "Cliente": {
+          "TipoDocumento": vars.inputBody.representanteLegal.tipoIdentificacion,
+          "NumeroDocumento": vars.inputBody.representanteLegal.numeroIdentificacion,
+          "FechaExpedicionDocumento": dateTime({year: myDateRL.year, month: myDateRL.month, day: myDateRL.day, hour: 0, minutes: 0, seconds: 0 , timeZone: |-05:00|}),
+          "PrimerApellido": vars.inputBody.cliente.apellido
+        }
+      }
+    }
+  }
+}else{
+  "Properties": {
+    "CIUDAD": "-1",
+    "DEPARTAMENTO": "-1",
+    "MODELO": "2"
+  },
+  "Body": {
+    "GestionClientes": {
+      "head": {},
+      "body": {
+        "Cliente": {
+          "TipoDocumento": vars.inputBody.cliente.tipoIdentificacion,
+          "NumeroDocumento": vars.inputBody.cliente.numeroIdentificacion,
+          "FechaExpedicionDocumento": dateTime({year: myDateCL.year, month: myDateCL.month, day: myDateCL.day, hour: 0, minutes: 0, seconds: 0 , timeZone: |-05:00|}),
+          "PrimerApellido": vars.inputBody.cliente.apellido
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="ee41aa93-9d19-4870-a44c-0f1f051726c9">
+			<ee:transform doc:name="Map Log Body" doc:id="1f7ce8c4-15c4-4e28-8eee-66250192af1e">
+				<ee:message>
+					<ee:set-payload><![CDATA[output application/json
+---
+{
+	correlationId: correlationId,
+	path: p('lisim-sapi.path.scoring'),
+	(payload: payload) if (!isEmpty(payload))
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call logger before" doc:id="65984067-7501-4f13-8322-a80c8382603c" name="audits-mongo-log-before" />
+		</async>
+		<try doc:name="Try" doc:id="8b0b6206-e400-48ba-a232-13926add0c89" >
+			<flow-ref doc:name="Go to lisim client" doc:id="e5f84f10-b5e6-46f9-a8c4-9a265ad50484" name="lisim-clientSub_Flow" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="2b8635a1-20f0-47c3-b2f0-90118d792d8f" >
+					<async doc:name="Async" doc:id="5b3d3e02-2ee1-4ae9-9ef4-c3f86c9d2482">
+						<flow-ref doc:name="Call logger error" doc:id="9453be36-6374-44e8-80fc-c8450244236f" name="audits-mongo-log-error" />
+					</async>
+					<set-variable value='#["ERROR"]' doc:name="outError" doc:id="45882edb-1901-4327-9684-1daeafd8af0b" variableName="outScoring"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="697a95b0-5378-477a-9549-526344df4c4a">
+			<flow-ref doc:name="Call logger after" doc:id="6ba1382e-30a6-4c69-a588-1d2ad7b927b5" name="audits-mongo-log-before" />
+		</async>
+		<choice doc:name="Valid response from scoring?" doc:id="de9617ea-ef6c-4da0-bb49-13ab602ec8d7" >
+			<when expression="#[payload.WSResponseScoring.GestionClientes.head.Respuesta.CodigoRespuesta == 'VIGENTE' and vars.outScoring != &quot;ERROR&quot;]">
+				<flow-ref doc:name="Go to Validate Services" doc:id="1dfd6992-ca6a-45ba-89fd-21347627ee87" name="validateServices"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Negative 409 Bad Request" doc:id="806e0ca1-a092-4d95-ac5b-473fe8a0291c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 409,
+  "code": "CONFLICT",
+  "message": {
+    "message": "Could not validate against LISIM"
+  },
+  "messageServer": "Conflict.",
+  "cause": [
+    {
+      "origin": "mietb-xapi-services",
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validateServices" doc:id="668a864c-0891-4e0d-b18b-89ee6296bb5f" >
+		<set-variable value="#[p('correspondencia.' ++ vars.tipoDocumento)]" doc:name="tipoDocumento" doc:id="5dd988a8-8ec7-4ecf-9adb-280886f7583f" variableName="tipoDocumento"/>
+		<set-variable value='#["N"]' doc:name='Set activo "N"' doc:id="911cc061-16a3-465d-ae23-b95bf666bb0d" variableName="activo"/>
+		<try doc:name="Try" doc:id="c2cb7f3d-0f9f-4b08-980a-54d2ad002eab" >
+			<flow-ref doc:name="Get Service" doc:id="58c4b750-3a0e-4fc1-a198-654b5a625c3a" name="get-services_mongo-clientSub_Flow" target="service" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="0e958ce6-67ab-411b-a6d0-799e5877c255" type="HTTP:NOT_FOUND">
+					<set-variable value="#[[]]" doc:name="Service [ ]" doc:id="f9fa8aaa-df56-47a9-9244-5fd6f2a9e97d" variableName="service"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<set-variable value='#["Y"]' doc:name='Set activo "Y"' doc:id="75bb98b3-45b7-4350-bbcd-db242862eb1e" variableName="activo" />
+		<try doc:name="Try" doc:id="60cf6f6b-641b-47ef-aae1-2d37534d21b2" >
+			<flow-ref doc:name="Get ActiveService" doc:id="05c01ddb-bf93-4e90-bc22-c74e8ae0001b" name="get-services_mongo-clientSub_Flow" target="activeService" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="81ec0c25-836f-4fbd-8b86-bbefba692255" type="HTTP:NOT_FOUND">
+					<set-variable value="#[[]]" doc:name="Active Service [ ]" doc:id="f9bc1506-dcac-41b1-922a-33a632e3c1f7" variableName="activeService" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="Service Validations" doc:id="1e7ed01d-8f92-46d8-a2f6-ff27e480d8b2" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="serValidations" ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Arrays
+var validStatus = ["1","2","12","18","5","6","7","9"]
+var service = vars.service filter (v,i) -> ( validStatus some $ == v.Estado.Principal.Codigo)
+var activeService = vars.activeService filter ( upper($.Estado) == "ACTIVO" or upper($.Estado) == "ACTIVO" or upper($.Estado) == "ACTIVO")
+---
+sizeOf(service) + sizeOf(activeService) >= 1]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Validations ok?" doc:id="799f696e-f1f9-4e6b-a1f6-61978dd1b79d" >
+			<when expression="#[vars.serValidations == true]">
+				<flow-ref doc:name="Flow Reference to registerUser" doc:id="b18e999f-b8a6-4637-83ba-721ad6b2723b" name="registerUser"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Negative 409 Bad Request" doc:id="8d8788dd-b953-4ce7-a1fb-e24bc53ea090" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 409,
+  "code": "CONFLICT",
+  "message": {
+    "message": "Could not validate the services"
+  },
+  "messageServer": "Conflict.",
+  "cause": [
+    {
+      "origin": "mietb-xapi-services",
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="registerUser" doc:id="488f374d-0746-4521-a76b-8c2dc5fbe00a" >
+		<java:invoke-static method="decrypt(java.lang.String, java.lang.String)" doc:name="Decrypt" doc:id="712981a2-a71e-4157-a8c4-df936504880e" class="com.etb.EncryptionUtils" target="decryptedPassword">
+					<java:args><![CDATA[#[{
+	arg0: vars.inputBody.cliente.password,
+	arg1: p('registrarHogar.key2')
+}]]]></java:args>
+				</java:invoke-static>
+		<java:invoke-static method="encrypt(java.lang.String, java.lang.String)" doc:name="Encrypt" doc:id="509a89d8-ca29-479b-92a4-c689b52cda9f" class="com.etb.EncryptionUtils" target="encryptedPassword">
+					<java:args><![CDATA[#[{
+	arg0: vars.decryptedPassword,
+	arg1: p('registrarHogar.key1')
+}]]]></java:args>
+				</java:invoke-static>
+		<ee:transform doc:name="Prepare User" doc:id="fc2dc3f5-c29a-4c89-9f9a-96c9393b34a7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "Actualizacion_Contraseña": true,
+    "FechaActivacion": now() >> "America/Bogota",
+    "FechaExpedicion": if(upper(vars.segmento) == "HOGAR") vars.inputBody.cliente.fechaExpedicion else vars.inputBody.representanteLegal.fechaExpedicion,
+    "Estado": false,
+    "Estado_Registro": "Pre-Registro",
+    "Identificador_Peticion_Creacion": vars.headers.'X-CORRELATION-ID',
+    "Mail": vars.inputBody.cliente.correoElectronico,
+    "NumIdentificacion": if(upper(vars.segmento) == "HOGAR") vars.inputBody.cliente.numeroIdentificacion else vars.inputBody.representanteLegal.numeroIdentificacion,
+    "Password": vars.encryptedPassword,
+    "Requiere_Actualizar_Pwd": false,
+    "TipoIdentificacion":  if(upper(vars.segmento) == "HOGAR") p('correspondencia.' ++ vars.inputBody.cliente.tipoIdentificacion) else p('correspondencia.' ++ vars.inputBody.representanteLegal.tipoIdentificacion),
+    "TipoRegistro": "Registro Light",
+    "Widgets": [
+        {
+            "Application_Date": "2023-01-03T16:07:29.4524664Z",
+            "Widget": {
+                "_id": "6217d775f3893c92053f231e",
+                "Widget": "Servicios"
+            }
+        }
+    ]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Insert new User" doc:id="61ae78f4-520c-422d-9824-1345c1ce86f2" name="post-client_mongo-clientSub_Flow" />
+		<ee:transform doc:name="Set output" doc:id="310d701c-8e72-4224-914e-ccd1a1e8f1ee" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	result: 1,
+	description: "Usuario creado."
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="855503ff-ca45-4dcf-9b54-9748eb5c533f" >
+			<ee:transform doc:name="Set mail params" doc:id="3caed0d5-355a-45e4-94d2-241aa13a38b6">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="mailBody"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "tipo_canal": "EMAIL",
+    "addId": p('oracle-sapi.sendMail.addId'),
+    "triggerId": p('oracle-sapi.sendMail.triggerId'),
+    "fields": [
+              "EMAIL_ADDRESS_",
+              "NOMBRE",
+              "CEDULA",
+              "URL_MIETB",
+              "PLAN_OPCIONAL1"
+          ],
+    "records": [
+        vars.inputBody.cliente.correoElectronico,
+        upper(vars.inputBody.cliente.nombre),
+        if(vars.segmento == "HOGAR") vars.inputBody.cliente.numeroIdentificacion else vars.inputBody.representanteLegal.numeroIdentificacion,
+    ],
+    "flagRegistro": true
+  }]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="Send email" doc:id="05c98dae-ceb5-46ca-929f-80f3b9fae3b7" name="oracle-clientSub_Flow" />
+		</async>
+	</sub-flow>
+	<sub-flow name="searchClient" doc:id="583933da-07d2-46c4-b684-2fced2ca88e6" >
+		<set-payload value="#[{}]" doc:name="Empty payload" doc:id="cccd1d29-ede5-4a07-8de5-1c8e5be36c7e" />
+		<flow-ref doc:name="Search for client" doc:id="12ca2266-590d-4a92-a96d-714ec8a4cb82" name="get-client_mongo-clientSub_Flow" />
+		<set-variable value="#[payload]" doc:name="mdmClient" doc:id="0d8e3691-3467-49e0-a899-696e190da67f" variableName="mdmClient" />
+	</sub-flow>
+</mule>
