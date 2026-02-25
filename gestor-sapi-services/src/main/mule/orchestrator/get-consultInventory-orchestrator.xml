@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-consultInventory-orchestratorSub_Flow" doc:id="d314f045-3651-4971-b3e2-2735e97b7f5c" >
+		<ee:transform doc:name="Transform to Xml" doc:id="1f72f4d3-41be-4f8e-a1eb-929b7bb518c0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns tier http://schemas.datacontract.org/2004/07/Tier.Common
+ns ws http://schemas.datacontract.org/2004/07/WS.Inventario.DataContracts
+---
+soapenv#Envelope: {
+    soapenv#Header: {},
+    soapenv#Body: 
+        tem#Consulta_Inventario: {
+            tem#WSRequestHeader: {
+            	tier#system: {
+            		tier#correlationId: vars.inputData.correlationId,
+            		tier#name: vars.inputData.name,
+            		tier#processingServer: vars.inputData.processingServer
+            	}
+            },
+            tem#parametros: {
+                ws#id_servicio: vars.inputData.idServicio,
+                ws#identificador_transaccion: vars.inputData.idTransaccion
+            }
+        }
+         
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="bade8819-8d3c-47dc-90e7-d6024d7c6f52" name="get-consultInventory-clientSub_Flow"/>
+		<set-variable value="#[output application/json&#10;---&#10;payload.Envelope.Body.Consulta_InventarioResponse.Consulta_InventarioResult]" doc:name="Set result" doc:id="811e5cd7-6b7b-4e4e-90ad-8a39e6f7f05d" variableName="result"/>
+		<choice doc:name="Choice" doc:id="07d9705f-859f-44e1-8c23-89ac61112d7b" >
+			<when expression='#[sizeOf(vars.result) == 1 and vars.result[0].respuesta != "Resultado exitoso"]'>
+				<ee:transform doc:name="Transform Error" doc:id="83873342-bb8c-4a1e-8bd4-a813e27341cb" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    System: {
+        correlationID: vars.inputData.correlationId,
+        processingServer: vars.inputData.processingServer,
+        responseDate: now()
+    },
+    Response: {
+        respuesta: "Error de consulta",
+        codRespuesta: "404"
+    }
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform to Json" doc:id="463543e1-23a7-4644-b27c-fbad76a74715" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    System: {
+        correlationID: vars.inputData.correlationId,
+        processingServer: vars.inputData.processingServer,
+        responseDate: now()
+    },
+    Response: {
+        ResponseInventario: 
+	        vars.result.*ResponseInventario map () -> {
+                ID_Producto: $.ID_Producto,
+                codigo_sap: $.codigo_sap,
+                descripcion: $.descripcion,
+                id_inventario: $.id_inventario,
+                respuesta: $.respuesta,
+                serial: $.serial
+            }
+    }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<async doc:name="Async" doc:id="c2777d83-c386-46dc-bf8c-58818f54d99f" >
+			<flow-ref doc:name="Final log" doc:id="edc74027-4e5d-45b2-b58f-67d170b56724" name="loggin-client-call"/>
+		</async>
+	</sub-flow>
+</mule>
