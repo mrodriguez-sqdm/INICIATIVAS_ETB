@@ -6,7 +6,7 @@ output application/json
 	"description": vars.payloadOri.description,
 	"single_use": Mule::p('wompi.fields.singleUse') == "true" default true,
 	"collect_shipping": Mule::p('wompi.fields.collectShipping') default false,
-	"amount_in_cents": vars.payloadOri.amount,
+	"amount_in_cents": (vars.payloadOri.amount * 100),
 	"currency": vars.payloadOri.currency,
 	"reference": vars.payloadOri.reference,
 	"sku": vars.payloadOri.sku,
@@ -25,15 +25,15 @@ output application/json
         (item.code) match {
 		case "IVA" -> {
 			"type": "VAT",
-			"amount_in_cents": item.value
+			"amount_in_cents": (item.value * 100)
 		}
             case "CONSUMO" -> {
 			"type": "CONSUMPTION",
-			"amount_in_cents": item.value
+			"amount_in_cents": (item.value * 100)
 		}
             else -> {
 			"type": item.code,
-			"amount_in_cents": item.value
+			"amount_in_cents": (item.value * 100)
 		}
 	}
 } 
