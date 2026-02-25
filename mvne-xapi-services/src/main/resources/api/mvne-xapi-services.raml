@@ -1,0 +1,468 @@
+#%RAML 1.0
+title: mvne-xapi-services
+version: "1"
+protocols:
+  - HTTPS
+mediaType: 
+- application/json
+baseUri: https://mvne-xapi-services-{env}.us-e2.cloudhub.io/mvne/
+description: This API has an interface for the operations that come from Salesforce
+
+types:
+  recarga-saldo: !include datatypes/request/recargar.raml
+  recarga-paquetes: !include datatypes/request/recargar-paquete.raml
+
+traits:
+  tibcoHeaders: !include exchange_module/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.6/tibcorequestheaders.raml
+  disponibilidad: !include traits/disponibilidad.raml
+  commonHeaders: !include traits/headers.raml
+  channel-headers: !include /exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/channelheaders/1.0.1/channelheaders.raml
+securitySchemes:
+  etb_oauth_2_0: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/etb-oauth-20/1.0.1/etb-oauth-20.raml
+
+/services:
+  /v1:
+    /subscription/balance:
+      get:   
+        displayName: Consulta de balance y saldo
+        description: Consulta de balance y saldo
+        securedBy: [etb_oauth_2_0]
+        is:
+          - commonHeaders
+        queryParameters:
+          msisdn:
+            type: string
+            example: "3336025011"
+            required: true
+        responses:
+          200:
+            body:
+              example: !include examples/response/get-balance.json
+          404:
+            body:
+              type: !include datatypes/response/notFoundError.raml
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+    /ordenes:
+      /movilidad:
+        /Cesion:
+          post:
+            displayName: Cesión Contrato LTE
+            description: Cesión Contrato LTE core (Masivo)
+            securedBy: [etb_oauth_2_0]
+            is:
+              - commonHeaders
+            body:
+              type: !include datatypes/request/post-cesion.raml
+              example:
+                value: !include examples/request/post-cesion.json
+            responses:
+              200:
+                body:
+                  type: !include datatypes/response/post-cesion.raml
+                  example:
+                    value: !include examples/response/post-cesion.json
+              500:
+                body:
+                    type: !include datatypes/response/internalServerError.raml
+        /{id}: 
+          /activate:
+            post:
+              displayName: Activación Línea
+              description: Activación Línea (Masivo)
+              securedBy: [etb_oauth_2_0]
+              is:
+                - commonHeaders
+              body:
+                type: !include datatypes/request/activate.raml
+              responses:
+                201:
+                  body:
+                    type: !include datatypes/response/activate.raml
+                500:
+                  body:
+                    type: !include datatypes/response/internalServerError.raml
+        /recargar:
+          post:
+            displayName: Recarga línea y Paquetes
+            description: Recarga línea y Paquetes (Masivo)
+            securedBy: [etb_oauth_2_0]
+            is:
+              - commonHeaders
+            body:
+              type: recarga-saldo | recarga-paquetes
+            responses:
+              200:
+                body:
+                  type: !include datatypes/response/recargar.raml
+              500:
+                body:
+                  type: !include datatypes/response/internalServerError.raml
+        /disponibilidad:
+          get:
+            displayName: Disponibilidad
+            description: Disponibilidad (Masivo)
+            securedBy: [etb_oauth_2_0]
+            is:
+              - disponibilidad
+              - commonHeaders
+            queryParameters:
+              msisdn:
+                type: string
+                example: "3336025011"
+                required: false
+              sim:
+                type: string
+                example: "8957287000000000049"
+                required: false
+              Subtipo_Orden:
+                type: string|nil
+                example: "Venta LTE"
+                required: false
+                description: "Es una Venta LTE o una Venta LTE NCP"
+            responses:
+              200:
+                body:
+                  type: !include datatypes/response/disponibilidad.raml
+              404:
+                body:
+                  type: !include datatypes/response/notFoundError.raml
+              500:
+                body:
+                  type: !include datatypes/response/internalServerError.raml
+    /replacement:
+      post:
+        displayName: RenoRepo
+        description: RenoRepo SIM (Masivo)
+        securedBy: [etb_oauth_2_0]
+        is: [commonHeaders]
+        body:
+          application/json:
+            type: !include datatypes/request/post-replacement.raml
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include datatypes/response/post-replacement.raml
+          404:
+            body:
+              type: !include datatypes/response/notFoundError.raml
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+      /plan:
+        post:
+          displayName: Cambio de plan
+          description: Cambio de plan (Masivo)
+          securedBy: [etb_oauth_2_0]
+          is: [commonHeaders]
+          body:
+            application/json:
+              type: !include datatypes/request/post-replacement-plan.raml
+          responses:
+            201:
+              body:
+                application/json:
+                  type: !include datatypes/response/post-replacement-plan.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml
+    /sva:
+      post:
+        displayName: Adición Retiro Sva
+        description: Adición Retiro Sva (Masivo)
+        securedBy: [etb_oauth_2_0]
+        is: [commonHeaders]
+        body:
+          application/json:
+            type: !include datatypes/request/post-sva.raml
+            example: !include examples/request/post-sva.json
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include examples/response/post-sva.json
+          404:
+            body:
+              type: !include datatypes/response/notFoundError.raml
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+    /subscription/replacement:
+      post:
+        securedBy: [etb_oauth_2_0]
+        is: [commonHeaders]
+        displayName: Cambio número
+        description: Cambio de número (Masivo)
+        body:
+          application/json:
+            type: !include datatypes/request/postSubscriptionReplacement.raml
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include datatypes/response/postSubscriptionReplacement.raml
+          500:
+            body:
+              application/json:
+                type: !include datatypes/response/internalServerError.raml
+    /activate:
+      /eSim:
+        post:
+          displayName: Activacion eSim
+          description: Activacion eSim
+          securedBy: [etb_oauth_2_0]
+          is: [commonHeaders]
+          body:
+            application/json:
+              properties:
+                iccid:
+                  type: string
+          responses:
+            201:
+              body:
+                type: !include datatypes/response/activate-eSim.raml
+            404:
+              body:
+                type: !include datatypes/response/notFoundError.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml
+  /v2:
+    /transferbalance:
+      post:
+        securedBy: [etb_oauth_2_0]
+        is: [commonHeaders]
+        displayName: Transferencia de Saldo
+        description: Transferencia de Saldo
+        body:
+          application/json:
+            type: !include datatypes/request/posttransferbalance.raml
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/response/posttransferbalance.raml
+          500:
+            body:
+              application/json:
+                type: !include datatypes/response/internalServerError.raml
+    /balance:
+      /{msisdn}:
+        uriParameters:
+          msisdn:
+            type: string
+            example: "MDM-PRE-3057190065-8560"
+            required: true
+        get:
+          displayName: Consulta de balance detallado
+          description: Consulta de balance detallado
+          securedBy: [etb_oauth_2_0]
+          is:
+            - commonHeaders
+          responses:
+            200:
+              body:
+                example: !include examples/response/get-detailed-balance.json
+            404:
+              body:
+                type: !include datatypes/response/notFoundError.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml
+    /svas:
+      /{id}:
+        uriParameters:
+          id:
+            description: "Numero de conexion"
+            type: string
+            required: true
+            example: "Numero de conexion"
+        get:
+          securedBy: [etb_oauth_2_0]
+          is: [commonHeaders]
+          displayName: Consult Balance
+          description: Service to consult balance
+          responses:
+            200:
+              body:
+                application/json:
+                  example: {"respuesta": "encrypted output"}
+            404:
+              body:
+                type: !include datatypes/response/notFoundError.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml
+      post:
+        securedBy: [etb_oauth_2_0]
+        is: [commonHeaders]
+        displayName: Compra de bolsas
+        description: Service to buy bags
+        body:
+          application/json:
+            type: !include /datatypes/request/post-api-svas.raml
+            example: !include /examples/request/post-api-svas.json
+        responses:
+          200:
+            body:
+              application/json:
+                example: !include /examples/response/post-api-svas.json
+          404:
+            body:
+              type: !include datatypes/response/notFoundError.raml
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+    /ofertas:
+      /comercial:
+        /bolsas:
+          get:
+            securedBy: [etb_oauth_2_0]
+            is: [commonHeaders]
+            displayName: Consultar oferta de bolsas
+            description: Consultar oferta de bolsas
+            responses:
+              200:
+                body:
+                  application/json:
+                    example: !include examples/response/getBagsOffer.json
+/operations:
+  /v1:
+    /subscription:
+      /{connectionNumber}:
+        uriParameters:
+          connectionNumber:
+            type: string
+        delete:
+          displayName: Cancelación
+          description: Cancelaciones (Masivo) 
+          securedBy: [etb_oauth_2_0]
+          is: [commonHeaders]
+          queryParameters:
+            product:
+              type: string
+              example: "FWA"
+              required: false
+          responses:
+            201:
+              body:
+                application/json:
+                  type: !include datatypes/response/subscription.raml
+            404:
+              body:
+                type: !include datatypes/response/notFoundError.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml
+        patch:
+          displayName: Suspensiones-Reconexiones
+          description: Suspensiones-Reconexiones (Masivo) 
+          securedBy: [etb_oauth_2_0]
+          is: [commonHeaders]
+          body:
+            application/json:
+              type: !include datatypes/request/patch-subscription.raml
+          responses:
+            201:
+              body:
+                application/json:
+                  type: !include datatypes/response/subscription.raml
+            404:
+              body:
+                type: !include datatypes/response/notFoundError.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml
+    /sendMessage:
+      post:
+        displayName: Envío mensajes
+        description: Envío mensajes por SMPP de JSC
+        securedBy: [etb_oauth_2_0]
+        is: [commonHeaders]
+        body:
+          application/json:
+            type: !include datatypes/request/post-sendMessage-request.raml
+            example: !include examples/request/post-sendMessage-request.json
+        responses:
+          200:
+            body:
+              application/json:
+                type: array
+                items:
+                  type: !include datatypes/response/post-sendMessage-response.raml
+                example: !include examples/response/post-sendMessage-response.json
+      /{id}:
+        uriParameters:
+          id:
+            type: string
+        get:
+          displayName: Obtener estado del registro
+          description: Obtener estado del registro
+          securedBy: [etb_oauth_2_0]
+          is:
+            - commonHeaders
+          responses:
+            200:
+              body:
+                application/json:
+                  type: array
+                  items:
+                    type: !include datatypes/response/get-sendMessage-response.raml
+                  example: !include examples/response/get-sendMessage-response.json
+            404:
+              body:
+                type: !include datatypes/response/notFoundError.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml
+    /suscriber:
+      /{suscriberId}:
+          uriParameters:
+            suscriberId:
+              type: string
+              required: true
+              description: Identificador del suscriptor
+              example: "123"      
+          patch:
+              is: 
+                - tibcoHeaders
+              securedBy: [etb_oauth_2_0]
+              displayName: Update suscriber
+              description: Update suscriber
+              queryParameters:
+                ORIGIN:
+                  type: string
+                  example: "WHATSAPP"
+                  description: "Parameter that allows the origin of the request to be identified"
+              body:
+                application/json:
+                  type: !include /datatypes/request/patch-suscriber.raml
+                  example: !include /examples/request/patch-suscriber.json
+              responses:
+                200:
+                 body:
+                    application/json:
+                      type: !include /datatypes/response/patch-suscriber.raml
+                      example: !include /examples/response/patch-suscriber.json   
+                400:
+                  body:
+                    application/json:
+                      type: !include /datatypes/response/error.raml
+                      example: !include /examples/error/error-400.json
+                401:
+                  body:
+                    application/json:
+                      type: !include /datatypes/response/error.raml
+                      example: !include /examples/error/error-401.json
+                404:
+                  body:
+                    application/json:
+                      type: !include /datatypes/response/error.raml
+                      example: !include /examples/error/error-404.json
+                500:
+                  body:
+                    application/json:
+                      type: !include /datatypes/response/error.raml
+                      example: !include /examples/error/error-500.json     
