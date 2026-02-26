@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-publishMessage-orchestratorSub_Flow" doc:id="074fa988-8c2a-40cb-83f9-bdb5b427a2f9" >
+		<flow-ref doc:name="Get consecutive" doc:id="c547a2b8-2a4c-4064-942a-653cb9320570" name="getConsecutive"/>
+		<parse-template doc:name="Prepare input body" doc:id="ea878372-626f-49c8-90a8-92d15b32c380" location="soap/schemas/template/templateASAP.xml"/>
+		<flow-ref doc:name="Go to JMS Client" doc:id="3bc0757f-8eaf-4b62-9504-51d9503e595a" name="jmsPublish-clientFlow"/>
+		<until-successful maxRetries="${os-asap.until-successful-strategy.retries}" doc:name="Until Successful" doc:id="c5d79f0c-0633-4c17-9905-af5113b9580a" millisBetweenRetries="${os-asap.until-successful-strategy.time-between}">
+			<flow-ref doc:name="Go to Retrieve Msg" doc:id="1f45e610-28c6-4a5a-b853-d4bfa4674457" name="retrieveOS-clientFlow"/>
+		</until-successful>
+		<ee:transform doc:name="Prepare Output" doc:id="978c74c7-7e2c-442a-ba33-5f2a2bf1f07e">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var body = if (payload.orderFailEvent == null) payload.orderCompleteEvent else payload.orderFailEvent
+---
+{
+    "ACK": if (payload.orderFailEvent == null) "orderCompleteEvent" else "orderFailEvent",
+    "currentState": body.currentState,
+    "reason": body.reason,
+    "eventId": body.eventId as Number
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		<choice doc:name="Did it fail?" doc:id="e1fd2935-4402-45fd-8e98-7cb01b358f84">
+				<when expression="#[payload.ACK == 'orderFailEvent']">
+					<raise-error doc:name="Raise error" doc:id="be3b9f87-dbbc-42bf-8fc4-4aed0f4aa5f8" type="ASAP:GENERAL" description='#["ASAP" ++ payload.reason]' />
+				</when>
+			</choice>
+	</sub-flow>
+	<sub-flow name="getConsecutive" doc:id="c0dd3aaa-cc38-4079-901c-8e6cf58118c9" >
+		<flow-ref doc:name="Fetch consecutive" doc:id="d51d617b-d1f5-42da-b849-e87ebdb197c3" target="consecutive" targetValue="#[payload as Number + 1]" name="retrieveConsecutiveOS-clientSub_Flow"/>
+		<ee:transform doc:name="Set var primaryKey" doc:id="1e7cf795-746d-433a-b9cc-ee42f3d91e29" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="retrievePrimaryKey" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.createOrderByValueRequest.orderValue.orderKey.primaryKey ++ "." ++ vars.consecutive as String {format: "0000000000"}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Store new consecutive" doc:id="a4f8f645-baca-49dd-9708-e29c53bd0c5f" name="storeConsecutiveOS-clientSub_Flow"/>
+	</sub-flow>
+</mule>

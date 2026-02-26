@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-portabilidad-orchestratorSub_Flow" doc:id="0b841db1-d168-44c7-8c14-d7a9651c7478" >
+		<choice doc:name="Choice" doc:id="049393a3-e76c-432b-baef-c912da6585cc" >
+			<when expression="#[attributes.queryParams.accion == p('globalVars.programacionPortacion')]">
+				<ee:transform doc:name="Modificar FechaVentanaCambio" doc:id="82a0c2a0-0de3-41b5-bf72-ef2b6874f188">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+var cleanDate = substring(payload.ProgramacionPortacion.MensajeABD.CuerpoMensaje.ProgramacionPortacion.FechaVentanaCambio, 0, 8) ++ p('globalVars.newTime')
+---
+payload  update {
+    case .ProgramacionPortacion.MensajeABD.CuerpoMensaje.ProgramacionPortacion.FechaVentanaCambio -> cleanDate
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="ProgramacionPortacion Client" doc:id="6c8aa62e-c925-4edd-ab22-d280f4145a69" name="ProgramacionPortacionSubFlow" />
+			</when>
+			<when expression="#[attributes.queryParams.accion == p('globalVars.reenvioNIP')]">
+				<flow-ref doc:name="Reenvio Nip Client" doc:id="ec41a38f-3d5d-4543-bea9-2fd192e09bdd" name="ReenvioNipSubFlow"/>
+			</when>
+			<when expression="#[attributes.queryParams.accion == p('globalVars.respuestaSolicitudPortacionDonante')]">
+				<flow-ref doc:name="respuestaSolicitudPortacionDonant" doc:id="6a7a0915-1dfc-42fa-98f1-91e1575b396f" name="respuestaSolicitudPortacionDonantSub_Flow"/>
+			</when>
+			<when expression="#[attributes.queryParams.accion == p('globalVars.solicitudNIP')]">
+				<ee:transform doc:name="Decompose numeracion" doc:id="0f3b7775-3b04-41bf-8083-7695efab4aad">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload update {
+    case .RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.ListaNumeracion.Numeracion -> flatten($ map ($ splitBy  p('globalVars.separator')))
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Solicitud Nip client" doc:id="18d81269-bef5-455d-90cc-67adc2356a1d" name="SolicitudNipSubFlow"/>
+			</when>
+			<when expression="#[attributes.queryParams.accion == p('globalVars.solicitudPortacion')]">
+				<ee:transform doc:name="Decompose numeracion" doc:id="6aa0ec69-0a3e-4839-8c1e-29a676a6b712">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload update {
+    case .RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.ListaNumeracion.Numeracion -> flatten($ map ($ splitBy  p('globalVars.separator')))
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Solicitud Portacion client" doc:id="971a3ade-f526-4366-a38c-d38e0fc2ea0a" name="SolicitudPortacionSubFlow"/>
+			</when>
+			<when expression="#[attributes.queryParams.accion == p('globalVars.solicitudCancelacion')]">
+				<flow-ref doc:name="Solicitud Cancelacion client" doc:id="e0e628f2-bc07-46e9-af17-63162e1b3db0" name="SolicitudCancelacionSubFlow" />
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

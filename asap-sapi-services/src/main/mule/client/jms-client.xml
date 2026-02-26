@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:xml-module="http://www.mulesoft.org/schema/mule/xml-module" xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+http://www.mulesoft.org/schema/mule/xml-module http://www.mulesoft.org/schema/mule/xml-module/current/mule-xml-module.xsd">
+	<sub-flow name="jmsPublish-clientFlow" doc:id="037e6dd2-bd71-4501-85f2-e9b77238f7da" >
+		<async doc:name="Async" doc:id="a7c34ed8-4858-471c-937f-857de186dddc" >
+			<flow-ref doc:name="Call logger before" doc:id="bdb5c4c1-d414-403a-b1d0-ed5b2b7af845" name="loggin-client-call"/>
+		</async>
+		<jms:publish doc:name="Publish" doc:id="f451000f-b94d-4a02-bdf4-de1f50c84474" config-ref="JMS_Config" destination="${jms.publisher.server}/${jms.publisher.module}!${jms.publisher.queue}">
+			<jms:message correlationId="#[vars.retrievePrimaryKey]" >
+				<jms:reply-to destination="${jms.consumer.server}/${jms.consumer.module}!${jms.consumer.queue}" />
+			</jms:message>
+		</jms:publish>
+	</sub-flow>
+	<flow name="jmsOnNewMessage-clientFlow" doc:id="fd4b8f51-2432-4858-a225-992b96a59a45" >
+		<jms:listener doc:name="On New Message" doc:id="39364307-c578-42f7-a671-5752550cdcb8" destination="${jms.consumer.server}/${jms.consumer.module}!${jms.consumer.queue}" config-ref="JMS_Config">
+			<reconnect-forever frequency="${jms.reconnection}" />
+		</jms:listener>
+		<ee:transform doc:name="Recover systemId var" doc:id="91e4e9f2-0d72-4a81-a0d1-6726eba475f1">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="systemId"><![CDATA[%dw 2.0
+output application/java
+---
+"OTINICIATIVAS"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try" doc:id="52806eef-b11e-4a35-8d3d-30a87597d0f9" >
+			<ee:transform doc:name="Set var primaryKey Object" doc:id="ee53c82c-3eb3-4d1b-bafb-4c33a8a8a426" >
+				<ee:message />
+				<ee:variables >
+					<ee:set-variable variableName="storePrimaryKey" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload.orderCompleteEvent != null) payload.orderCompleteEvent.orderKey.primaryKey 
+else payload.orderFailEvent.orderKey.primaryKey ]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7868e19a-dccf-4d5c-815b-a7acf0953831" >
+					<ee:transform doc:name="Set var primaryKey String" doc:id="632f19ea-5a02-4d9d-8eb8-36a511ccde28">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="storePrimaryKey"><![CDATA[%dw 2.0
+output application/java
+var message = read(payload, 'application/xml')
+---
+if (message.orderCompleteEvent != null) message.orderCompleteEvent.orderKey.primaryKey 
+else message.orderFailEvent.orderKey.primaryKey ]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+					<ee:transform doc:name="Payload as Object" doc:id="db95948c-ba45-4210-bd74-426770d63c6d" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+---
+read(payload, 'application/xml')]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice" doc:id="42f363ac-84c9-491d-876b-115ef48c3b4e" >
+			<when expression="#[vars.storePrimaryKey != null]">
+				<async doc:name="Async" doc:id="24a1546d-176f-41d1-b8f9-4266bb6301be" >
+					<flow-ref doc:name="Call logger after" doc:id="b57e687f-dfb8-41a9-b17f-17a08a6cd04b" name="loggin-client-call"/>
+				</async>
+				<flow-ref doc:name="Go to Store" doc:id="f26753a9-ae40-459b-ab76-7bf65ff5661d" name="storeOS-clientFlow" />
+			</when>
+			<otherwise >
+				<async doc:name="Async" doc:id="b206f579-8f48-4d8e-8cf5-125d6ea27201" >
+					<flow-ref doc:name="Call logger after" doc:id="bab36425-99e2-4b94-a0c0-138d51b74320" name="loggin-client-call"/>
+				</async>
+			</otherwise>
+		</choice>
+	</flow>
+</mule>

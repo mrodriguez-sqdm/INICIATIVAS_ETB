@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-programacionPortacion-orchestratorSub_Flow" doc:id="b897d693-f7da-45b2-8388-0a45e87a9768" >
+		<async doc:name="Async" doc:id="7402d6ac-0a5f-4ccd-bd38-86e4c25eaed6">
+			<flow-ref doc:name="Call logger before" doc:id="f2d4f631-5e5f-42bc-8545-4e1e1f41b107" name="Call-logger" />
+		</async>
+		<set-variable value="#[vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje.IdentificadorProceso]" doc:name="idProceso" doc:id="b1605358-4059-4a14-8e0b-7dab9f11d828" variableName="idProceso"/>
+		<flow-ref doc:name="Get Portability" doc:id="b81bbd64-abe4-48d6-978c-91210d2c4215" name="get-portabilityProcessById-client" target="portabilityResponse"/>
+		<set-variable value="#[vars.portabilityResponse[0].IdIntegracion]" doc:name="IdIntegration" doc:id="26fa27d8-794a-4c88-81e0-bb5873ec0c09" variableName="idIntegration" />
+		<flow-ref doc:name="Obtain Id Message" doc:id="9cc7c033-d5eb-4fcc-be1e-abcb2c6c8a77" name="get-idMessage-client" target="idMessage"/>
+		<ee:transform doc:name="Set Payload mensajeABD" doc:id="38d750f4-02f8-4f78-bb6d-37a49069741c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var cabecera = vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje
+---
+{
+  "MensajeABD": {
+    "CabeceraMensaje": {
+      "IdentificadorProceso": cabecera.IdentificadorProceso,
+      "IdentificadorMensaje": vars.idMessage.consecutivo,
+      "FechaCreacionMsg": cabecera.FechaCreacion,
+      "TipoMsg": cabecera.TipoMensaje,
+      "Emisor": cabecera.Emisor,
+      "Observaciones": cabecera.Observaciones
+    },
+    "CuerpoMensaje": vars.inputBody.ProgramacionPortacion.MensajeABD.CuerpoMensaje
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Request to Notify Portability" doc:id="b398cb16-f6fe-4952-a790-62fb25f5ec0e" name="post-notifyPortability-client" target="notifyPortabilityResponse"/>
+		<ee:transform doc:name="Set Payload mensajeABD" doc:id="315ba407-d7d5-41d0-88c1-da070eb3a59f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cabecera = vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje
+---
+{
+	body :{
+	  "MensajeABD": {
+	    "CabeceraMensaje": {
+	      "IdentificadorProceso": cabecera.IdentificadorProceso,
+	      "IdentificadorMensaje": vars.idMessage.consecutivo,
+	      "FechaCreacionMsg": cabecera.FechaCreacion,
+	      "TipoMsg": cabecera.TipoMensaje,
+	      "Emisor": cabecera.Emisor,
+	      "Observaciones": cabecera.Observaciones
+	    },
+	    "CuerpoMensaje": vars.inputBody.ProgramacionPortacion.MensajeABD.CuerpoMensaje
+	    }
+	}	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Send message to mediafone" doc:id="e7996913-30c7-484c-befe-dfc9406873ea" name="post-mediafon-sendMgs" target="sendMessageResponse"/>
+<!-- [STUDIO:"Map body to PORTABILIDAD_PROCESOS"]		<ee:transform doc:name="Map body to PORTABILIDAD_PROCESOS" doc:id="9d38d05f-15ae-4fa1-87d9-79fca427a561" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+{
+    "IdProceso": vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+    "IdMensaje": vars.idMessage.consecutivo,
+    "IdIntegracion": vars.portabilityResponse[0&#93;.IdIntegracion,
+    "NumeroRepresentante": null,
+    "Numeracion": null,
+    "TipoMsg": vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje.TipoMensaje,
+    "FechaCreacionMsg": vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje.FechaCreacion,
+    "Emisor": vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje.Emisor,
+    "Donante": null,
+    "SistemaOrigen": vars.headers.system,
+    "RespuestaABD": vars.notifyPortabilityResponse,
+    "CodigosRechazo": null,
+    "ListaNumeracionRechazada": null
+  }&#93;&#93;></ee:set-payload>
+			</ee:message>
+		</ee:transform> [STUDIO] -->
+		<ee:transform doc:name="Map body to PORTABILIDAD_SOLICITUDES" doc:id="ac9ae622-7c2e-4e3b-82cb-15d065de0fb7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "DireccionAbonado" : null,
+    "IdProceso": vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+    "IdMensaje": vars.idMessage.consecutivo,
+    "IdIntegracion": vars.portabilityResponse[0].IdIntegracion,
+    "NumeroRepresentante": null,
+    "Numeracion": vars.portabilityResponse[0].Numeracion,
+    "TipoMensaje": vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje.TipoMensaje,
+    "FechaCreacionMsg": vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje.FechaCreacion as LocalDateTime {format: "yyyyMMddHHmmss"} as DateTime >> "America/Bogota",
+    "Emisor": vars.inputBody.ProgramacionPortacion.MensajeABD.CabeceraMensaje.Emisor,
+    "Donante": "",
+    "Sistema_Origen": vars.headers.system,
+    "RespuestaSolicitud": {
+    	"RespuestaABD": null,
+    	"NumeracionRechazada": []
+    }
+//    "ActualizacionExtractor": "1"
+  }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Post in PORTABILIDAD_PROCESOS" doc:id="9ee7dd7f-39a2-4e22-9f92-ab1cf2af3f1b" name="post-portabilityProcess-client"/>
+		<ee:transform doc:name="Map Output" doc:id="756b8b2f-8c57-45ef-98d3-80148ea6f6a0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "ResponseProgramacionPortacion": {
+    "receiveMessageResponse": {
+      "receiveMessageReturn": vars.sendMessageResponse.receiveMessageResponse.receiveMessageReturn
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="907dc6ab-6f08-4c1b-9a1f-c27657a78a05">
+				<flow-ref doc:name="Call logger After" doc:id="8d06f625-343d-4252-98b8-d49d22f62923" name="Call-logger" />
+			</async>
+	</sub-flow>
+</mule>

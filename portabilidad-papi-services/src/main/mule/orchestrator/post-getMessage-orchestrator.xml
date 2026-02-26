@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-getMessage-orchestratorSub_Flow" doc:id="e3082f88-32a3-4f95-9388-64d1609a98a4" >
+		<async doc:name="Async" doc:id="c38b88aa-472c-4247-8887-b6277417f3a5">
+			<flow-ref doc:name="Call logger before" doc:id="92568b9b-1add-4f76-a0de-02aa97a70ea4" name="Call-logger" />
+		</async>
+		<set-variable value="#[vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.IdentificadorProceso]" doc:name="idProceso" doc:id="bccb2d77-3e5c-43f3-a75e-1e19deec261f" variableName="idProceso" />
+		<choice doc:name="Not 1002?" doc:id="6ff4bef8-b6e1-4c6b-95f0-ec46639f1f31" >
+			<when expression="#[vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion == null]">
+				<flow-ref doc:name="Recover idIntegration" doc:id="fcc038dd-5c96-4e9b-a556-fbdd01a3a41e" name="get-portabilityProcessById-client" target="portabilityResponse"/>
+				<set-variable value="#[vars.portabilityResponse[0].IdIntegracion]" doc:name="IdIntegration" doc:id="e14fac7a-3049-44dc-a04d-3b2e8f07df5f" variableName="idIntegration"/>
+			</when>
+		</choice>
+		<ee:transform doc:name="Filter 1002 y 1004" doc:id="a98af284-2fe3-4150-9c61-ca39221e644c" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="fileManagement" ><![CDATA[%dw 2.0
+output application/java
+var objMilDos = vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion
+var objMilCuatro = vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaRespuestaSolicitudPortacionDonante.ListaNumeracionRechazada.*NumeracionRechazada
+---
+//EXISTEN DOCUMENTOS 1002
+(if (!isEmpty(objMilDos))
+[] << objMilDos.DocumentoCC 
+<< objMilDos.DocumentoAT
+<< objMilDos.DocumentoID
+//EXISTEN DOCUMENTOS 1004
+else if (!isEmpty(objMilCuatro)) 
+objMilCuatro reduce ((item, accumulator=[]) -> 
+	accumulator << item.DocumentoFC 
+	<< item.DocumentoDC 
+	<< item.DocumentoFR 
+	<< item.DocumentoUO 
+	<< item.DocumentoLD 
+	<< item.DocumentoLS 
+	<< item.DocumentoNA 
+	<< item.DocumentoNI 
+	<< item.DocumentoLA
+)
+else []) reduce ((item, accumulator=[]) -> if (isEmpty(item)) accumulator else accumulator << item)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Existen archivos?" doc:id="c75c0035-9881-4da4-a674-123a6d9a82ad" >
+			<when expression="#[!isEmpty(vars.fileManagement)]">
+				<foreach doc:name="For Each Document in Input" doc:id="37d88fcf-7094-48f1-838b-d398ec31a903" collection="#[vars.fileManagement]">
+					<ee:transform doc:name="Prepare payload" doc:id="be126bf2-9bf7-45f4-b277-647796fac84b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var ind = vars.counter - 1
+var docTest = try(() -> payload[ind])
+var doc = if (docTest.success) docTest.result else payload
+---
+if (payload is String) {
+	fileName:  payload,
+	fileContent: vars.inputAttachments[payload]
+}
+else {
+	fileName:  doc,
+	fileContent: vars.inputAttachments[doc]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					<flow-ref doc:name="Go to Atlas" doc:id="7f0936ca-7d78-4aeb-86e4-ec984869a18d" name="post-fileByPath-client" />
+				</foreach>
+			</when>
+		</choice>
+		<choice doc:name="Origin SF?" doc:id="00ce003e-3f81-40f4-8acf-3749e9dc3d5e">
+					<when expression='#[output application/java import startsWith from dw::core::Strings &#10;---&#10;!((vars.idIntegration default "") startsWith("MDM-")) and &#10;vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion == null and &#10;vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.SolicitudDeProgramacionPortacion == null]'>
+				<ee:transform doc:name="Prepare input SF" doc:id="7391e369-6c20-4a53-91c6-f555e7c667a6" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+---
+//0002
+if (vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg == "0002")
+{
+    WSRequestSolicitudSincronizacionABD: {
+        PortabilidadMsg: {
+            CabeceraMensaje: {
+                Identificador: vars.idIntegration,
+                TipoDeMensaje: vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg
+            },
+            CuerpoMensaje: {
+                RespuestaSolicitudPortacionDonante: {
+                    (ListaNumeracionRechazada: {
+                        NumeracionRechazada: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.RespuestaSolicitudNIP.NumeracionRechazada map ((it, in) -> {
+                            CodigosRechazo: {
+                                CodigoRechazo: it.CodigosRechazo.CodigoRechazo map ((o, i) -> o)
+                            },
+                            Numero: it.Numero
+                        })
+                    }) if (!isEmpty(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.RespuestaSolicitudNIP.NumeracionRechazada)),
+                    RespuestaABD: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.RespuestaSolicitudNIP.RespuestaABD
+                }
+            }
+        }
+    }
+}
+
+// 0004
+else if (vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg == "0004")
+{
+    WSRequestSolicitudSincronizacionABD: {
+        PortabilidadMsg: {
+            CabeceraMensaje: {
+                Identificador: vars.idIntegration,
+                TipoDeMensaje: vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg
+            },
+            CuerpoMensaje: {
+                RespuestaSolicitudPortacionDonante: {
+                    (ListaNumeracionRechazada: {
+                        NumeracionRechazada: [{
+                            CodigosRechazo: {
+                                CodigoRechazo: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.RespuestaSolicitudReenvioNIP.CodigosRechazo.CodigoRechazo map ((o, i) -> o)
+                            }
+                        }]
+                    }) if (!isEmpty(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.RespuestaSolicitudReenvioNIP.CodigosRechazo)),
+                    RespuestaABD: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.RespuestaSolicitudReenvioNIP.RespuestaABD
+                }
+            }
+        }
+    }
+}
+
+//1002
+else if (vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg == "1002")
+{
+    WSRequestPortabilidadSaliente: {
+        PortabilidadMsg: {
+            CabeceraMensaje: {
+                Identificador: vars.idIntegration
+            },
+            CuerpoMensaje: {
+                RespuestaSolicitudPortacionDonante: {
+                    DireccionAbonado: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DireccionAbonado,
+                    DocumentoAT: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoAT,
+                    DocumentoCC: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoCC,
+                    DocumentoID: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoID,
+                    IdentificacionAbonado: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.IdentificacionAbonado,
+                    ListaNumeracionNip: {
+                        NumeracionNip: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.ListaNumeracionNip.NumeracionNip map ((o, i) -> {
+                            Numero: o.Numero,
+                            FechaCreacionNIP: o.FechaCreacionNIP
+                        })
+                    },
+                    NombreRazonSocialAbonado: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.NombreRazonSocialAbonado,
+                    NRN: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.NRN,
+                    SolicitudTerceros: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.SolicitudTerceros,
+                    TipoServicio: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoServicio,
+                    TipoUsuario: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoUsuario
+                }
+            }
+        }
+    }
+}
+
+//1004
+else if (vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg == "1004")
+{
+    WSRequestSolicitudSincronizacionABD: {
+        PortabilidadMsg: {
+            CabeceraMensaje: {
+                Identificador: vars.idIntegration,
+                TipoDeMensaje: vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg
+            },
+            CuerpoMensaje: {
+                RespuestaSolicitudPortacionDonante: {
+                    (ListaNumeracionRechazada: {
+                        NumeracionRechazada: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaRespuestaSolicitudPortacionDonante.ListaNumeracionRechazada.NumeracionRechazada map ((it, in) -> {
+                            CodigosRechazo: {
+                                CodigoRechazo: it.CodigosRechazo.CodigoRechazo map ((o, i) -> o)
+                            },
+                            (DocumentoDC: it.DocumentoDC) if (!isEmpty(it.DocumentoDC)),
+                            (DocumentoFC: it.DocumentoFC) if (!isEmpty(it.DocumentoFC)),
+                            (DocumentoFR: it.DocumentoFR) if (!isEmpty(it.DocumentoFR)),
+                            (DocumentoUO: it.DocumentoUO) if (!isEmpty(it.DocumentoUO)),
+                            Numero: it.Numero
+                        })
+                    }) if (!isEmpty(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaRespuestaSolicitudPortacionDonante.ListaNumeracionRechazada.NumeracionRechazada)),
+                    RespuestaABD: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ReplicaRespuestaSolicitudPortacionDonante.RespuestaABD
+                }
+            }
+        }
+    }
+}
+
+//1005
+else if (vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg == "1005")
+{
+    WSRequestSolicitudSincronizacionABD: {
+        PortabilidadMsg: {
+            CabeceraMensaje: {
+                Identificador: vars.idIntegration,
+                TipoDeMensaje: vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg
+            },
+            CuerpoMensaje: {
+                FechaMaxVentanaCambio: if (!isEmpty(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.SolicitudDeProgramacionPortacion.FechaVentanaMaxima)) substring(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.SolicitudDeProgramacionPortacion.FechaVentanaMaxima, 4, 6) ++ "/" ++ substring(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.SolicitudDeProgramacionPortacion.FechaVentanaMaxima, 6, 8) ++ "/"  ++ substring(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.SolicitudDeProgramacionPortacion.FechaVentanaMaxima, 0, 4) else null
+            }
+        }
+    }
+}
+
+//1007
+else if (vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg == "1007")
+{
+    WSRequestSolicitudSincronizacionABD: {
+        PortabilidadMsg: {
+            CabeceraMensaje: {
+                Identificador: vars.idIntegration,
+                TipoDeMensaje: vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg
+            },
+            CuerpoMensaje: {
+                FechaVentanaConfirmada: if (!isEmpty(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ConfirmacionProgramacionPortacion.FechaVentanaCambio)) substring(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ConfirmacionProgramacionPortacion.FechaVentanaCambio, 4, 6) ++ "/" ++ substring(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ConfirmacionProgramacionPortacion.FechaVentanaCambio, 6, 8) ++ "/"  ++ substring(vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ConfirmacionProgramacionPortacion.FechaVentanaCambio, 0, 4) else null
+            }
+        }
+    }
+}
+
+//9998
+else if (vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg == "9998")
+{
+    WSRequestSolicitudSincronizacionABD: {
+        PortabilidadMsg: {
+            CabeceraMensaje: {
+                Identificador: vars.idIntegration,
+                TipoDeMensaje: vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg
+            },
+            CuerpoMensaje: {
+                TipoErrorDetectadoABD: {
+                    CodigosRechazo: {
+                        CodigoRechazo: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ErrorDetectadoABD.CodigosRechazo.CodigoRechazo map ((item, index) -> {
+                            TipoCodigoCausa: item
+                        })
+                    },
+                    IdentificadorMensajeErroneo: {
+                            IdentificadorMensajeErroneo: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.ErrorDetectadoABD.IdentificadorMensajeErroneo
+                        }
+                }
+            }
+        }
+    }
+}
+
+//9999
+else if (vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg == "9999")
+{
+    WSRequestSolicitudSincronizacionABD: {
+        PortabilidadMsg: {
+            CabeceraMensaje: {
+                Identificador: vars.idIntegration,
+                TipoDeMensaje: vars.mensajeAbdFinal.MensajeABD.CabeceraMensaje.TipoMsg
+            },
+            CuerpoMensaje: {
+                NumeracionesRechazadas: {
+                    NumeracionesRechazadas: {
+                        NumeracionRechazada: vars.mensajeAbdFinal.MensajeABD.CuerpoMensaje.RechazoPortacion.NumeracionesRechazadas.NumeracionRechazada map ((item, index) -> {
+                            CodigosRechazo: {
+                                CodigoRechazo: item.CodigosRechazo.CodigoRechazo map ((it, in) -> {
+                                    TipoCodigoCausa: it
+                                })
+                            },
+                            Numero: {
+                                TipoNumero: item.Numero
+                            }
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+else {}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to SF" doc:id="daf8be45-3992-4934-a42d-70863069c116" name="post-notifyPortabilitySF-client"/>
+			</when>
+				</choice>
+		<ee:transform doc:name="Prepare Input MDM" doc:id="4bf56e9c-e0d7-4be2-8127-72a25c898d60">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.mensajeAbdFinal]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call notify MDM" doc:id="c9ce2768-0d74-479b-8f42-f9a9709b8f68" name="post-notifyPortability-client" target="notificationMDM" />
+		<flow-ref doc:name="Go to PORTABILIDAD_PROCESOS" doc:id="0f6bf0b2-e876-4247-9ea0-19d7a67d6e6d" name="post-body-portabilidad-procesos" />
+		<ee:transform doc:name="Prepare output" doc:id="97133caf-2ba5-48ed-88db-633e9b3c78b0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.status == "OK" and vars.notificationMDM.resultado.code == "0")
+{
+    "receiveMessageResponse": {
+      "receiveMessageReturn": "ack"
+    }
+}
+else
+{
+    "receiveMessageResponse": {
+      "receiveMessageReturn": "nack"
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="54648c7f-2e2a-41a2-845b-2422047d229c">
+			<flow-ref doc:name="Call logger after" doc:id="498c7a7a-7c51-4e11-ba36-ad0a7c1ffb32" name="Call-logger" />
+		</async>
+	</sub-flow>
+</mule>

@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-dgo-AccountRegistration-orchestratorSub_Flow" doc:id="2d4bdd8a-e923-4efb-befa-23428a7a99d5" >
+		<ee:transform doc:name="Set data" doc:id="4b4cc6c0-3288-43f5-9938-64cce434102f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	tipo_documento: null,
+	numero_documento: null,
+	email: null,
+	name: null,
+	lastname: null,
+	urns: null,
+	db: null,
+	record: null,
+	PORTAL_UNIFICADO_USUARIO: null,
+	MDM_CLIENTE: null
+	
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables />
+		</ee:transform>
+		<flow-ref doc:name="Go to get record, document type and number" doc:id="9e67b0da-7faf-404b-851e-59049f0d55c8" name="post-dgo-get-record-document-type-number" />
+		<flow-ref doc:name="Go to get subscriber_id" doc:id="c6540571-92d2-4127-b82f-8e372d4e907a" name="post-dgo-get-subscriber_id" />
+		<flow-ref doc:name="Go to get email, name and lastname" doc:id="d04197ef-c892-4121-bd22-e81d3d571924" name="post-dgo-get-email-name-lastname" />
+		<try doc:name="Try" doc:id="df0acba2-9017-42e1-b74c-4279d88bac1a" >
+			<flow-ref doc:name="Get subscriber DGO" doc:id="f743b291-dfa7-45dc-bdd4-1d07ccd199ac" name="post-dgo-get-subscriber_prepare" target="subscriber"/>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="69239408-f4ba-4c0e-95fe-744eb7bc3e5d" type="HTTP:NOT_FOUND">
+					<ee:transform doc:name="Transform Message" doc:id="97586f85-f22e-4deb-9752-817b73d8e550" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="subscriber" ><![CDATA[%dw 2.0
+output application/java
+---
+null]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice" doc:id="17f6dc59-d5b7-48aa-9791-716a3b737722" >
+			<when expression="#[vars.subscriber != null]">
+				<flow-ref doc:name="Go to subscriber exists" doc:id="9db0ed01-88de-4978-a3c0-11ff52a83cbf" name="post-dgo-AccountRegistration-subscriber-exists-sync-no_suspension"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to subscriber do not exist" doc:id="33451c53-ef0d-43d6-94bf-d222689c52e6" name="post-dgo-AccountRegistration-subscriber-do-not-exist" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-dgo-AccountRegistration-subscriber-exists-sync-no_suspension" doc:id="e8d69623-bb72-40a6-83dc-f0428a93902a" >
+		<ee:transform doc:name="Validate sync" doc:id="a803940b-212a-4fd1-83d2-c03f9f5e789e" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="sync" ><![CDATA[%dw 2.0
+output application/java
+---
+upper(payload.email) == upper(vars.subscriber.username) and
+upper(payload.name) == upper(vars.subscriber.data.name) and
+upper(payload.lastname) == upper(vars.subscriber.data.lastname)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="8dfc5888-793d-42f5-856c-3a0765fcb379">
+			<when expression="#[!vars.sync]">
+				<flow-ref doc:name="Edit subscriber DGO" doc:id="e4b33416-ad3a-431f-8c96-8f76d3719dbc" name="post-dgo-patch-subscriber_prepare" target="subscriber"/>
+			</when>
+		</choice>
+		<flow-ref doc:name="Clean URNs DGO" doc:id="6b76e909-1239-4e96-a3f5-25d33f246286" name="post-dgo-deactive-user_prepare" target="subscriber"/>
+		<flow-ref doc:name="Get procedures" doc:id="c9ba971f-4b30-4356-b3b4-92ca69e1418a" name="post-dgo-get-params" target="procedures" />
+		<choice doc:name="No es suspensión?" doc:id="ef48153c-48fd-416a-98c4-d5d2fcfc785b" >
+			<when expression='#[!((vars.procedures default []) contains vars.inputPayload.procedure)]'>
+				<flow-ref doc:name="Go to get urns" doc:id="76df1fb3-0a7b-44d4-ba88-41f9c5897081" name="post-dgo-get-urns" />
+				<choice doc:name="Choice" doc:id="b68fef92-e3f8-47af-9506-95a64e05519b">
+			<when expression="#[payload.urns != []]">
+						<flow-ref doc:name="Add urns to subscriber DGO" doc:id="f92a1852-0a62-4795-9603-95ea3f07febd" name="post-dgo-add-urns_prepare" target="subscriber" />
+					</when>
+		</choice>
+			</when>
+		</choice>
+		<ee:transform doc:name="Set response" doc:id="daf8a76c-b12b-4368-b88a-2e5315485efb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.subscriber]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-dgo-AccountRegistration-subscriber-do-not-exist" doc:id="1b65a3de-0a4e-479f-8dca-ef8cb06b80cc" >
+		<flow-ref doc:name="Get procedures" doc:id="f9901dbf-d806-4908-b50e-6903be2faab7" name="post-dgo-get-params" target="procedures"/>
+		<choice doc:name="No es suspensión?" doc:id="745af38b-bc6f-4f5b-bc92-37ba0c53c52b" >
+			<when expression='#[!((vars.procedures default []) contains vars.inputPayload.procedure)]' >
+				<flow-ref doc:name="Go to get urns" doc:id="9fd37ce5-2c7e-4605-8980-4f8ac97a99e4" name="post-dgo-get-urns" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set urns = []" doc:id="9d17247b-4032-49dd-b800-3db0ef56b0c9" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload - "urns"
+++
+{
+	urns: []
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<choice doc:name="Choice" doc:id="b70f410d-141f-405d-9864-3ed835902719" >
+			<when expression="#[payload.urns != []]" >
+				<flow-ref doc:name="Account registration DGO" doc:id="823fd240-831d-4f6b-8319-9e71bf61fac8" name="post-dgo-post-account_prepare" target="subscriber" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set default urns" doc:id="7eca3c3d-1a7e-4ff1-bbcc-b727988ea96e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload - "urns"
+++
+{
+	urns: ["urn:tve:dtvgo"]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Account registration DGO" doc:id="bd572828-8c30-486b-aa8d-cf3ec86659c1" name="post-dgo-post-account_prepare" target="subscriber" />
+				<flow-ref doc:name="Clean URNs DGO" doc:id="b6ac258b-046a-4be9-822f-4fbb420bf8a3" name="post-dgo-deactive-user_prepare" target="subscriber" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Set response" doc:id="302b9d4d-8480-4754-b0b5-fec29ea55052" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.subscriber]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

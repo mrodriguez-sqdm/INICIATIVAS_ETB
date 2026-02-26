@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="portabilidad-xapi-services-main">
+        <http:listener config-ref="portabilidad-xapi-services-httpListenerConfig" path="/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call initial logger" doc:id="5500ce30-2540-4266-a415-3ba2f6d5915d" name="initial-loggin-Sub_Flow" />
+		<apikit:router config-ref="portabilidad-xapi-services-config" />
+		<async doc:name="Async" doc:id="ac2e955f-5062-4aff-ad27-aaf07b919e34" >
+			<flow-ref doc:name="Call logger" doc:id="fff2aecf-561e-4707-a463-789c78adcd85" name="loggin-client-call" />
+		</async>
+		<error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="portabilidad-xapi-services-console">
+        <http:listener config-ref="portabilidad-xapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="portabilidad-xapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\mediafon\portabilidad\(numOrder):application\json:portabilidad-xapi-services-config">
+		<flow-ref doc:name="Go to Handler" doc:id="4d9ef257-060d-475b-bf81-9070ebd28923" name="post-portabilidad-handlerSub_Flow"/>
+    </flow>
+	<flow name="post:\v1\OTT\DTV\(numOrden):portabilidad-xapi-services-config" doc:id="cc925355-73a1-4f29-9383-3b81211d70ca" >
+		<flow-ref doc:name="Go to Handler" doc:id="be7eb8ee-14f6-47d1-8afa-2028d3d81f78" name="dgo-order-handlerSub_Flow" />
+	</flow>
+	<flow name="post:\v1\OTT\DDTV\(CuentaServicio):portabilidad-xapi-services-config" doc:id="ed9ba404-ee1a-4585-9cbd-5d53dc7f93eb" >
+		<flow-ref doc:name="Go to Handler" doc:id="1b64813b-15f7-4175-b342-ff697ed863f3" name="dgo-service-handlerSub_Flow" />
+	</flow>
+</mule>

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-solicitudCancelacion-orchestratorSub_Flow" doc:id="4c5035fe-0d39-493d-b9f4-bb24f9a5772f" >
+		<async doc:name="Async" doc:id="7623016a-a294-4d09-ad87-be2e3721c495">
+			<flow-ref doc:name="Call logger before" doc:id="f53263d1-b8da-45b5-85dd-b06143568657" name="Call-logger" />
+		</async>
+		<flow-ref doc:name="Go to mdm portability get idProceso" doc:id="9c0a61a8-93be-436c-98ff-2dd60c9c58b5" name="get-idProceso-client" target="idProceso"/>
+		<flow-ref doc:name="Obtain Id Message" doc:id="60355cc3-39ea-4167-bbb7-1c5c1999533d" name="get-idMessage-client" target="idMessage" />
+		<flow-ref doc:name="Request to Notify Portability" doc:id="5e534513-6661-455f-a0f0-f11e7d43d516" name="post-solicitudCancelacion-mdm-portability" target="notifyPortabilityResponse" />
+		<flow-ref doc:name="Go to sisext send message" doc:id="33e06f9f-515f-4a79-b34b-a1c4176e17e4" name="post-solicitudCancelacion-sisext-sendMsg" target="sisextSendMsgResp" />
+		<flow-ref doc:name="Go to mongo portability process" doc:id="1bdaf140-8ee2-4842-b708-17956f09b414" name="post-solicitudCancelacion-mongo-portability-process" target="portabilityProcessResp" />
+		<ee:transform doc:name="Set response" doc:id="55f7ca8d-6a86-4541-9b7a-6c64972845a1">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+ResponseSolicitudCancelacion: vars.sisextSendMsgResp]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="74e06274-76fd-4e87-a591-aa026b9ccbf2" >
+			<flow-ref doc:name="Call logger after" doc:id="8880858f-a909-4266-8e53-dfdd5eee4297" name="Call-logger" />
+		</async>
+	</sub-flow>
+	<sub-flow name="post-solicitudCancelacion-mdm-portability" doc:id="fb5ef7c4-acf6-4f4c-8db9-cdea32817a42">
+		<ee:transform doc:name="Set request body" doc:id="dc2d18db-4eb8-4419-88ad-379647df517b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "MensajeABD": {
+    "CabeceraMensaje": {
+      "IdentificadorProceso": vars.idProceso.consecutivo,
+      "IdentificadorMensaje": vars.idMessage.consecutivo,
+      "FechaCreacionMsg": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.FechaCreacionMsg,
+      "TipoMsg": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.TipoMsg,
+      "Emisor": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.Emisor,
+      "Observaciones": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.Observaciones
+    },
+    "CuerpoMensaje": {
+      "SolicitudCancelacion": {
+        "ListaNumeracionCancelar": {
+          "Numero": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CuerpoMensaje.SolicitudCancelacion.Numero
+        },
+        "FechaVentanaCancelacion": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CuerpoMensaje.SolicitudCancelacion.FechaVentanaCancelacion
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to mdm client" doc:id="54abf8e2-5e9e-4277-94bb-e8528720a757" name="post-notifyPortability-client" />
+	</sub-flow>
+	<sub-flow name="post-solicitudCancelacion-sisext-sendMsg" doc:id="e39f4cd8-268e-4d70-a123-8c578a0766a8" >
+		<ee:transform doc:name="Set request body" doc:id="b408fd57-6011-44fb-bbf0-9f375ccd561d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "body": {
+  	"MensajeABD": {
+      "CabeceraMensaje": {
+      "IdentificadorProceso": vars.idProceso.consecutivo,
+      "IdentificadorMensaje": vars.idMessage.consecutivo,
+        "FechaCreacionMsg": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.FechaCreacionMsg,
+        "TipoMsg": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.TipoMsg,
+        "Emisor": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.Emisor,
+        "Observaciones": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.Observaciones
+      },
+      "CuerpoMensaje": {
+        "SolicitudCancelacion": {
+          "ListaNumeracionCancelar": {
+            "Numero": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CuerpoMensaje.SolicitudCancelacion.Numero
+          },
+          "FechaVentanaCancelacion": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CuerpoMensaje.SolicitudCancelacion.FechaVentanaCancelacion,
+        }
+    }
+  }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to sisext client" doc:id="c25ec9f7-c418-4540-82ce-9cee45905c2d" name="post-mediafon-sendMgs" />
+	</sub-flow>
+	<sub-flow name="post-solicitudCancelacion-mongo-portability-process" doc:id="f7897361-f4a6-4520-a894-059237032991" >
+<!-- [STUDIO:"Set request body"]		<ee:transform doc:name="Set request body" doc:id="439b08f8-fd37-4e3e-9341-80ca4c5e8b90" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+{
+  "IdProceso": vars.idProceso.consecutivo,
+  "IdMensaje": vars.idMessage.consecutivo,
+  "IdIntegracion": vars.inputPayload.RequestSolicitudCancelacion.Header.IdIntegracion,
+  "NumeroRepresentante": null,
+  "Numeracion": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CuerpoMensaje.SolicitudCancelacion.Numero,
+  "TipoMsg": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.TipoMsg,
+  "FechaCreacionMsg": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.FechaCreacionMsg,
+  "Emisor": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.Emisor,
+  "Donante": null,
+  "SistemaOrigen": vars.inputPayload.RequestSolicitudCancelacion.Header.System,
+  "RespuestaABD": vars.sisextSendMsgResp.receiveMessageResponse.receiveMessageReturn,
+  "CodigosRechazo": null,
+  "ListaNumeracionRechazada": null
+}&#93;&#93;></ee:set-payload>
+			</ee:message>
+		</ee:transform> [STUDIO] -->
+		<ee:transform doc:name="Portabilidad solicitudes" doc:id="10a20afc-0da2-4072-a906-684653ef5fca">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "DireccionAbonado" : null,
+  "IdProceso": vars.idProceso.consecutivo,
+  "IdMensaje": vars.idMessage.consecutivo,
+  "IdIntegracion": vars.inputPayload.RequestSolicitudCancelacion.Header.IdIntegracion,
+  "NumeroRepresentante": null,
+  "Numeracion": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CuerpoMensaje.SolicitudCancelacion.Numero map Numero: $,
+  "TipoMensaje": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.TipoMsg,
+  "FechaCreacionMsg": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.FechaCreacionMsg as LocalDateTime {format: "yyyyMMddHHmmss"} as DateTime >> "America/Bogota",
+  "Emisor": vars.inputPayload.RequestSolicitudCancelacion.MensajeABD.CabeceraMensaje.Emisor,
+  "Donante": null,
+  "Sistema_Origen": vars.inputPayload.RequestSolicitudCancelacion.Header.System,
+  "RespuestaSolicitud": {
+    	"RespuestaABD": vars.sisextSendMsgResp.receiveMessageResponse.receiveMessageReturn,
+    	"NumeracionRechazada": []
+    }
+//  "ActualizacionExtractor": "1"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to mongo client" doc:id="81b15385-5324-4bac-9906-db87878f96f4" name="post-portabilityProcess-client" />
+	</sub-flow>
+</mule>

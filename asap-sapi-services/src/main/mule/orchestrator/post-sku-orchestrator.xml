@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-sku-orchestratorSub_Flow" doc:id="1580cb17-585e-4705-945c-e579628ca2d9" >
+		<ee:transform doc:name="Request payload" doc:id="c4a18611-2484-429c-a0c4-e5d71e27da6a">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "email": payload.email,
+  "eid": payload.eid,
+  "skus": {
+    "code": payload.sku[0].code,
+    "amount": payload.sku[0].amount
+  }
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="5cb97652-352a-49b3-83ac-87ce6073a59d" message="#[payload]" />
+		<flow-ref doc:name="Go to client" doc:id="c808d499-68bd-4401-9fce-b7e7aaf43d1c" name="post-sku-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="ae222cfb-4e28-4c07-94dc-d25cb2979bbe" >
+			<when expression="#[payload.status != 200]" >
+				<set-variable value="#[payload.status]" doc:name="Set httpStatus" doc:id="e6473f2a-2c6a-4530-975d-d0ec583b3a37" variableName="httpStatus" />
+				<ee:transform doc:name="Error Response" doc:id="9c58a4df-12f2-498d-9b89-90ff18c6e17d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: payload.status,
+	description: payload.message
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Success response" doc:id="93d280fa-0f37-4907-8646-2cbac3c9236b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: payload.status,
+	description: "Proceso exitoso"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

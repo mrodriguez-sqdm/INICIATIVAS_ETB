@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-solicitudPortacion-orchestratorSub_Flow" doc:id="4c5035fe-0d39-493d-b9f4-bb24f9a5772f" >
+		<async doc:name="Async" doc:id="7623016a-a294-4d09-ad87-be2e3721c495">
+			<flow-ref doc:name="Call logger before" doc:id="f53263d1-b8da-45b5-85dd-b06143568657" name="Call-logger" />
+		</async>
+		<flow-ref doc:name="Go to common" doc:id="33e0caf9-a9e9-4f68-b5d2-b6a1745003b0" name="post-solicitudPortacion-common"/>
+		<flow-ref doc:name="Go to mdm portability" doc:id="9c0a61a8-93be-436c-98ff-2dd60c9c58b5" name="post-solicitudPortacion-mdm-portability"/>
+		<flow-ref doc:name="Go to sisext send message" doc:id="e8c16fb0-e5dc-46a8-bc63-cf7a958e88ce" name="post-solicitudPortacion-sisext-sendMsg" target="sisextSendMsgResp" />
+		<flow-ref doc:name="Go to mongo portability process" doc:id="9c43fbde-50a4-4fa5-a647-b4b8659cbccd" name="post-solicitudPortacion-mongo-portability-process" target="portabilityProcessResp"/>
+		<ee:transform doc:name="Set response" doc:id="28fa1608-0cb3-47f7-b39c-2b81a20d95b0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+ResponseSolicitudPortacion: vars.sisextSendMsgResp]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="74e06274-76fd-4e87-a591-aa026b9ccbf2" >
+			<flow-ref doc:name="Call logger after" doc:id="8880858f-a909-4266-8e53-dfdd5eee4297" name="Call-logger" />
+		</async>
+	</sub-flow>
+	<sub-flow name="post-solicitudPortacion-common" doc:id="84395989-d432-4beb-a98b-1248bc98dd69">
+		<ee:transform doc:name="Set doc array" doc:id="7bcff485-b527-4396-8c07-305e3ffeecbc">
+			<ee:message>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="docArray" ><![CDATA[([] << vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoID 
+<< vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoAT
+<< vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoCC) reduce ((item, accumulator=[]) -> if (isEmpty(item)) accumulator else accumulator << item)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="d628c693-72de-4212-b740-47b8cf42aa6c" >
+			<when expression="#[!isEmpty(vars.docArray)]">
+				<ee:transform doc:name="Set documents array response empty" doc:id="ba3782fc-5bcf-4e35-94c8-6940e7f5dbfb">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="docArrayResp"><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<foreach doc:name="For Each" doc:id="bc173615-5a20-4539-83f4-82e5f7dedebf" collection="#[vars.docArray]">
+			<ee:transform doc:name="Set pathFile" doc:id="a4af19d6-4eca-4bc3-814a-124196d3f855">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="pathFile"><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::URL
+---
+if (!isBlank(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.Path)) 
+	encodeURIComponent(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.Path ++ payload)
+else
+	encodeURIComponent(payload)]]></ee:set-variable>
+					<ee:set-variable variableName="defaultPath"><![CDATA[%dw 2.0
+output application/java
+---
+if (isBlank(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.Path)) 
+	p('common-sapi.conf.defaultPathOn')
+else
+	null]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="Go to common" doc:id="569d1776-796b-4763-ae91-15c27642a9f6" name="get-fileByPath-client" />
+			<ee:transform doc:name="Add doc to docArrayResp" doc:id="c55b1205-1756-4eb5-9987-3ba6035814ae">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="docArrayResp"><![CDATA[%dw 2.0
+output application/json
+---
+vars.docArrayResp << payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		</foreach>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-solicitudPortacion-mdm-portability" doc:id="8729bfda-50e0-48ac-8352-9de7701c056f" >
+		<ee:transform doc:name="Set request body" doc:id="85d0cd89-cd97-4366-a3c7-e0235d158303">
+			<ee:message>
+				<ee:set-payload><![CDATA[{
+    "MensajeABD": {
+        "CabeceraMensaje": {
+            "IdentificadorProceso": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+            "IdentificadorMensaje": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.IdentificadorMensaje,
+            "FechaCreacionMsg": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.FechaCreacionMsg,
+            "TipoMsg": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.TipoMsg,
+            "Emisor": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.CodigoOperador,
+            "Observaciones": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.Observaciones
+        },
+        "CuerpoMensaje": {
+            "SolicitudPortacion": {
+                "NombreRazonSocialAbonado": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.Nombre,
+                "TipoDocumentoIdentificacion": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoDocumentoIdentificacion,
+                "DireccionAbonado": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.Direccion,
+                "IdentificacionAbonado": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.NumeroIdentidad,
+                ("FechaExpedicionIdentificacion": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.FechaExpedicionIdentificacion) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.FechaExpedicionIdentificacion)),
+                ("TipoDocumentoIdentificacionRepresentanteLegal": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoDocumentoIdentificacionRepresentanteLegal) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoDocumentoIdentificacionRepresentanteLegal)), 
+                ("IdentificacionRepresentanteLegal": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.IdentificacionRepresentanteLegal) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.IdentificacionRepresentanteLegal)), 
+                ("FechaExpedicionIdentificacionRepresentanteLegal": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.FechaExpedicionIdentificacionRepresentanteLegal) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.FechaExpedicionIdentificacionRepresentanteLegal)), 
+                "Donante": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.OperadorDonante,
+                "TipoUsuario": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoUsuario,
+                "TipoServicio": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoServicio,
+                "NIP": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.NIP,
+                "FlagVentanaAmpliada": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.VentanaAmplia,
+                "SolicitudTerceros": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.SolicitudTercero,
+                "ListaNumeracion": {
+                    "Numero": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.ListaNumeracion.Numeracion
+                },
+                "NRN": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.NRN,
+                ("DocumentoID": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoID) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoID)),
+                ("DocumentoAT": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoAT) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoAT)),
+                ("DocumentoCC": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoCC) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoCC))
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to mdm client" doc:id="18294abd-df9d-439f-8c48-56d9802740b3" name="post-notifyPortability-client"/>
+	</sub-flow>
+	<sub-flow name="post-solicitudPortacion-sisext-sendMsg" doc:id="e39f4cd8-268e-4d70-a123-8c578a0766a8" >
+		<ee:transform doc:name="Set request body" doc:id="b408fd57-6011-44fb-bbf0-9f375ccd561d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "body": {
+  	"MensajeABD": {
+      "CabeceraMensaje": {
+        "IdentificadorProceso": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+        "IdentificadorMensaje": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.IdentificadorMensaje,
+        "FechaCreacionMsg": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.FechaCreacionMsg,
+		"TipoMsg": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.TipoMsg,
+        "Emisor": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.CodigoOperador,
+        "Observaciones": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.Observaciones
+      },
+      "CuerpoMensaje": {
+        "SolicitudPortacion": {
+          "NombreRazonSocialAbonado": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.Nombre,
+          "TipoDocumentoIdentificacion": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoDocumentoIdentificacion,
+          "DireccionAbonado": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.Direccion,
+          "IdentificacionAbonado": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.NumeroIdentidad,
+          ("FechaExpedicionIdentificacion": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.FechaExpedicionIdentificacion) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.FechaExpedicionIdentificacion)),
+          ("TipoDocumentoIdentificacionRepresentanteLegal": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoDocumentoIdentificacionRepresentanteLegal) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoDocumentoIdentificacionRepresentanteLegal)), 
+          ("IdentificacionRepresentanteLegal": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.IdentificacionRepresentanteLegal) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.IdentificacionRepresentanteLegal)), 
+          ("FechaExpedicionIdentificacionRepresentanteLegal": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.FechaExpedicionIdentificacionRepresentanteLegal) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.FechaExpedicionIdentificacionRepresentanteLegal)), 
+          "Donante": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.OperadorDonante,
+          "TipoUsuario": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoUsuario,
+          "TipoServicio": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.TipoServicio,
+          "NIP": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.NIP,
+          "FlagVentanaAmpliada": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.VentanaAmplia,
+          "SolicitudTerceros": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.SolicitudTercero,
+          "ListaNumeracion": {
+            "Numero": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.ListaNumeracion.Numeracion
+          },
+          "NRN": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.NRN,
+          ("DocumentoID": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoID) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoID)),
+          ("DocumentoAT": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoAT) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoAT)),
+          ("DocumentoCC": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoCC) if (!isEmpty(vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.DocumentoCC))
+        }
+    }
+  }
+  },
+  "attachments": if (!isEmpty(vars.docArrayResp)) parts: ((vars.docArrayResp) reduce ((item, acc={}) -> acc ++
+    {
+      "$(item.fileName)": {
+	    "content": item.fileContent
+	    }
+    }
+  ))
+  else null
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to sisext client" doc:id="c25ec9f7-c418-4540-82ce-9cee45905c2d" name="post-mediafon-sendMgs" />
+	</sub-flow>
+	<sub-flow name="post-solicitudPortacion-mongo-portability-process" doc:id="0f28b3f2-b662-422b-bd85-a058ddaeac24" >
+<!-- [STUDIO:"Set request body"]		<ee:transform doc:name="Set request body" doc:id="3ab38429-8692-48f9-a854-f12992182cab" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+{
+  "IdProceso": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+  "IdMensaje": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.IdentificadorMensaje,
+  "IdIntegracion": vars.inputPayload.RequestSolicitudPortacion.Header.IdIntegracion,
+  "NumeroRepresentante": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.IdentificacionRepresentanteLegal,
+  "Numeracion": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.ListaNumeracion.Numeracion,
+  "TipoMsg": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.TipoMsg,
+  "FechaCreacionMsg": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.FechaCreacionMsg,
+  "Emisor": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.CodigoOperador,
+  "Donante": null,
+  "SistemaOrigen": vars.inputPayload.RequestSolicitudPortacion.Header.System,
+  "RespuestaABD": vars.sisextSendMsgResp.receiveMessageResponse.receiveMessageReturn,
+  "CodigosRechazo": null,
+  "ListaNumeracionRechazada": null
+}&#93;&#93;></ee:set-payload>
+			</ee:message>
+		</ee:transform> [STUDIO] -->
+		<ee:transform doc:name="Portabilidad solicitudes" doc:id="90d2ea84-6da7-4b6a-b21a-7977f69ddb8f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "DireccionAbonado" : null,
+  "IdProceso": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+  "IdMensaje": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.IdentificadorMensaje,
+  "IdIntegracion": vars.inputPayload.RequestSolicitudPortacion.Header.IdIntegracion,
+  "NumeroRepresentante": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.IdentificacionRepresentanteLegal,
+  "Numeracion": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CuerpoMensaje.SolicitudPortacion.ListaNumeracion.Numeracion map Numero: $,
+  "TipoMensaje": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.TipoMsg,
+  "FechaCreacionMsg": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.FechaCreacionMsg as LocalDateTime {format: "yyyyMMddHHmmss"} as DateTime >> "America/Bogota",
+  "Emisor": vars.inputPayload.RequestSolicitudPortacion.MensajeABD.CabeceraMensaje.CodigoOperador,
+  "Donante": "",
+  "Sistema_Origen": vars.inputPayload.RequestSolicitudPortacion.Header.System,
+  "RespuestaSolicitud": {
+    	"RespuestaABD": vars.sisextSendMsgResp.receiveMessageResponse.receiveMessageReturn,
+    	"NumeracionRechazada": []
+    }
+//  "ActualizacionExtractor": "1"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to mongo client" doc:id="2c288a35-fac5-4436-a4d8-2b542096dcab" name="post-portabilityProcess-client" />
+	</sub-flow>
+</mule>

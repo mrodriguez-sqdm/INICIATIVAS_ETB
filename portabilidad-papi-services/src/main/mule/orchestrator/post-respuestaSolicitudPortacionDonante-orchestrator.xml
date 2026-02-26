@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-respuestaSolicitudPortacionDonante-orchestratorSub_Flow" doc:id="80d2f0d4-f928-44d2-8678-85f9b15fbfc2" >
+		<async doc:name="Async" doc:id="657d9d9f-a44f-425f-a85b-3047bc251268">
+			<flow-ref doc:name="Call logger before" doc:id="7f8fd92e-309f-49e6-bd6b-26f394c29c32" name="Call-logger" />
+		</async>
+		<flow-ref doc:name="Obtain Id Message" doc:id="ce11d1f1-5464-40ed-8c5e-61fa7bc0f053" name="get-idMessage-client" target="idMessage" />
+		<ee:transform doc:name="Verify documents" doc:id="a894d77d-af48-4f41-944b-1e69a1aa7956" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="documentsManagement" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.RequestResSolPortDon.CuerpoMensaje.RespuestaSolicitudPortacionDonante.ListaNumeracionRechazada.NumeracionRechazada reduce ((item, accumulator=[]) -> 
+	accumulator << item.DocumentoFC 
+	<< item.DocumentoDC 
+	<< item.DocumentoFR 
+	<< item.DocumentoUO 
+	<< item.DocumentoLD 
+	<< item.DocumentoLS 
+	<< item.DocumentoNA 
+	<< item.DocumentoNI 
+	<< item.DocumentoLA
+) reduce ((item, accumulator=[]) -> if (isEmpty(item)) accumulator else accumulator << item)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="9a14d3c3-0fcc-4194-bddd-d3db8405707d" >
+			<when expression="#[!isEmpty(vars.documentsManagement)]">
+				<set-variable value="#[p('common-sapi.conf.defaultPathOn')]" doc:name="Default base path" doc:id="feff8afc-e0d8-46be-8d70-4d4bc736a6fc" variableName="defaultPath"/>
+				<foreach doc:name="For Each Document" doc:id="5efa5ad4-d962-4e13-b1c1-1726705cfa29" collection="#[vars.documentsManagement]">
+					<ee:transform doc:name="pathFile" doc:id="c11b7fc2-6b03-479b-a98d-d3000bbcc190" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="pathFile" ><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::URL
+---
+encodeURIComponent(payload)]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="Go to Obtain documents" doc:id="99e2327e-37f7-4ac1-a61c-f9c5c37724a8" name="get-fileByPath-client" />
+					<ee:transform doc:name="Join documents" doc:id="09023cba-17c3-4c0e-a725-a9a6936f0104" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="finalDocuments" ><![CDATA[%dw 2.0
+output application/json
+---
+(vars.finalDocuments default []) << {
+	fileName: payload.fileName,
+	fileContent: payload.fileContent
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</foreach>
+			</when>
+		</choice>
+		<ee:transform doc:name="Set Payload mensajeABD" doc:id="da93952f-7a1a-404e-9c61-e597a0ce2975">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cabecera = vars.inputBody.RequestResSolPortDon.CabeceraMensaje
+---
+{
+  "MensajeABD": {
+    "CabeceraMensaje": {
+      "IdentificadorProceso": cabecera.IdentificadorProceso,
+      "IdentificadorMensaje": vars.idMessage.consecutivo,
+      "FechaCreacionMsg": cabecera.FechaCreacionMsg,
+      "TipoMsg": cabecera.TipoMsg,
+      "Emisor": cabecera.Emisor,
+      "Observaciones": cabecera.Observaciones
+    },
+    "CuerpoMensaje": vars.inputBody.RequestResSolPortDon.CuerpoMensaje
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<try doc:name="Try" doc:id="e8a3d5fb-487e-4e82-86e4-212c6a4119fe" >
+			<flow-ref doc:name="Go to etb-mdm-sapi-services" doc:id="1cadba84-4d0c-4feb-9afc-4d9e4ce6578d" name="post-notifyPortability-client" target="notifyPortabilityResponse" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="732944cb-68a7-4570-ae41-af17abd44743" >
+					<set-variable value="#[error.muleMessage.typedValue default error.description]" doc:name="Set Variable" doc:id="e953f9b3-7657-4c4e-a545-bad90671353b" variableName="notifyPortabilityResponse"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="Set input mediafon" doc:id="6a345c98-fd6c-4526-b5ff-ae6314492989">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "body": payload,
+  "attachments": if (!isEmpty(vars.finalDocuments)) {
+  	parts: vars.finalDocuments reduce ((item, accumulator={}) -> 
+  		accumulator ++ {"$(item.fileName)": {content: item.fileContent}}
+  	)
+  } else null
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to sisext-sapi-services" doc:id="51825888-df47-4002-9ba1-ac4b8e9794aa" name="post-mediafon-sendMgs" target="sendMessageResponse"/>
+<!-- [STUDIO:"Set body PORTABILIDAD_PROCESO"]		<ee:transform doc:name="Set body PORTABILIDAD_PROCESO" doc:id="dbf92953-dcad-4255-9462-1dc5d877f537">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+{
+    "IdProceso": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.IdentificadorProceso,
+    "IdMensaje": vars.idMessage.consecutivo,
+    "IdIntegracion": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.IdentificadorProceso,
+    "NumeroRepresentante": null,
+    "Numeracion": null,
+    "TipoMsg": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.TipoMsg,
+    "FechaCreacionMsg": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.FechaCreacionMsg,
+    "Emisor": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.Emisor,
+    "Donante": null,
+    "SistemaOrigen": vars.headers.system,
+    "RespuestaABD": vars.inputBody.RequestResSolPortDon.CuerpoMensaje.RespuestaSolicitudPortacionDonante.RespuestaABD,
+    "ListaNumeracionRechazada": vars.inputBody.RequestResSolPortDon.CuerpoMensaje.RespuestaSolicitudPortacionDonante.ListaNumeracionRechazada,    
+    "CodigosRechazo": null
+  }&#93;&#93;></ee:set-payload>
+			</ee:message>
+		</ee:transform> [STUDIO] -->
+		<ee:transform doc:name="Set body PORTABILIDAD_SOLICITUDES" doc:id="97714657-1adf-426b-b794-5587b9ca08fe">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "DireccionAbonado" : null,
+    "IdProceso": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.IdentificadorProceso,
+    "IdMensaje": vars.idMessage.consecutivo,
+    "IdIntegracion": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.IdentificadorProceso,
+    "NumeroRepresentante": null,
+    "Numeracion": null,
+    "TipoMensaje": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.TipoMsg,
+    "FechaCreacionMsg": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.FechaCreacionMsg as LocalDateTime {format: "yyyyMMddHHmmss"} as DateTime >> "America/Bogota",
+    "Emisor": vars.inputBody.RequestResSolPortDon.CabeceraMensaje.Emisor,
+    "Donante": null,
+    "Sistema_Origen": vars.headers.system,
+    "RespuestaSolicitud": vars.inputBody.RequestResSolPortDon.CuerpoMensaje.RespuestaSolicitudPortacionDonante.RespuestaABD
+//    "ActualizacionExtractor": "1"
+  }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to mongo-sapi-services" doc:id="94ea64a1-761c-49aa-8c90-48b3ab703e7b" name="post-portabilityProcess-client" target="portabilityResponse" />
+		<ee:transform doc:name="Map Output" doc:id="2fbd8da9-658f-4598-8a4e-4531be14e82f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "ResponseRespuestaSolicitudPortacionDonante": vars.sendMessageResponse
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="da639ae0-b1e3-4379-82c5-27efd1b9bb96" >
+			<flow-ref doc:name="Call logger After" doc:id="51d476b0-0ca9-44b7-a336-4c9c2492cf9d" name="Call-logger" />
+		</async>
+	</sub-flow>
+</mule>

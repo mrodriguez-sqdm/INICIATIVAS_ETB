@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-solicitudNip-orchestratorSub_Flow" doc:id="0ffd24a3-c60a-47a3-93b3-0051b669b832" >
+		<async doc:name="Async" doc:id="9a19093e-c217-426a-ab88-df7148e1af6f">
+			<flow-ref doc:name="Call logger before" doc:id="94ddc357-d088-4497-abfc-6689e7a8129e" name="Call-logger" />
+		</async>
+		<flow-ref doc:name="Notify MDM" doc:id="82f5ce6b-5340-436b-912d-b06e9a32d3d6" name="post-solicitudNIP-mdm-portability" target="notifyPortabilityMDMResp"/>
+		<flow-ref doc:name="Send message mediafon" doc:id="27a3b96c-c660-4ab4-b620-95f5c3109f07" name="post-solicitudNIP-sisext-sendMsg" target="sisextSendMsgResp"/>
+		<flow-ref doc:name="Portability process mongo" doc:id="22c4c710-4902-409b-a0c9-ee60dfe40d4c" name="post-solicitudNIP-mongo-portability-process"/>
+		<ee:transform doc:name="Set response" doc:id="2b372fc1-549f-4e9d-9ce3-7348740a221b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ResponseSolicitudNIP: vars.sisextSendMsgResp
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="ef8e6bc8-bc87-445a-968a-8dc78a238749" >
+			<flow-ref doc:name="Call logger after" doc:id="cf9bb097-4a1a-4b01-982b-bc6a6915f5b3" name="Call-logger" />
+		</async>
+	
+</sub-flow>
+	<sub-flow name="post-solicitudNIP-mdm-portability" doc:id="a430d924-61b6-485d-8398-3cbe2e487e50" >
+		<ee:transform doc:name="Set request body" doc:id="ad8fafe0-32b6-4109-a630-f806d33db8e3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "MensajeABD": {
+        "CabeceraMensaje": {
+            "IdentificadorProceso": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+            "IdentificadorMensaje": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.IdentificadorMensaje,
+            "FechaCreacionMsg": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.FechaCreacion,
+            "TipoMsg": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.TipoMensaje,
+            "Emisor": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.CodigoOperador,
+            "Observaciones": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.Observaciones
+        },
+        "CuerpoMensaje": {
+      		"SolicitudNIP": {
+      			"Donante": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.OperadorDonante,
+                  ("NumeroRepresentante": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.NumeroRepresentante) if (!isEmpty(payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.NumeroRepresentante)),
+                  "ListaNumeracion": {
+                      "Numero": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.ListaNumeracion.Numeracion
+                  }
+      		}
+      	} 
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to mdm client" doc:id="bfd5c602-2975-4013-9cea-72c1d173b2ac" name="post-notifyPortability-client" />
+	</sub-flow>
+	<sub-flow name="post-solicitudNIP-sisext-sendMsg" doc:id="6453c8f5-05a6-4ead-957a-cd2c4b55938e" >
+		<ee:transform doc:name="Set request body" doc:id="0188eb7c-07a8-47ee-a1bb-396ba72484dc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "body": {
+        "MensajeABD": {
+            "CabeceraMensaje": {
+                "IdentificadorProceso": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+                "IdentificadorMensaje": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.IdentificadorMensaje,
+                "FechaCreacionMsg": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.FechaCreacion,
+                "TipoMsg": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.TipoMensaje,
+                "Emisor": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.CodigoOperador,
+                "Observaciones": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.Observaciones
+            },
+            "CuerpoMensaje": {
+                "SolicitudNIP": {
+                    "Donante": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.OperadorDonante,
+                    ("NumeroRepresentante": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.NumeroRepresentante) if (!isEmpty(payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.NumeroRepresentante)),
+                    "ListaNumeracion": {
+                        "Numero": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.ListaNumeracion.Numeracion
+                    }
+                }
+            } 
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to sisext client" doc:id="d08be472-924d-49b4-883f-893b6de4cae7" name="post-mediafon-sendMgs" />
+	</sub-flow>
+	<sub-flow name="post-solicitudNIP-mongo-portability-process" doc:id="b714d711-862a-44c5-bcfe-7bbedabf00a2" >
+<!-- [STUDIO:"Set request body"]		<ee:transform doc:name="Set request body" doc:id="17b27377-983c-4940-8ac4-e5820b57298c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+{
+  "IdProceso": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+  "IdMensaje": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.IdentificadorMensaje,
+  "IdIntegracion": payload.RequestSolicitudNIP.Header.IdIntegracion,
+  "NumeroRepresentante": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.NumeroRepresentante,
+  "Numeracion": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.ListaNumeracion.Numeracion,
+  "TipoMsg": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.TipoMensaje,
+  "FechaCreacionMsg": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.FechaCreacion,
+  "Emisor": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.CodigoOperador,
+  "Donante": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.OperadorDonante,
+  "SistemaOrigen": payload.RequestSolicitudNIP.Header.System,
+  "RespuestaABD": vars.sisextSendMsgResp.receiveMessageResponse.receiveMessageReturn,
+  "ListaNumeracionRechazada": null,
+  "CodigosRechazo": null
+}&#93;&#93;></ee:set-payload>
+			</ee:message>
+		</ee:transform> [STUDIO] -->
+		<ee:transform doc:name="Portabilidad solicitudes" doc:id="2aca7913-c07e-4bbe-a85a-df482d1e5248">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "DireccionAbonado" : null,
+  "IdProceso": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+  "IdMensaje": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.IdentificadorMensaje,
+  "IdIntegracion": payload.RequestSolicitudNIP.Header.IdIntegracion,
+  "NumeroRepresentante": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.NumeroRepresentante,
+  "Numeracion": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.ListaNumeracion.Numeracion map Numero: $,
+  "TipoMensaje": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.TipoMensaje,
+  "FechaCreacionMsg": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.FechaCreacion as LocalDateTime {format: "yyyyMMddHHmmss"} as DateTime >> "America/Bogota",
+  "Emisor": payload.RequestSolicitudNIP.MensajeABD.CabeceraMensaje.CodigoOperador,
+  "Donante": payload.RequestSolicitudNIP.MensajeABD.CuerpoMensaje.SolicitudNIP.OperadorDonante,
+  "Sistema_Origen": payload.RequestSolicitudNIP.Header.System,
+  "RespuestaSolicitud": {
+    	"RespuestaABD": vars.sisextSendMsgResp.receiveMessageResponse.receiveMessageReturn,
+    	"NumeracionRechazada": []
+    }
+//  "ActualizacionExtractor": "1"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to mongo client" doc:id="94478615-1987-4a41-a70c-e5eeafab3bb5" name="post-portabilityProcess-client" />
+	</sub-flow>
+</mule>

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="asap-sapi-services-main">
+        <http:listener config-ref="asap-sapi-services-httpListenerConfig" path="/asap/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call capture log vars" doc:id="90e64a2d-6a16-45e0-a8a0-f4e3bdcdd453" name="processAndSystem-logginSub_Flow" />
+        <apikit:router config-ref="asap-sapi-services-config" />
+        <error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="asap-sapi-services-console">
+        <http:listener config-ref="asap-sapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="asap-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\publish:application\json:asap-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="4eac4650-03ed-4e6c-827a-e769766f227e" name="post-publishMessage-handlerSub_Flow" />
+    </flow>
+    <flow name="delete:\v1\sku:application\json:asap-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="25341711-19a4-4b59-9f30-94672f12110d" name="delete-sku-handlerSub_Flow"/>
+    </flow>
+    <flow name="delete:\v1\user:application\json:asap-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="47406078-d3ae-4a75-8af3-39834f49fa88" name="delete-user-handlerSub_Flow"/>
+    </flow>
+    <flow name="post:\v1\sku:application\json:asap-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="dad49e2b-0b3a-408a-9fb7-2ee56a727846" name="post-sku-handlerSub_Flow"/>
+    </flow>
+    <flow name="post:\v1\user:application\json:asap-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="569b456d-01fd-4cb9-8484-62c104023451" name="post-user-handlerSub_Flow"/>
+    </flow>
+</mule>

@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-dgo-orchestratorSub_Flow" doc:id="fb9a7976-e98c-4da2-8534-5398a45bbf71" >
+		<choice doc:name="Choice" doc:id="d1657090-e22d-4d06-acb1-5ef5f1c0861f">
+			<when expression='#[vars.inputPayload.action == "AccountRegistration"]'>
+				<flow-ref doc:name="Go to AccountRegistration" doc:id="4e214561-4eb2-4fc3-998f-c04a8b76add1" name="post-dgo-AccountRegistration-orchestratorSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set error response" doc:id="4d358d75-da36-41fe-ae67-7b46a03b0395" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "messageServer": "Invalid action",
+  "cause": [
+    {
+      "origin": "portabilidad-papi-services-" ++ p('env'),
+      "message": "org.mule.extension.http.api.exception.badRequestException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-dgo-get-record-document-type-number" doc:id="68ed1f5f-a892-4afb-b7b3-f000b62d9b19" >
+		<choice doc:name="type is orden?" doc:id="90bcf752-eaae-45ef-ae7c-a71f46d25aef" >
+			<when expression='#[vars.inputPayload."type" == "orden"]' >
+				<ee:transform doc:name="Set request" doc:id="0165b151-9f9b-472b-a4cc-ba3b1cca264d">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="order" ><![CDATA[vars.inputPayload.id]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<try doc:name="Try" doc:id="73354f2a-83eb-4ba0-8f48-45f71a80e1ae" >
+					<flow-ref doc:name="get order from MDM_CD_ORDEN" doc:id="7687c4f2-868e-4f50-af8c-d1f551c6d126" name="get-order-MDM_CD_ORDER-client" target="order" />
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="35af438a-bd31-4e60-b609-a8fe90b286bd" type="HTTP:NOT_FOUND">
+							<ee:transform doc:name="Set order = []" doc:id="5ef73956-732c-4233-96aa-6db379b1aeb0" >
+								<ee:message >
+								</ee:message>
+								<ee:variables >
+									<ee:set-variable variableName="order" ><![CDATA[[]]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<choice doc:name="MDM_CD_ORDEN response is empty?" doc:id="c8a89b33-a826-4077-929f-708d4a59e6fe">
+							<when expression="#[isEmpty(vars.order default [])]">
+						<ee:transform doc:name="Set request" doc:id="e0e52ff4-44ea-4c13-a503-226f783b63f6">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="order"><![CDATA[vars.inputPayload.id]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="get order from MDM_ORDEN" doc:id="4d6e8c22-4054-45cd-a66f-9205de985846" name="get-order-MDM_ORDER-client" target="order"/>
+						<ee:transform doc:name="Update data" doc:id="9aebf6dd-d9a3-4574-80a6-7c90b10c86b0" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload - "tipo_documento"
+        - "numero_documento"
+        - "db"
+        - "record"
+++
+{
+	tipo_documento: vars.order[0].Tipo_Documento,
+	numero_documento: vars.order[0].Numero_Identificacion,
+	db: "MDM_ORDEN",
+	record: vars.order
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables />
+						</ee:transform>
+							</when>
+					<otherwise >
+						<ee:transform doc:name="Update data" doc:id="a8c0d154-f01e-463a-a733-5eec22a35d85" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload - "tipo_documento"
+        - "numero_documento"
+        - "db"
+        - "record"
+++
+{
+	tipo_documento: vars.order[0].Cliente_Tramite.Tipo_Documento,
+	numero_documento: vars.order[0].Cliente_Tramite.Numero_Documento,
+	db: "MDM_CD_ORDEN",
+	record: vars.order
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+						</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set request" doc:id="c0730eb6-cfb1-4a3e-b160-7f81ddcc5bcc">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="service" ><![CDATA[vars.inputPayload.id]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<try doc:name="Try" doc:id="d86631b2-c268-4844-9030-42461f912783">
+					<flow-ref doc:name="get service from MDM_CD_SERVICIO" doc:id="be80480d-c8ed-4898-b701-84d6e3e7350c" name="get-service-MDM_CD_SERVICIO-client" target="service" />
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4c41fc5f-ab83-4359-b8b4-ffa50ccfdd95" type="HTTP:NOT_FOUND">
+							<ee:transform doc:name="Set service = []" doc:id="b3da5fff-6fa5-4a5b-8c1d-dc519b9f4e6c">
+								<ee:message />
+								<ee:variables>
+									<ee:set-variable variableName="service" ><![CDATA[[]]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<choice doc:name="MDM_CD_SERVICIO response is empty?" doc:id="0ce84208-d9c9-4ba0-b165-6d7e5bd112a9">
+					<when expression='#[isEmpty(vars.service default [])]'>
+						<ee:transform doc:name="Set request" doc:id="6cbfb765-5f2b-4728-a02a-c5dd899e8fd7">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="service"><![CDATA[vars.inputPayload.id]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="get service from MDM_SERVICIO_ACTIVO" doc:id="fb0ee09f-5fb2-4971-9782-7361f9cf3baf" name="get-service-MDM_SERVICIO_ACTIVO-client" target="service" />
+						<ee:transform doc:name="Update data" doc:id="f5452c60-4da5-4c34-ae02-a7b2b7506f47" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload - "tipo_documento"
+        - "numero_documento"
+        - "db"
+        - "record"
+++
+{
+	tipo_documento: vars.service[0].Tipo_Documento,
+	numero_documento: vars.service[0].Numero_Identificacion,
+	db: "MDM_SERVICIO_ACTIVO",
+	record: vars.service
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables />
+						</ee:transform>
+							</when>
+					<otherwise >
+						<ee:transform doc:name="Update data" doc:id="b6cf98df-bf33-43a3-b0ed-754aeff495f6">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload - "tipo_documento"
+        - "numero_documento"
+        - "db"
+        - "record"
+++
+{
+	tipo_documento: vars.service[0].Cliente.Tipo_Documento,
+	numero_documento: vars.service[0].Cliente.Numero_Documento,
+	db: "MDM_CD_SERVICIO",
+	record: vars.service
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables />
+						</ee:transform>
+					</otherwise>
+						</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-dgo-get-email-name-lastname" doc:id="bdf5b8ac-ec3f-4a36-99ca-2546d306c272" >
+		<ee:transform doc:name="Set request params" doc:id="0dfa0706-a2b6-4173-b82d-b2b1af0b8a66" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="tipo_documento" ><![CDATA[payload.tipo_documento]]></ee:set-variable>
+				<ee:set-variable variableName="numero_documento" ><![CDATA[payload.numero_documento]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Get user from PORTAL_UNIFICADO_USUARIO" doc:id="2741d258-d090-4feb-bb53-c6eb3df1e9f7" name="get-user-PORTAL_UNIFICADO_USUARIO" target="user" />
+		<flow-ref doc:name="Get client from MDM_CLIENTE" doc:id="6a6dc3ed-807d-4011-8d36-d2624e12e7e9" name="get-clients-MDM_CLIENTE" target="client" />
+		<ee:transform doc:name="Update data" doc:id="54985f15-a1f3-456c-b80c-f34338ab3055">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload - "email"
+        - "name"
+        - "lastname"
+        - "PORTAL_UNIFICADO_USUARIO"
+        - "MDM_CLIENTE"
+++
+{
+	email: if(!isEmpty(vars.user default []) and (vars.user[0].Estado == true and !isEmpty(vars.user[0].Mail))) vars.user[0].Mail else vars.client[0].Correo_Electronico,
+	name: ((vars.client[0].Nombres default "") splitBy  " ")[0],
+	lastname: vars.client[0].Primer_Apellido,
+	PORTAL_UNIFICADO_USUARIO: vars.user,
+	MDM_CLIENTE: vars.client
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-dgo-get-subscriber_id" doc:id="cffc43e0-4e8a-4f1b-88e1-a2d75bcc0dfa" >
+		<ee:transform doc:name="Get code" doc:id="c27f8695-8b5a-4958-b3e8-123c063a5e6a" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="code" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.tipo_documento == "CC") p('dgo.code.cc')
+else if(payload.tipo_documento == "CE") p('dgo.code.ce')
+else if(payload.tipo_documento == "PA") p('dgo.code.pa')
+else if(payload.tipo_documento == "NIT") p('dgo.code.nit')
+else if(payload.tipo_documento == "TI") p('dgo.code.ti')
+else p('sisext-sapi.dgo.code.rut')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Update data" doc:id="a52bfdd2-2df2-42b3-87a9-46725abb9f91" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/java
+---
+payload - "subscriber_id"
+++
+{
+	subscriber_id: vars.code ++ reverse(payload.numero_documento)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-dgo-get-urns" doc:id="4ba3d0c5-211d-4430-b66e-f9f423a35154">
+		<flow-ref doc:name="Get products from CMP_OFERTA_PRODUCTO" doc:id="9dc26009-add3-4deb-979d-ed272ea14462" name="get-dtv-products-CMP_OFERTA_PRODUCTO-client" target="products" />
+		<ee:transform doc:name="Update data" doc:id="6cf696b5-3988-4476-b1c0-a3c9f3aff818">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import functions::dgo
+output application/java
+---
+payload - "urns"
+++
+{
+	urns: functions::dgo::getUrns(vars.products, payload.db, payload.record, vars.inputPayload.isRollback default false)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-dgo-get-subscriber_prepare" doc:id="96191961-78cd-4cdd-8e54-2786a92cc29d" >
+		<ee:transform doc:name="Set request" doc:id="b20ec57e-a365-4da3-be4f-cd7f64a121cc" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="subscriber_id" ><![CDATA[payload.subscriber_id]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to get subscriber client" doc:id="846b131e-abad-45e9-bf7d-382fde9304c8" name="getSubscriberInfo-dgo-client"/>
+	</sub-flow>
+	<sub-flow name="post-dgo-patch-subscriber_prepare" doc:id="7b9d6cfd-ad91-4ab8-9de5-a17964b22a1c" >
+		<ee:transform doc:name="Set request" doc:id="a60045bf-46d5-41f4-886a-a0ff5d31ac47" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{ 
+    "name": payload.name,
+    "lastname": payload.lastname,
+    "username": payload.email
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="subscriber_id" ><![CDATA[payload.subscriber_id]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to edit subscriber client" doc:id="47d874ac-eb88-407f-b899-61f7f85f9820" name="editSubscriber-dgo-client" />
+	</sub-flow>
+	<sub-flow name="post-dgo-deactive-user_prepare" doc:id="eea75eff-2dbf-4a95-b562-982f7c087112" >
+		<ee:transform doc:name="Set request" doc:id="7636591d-30fc-4ed6-b2db-89cea3e7c328" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"urns": payload.subscriberDGO.urn
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="subscriber_id" ><![CDATA[payload.subscriber_id]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to deactive user client" doc:id="a265e028-070f-4fc5-a035-e6bf1de9ddd0" name="deactivateUser-dgo-client" />
+	</sub-flow>
+	<sub-flow name="post-dgo-add-urns_prepare" doc:id="987b7147-ec81-40c9-be4c-74bd2ede1af8" >
+		<ee:transform doc:name="Set request" doc:id="9b110275-1ec1-4958-b749-c115ca23b6c5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "urns": payload.urns
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="subscriber_id" ><![CDATA[payload.subscriber_id]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to add urns client" doc:id="70e6fa15-b67e-463e-9b9a-4fe41119693e" name="addURNs-dgo-client" />
+	</sub-flow>
+	<sub-flow name="post-dgo-post-account_prepare" doc:id="ec7b53ca-1f61-4f55-a54f-1e79b97f250b" >
+		<ee:transform doc:name="Set request" doc:id="c8d0026d-afbb-4a90-b576-62edefc5a9dd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "username": payload.email,
+  "subscriber_id": payload.subscriber_id,
+  "data": {
+    "name": payload.name,
+    "lastname": payload.lastname,
+  },
+  "urn": payload.urns,
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="subscriber_id" ><![CDATA[payload.subscriber_id]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to account registration client" doc:id="a0b3e333-767e-4395-9112-c9a29f8bbb5f" name="accountRegistration-dgo-client" />
+	</sub-flow>
+	<sub-flow name="post-dgo-get-params" doc:id="0e6750af-a102-4670-8cb2-fb09c7b9fe4b" >
+		<ee:transform doc:name="Set request params" doc:id="83afef7c-10ca-4deb-a141-6e1a18791ebc" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="typeParameter" ><![CDATA[p('dgo.typeParameter') default "PARAMETROS_MULESOFT_DTV"]]></ee:set-variable>
+				<ee:set-variable variableName="paramName" ><![CDATA[p('dgo.paramName') default "TRAMITE_SUSPENSION"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Get params from MDM_CD_PARAMETRO" doc:id="00a8b8f4-d286-484e-a0e7-9e89a9e31f92" name="get-parameters-by-typeParameter-client"/>
+		<ee:transform doc:name="Transform Message" doc:id="f7193f8d-0534-49f1-931a-c231fe22b963" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+(payload[0].Valores filter $.Nombre == vars.paramName).Codigo default []]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
