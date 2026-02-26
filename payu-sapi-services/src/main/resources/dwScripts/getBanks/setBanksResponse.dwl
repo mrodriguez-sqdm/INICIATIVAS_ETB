@@ -3,5 +3,5 @@ output application/json
 ---
 {
 	"status": "success",
-	"data": payload.banks filter ($.pseCode != "0")
+	"data": payload.banks
 }
