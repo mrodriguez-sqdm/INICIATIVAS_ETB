@@ -6,14 +6,15 @@ output application/json
 	"description": vars.payloadOri.description,
 	"single_use": Mule::p('wompi.fields.singleUse') == "true" default true,
 	"collect_shipping": Mule::p('wompi.fields.collectShipping') default false,
-	"amount_in_cents": (vars.payloadOri.amount * 100),
+	"amount_in_cents": (sum(vars.payloadOri.taxes.value) * 100),
 	"currency": vars.payloadOri.currency,
 	"reference": vars.payloadOri.reference,
 	"sku": vars.payloadOri.sku,
 	"expires_at": (vars.payloadOri.expiresAt) default (now() + |PT4H|) as String {
 		format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
 	},
-	"redirect_url": vars.payloadOri.redirectUrl default Mule::p('wompi.fields.redirectUrl'),
+	"redirect_url": vars.payloadOri.redirectUrl,
+	"image_url": vars.payloadori.imageUrl,
 	"active": true,
 	"customer_data": {
 		"customer_references": vars.payloadOri.customerData.customerReferences map (item, index) -> {
