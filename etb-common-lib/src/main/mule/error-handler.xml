@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+	<error-handler name="error-handlerError_Handler"
+		doc:id="eb152455-c21a-4f81-8033-f99e0f28a6c7">
+		<on-error-continue enableNotifications="true"
+			logException="true" doc:name="On Error Continue"
+			doc:id="613f3573-57eb-4e3e-adc4-d94059528d14">
+			<set-variable value="Error" doc:name="Set Log Level"
+				doc:id="772b0875-b4e7-4404-826f-493c63ffefcb"
+				variableName="logLevel" />
+				
+			<flow-ref doc:name="Capture error vars" 
+				doc:id="3795124e-546f-4de7-8318-415f017dbbe4" name="capture_error_variables" />
+			<choice doc:name="Check if error was analyzed" doc:id="fc4240fa-b85c-4322-a6da-935d61e249b3" >
+				<when expression="#[vars.isPayloadError]">
+					<ee:transform doc:name="Return handled error" doc:id="27019630-1743-428a-88d3-8b2a54e1cad0" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status:   error.errorMessage.payload.status,
+    code:     error.errorMessage.payload.code,
+    message:  error.errorMessage.payload.message,
+    messageServer: error.errorMessage.payload.messageServer,
+    cause: error.errorMessage.payload.cause <<
+        {
+            origin: p("app.name"),
+            message: vars.exceptionCause default ""
+        }
+}
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<ee:transform doc:name="httpStatus" doc:id="ad40153b-c06d-4b2a-93d2-eda0404bf010" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[error.errorMessage.payload.status]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				<logger level="INFO" doc:name="Print Error" doc:id="c97f910c-2ffb-4c8d-a3ec-4f84f0d6629f" message="#[payload]" />
+				</when>
+				<otherwise >
+					<flow-ref doc:name="Analise Error" doc:id="3cc9f5c6-f277-4ab2-b352-0e62d91286d6" name="analyse_error" />
+					<flow-ref doc:name="Make Error Response" doc:id="d5260797-9932-4ba3-b75a-c8310355bce9" name="make_error_response" />
+				</otherwise>
+			</choice>
+			<async doc:name="Async" doc:id="41e67a6f-2913-4d2c-83e5-a5efd5ccfe80" >
+				<flow-ref doc:name="Call logger" doc:id="f7387da6-1876-4baf-a7d2-4e276823f9fa" name="loggin-client-call"/>
+			</async>
+		
+</on-error-continue>
+	</error-handler>
+	<sub-flow name="analyse_error">
+		<!-- Errors raised by a custom policy do not include an exception object, 
+			so we must handle the exception object being null -->
+		
+
+		<choice doc:name="Do we have an exception object">
+			<when expression="#[vars.exceptionCause == null]">
+				<ee:transform doc:name="Transform Message"
+					doc:id="4cf89dc5-ad8b-425a-8af4-de0159f51dec">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<set-variable variableName="kind" value="UNKNOWN_ERROR"
+					doc:name="Variable" />
+
+			</when>
+			<otherwise>
+				<choice doc:name="Set response fields based on the exception">
+					<when
+						expression='#[vars.exceptionCause contains "java.net.UnknownHostException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="f5e9a5cd-12af-416f-9937-d0ab1b365a12">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="UnknownHostException" />
+
+					</when>
+
+
+
+					<when
+						expression='#[vars.exceptionCause contains "java.net.SocketTimeoutException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="5934ddcf-f6ce-4c71-9d99-6aec19b1f157">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="SocketTimeout" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "sun.security.provider.certpath.SunCertPathBuilderException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="8a6c29f3-4ee2-46eb-96fb-21dacaecdaf2">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="CertificatesException" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "java.util.concurrent.TimeoutException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="6f1345ad-76f0-4c5b-9dbe-6d5e6931e4e6">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="TimeoutException" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "java.nio.channels.UnresolvedAddressException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="1e68b025-5e52-46cc-96aa-637171f39293">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="UnresolvedAddress" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "java.net.ConnectException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="c102eea9-7ffb-43c7-a345-42afa6d483ce">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="ConnectException" />
+
+					</when>
+
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.api.exception.InvalidUriParameterException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="83ed3228-ee9c-4798-af26-9b4ac04cec50">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="InvalidUriParam" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.api.exception.BadRequestException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="5f91b691-2140-4a30-9aa3-c1d5d7d85563">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind" value="BAD_REQUEST"
+							doc:name="BadRequest" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.exception.NotFoundException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="d5206931-3105-4d67-b074-d611c553d86d">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="NotFound" />
+
+					</when>
+					<when
+						expression='#[(vars.exceptionCause contains "org.mule.module.apikit.exception.MethodNotAllowedException") or (vars.exceptionCause contains "org.mule.module.apikit.api.exception.MethodNotAllowedException")]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="9ec32628-f824-4dd4-bcec-728098c90d32">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[405]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="MethodNotAllowed" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.exception.NotAcceptableException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="a92eebe6-06c0-4805-bdf0-41f871caa502">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[406]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="NotAcceptable" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.exception.UnsupportedMediaTypeException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="66290bd4-8487-4e7f-9931-87f111b1e44e">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[415]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="UnsupportedMediaType" />
+
+					</when>
+					<when expression='#[vars.exceptionCause contains "org.mule.module.apikit.api.exception.InvalidQueryParameterException"]'>
+						<ee:transform doc:name="Transform Message" doc:id="0a9e1ec3-99c7-4dc9-91ce-ab76c6078b26" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable value="REQUEST_ERROR" doc:name="InvalidQueryParam" doc:id="33d75d0c-0c9f-4f56-b5a2-199cd5751ffc" variableName="kind" />
+					
+</when>
+					<when expression="#[vars.exceptionCause contains 'org.mule.module.apikit.api.exception.InvalidHeaderException']">
+						<ee:transform doc:name="Transform Message" doc:id="7e1189e7-4a3c-4bfd-9367-aa09c26e24aa">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable value="REQUEST_ERROR" doc:name="InvalidHeader" doc:id="1ee2a0e4-19b4-4b49-aefc-ec8e751664a6" variableName="kind" />
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Transform Message"
+							doc:id="55827691-d2b6-4b72-9216-0f35324a6fb2">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="messageServer"><![CDATA[%dw 2.0
+output application/java
+---
+error.errorMessage.payload]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<ee:transform doc:name="Transform Message"
+							doc:id="e0fcd962-c1e4-4cc4-a14f-b5f8ef4d0c01">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[error.errorMessage.attributes.statusCode default 500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="#[error.errorType.identifier]" doc:name="Default" />
+
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+		<ee:transform
+			doc:name="Copy_of_Record the message of the root exception"
+			doc:id="016dfeab-7ef1-4933-9458-eee326e3613d">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="exceptionMessage"><![CDATA[%dw 2.0
+output application/json
+---
+if(error.exception != null)
+	if ( error.description != null )
+		message: error.description 
+	else
+		message: ""
+else
+	message: "No root cause exception"
+]]></ee:set-variable>
+				<ee:set-variable variableName="messageFromServer"><![CDATA[%dw 2.0
+output application/java
+---
+error.description]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+
+	</sub-flow>
+	
+	<sub-flow name="capture_error_variables" doc:id="f394ae92-d7b6-41b6-8dc8-c971c9389023" >
+		<ee:transform
+			doc:name="Record the root cause exception message"
+			doc:id="776da722-5c64-45b0-a55c-ae2ec8f1cf89">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="exceptionCause"><![CDATA[%dw 2.0
+output application/java
+---
+error.exception.cause.class default error.cause.class
+	
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform
+			doc:name="Record the message of the root exception"
+			doc:id="49f65e51-ef61-486a-b695-5db3aa7cf697">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="exceptionMessage"><![CDATA[%dw 2.0
+output application/json
+---
+if(error.exception != null)
+	if ( error.description != null )
+		message: error.description 
+	else
+		message: ""
+else
+	message: "No root cause exception"
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Record check if error was handled" doc:id="73a68328-9fb0-4ea9-bd8f-73774ffc75c9">
+					<ee:message>
+					</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="isPayloadError"><![CDATA[%dw 2.0
+output application/java
+import * from dw::Runtime
+var test = try(() -> (
+    error.errorMessage.payload.status? and 
+    error.errorMessage.payload.code? and 
+    error.errorMessage.payload.message? and 
+    error.errorMessage.payload.messageServer? and 
+    error.errorMessage.payload.cause?
+))
+---
+(test.success and test.result)]]></ee:set-variable>
+			</ee:variables>
+				</ee:transform>
+	</sub-flow>
+	<sub-flow name="make_error_response" doc:id="e0eaa5be-2e66-4a5a-a98d-a235031348dd">
+		<set-payload value="#[{}]" doc:name="Set Payload" doc:id="a1d390df-0b93-4ddd-ada4-0d8309786078" />
+		<ee:transform doc:name="Transform Message" doc:id="c78f24a9-f7ec-4692-a5d4-1a0214fdbae6">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var test = try(() -> vars.messageFromServer.message? and vars.messageFromServer.code?)
+---
+if (test.success and test.result)
+vars.messageFromServer
+else {
+	"status": vars.httpStatus,
+	"code": vars.kind default "",
+	"message": vars.exceptionMessage default "",
+	"messageServer": vars.messageServer default "",
+	"cause": [
+		{
+			"origin": p('app.name'),
+			"message": vars.exceptionCause default ""
+		}
+	]	
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="9f5b0009-32e7-4a0b-9186-b9f85b426272" message='originPayload ="#[vars.originPayload]"' />
+		<logger level="INFO" doc:name="Print Error" doc:id="570c0eaa-ab47-4c95-9a08-8db5e44fc749" message="#[payload]" />
+	</sub-flow>
+
+
+</mule>
