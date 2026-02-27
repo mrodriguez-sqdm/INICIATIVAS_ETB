@@ -1,0 +1,602 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-provisioningAccount-orchestratorSub_Flow" doc:id="b59fe4aa-6f55-4629-b3d9-428632b6dbdf" >
+		<flow-ref doc:name="Get Order" doc:id="3bfd8a21-06ac-4cb1-8c77-02cfe7f2ac0d" name="obtain-order" target="responseById"/>
+		<set-variable value="#[vars.responseById.resultados[0].correlationId]" doc:name="correlationId" doc:id="92193fad-6a61-456d-a964-6ecf47498eea" variableName="correlationId"/>
+		<ee:transform doc:name="orderValidation" doc:id="5d01bcb1-04aa-4696-9f53-7c7fa715d7d8" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="orderValidation" ><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+var orden = vars.responseById.resultados[0]
+---
+if(upper(orden.tipoSolicitud) == "APROVISIONAMIENTO" and
+		 orden.estadoOrden.codigoEstado == "OR0030")
+         	orden.items.estadoItem.codigoEstado every ($ == "ITM90")
+else false]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[[]]" doc:name="Response" doc:id="d7d91756-7edf-4625-9bcc-4ec18ffe2282" variableName="response"/>
+		<choice doc:name="Verify requirements" doc:id="c9677975-d062-40ef-a5c2-402115bb5cec" >
+			<when expression='#[vars.orderValidation == true]'>
+				<ee:transform doc:name="StateOrder" doc:id="62760c80-8316-4058-a216-9ee4df9b5f91">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="codigoEstadoOrden" ><![CDATA["OR0040"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstadoOrden" ><![CDATA["EN_PROCESO_FACTURACION"]]></ee:set-variable>
+						<ee:set-variable variableName="observacionesOrden" ><![CDATA["EN_PROCESO_FACTURACION"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Order in OR0040-EN_PROCESO_FACTURACION" doc:id="26746594-97d3-44c1-9bf1-fd65175f917a" name="orderState"/>
+				<foreach doc:name="For Each" doc:id="8060995b-4f39-4f51-b5eb-13d95c2b6b7d" collection="#[vars.responseById.resultados[0].items]">
+					<set-variable value="#[payload.idItem]" doc:name="idItem" doc:id="38c66d43-d651-4f6a-bb70-cbb02868b949" variableName="idItem"/>
+					<ee:transform doc:name="Evaluate Cuenta Provisional" doc:id="26e76837-98f5-4d69-bae0-97b8ff37285f" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="ctaProvisional" ><![CDATA[%dw 2.0
+output application/json
+var matched = (vars.responseById.resultados[0].cuentasFacturacion filter ($.idCuentaFacturacion == payload.idCuentaFacturacion))[0]
+---
+if (matched != null)
+	matched.cuentaFacturacion contains ("CTA-")
+else "No es Provisional"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<choice doc:name="Is Provisional Account?" doc:id="bbda0ded-0bae-472e-9998-9dfdabfc1a6a" >
+						<when expression="#[vars.ctaProvisional == true]">
+							<set-variable value="#[payload.idCuentaFacturacion]" doc:name="idCuentaFacturacion" doc:id="979a6920-fab6-4e37-b4e0-7bb57602a900" variableName="idCuentaFacturacion"/>
+							<ee:transform doc:name="ITM100 INICIO-CREACION_CUENTA" doc:id="0212e8d9-1924-4df7-ace1-3ac786b5fa52" >
+								<ee:message >
+								</ee:message>
+								<ee:variables >
+									<ee:set-variable variableName="codigoEstado" ><![CDATA["ITM100"]]></ee:set-variable>
+									<ee:set-variable variableName="nombreEstado" ><![CDATA["INICIO-CREACION_CUENTA"]]></ee:set-variable>
+									<ee:set-variable variableName="observaciones" ><![CDATA["INICIO-CREACION_CUENTA"]]></ee:set-variable>
+								</ee:variables>
+							
+</ee:transform>
+							<flow-ref doc:name="Update ItemsStatus" doc:id="03a7003c-9b64-49a7-a4f0-ae49e4376aa2" name="stateManager"/>
+							<flow-ref doc:name="Insert in OR_CUENTAS_FACTURACION" doc:id="2a021f21-0c96-479c-8827-d6bc0384a9b5" name="processingProvisionalAccounts"/>
+						</when>
+						<otherwise >
+							<ee:transform doc:name="ITM160 OK-CREACION_CUENTA" doc:id="91ac7056-9b50-4057-8c12-6afa1668071e">
+								<ee:message />
+								<ee:variables>
+									<ee:set-variable variableName="codigoEstado"><![CDATA["ITM160"]]></ee:set-variable>
+									<ee:set-variable variableName="nombreEstado"><![CDATA["OK-CREACION_CUENTA"]]></ee:set-variable>
+									<ee:set-variable variableName="observaciones"><![CDATA["OK-CREACION_CUENTA"]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+							<flow-ref doc:name="Update ItemsStatus" doc:id="cab63a75-211f-413d-b236-b24fe8e9285f" name="stateManager" target="updateResult"/>
+							<try doc:name="Try" doc:id="57f070e8-a775-4a54-9e3f-5ce0bd0ef45c" >
+								<ee:transform doc:name="Payload" doc:id="593b16ea-3f16-4634-a8a2-f7a75c40408d" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::util::Values
+var actualItem = vars.InputBody.items filter($.idItem == vars.idItem)
+output application/json
+---
+vars.InputBody update "items" with actualItem]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<http:request method="POST" doc:name="Go to billing-products (continue with billing flow)" doc:id="8c4fead4-5770-4d1a-a063-ff101f742061" config-ref="HTTP_Request_configuration_billing_products" path="${billing-products.path}">
+								<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.source,
+	"name" : attributes.headers.name,
+	"X-CORRELATION-ID" : vars.correlationId default correlationId,
+	"client_secret" : p('billing-products.client_secret'),
+	"systemId" : vars.systemId,
+	"client_id" : p('billing-products.client_id')
+}]]]></http:headers>
+							</http:request>
+								<ee:transform doc:name="Result Actual Iteration" doc:id="0c439477-2c11-4ae6-8758-a32a52612730">
+								<ee:message>
+								</ee:message>
+								<ee:variables>
+										<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.response + 
+{
+  resultado: "Positivo"
+}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+								<error-handler >
+									<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="cd1cf61e-57d2-4689-bc0c-d06b61608bbd" >
+										<ee:transform doc:name="NegativeResult" doc:id="5c469cd8-b436-45fb-ac3f-7c959085f44c" >
+											<ee:message >
+											</ee:message>
+											<ee:variables >
+												<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.response + 
+{
+  resultado: "Negativo"
+}]]></ee:set-variable>
+											</ee:variables>
+										</ee:transform>
+									</on-error-continue>
+								</error-handler>
+							</try>
+						</otherwise>
+					</choice>
+				</foreach>
+				<ee:transform doc:name="Output" doc:id="c9348ac3-8409-4f4c-bd96-f84456258be2">
+						<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Arrays
+---
+{
+  ordenOM: vars.ordenOM,
+  agrupador: vars.responseById.resultados[0].agrupador,
+  resultado: if (vars.response every ($.resultado == "Positivo") == true ) "Positivo" else "Negativo",
+  fecha: now() >> "America/Bogota",
+  descripcion: ""
+}]]></ee:set-payload>
+						</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+---
+if (vars.response every ($.resultado == "Positivo") == true) 200 else 500]]></ee:set-variable>
+					</ee:variables>
+					</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error Output" doc:id="e8731d65-e7f3-43a5-8b1d-9b40c92dc552" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ordenOM: vars.ordenOM,
+	agrupador: vars.responseById.resultados[0].agrupador,
+	resultado: "Negativo",
+	fecha: now(),
+	descripcion: "La orden " ++ vars.ordenOM  ++ " no cumple con los requisitos."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="processingProvisionalAccounts" doc:id="f6ce1cba-ae96-472c-a5ca-8e3698be6176" >
+		<flow-ref doc:name="Get Account By IdCta" doc:id="9f691736-05e7-432a-94eb-21f0686f246e" name="getBillingAccountByIdCuenta" target="billingAccount"/>
+		<choice doc:name="If Account already exists" doc:id="d3f8e7c6-9da4-4083-9dac-63dac88f237b" >
+			<when expression='#[vars.billingAccount.resultado == "Negativo"]'>
+				<ee:transform doc:name="orderBody" doc:id="4b67d3fe-f41d-4d77-91a8-f17202ad4f2a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "ordenOM" : [vars.ordenOM],
+    "fechaCreacion" : (vars.responseById.resultados[0].items filter ($.idItem == vars.idItem))[0].fechaInicioFacturacion as DateTime{format: "yyyy-MM-dd'T'HH:mm:ss.sZ"} as String {format: "dd-MM-yyyy"} default "",
+    "idCuentaFacturacion" : vars.idCuentaFacturacion,
+    "cuentaFacturacion" : null,
+    "cicloFacturacion" : null,
+    "corte" : null,
+    "estado" : "Inicial",
+    "fechaEstado" : now()
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Insert Account in OR_CTA_FACT" doc:id="9e13712c-17aa-4f8f-8cd8-55beff0ce978" name="insertBillingAccount"/>
+				<flow-ref doc:name="Create Account in Revchain" doc:id="14dcb9a3-3850-4d93-a015-47a5b4b711db" name="createAccountRevchain" />
+			</when>
+			<otherwise >
+				<choice doc:name="If estado == 'CREADA'" doc:id="38b8ab89-b6ae-4eae-8645-69a77005c4f7" >
+					<when expression='#[upper(vars.billingAccount.resultados[0].estado) == "CREADA"]'>
+						<ee:transform doc:name="Update Fields" doc:id="1c378ee6-31c0-409b-8b33-9680febdfed0" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::util::Values
+import mergeWith from dw::core::Objects
+output application/json
+---
+vars.responseById.resultados[0] update "cuentasFacturacion" with ($ map (o, i) -> 
+	if (o.idCuentaFacturacion == vars.idCuentaFacturacion) o mergeWith {
+    ("cuentaFacturacion": vars.billingAccount.resultados[0].cuentaFacturacion) if (!isEmpty(vars.billingAccount.resultados[0].cuentaFacturacion)),
+    ("cicloFacturacion": vars.billingAccount.resultados[0].cicloFacturacion) if (!isEmpty(vars.billingAccount.resultados[0].cicloFacturacion)),
+    ("diaFacturacion": vars.billingAccount.resultados[0].diaFacturacion) if (!isEmpty(vars.billingAccount.resultados[0].diaFacturacion)),
+    ("fechaCreacion": vars.billingAccount.resultados[0].fechaCreacion as String {format: "dd-MM-yyyy"}) if (!isEmpty(vars.billingAccount.resultados[0].fechaCreacion))
+} else o)]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Update Order OM" doc:id="1cdea1ae-4ccf-41bc-a292-78bee1371f47" name="update-order" />
+						<ee:transform doc:name="ITM160 OK-CREACION_CUENTA" doc:id="76e01441-689b-4d83-a453-5a35cc7efc63">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="codigoEstado"><![CDATA["ITM160"]]></ee:set-variable>
+								<ee:set-variable variableName="nombreEstado"><![CDATA["OK-CREACION_CUENTA"]]></ee:set-variable>
+								<ee:set-variable variableName="observaciones"><![CDATA["OK-CREACION_CUENTA"]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Update ItemsStatus" doc:id="f2d04f1d-8975-4bda-a9a0-a4445a9696fd" name="stateManager" />
+						<try doc:name="Try" doc:id="a601d0f3-1aca-46d4-b80c-d16377912f92" >
+							<ee:transform doc:name="Payload" doc:id="a985780f-2300-4bbc-ab70-e993bac53086" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::util::Values
+var actualItem = vars.InputBody.items filter($.idItem == vars.idItem)
+output application/json
+---
+vars.InputBody update "items" with actualItem]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<http:request method="POST" doc:name="Go to billing-products (continue with billing flow)" doc:id="81716b53-5e41-4670-ad82-8e8cab2e7c74" config-ref="HTTP_Request_configuration_billing_products" path="${billing-products.path}" >
+								<http:headers ><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.source,
+	"name" : attributes.headers.name,
+	"X-CORRELATION-ID" : vars.correlationId default correlationId,
+	"client_secret" : p('billing-products.client_secret'),
+	"systemId" : vars.systemId,
+	"client_id" : p('billing-products.client_id')
+}]]]></http:headers>
+							</http:request>
+							<ee:transform doc:name="Result Actual Iteration" doc:id="f68ddd23-e118-40ed-a702-2c80661fa734" >
+								<ee:message />
+								<ee:variables >
+									<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.response + 
+{
+  resultado: "Positivo"
+}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e42ea46f-a06c-4c77-9824-94015f00cbc6" >
+									<ee:transform doc:name="NegativeResult" doc:id="9aac8d40-7e9b-4a44-b2e5-3c6d9bf4308e" >
+										<ee:message />
+										<ee:variables >
+											<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.response + 
+{
+  resultado: "Negativo"
+}]]></ee:set-variable>
+										</ee:variables>
+									</ee:transform>
+								</on-error-continue>
+							</error-handler>
+						</try>
+					</when>
+					<otherwise >
+						<ee:transform doc:name='Add "ordenOM"' doc:id="b2227af9-baeb-4eed-b1b1-7557f5cf0125" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+---
+vars.billingAccount.resultados[0] update ("ordenOM") with ($ + vars.ordenOM)]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Update cta fact" doc:id="4c304723-40f4-454a-9e8e-22a6c74852cb" name="updateBillingAccountById" />
+						<ee:transform doc:name='Update Status to "ITM120 -  OK-ENVIADA_CREACION_CUENTA_CRV"' doc:id="582ad303-f12c-4544-be5d-5b8901ad755e">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="codigoEstado"><![CDATA["ITM120"]]></ee:set-variable>
+				<ee:set-variable variableName="nombreEstado"><![CDATA["OK-ENVIADA_CREACION_CUENTA_CRV"]]></ee:set-variable>
+				<ee:set-variable variableName="observaciones"><![CDATA["OK-ENVIADA_CREACION_CUENTA_CRV"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+						<flow-ref doc:name="Update ItemsStatus" doc:id="2a41e2ec-7347-463d-8521-f43f4c47bcf5" name="stateManager" />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="createAccountRevchain" doc:id="48472c2b-00dc-45d0-9ead-585bb8b9fd5f" >
+		<flow-ref doc:name="Get Account By IdCta" doc:id="ecad8823-0e57-4db2-a5b3-eaba2d11e4b3" name="getBillingAccountByIdCuenta" target="billingAccount" />
+		<flow-ref doc:name="UpdateBillingCycle" doc:id="ffe757cd-c007-427d-9c0f-9430c10a8a2c" name="updateOrdersBillingCycles" target="cyclesUpdated"/>
+		<flow-ref doc:name="Get Order" doc:id="81c35f11-e6f6-41aa-8cea-7dcb760d849f" name="obtain-order" target="responseById" />
+		<ee:transform doc:name="Mapping - Account creation" doc:id="675948fc-968a-4661-a6e8-0d6b6d285013" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var item = (vars.responseById.resultados[0].items filter ($.idItem == vars.idItem))[0]
+var orden = vars.responseById.resultados[0]
+fun getAccount(idCuenta:String) = (vars.responseById.resultados[0].cuentasFacturacion filter ($.idCuentaFacturacion == idCuenta))[0]
+---
+{
+	sfilluminate: {
+        orden_comercial: item.idOrigen default '',
+		orden_om: vars.ordenOM default '',
+		operacion: p('compRevchain.createAccount'),
+		cuenta: {
+			cuenta_padre: getAccount(item.idCuentaFacturacion).cuentaPadreFacturacion default '',
+			business_unit: p('compRevchain.businessUnit'),
+			fecha_inicio: vars.billingAccount.resultados[0].fechaCreacion as Date {format: "dd-MM-yyyy"} as String {format: "dd/MM/yyy"} default '',
+			corte: getAccount(item.idCuentaFacturacion).diaFacturacion default '',
+			ciclo: getAccount(item.idCuentaFacturacion).cicloFacturacion default '',
+			periodo: p('compRevchain.periodo'),
+			term_type_name: p('compRevchain.termTypeName'),
+			nombres: orden.cliente.nombres default '',
+			apellidos: trim('$(payload.nombre default "") $(payload.apellido default "")'),
+			nombre_cuenta: getAccount(item.idCuentaFacturacion).nombreCuentaFacturacion default '',
+			facturable: getAccount(item.idCuentaFacturacion).billiable as String default '',
+			cod_ciudad: (orden.direcciones filter $['idDireccion'] == getAccount(item.idCuentaFacturacion).idDireccionFacturacion)[0].codigoMunicipio default '',
+			direccion:  (orden.direcciones filter $['idDireccion'] == getAccount(item.idCuentaFacturacion).idDireccionFacturacion)[0].direccionNormalizada default '',
+			pais: p('compRevchain.country'),
+			cod_departamento: (orden.direcciones filter $['idDireccion'] == orden.cuentasFacturacion[0].idDireccionFacturacion)[0].codigoDepartamento default '',
+			currency_code: p('compRevchain.currencyCode'),
+			tipo_doc: orden.cliente.tipoDocumento default '',
+			num_doc: orden.cliente.numeroDocumento default '',
+			dig_verificacion: orden.cliente.dv default '',
+			bill_or_statement: p('compRevchain.billOrStatement'),
+			invoice_delivery_name: getAccount(item.idCuentaFacturacion).tipoEntregaFactura default '',
+			invoice_format_name: getAccount(item.idCuentaFacturacion).tipoFactura default '',
+			invoice_format_class_name: p('compRevchain.invoiceFormatClassName'),
+			correo_electronico: getAccount(item.idCuentaFacturacion).correoElectronico default '',
+			uen : orden.cliente.uen default '',
+			segmento_uen: orden.cliente.segmento default '',
+			segmento: orden.cliente.subSegmento default '',
+			categoria: orden.cliente.valor default ''
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="esFacturable" ><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+---
+payload.items[0].propiedades some ($.codigo == p('compRevchain.attFacturacion') and $.valor == true)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to billing_accounts revchain-sapi-client" doc:id="d37d83a7-0d7f-4301-b0c7-1ebdf0de7d1f" name="post-billing_accounts-clientSub_Flow"/>
+		<choice doc:name="Is the result valid?" doc:id="803aef23-2e44-4849-ba1f-5011aa216d92" >
+			<when expression="#[%dw 2.0 output application/json ---&#10;(vars.revchainTimeout == null) and (payload.sfilluminate.resultado != null)]">
+				<ee:transform doc:name="State to Creacion" doc:id="2b28dd1d-97ff-4001-a878-820cbd00224e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"estado": "Creacion"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Update Prov Acc" doc:id="abc41904-ed30-4f35-97c2-660da464db78" name="updateBillingAccountById" />
+				<ee:transform doc:name='Update Status to "ITM120 -  OK-ENVIADA_CREACION_CUENTA_CRV"' doc:id="d7e9b1b6-9913-4445-9f6f-03988c00aff2" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="codigoEstado" ><![CDATA["ITM120"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado" ><![CDATA["OK-ENVIADA_CREACION_CUENTA_CRV"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones" ><![CDATA["OK-ENVIADA_CREACION_CUENTA_CRV"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Negative Result variable and setting Error state" doc:id="d83c85cb-e3eb-47fc-bd68-44b13432559e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"estado": "Error"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="negativeResult" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"estado": "Error"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Prov Acc" doc:id="14616dfe-6cf8-46e8-bbb7-f644bd972cc7" name="updateBillingAccountById" />
+				<ee:transform doc:name='Update Status to ITM111 - ERROR-INICIO-CREACION_CUENTA' doc:id="fa980fd4-9541-4cf1-9f46-1a663ffd9f59">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA["ITM111"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA["ERROR-INICIO-CREACION_CUENTA"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA["ERROR-INICIO-CREACION_CUENTA"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<async doc:name="Async" doc:id="cae4c692-6e33-4b67-8279-07665d1e3ea2" >
+					<ee:transform doc:name="Set Item Status SF ITM111" doc:id="b0c91101-59cb-48ae-979f-a86ab650d063" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="state" ><![CDATA["ERROR-INICIO-CREACION_CUENTA"]]></ee:set-variable>
+							<ee:set-variable variableName="context" ><![CDATA["Contexto Integrador OM: ITM111 ERROR-INICIO-CREACION_CUENTA"]]></ee:set-variable>
+							<ee:set-variable variableName="idOrigen" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseById.resultados[0].items.idOrigen[0]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="Update Provisioning state in SF" doc:id="d6313a94-c155-4249-aea8-4da9ab470677" name="updateProvisioningOrderState"/>
+				</async>
+			</otherwise>
+		</choice>
+		<flow-ref doc:name="Update State Items" doc:id="ac81441f-7b24-4c54-be06-cb6a382408e4" name="stateManager" />
+		<ee:transform doc:name="Result Actual Iteration" doc:id="47fe1068-debf-4559-87c1-c3e19478409a">
+			<ee:message>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.response + 
+{
+  resultado: if(vars.negativeResult == null) "Positivo" else "Negativo"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="stateManager" doc:id="a0cbdf1f-fa4a-4df7-a369-24e22920fd28">
+		<flow-ref doc:name="Get Order" doc:id="d6e9d350-3993-444f-b3fe-248ef51aafd8" name="obtain-order" target="responseById" />
+		<ee:transform doc:name="Map Items State" doc:id="b9b1cc45-6cbb-42d4-b747-5b21d4a8e7da">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+---
+vars.responseById.resultados[0] update "items" with 
+    ( $ map (o,i)-> if(o.idItem == vars.idItem) 
+                        (o update "estadoItem" with {
+                                                        "fecha": now(),
+                                                        "codigoEstado": vars.codigoEstado,
+                                                        "nombreEstado": vars.nombreEstado,
+                                                        "observaciones":vars.observaciones
+                                                    }) 
+					else o)]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Update Order OM" doc:id="b95ef735-caa0-457b-a819-6b8a4316b095" name="update-order" />
+	</sub-flow>
+	<sub-flow name="updateOrdersBillingCycles" doc:id="06f24437-4abe-40e4-8b1a-10a366283c31">
+		<flow-ref doc:name="Get Order" doc:id="1f0b6998-42aa-4fd9-b127-ae0f391925f4" name="obtain-order" target="responseById" />
+		<flow-ref doc:name="Get Parameters" doc:id="b19c6c03-e254-4c0e-a50a-52b0cca1a984" name="obtainParameters" target="responseParameters"/>
+		<ee:transform doc:name="Map Items State" doc:id="ab26eda8-e77c-4cb2-8226-992c13c8600a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import update from dw::util::Values
+//variables
+var validacionCliente = ((vars.responseParameters.resultados filter ($.Tipo == "CICLOS_FACTURACION"))[0].Valores filter ($.Codigo == vars.responseById.resultados[0].cliente.segmento))
+var currentItem = (vars.responseById.resultados[0].items filter ($.idItem == vars.idItem))[0]
+var currentBillingAccount = (vars.responseById.resultados[0].cuentasFacturacion filter ($.idCuentaFacturacion == (currentItem.idCuentaFacturacion)))[0]
+//validaciones
+var validacion1 = ((vars.responseParameters.resultados filter ($.Tipo == "CICLOS_FACTURACION"))[0].Valores filter ($.Codigo == "Demo"))[0].ValorComplemento
+var validacion2 = (validacionCliente filter ($.ValorBase == currentItem.productos.clase))[0].ValorComplemento
+var validacion3 = (validacionCliente filter ($.ValorBase == "" or $.ValorBase == null))[0].ValorComplemento
+var validacion4 = (validacionCliente filter ($.ValorBase == (currentItem.productos.clase ++ "-" ++ (currentBillingAccount.diaFacturacion default ""))))[0].ValorComplemento
+//funciones
+fun updateBillingCycle(str) = vars.responseById.resultados[0] update "cuentasFacturacion" with 
+    ($ map ((item, index) -> 
+        if (item.idCuentaFacturacion == currentItem.idCuentaFacturacion) 
+            if(item.cicloFacturacion?)item update "cicloFacturacion" with str 
+            else item ++ {"cicloFacturacion": str}
+        else item))
+---
+if (currentBillingAccount.demo == true and validacion1 != null)
+updateBillingCycle(validacion1)
+else if (validacion2 != null)
+    updateBillingCycle(validacion2)
+    else if (validacion3 != null)
+        updateBillingCycle(validacion3)
+        else if (validacion4 != null)
+            updateBillingCycle(validacion4)
+            else null
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="2fe0dd32-fce4-4bdc-9ada-64f5705a795e" >
+			<when expression="#[payload != null]">
+				<flow-ref doc:name="Update Order OM" doc:id="5267532b-50f4-4dca-8901-17bc26b79056" name="update-order" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="orderState" doc:id="0c9a6e01-b3e6-4b23-a48d-362b01f5316f" >
+		<ee:transform doc:name="Map Order State" doc:id="f605ec2e-b8f0-4d67-98d8-e055b2bdcd1d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+estadoOrden: {
+                "fecha": now(),
+                "codigoEstado": vars.codigoEstadoOrden,
+                "nombreEstado": vars.nombreEstadoOrden,
+                "observaciones": vars.observacionesOrden
+             }
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Update Order OM" doc:id="2490c726-ae49-47c5-8234-6b49ea4d492c" name="update-order" />
+	</sub-flow>
+	<sub-flow name="RetryManager" doc:id="40a3ee4c-886b-423a-8e80-c40b47b23543" >
+		<try doc:name="Try" doc:id="bf8fe370-b1e1-4479-953a-305d8801eea8" >
+			<until-successful maxRetries="#[p('retryManager.numberOfRetries')]" doc:name="Until Successful" doc:id="67719c28-34dc-4fe5-a7b8-5617f2ab5381" millisBetweenRetries="#[p('retryManager.timeBetween')]" >
+				<http:request method="POST" doc:name="Call revchain-sapi-client-billing_accounts" doc:id="f7828951-a7e2-4c20-954d-3a06bc0ffbc7" config-ref="HTTP_Request_configuration" path="${revchain.path.billingAccounts}">
+					<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID" : vars.correlationId default correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+				</http:request>
+				<choice doc:name="Choice" doc:id="d7594f57-f8b3-4586-8f7c-7540df16502f" >
+					<when expression='#[payload.sfilluminate.resultado != null]' >
+						<ee:transform doc:name="State to Creacion" doc:id="d37f4a2c-109f-499a-8eb0-efb42c8d7d3e">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"estado": "Creacion"
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Update cta fact" doc:id="a1c2c03d-49e2-4775-8dd5-e833986af972" name="updateBillingAccountById" />
+					</when>
+					<otherwise >
+						<raise-error doc:name="Raise error" doc:id="9689f11f-ed5a-4665-b035-d50748cf5b86" type="ERROR:GO-REQUEST" description="Error in go request" />
+					</otherwise>
+				</choice>
+			</until-successful>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="908bd3ae-896d-4644-804e-03e3800f5a28" >
+					<ee:transform doc:name="Audits Message" doc:id="8354a63d-f22a-46ce-914e-4dc2744f97b4" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+"Se alcanzo el número máximo de reintentos (" ++ p('retryManager.numberOfRetries') ++ ") para establecer la conexión con Revchain."]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<ee:transform doc:name="State to Error" doc:id="d533b639-2ef1-4025-aa66-fee55993888f" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"estado": "Error"
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="Update Prov Acc" doc:id="363722cf-ee25-4682-b6d3-f0db8c4bd44e" name="updateBillingAccountById" />
+					<ee:transform doc:name='Update Status to "ITM111 - ERROR-INICIO-CREACION_CUENTA"' doc:id="b893ff06-70cc-4602-be24-8812b65caaa2" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="codigoEstado" ><![CDATA["ITM111"]]></ee:set-variable>
+							<ee:set-variable variableName="nombreEstado" ><![CDATA["ERROR-INICIO-CREACION_CUENTA"]]></ee:set-variable>
+							<ee:set-variable variableName="observaciones" ><![CDATA["Se alcanzo el número máximo de reintentos (" ++ p('retryManager.numberOfRetries') ++ ") para establecer la conexión con Revchain."]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="NegativeState Items" doc:id="90446211-9cf6-4241-b331-5a928bbf40c3" name="stateManager" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

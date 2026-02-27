@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:xml-module="http://www.mulesoft.org/schema/mule/xml-module" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/xml-module http://www.mulesoft.org/schema/mule/xml-module/current/mule-xml-module.xsd">
+	<sub-flow name="get-MessageAbd-handlerSub_Flow" doc:id="14366f1f-b46a-45dd-be41-21722038b7c7" >
+		<ee:transform doc:name="Read xmlMsg" doc:id="9aeffbf9-274c-4e87-a116-1701f4978602" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Strings
+import * from dw::Runtime
+var msg = (try(() -> payload.body.receiveMessage.xmlMsg)).result
+
+---
+if (!isBlank(msg)) do{
+    var obj = replaceAll(replaceAll(replaceAll(msg, "&quot;", "\""), "&lt;", "<"), "&gt;", ">")
+    var readObj = try(() -> read(obj, "application/xml"))
+    ---
+    if (readObj.success)
+        {
+            parsed: true,
+            description: write(readObj.result, "application/xml")
+        }
+    else {
+        parsed: false,
+        description: {
+            "Fault": {
+                faultcode: "soap:Server",
+                faultstring: readObj.error.message
+            }
+        }
+    }
+}
+else {
+    parsed: false,
+    description: {
+            "Fault": {
+                faultcode: "soap:Server",
+                faultstring: "Missing required element 'xmlMg'"
+            }
+        }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="attachments" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.attachments]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="dd9a85bc-6be5-42a0-aba0-c39c0f6ad82f" >
+			<when expression="#[payload.parsed]">
+				<set-payload value="#[payload.description]" doc:name="Set Payload" doc:id="3781fb14-6d89-494d-9a0a-69a90fff4e9b" mimeType="application/xml"/>
+				<try doc:name="Try" doc:id="3cb0c1ab-1c28-4809-a696-eb9d66b2ec74">
+			<xml-module:validate-schema doc:name="Validate schema" doc:id="1941ef61-5063-40d3-8627-e4e1aff3679f" schemas="schemas\schemaABDColombiaVF5.xsd" >
+					</xml-module:validate-schema>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="ecd27acd-1b3e-418f-9648-e2f5782c012e">
+					<set-variable value="#[error.muleMessage.payload[0].description]" doc:name="error var" doc:id="79ea32ba-dff0-4c92-9a41-300dc19b4925" variableName="errorDescription" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+				<async doc:name="Async" doc:id="ab9385d5-d135-419d-9238-d0e444eb351a" >
+					<flow-ref doc:name="Call logger" doc:id="9d6fe2ce-b19f-47f1-bb17-7d7125ef3931" name="loggin-client-call"/>
+				</async>
+				<choice doc:name="Choice" doc:id="2136671b-1ede-440a-af51-9193aa6a2a41">
+			<when expression="#[isEmpty(vars.errorDescription)]">
+				<ee:transform doc:name="Validate Input and save attachments" doc:id="3aec8a6c-8ba8-4526-af36-6842d1052821">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload  match {
+    case obj if obj.MensajeABD.CuerpoMensaje.RespuestaSolicitudNIP is Object -> //MAPEO RESPUESTA SOLICITUD NIP 0002
+{
+    "body": {
+        MensajeABD: {
+            CabeceraMensaje: obj.MensajeABD.CabeceraMensaje,
+            CuerpoMensaje: {
+                RespuestaSolicitudNIP: {
+                    RespuestaABD: obj.MensajeABD.CuerpoMensaje.RespuestaSolicitudNIP.RespuestaABD,
+                    (NumeracionRechazada: obj.MensajeABD.CuerpoMensaje.RespuestaSolicitudNIP.NumeracionRechazada.*NumeracionRechazada map ((item, index) -> {
+                        Numero: item.Numero,
+                        CodigosRechazo: {
+                        	CodigoRechazo: item.CodigosRechazo.*CodigoRechazo
+                        }
+                    })) if (!isEmpty(obj.MensajeABD.CuerpoMensaje.RespuestaSolicitudNIP.NumeracionRechazada))
+                }
+            }
+        }
+    },
+    "attachments": vars.attachments
+}
+    case obj if obj.MensajeABD.CuerpoMensaje.RespuestaSolicitudReenvioNIP is Object -> // MAPEO RESPUESTA REENVIO NIP 0004
+    { 
+        body: {
+          MensajeABD: {
+            CabeceraMensaje: obj.MensajeABD.CabeceraMensaje,
+            CuerpoMensaje: {
+		        "RespuestaSolicitudReenvioNIP": {
+                    "RespuestaABD": obj.MensajeABD.CuerpoMensaje.RespuestaSolicitudReenvioNIP.RespuestaABD,
+			        ("CodigosRechazo": {
+			            "CodigoRechazo": obj.MensajeABD.CuerpoMensaje.RespuestaSolicitudReenvioNIP.CodigosRechazo.*CodigoRechazo
+			        }) if (!isEmpty(obj.MensajeABD.CuerpoMensaje.RespuestaSolicitudReenvioNIP.CodigosRechazo))
+			    }
+		    }
+        }
+    }, 
+    attachments: vars.attachments
+}
+    case obj if obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion is Object -> //MAPEO REPLICA SOLICITUD PORTACION DONANTE 1002
+{ 
+    body: {
+	  "MensajeABD": {
+		"CabeceraMensaje": obj.MensajeABD.CabeceraMensaje,
+		"CuerpoMensaje": {
+		  "ReplicaSolicitudPortacion": {
+			"NombreRazonSocialAbonado": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.NombreRazonSocialAbonado,
+			"TipoDocumentoIdentificacion": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoDocumentoIdentificacion,
+			"DireccionAbonado": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DireccionAbonado,
+			"IdentificacionAbonado": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.IdentificacionAbonado,
+            ("FechaExpedicionIdentificacion": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.FechaExpedicionIdentificacion) if (!isEmpty(obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.FechaExpedicionIdentificacion)),
+			("TipoDocumentoIdentificacionRepresentanteLegal": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoDocumentoIdentificacionRepresentanteLegal) if(!isEmpty(obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoDocumentoIdentificacionRepresentanteLegal)),
+			("IdentificacionRepresentanteLegal": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.IdentificacionRepresentanteLegal) if(!isEmpty(obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.IdentificacionRepresentanteLegal)),
+			("FechaExpedicionIdentificacionRepresentanteLegal": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.FechaExpedicionIdentificacionRepresentanteLegal) if(!isEmpty(obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.FechaExpedicionIdentificacionRepresentanteLegal)),
+			"Donante": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.Donante,
+			"TipoUsuario": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoUsuario,
+			"TipoServicio": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoServicio,
+			"SolicitudTerceros": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.SolicitudTerceros,
+			"ListaNumeracionNip": {
+			  "NumeracionNip": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.ListaNumeracionNip.*NumeracionNip map ((item, index) -> {
+				"Numero": item.Numero,
+				"FechaCreacionNIP": item.FechaCreacionNIP
+			  }) 
+			},
+			"NRN": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.NRN,
+			("DocumentoID": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoID) if (!isEmpty(obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoID)),
+            ("DocumentoAT": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoAT) if(!isEmpty(obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoAT)),
+            ("DocumentoCC": obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoCC) if(!isEmpty(obj.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoCC))
+		  }
+		}
+	  }
+	},
+    attachments: vars.attachments
+}
+    case obj if obj.MensajeABD.CuerpoMensaje.ReplicaRespuestaSolicitudPortacionDonante is Object -> //MAPEO RESPUESTA SOLICITUD DONANTE
+{ 
+    body: {
+        MensajeABD: {
+            CabeceraMensaje: obj.MensajeABD.CabeceraMensaje,
+            CuerpoMensaje: {
+                ReplicaRespuestaSolicitudPortacionDonante: {
+                    RespuestaABD: obj.MensajeABD.CuerpoMensaje.ReplicaRespuestaSolicitudPortacionDonante.RespuestaABD,
+                    (ListaNumeracionRechazada: {
+                        NumeracionRechazada: obj.MensajeABD.CuerpoMensaje.ReplicaRespuestaSolicitudPortacionDonante.ListaNumeracionRechazada.*NumeracionRechazada map ((item, index) -> {
+                        Numero: item.Numero,
+                        CodigosRechazo: {
+                            CodigoRechazo: item.CodigosRechazo.*CodigoRechazo
+                        },
+                        (DocumentoFC: item.DocumentoFC) if (!isEmpty(item.DocumentoFC)),
+                        (DocumentoDC: item.DocumentoDC) if (!isEmpty(item.DocumentoDC)),
+                        (DocumentoFR: item.DocumentoFR) if (!isEmpty(item.DocumentoFR)),
+                        (DocumentoUO: item.DocumentoUO) if (!isEmpty(item.DocumentoUO)),
+                        (DocumentoLD: item.DocumentoLD) if (!isEmpty(item.DocumentoLD)),
+                        (DocumentoLS: item.DocumentoLS) if (!isEmpty(item.DocumentoLS)),
+                        (DocumentoNA: item.DocumentoNA) if (!isEmpty(item.DocumentoNA)),
+                        (DocumentoNI: item.DocumentoNI) if (!isEmpty(item.DocumentoNI)),
+                        (DocumentoLA: item.DocumentoLA) if (!isEmpty(item.DocumentoLA))
+
+                    })}) if (!isEmpty(obj.MensajeABD.CuerpoMensaje.ReplicaRespuestaSolicitudPortacionDonante.ListaNumeracionRechazada))
+                }
+            }
+        }
+    }, 
+    attachments: vars.attachments
+}
+    case obj if obj.MensajeABD.CuerpoMensaje.SolicitudDeProgramacionPortacion is Object -> { body: obj, attachments: vars.attachments} // 1005 !
+    case obj if obj.MensajeABD.CuerpoMensaje.ConfirmacionProgramacionPortacion is Object -> { body: obj, attachments: vars.attachments} // 1007 !
+    case obj if obj.MensajeABD.CuerpoMensaje.RespuestaSolicitudCancelacion is Object -> { body: obj, attachments: vars.attachments} // 2002 !
+    case obj if obj.MensajeABD.CuerpoMensaje.RechazoPortacion is Object -> // MAPEO RESPUESTA RECHAZO PORTACION 9999
+{ 
+    body: {
+        MensajeABD: {
+            CabeceraMensaje: obj.MensajeABD.CabeceraMensaje,
+            CuerpoMensaje: {
+		        "RechazoPortacion": {
+			        "NumeracionesRechazadas": {
+			            "NumeracionRechazada": obj.MensajeABD.CuerpoMensaje.RechazoPortacion.NumeracionesRechazadas.*NumeracionRechazada map ((item, index) -> {
+                            Numero: item.Numero,
+                            CodigosRechazo: {
+                                CodigoRechazo: item.CodigosRechazo.*CodigoRechazo
+                            }
+                        })
+			        }
+			    }
+		    }
+        }
+    },
+    attachments: vars.attachments
+}
+    case obj if obj.MensajeABD.CuerpoMensaje.ErrorDetectadoABD is Object -> // MAPEO RESPUESTA ERROR ABD 9998
+{ 
+    body: {
+        MensajeABD: {
+            CabeceraMensaje: obj.MensajeABD.CabeceraMensaje,
+            CuerpoMensaje: {
+		        "ErrorDetectadoABD": {
+			        "CodigosRechazo": {
+			            "CodigoRechazo": obj.MensajeABD.CuerpoMensaje.ErrorDetectadoABD.CodigosRechazo.*CodigoRechazo
+			        },
+			        "IdentificadorMensajeErroneo": obj.MensajeABD.CuerpoMensaje.ErrorDetectadoABD.IdentificadorMensajeErroneo
+			    }
+		    }
+        }
+    }, 
+    attachments: vars.attachments
+}
+    else -> {}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		</ee:transform>
+				<choice doc:name="Choice" doc:id="ca387f1e-4c77-4bcd-b064-be04e90c9430">
+			<when expression="#[!isEmpty(payload)]">
+				<flow-ref doc:name="Go to Orchestrator" doc:id="01fa196b-251d-4939-843e-f0e0de2c2051" name="get-messageAbd-orchestratorSub_Flow" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Output NACK" doc:id="fc9b569e-8e25-4c24-a7c5-d5ec4e7fdf87">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns por https://www.portabilidad.co/
+---
+{
+	por#receiveMessageResponse: {
+		por#receiveMessageReturn: "Not Implemented"
+	}
+}]]></ee:set-payload>
+					</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+							</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Output NACK" doc:id="e27d2801-0867-4beb-bf21-437e37ab6d53">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns por https://www.portabilidad.co/
+---
+{
+	por#receiveMessageResponse: {
+		por#receiveMessageReturn: vars.errorDescription
+	}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Parse ERROR" doc:id="df55d560-9d54-4bbb-997f-390132cc638c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+---
+payload.description]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

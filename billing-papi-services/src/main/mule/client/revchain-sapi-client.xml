@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-subscriber-client_Sub_Flow" doc:id="c6c32fec-9758-4c81-ac66-95207ab76800" >
+		<http:request method="POST" doc:name="Call revchain-sapi-client-subscriber" doc:id="0e97cc01-c81e-418b-a1aa-80e0bbae40df" path="${revchain.path.subscriber}" config-ref="HTTP_Request_configuration">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="post-cycles-client_SubFlow" doc:id="368cb509-b442-428e-8d32-281397bfadbc" >
+		<http:request method="POST" doc:name="Call revchain-cycles" doc:id="90f21fc8-8099-42b1-b3a2-4d4337930d04" config-ref="HTTP_Request_configuration" path="${revchain.path.cycle}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+		<set-variable value="#[payload.response]" doc:name="Set response revchain" doc:id="42db817a-bb23-489f-823d-57e8d4ba1d8d" variableName="responseRevchain" />
+	</sub-flow>
+	<sub-flow name="post-billing_accounts-clientSub_Flow" doc:id="586524f0-6de2-436a-ad58-f3381d94e9f3" >
+		<try doc:name="Try" doc:id="64c0adb9-594f-48f4-93ce-dd8e12913206" >
+			<http:request method="POST" doc:name="Call revchain-sapi-client-billing_accounts" doc:id="727f5270-867e-4533-ac75-f330755e7aee" config-ref="HTTP_Request_configuration" path="${revchain.path.billingAccounts}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="dec12c0d-e74d-4c6b-a2e8-a791c6f6dfa2" type="HTTP:TIMEOUT, HTTP:CONNECTIVITY">
+					<set-variable value='#["RevchainTimeout"]' doc:name="Timeout" doc:id="e1e6f847-d1ef-4377-8099-306b47c47f43" variableName="revchainTimeout"/>
+					<async doc:name="Async" doc:id="850258bf-56d1-4b97-b0d2-b9e2e7802afc" >
+						<flow-ref doc:name="Retry Manager" doc:id="bfdeeb0e-8f8b-4825-addd-d69249be794c" name="RetryManager"/>
+					</async>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-billing_operation-clientSub_Flow" doc:id="c29c92e7-c6ba-4748-9967-fb99e6ada87b" >
+		<http:request method="POST" doc:name="Call revchain-sapi-client-billing_operation" doc:id="8afdc31f-03c6-4b5f-b2bd-6ac91b9b3b12" config-ref="HTTP_Request_configuration" path="${revchain.path.billingOperation}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="billing_products-clientSub_Flow" doc:id="8298c8c4-712c-4c62-b4eb-6696b7e30c7c" >
+		<http:request method="POST" doc:name="Call revchain-sapi-client-billing_products" doc:id="2ee5bd7d-8b29-4faa-9947-993328b6c598" config-ref="HTTP_Request_configuration" path="${revchain.path.billingProducts}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="revchain-sapi-patch-numberAndPrice" doc:id="add50ecf-4c81-4a41-a22a-b03bff39a4b6" >
+		<http:request method="PATCH" doc:name="patch-numberAndPrice" doc:id="0c019c21-7eb1-44a8-8b77-03bbc67fc981" config-ref="HTTP_Request_configuration" path="${revchain.path.numberAndPrice}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			</http:request>
+	</sub-flow>
+	<sub-flow name="revchain-sapi-post-billingAdjustment" doc:id="b26f3899-8f17-47e9-b3a5-ba9b5a6a94b2" >
+		<http:request method="POST" doc:name="billing Adjustment" doc:id="9330a9d1-ab58-45ae-8ae3-e8bd991cffc9" config-ref="HTTP_Request_configuration" path="${revchain.path.billingAdjustment}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"systemId": vars.systemId,
+	"content-type": "application/json"
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="revchain-sapi-post-invokeServiceProvisioning" doc:id="c7e92f8b-3069-49fc-85a2-78a83eaab45f" >
+		<http:request method="POST" doc:name="Invoke Service Provisioning" doc:id="a8b80d1d-9b22-47d6-b9bf-e14adc6f50f0" config-ref="HTTP_Request_configuration" path="${revchain.path.invokeServiceProvisioning}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": vars.correlationId default correlationId,
+	"systemId": vars.systemId,
+	"content-type": "application/json"
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="patch-subscriber-client_Sub_Flow" doc:id="989d4c61-6361-4415-9ae7-5220dbcc13a9" >
+		<http:request method="PATCH" doc:name="Call revchain-sapi-client-subscriber" doc:id="66bf71f3-3e74-40a7-b691-95fd8ec47f35" config-ref="HTTP_Request_configuration" path="${revchain.path.subscriber}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="post-billing-conceptosFactura-clientSub_Flow" doc:id="5314bb4f-a702-4486-8bcc-481314301b09" >
+		<http:request method="GET" doc:name="Call revchain-sapi-client-billing-concepts" doc:id="75c037c8-397e-41d1-b8c7-8a3a5fcf1ab4" config-ref="HTTP_Request_configuration" path="${revchain.path.billingConcepts}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"cuentaFacturacion" : payload.WSRequestConceptosFactura.system.cuenta_facturacion,
+	"numeroConexion": payload.WSRequestConceptosFactura.system.numero_conexion,
+	"numeroFactura": payload.WSRequestConceptosFactura.system.numero_factura
+}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="post-billing-variacionFactura-clientSub_Flow" doc:id="c21ec60d-9998-4a2a-882c-1069dd02f674" >
+		<http:request method="GET" doc:name="Call revchain-sapi-client-billing-variations" doc:id="18a4e30c-74b7-485d-af4a-553393e39300" config-ref="HTTP_Request_configuration" path="${revchain.path.billingVariations}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"cuentaFacturacion" : payload.WSRequestVariacionFactura.params.cuenta_facturacion,
+	"numeroConexion": payload.WSRequestVariacionFactura.params.numero_conexion
+}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="post-billing-conceptosFactura-ctaSub_Flow" doc:id="f3280d59-3a1d-4a8e-8b91-7e01c563ff01" >
+		<until-successful maxRetries="5" doc:name="Until Successful" doc:id="bd73d234-cf67-4a64-a446-36ca08e2e497" >
+			<try doc:name="Try" doc:id="99e80713-fbe2-42ad-a469-8e0b25d95fe6" >
+				<http:request method="GET" doc:name="Call revchain-sapi-client-billing-concepts" doc:id="30ffde17-e18c-46ae-9868-5e0c53b1c834" config-ref="HTTP_Request_configuration" path="${revchain.path.billingConcepts}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('revchain.client_secret'),
+	"client_id" : p('revchain.client_id'),
+	"source": attributes.headers.source,
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"cuentaFacturacion" : vars.cuenta_facturacion
+}]]]></http:query-params>
+		</http:request>
+				<error-handler >
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="3050a756-5aef-49f4-9649-d830b4dfeaaa" >
+						<ee:transform doc:name="Transform Message" doc:id="2425c6c1-0194-40c1-8d3f-acbbef3f7a4c" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA["200"]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</until-successful>
+	</sub-flow>
+</mule>

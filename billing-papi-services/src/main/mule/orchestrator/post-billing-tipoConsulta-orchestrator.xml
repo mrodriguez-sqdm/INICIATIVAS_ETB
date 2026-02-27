@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-billing-tipoConsulta-orchestratorSub_Flow" doc:id="445cb61a-7fed-4aae-83c9-00d8deeff1e7" >
+		<choice doc:name="Choice" doc:id="89c22e60-fb87-4f3b-a0ee-7cc65d44c4b4" >
+			<when expression='#[vars.tipoConsulta == "ConceptosFactura"]'>
+				<set-variable value="#[[]]" doc:name="Set listaFacturas" doc:id="ebd593c3-649b-425f-a7a8-e625e1da4968" variableName="listaConceptoFacturas" />
+				<set-variable value="#[payload]" doc:name="Set originalPayload" doc:id="8175870b-bf43-4f66-a673-68b668e92daa" variableName="originalPayload" />
+				<flow-ref doc:name="Go to client" doc:id="bf994210-4c44-4f71-b9b2-e10eb4d791a0" name="get-billingAccountsByDocType" target="billingAcounsResponse" />
+				<choice doc:name="Choice" doc:id="93da8a6e-bc13-4861-bad6-0783d54911b6">
+					<when expression='#[vars.billingAcounsResponse.resultado == "Positivo"]'>
+						<foreach doc:name="For Each" doc:id="30fa5dad-341e-47a0-9ab2-e4e60fdc0bac" collection="#[vars.billingAcounsResponse.resultados]">
+					<set-variable value="#[payload.Cuenta_Facturacion]" doc:name="Set Cuenta_Facturacion" doc:id="2d1f637c-ae77-435b-abfa-ca56d4592593" variableName="cuenta_facturacion" />
+					<flow-ref doc:name="Go to client" doc:id="e6aad440-b423-4841-8512-9718d4db0098" name="post-billing-conceptosFactura-ctaSub_Flow" target="conceptos" />
+					<ee:transform doc:name="Set Conceptos Factura" doc:id="6a170723-3540-44b3-bff5-9615596202ac">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="listaConceptoFacturas"><![CDATA[%dw 2.0
+output application/json
+---
+vars.listaConceptoFacturas ++ (vars.conceptos)]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</foreach>
+					</when>
+				</choice>
+				<ee:transform doc:name="Set response OK" doc:id="1a20d742-f614-4e9b-967b-edac228eb2fc" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"WSResponseConceptosFactura": {
+		"response_code": {
+			"code": "200",
+			"description": "OK"
+		},
+		"conceptos_factura": {
+			"detail": vars.listaConceptoFacturas map ({
+                "cuenta_facturacion": $.CUENTA_FACTURACION,
+                "monto_detalle": $.MONTO_DETALLE,
+                "numero_factura": $.INV_ID,
+                "concepto_factura": $.CONCEPTO_FACTURA,
+                "fecha_ini": $.STRT_DT,
+                "fecha_fin": $.END_DT
+            })
+		}
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression='#[vars.tipoConsulta == "VariacionFactura"]' >
+				<flow-ref doc:name="Go to client" doc:id="cca622ff-ce85-4158-b9ad-514047edcbfd" name="post-billing-variacionFactura-clientSub_Flow" />
+				<ee:transform doc:name="Response OK" doc:id="04178006-1b9d-4a42-8613-a721126183c7" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"WSResponseVariacionFactura": {
+		"response_code": {
+			"code": "200",
+			"description": "OK"
+		},
+		"variacion_factura": {
+			"factura": payload map 
+            ({
+                "mensaje": $.MENSAJE,
+                "fecha_creacion": $.FECHA_CREACION
+            })
+		}
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error response" doc:id="251e06dd-819f-4400-a0c4-f1716efd5f94" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "500",
+	description: "El tipo de consulta no es válida"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

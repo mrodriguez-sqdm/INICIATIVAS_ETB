@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-referred-orchestrator" doc:id="2cbc2d89-7b75-4ac2-ae33-a22829c01aaa" >
+		<ee:transform doc:name="Set query params" doc:id="256f13b4-1a4f-4735-973b-6e63e6f058bd">
+			<ee:message>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="tipoDocumento" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.tipoDocumento]]></ee:set-variable>
+				<ee:set-variable variableName="numeroDocumento" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.numeroDocumento]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try" doc:id="872f509d-5a23-430f-9b31-682b84ce2460" >
+			<ee:transform doc:name="Set query params" doc:id="e11db16e-4079-4975-a76b-a1f7020b8dee">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="numeroIdentificacion"><![CDATA[%dw 2.0
+output application/java
+---
+payload.numeroDocumento]]></ee:set-variable>
+					<ee:set-variable variableName="tipoIdentificacion"><![CDATA[%dw 2.0
+output application/java
+---
+payload.tipoDocumento]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="Go to client" doc:id="a51c525e-1496-4fd2-ac07-83e6d719b3a7" name="get-mdm_client_mongo-clientSub_Flow" target="get_client_resp" />
+			<logger level="INFO" doc:name="Logger" doc:id="d2189088-669f-46f0-a0e9-c9911aecff3f" message="#[vars.get_client_resp]"/>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b143fb15-e08f-4e62-9b6c-3bb7f6b5b52b">
+					<ee:transform doc:name="Set error description and status code" doc:id="84f4429e-9620-45dc-bf93-8bda23c531ef" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+							<ee:set-variable variableName="errorDescription" ><![CDATA[%dw 2.0
+output application/java
+---
+"Data not found"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<raise-error doc:name="Raise error" doc:id="a5e2036f-1442-436c-a029-8ad91f3936f0" type="CUSTOM:NOT_FOUND" description="#[vars.errorDescription]" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice" doc:id="57a03ccf-5a45-4a19-9121-60025f08917b" >
+			<when expression="#[sizeOf(vars.get_client_resp[0].Referidos_Empleado filter&#10;  ((($.Tipo_Documento ++ $.Numero_Documento) == (payload.referido.tipoDocumentoReferido ++ payload.referido.numeroDocumentoReferido)))  default []) != 0]">
+				<ee:transform doc:name="Set response" doc:id="77f1f5a5-8a27-40d4-af45-96f19a6b6b16" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "Exitoso",
+	descripcion: "Referido ya existe"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+201]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set request to update" doc:id="4bb3bd51-6175-4283-96a5-7720b5c319fa">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Fecha_Actualizacion": 	now() >> "America/Bogota",
+	"Referidos_Empleado": (vars.get_client_resp[0].Referidos_Empleado default []) ++ [{
+  "Tipo_Documento": payload.referido.tipoDocumentoReferido,
+  "Numero_Documento": payload.referido.numeroDocumentoReferido,
+  "Nombres": payload.referido.nombreReferido,
+  "Primer_Apellido": payload.referido.primerApellidoReferido,
+  "Segundo_Apellido": payload.referido.segundoApellidoReferido,
+  "Telefono_Movil": payload.referido.movil,
+  "Email": payload.referido.email,
+  "Fecha_Registro": now() >> "America/Bogota"
+}]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="5db4b392-5334-4da6-8634-269ac819576e" message="#[payload]"/>
+				<flow-ref doc:name="Go to client" doc:id="23204f18-b7d8-4020-b2a9-7ba4cdbd5159" name="patch-client-client" />
+				<ee:transform doc:name="Set response" doc:id="27fbffff-f074-43c3-8287-f3c335969e5b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "Exitoso",
+	descripcion: "Se agregó el referido de forma exitosa"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+201]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="f6184c21-b0ec-4b50-b034-c8baa5e07bb4" message="#[payload]"/>
+	</sub-flow>
+</mule>

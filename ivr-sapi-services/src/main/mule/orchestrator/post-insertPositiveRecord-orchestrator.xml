@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-insertPositiveRecord-orchestratorSub_Flow" doc:id="5dbec77f-0261-4723-a134-276810f1d607" >
+		<ee:transform doc:name="Transform to Xml" doc:id="4804313f-bf70-43c9-9123-12858286e969" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import p from Mule
+output text/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns ns1 http://www.etb.com.co/NPlay/commons/Header/v1.0
+ns vmr VMRWebServiceETB
+---
+soapenv#Envelope @('xmlns:vmr' : vmr): {
+    soapenv#Header @('xmlns:ns1': ns1): {
+        'ns1:ID': vars.correlationID,
+        'ns1:Operation': p('imei.insertPositiveRecord.operation'),
+        'ns1:RequestSystem': p('imei.insertPositiveRecord.in.requestSystem'),
+        'ns1:Version': p('imei.insertPositiveRecord.version'),
+        'ns1:Type': p('imei.insertPositiveRecord.in.type'),
+        'ns1:ReqType': p('imei.insertPositiveRecord.reqType'),
+        'ns1:RequestDateTime': vars.requestDateTime
+    },
+    soapenv#Body: 
+        'vmr:RegistroPositivo':
+            payload..*RegistroPositivo map ((item, index) -> 
+                item mapObject ('vmr:$$' : $) 
+            )
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go client" doc:id="e8250036-66d3-4847-8f84-a09d2288c3ac" name="post-inserPositiveRecord-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="547bdf43-aeb9-46b2-b475-264c9c7babbf" >
+			<when expression="#[payload.Envelope.Body.RegistroPositivoResponse.RegistroPositivoResult != null]">
+				<set-variable value="201" doc:name="httpStatus 201" doc:id="ed07aa19-2ee5-4870-8731-576370892006" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform to Json" doc:id="4c7fd7ab-c748-4874-b9b1-7ceded0876a0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import p from Mule
+output application/json
+var out = payload.Envelope.Body.RegistroPositivoResponse.RegistroPositivoResult
+---
+{
+	"RegistroPositivoResponse": {
+		"Header":  {
+			"ID": vars.correlationID,
+			"Operation": p('imei.insertPositiveRecord.operation'),
+			"RequestSystem": p('imei.insertPositiveRecord.out.requestSystem'),
+			"Version": p('imei.insertPositiveRecord.version'),     
+			"Type": p('imei.insertPositiveRecord.out.type'), 
+			"ReqType": p('imei.insertPositiveRecord.reqType'),
+			"RequestDateTime": vars.requestDateTime,
+			"ResponseDateTime": now()   
+    	},
+		"Body": { 
+			"Code": "00",
+      		"Description": "OK",
+      		"RegistroPositivoResponse": {
+        		"RegistroPositivoResult": out
+      		}
+		}
+	}
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="httpStatus 500" doc:id="b12f23b1-f04b-4339-bedf-c5539f0dfa14" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform to Json" doc:id="d12eb6c8-1900-4e75-8fc0-0d0f5d25c356" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import p from Mule
+output application/json
+---
+{
+	"RegistroPositivoResponse": {
+		"Header":  {
+	      "ID": vars.correlationID,
+	      "Operation": p('imei.insertPositiveRecord.operation'),
+	      "RequestSystem": p('imei.insertPositiveRecord.out.requestSystem'),
+	      "Version": p('imei.insertPositiveRecord.version'),     
+	      "Type": p('imei.insertPositiveRecord.out.type'), 
+	      "ReqType": p('imei.insertPositiveRecord.reqType'),
+	      "RequestDateTime": vars.requestDateTime,
+	      "ResponseDateTime": now()   
+	    },
+		"Body": { 
+			"Code": "01",
+	      	"Description": "Error al invocar WS Registro Positivo VMR"
+		}		
+	}
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="salesOrder-encrypted-sendClient-decrypted-orchestratorSub_Flow" doc:id="6cc4ab5f-59de-4315-8c5d-a94dedac44f2">
+		<flow-ref doc:name="get azure secret" doc:id="e8ad391b-5668-4ca5-87b7-4eeb47644e3a" name="fetch-azureKeySecret" target="secret" />
+		<java:invoke-static method="AESEncrypter(java.lang.String,java.lang.String)" doc:name="get encrypted body and iv" doc:id="173f7f9a-290b-4a10-b6b5-3c4da2e4071a" class="com.etb.Encryption" target="encryptedRequest">
+			<java:args><![CDATA[#[{
+	text: vars.requestInfo,
+	secret: vars.secret.secret
+}]]]></java:args>
+		</java:invoke-static>
+		<try doc:name="Try" doc:id="30d02a01-2e2f-4fc4-a96d-e84c0c3657e4">
+			<flow-ref doc:name="Go to client" doc:id="02e641ee-1dee-4181-ad20-2b0e4ad958a7" name="post-encryptedData-clientSub_Flow" />
+			<choice doc:name="Choice" doc:id="70caaee6-94e2-4416-9389-4c41dbe43114">
+				<when expression="#[payload.WSResponseBody == null]">
+					<flow-ref doc:name="Flow Reference" doc:id="a6bef7ff-5819-4d69-9f77-1f15d7e91539" name="encrypted-noResponseSub_Flow" />
+				</when>
+				<when expression="(payload.WSResponseBody is String) and (vars.x_civ_response != null)">
+					<java:invoke-static method="AESDecrypter(java.lang.String,java.lang.String,java.lang.String)" doc:name="get decrypted body and iv" doc:id="211dc90f-7655-4a9d-a0e6-e1748a74b760" class="com.etb.Encryption" target="decryptedResponse">
+						<java:args><![CDATA[#[{
+	text: payload.WSResponseBody,
+	ivBase64: vars.x_civ_response,
+	secret: vars.secret.secret
+}]]]></java:args>
+					</java:invoke-static>
+					<flow-ref doc:name="Flow Reference" doc:id="5944429b-6215-4170-9735-2f490e71ec48" name="decrypted-ResponseSub_Flow" />
+				</when>
+				<otherwise>
+					<flow-ref doc:name="Flow Reference" doc:id="89b6503d-46e9-4eac-b860-d2523536270a" name="encrypted-noResponseSub_Flow" />
+
+				</otherwise>
+			
+</choice>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-simcards-orchestratorSub_Flow" doc:id="af90b85e-1089-43fb-b670-5c46b563877c" >
+		<set-variable value="#[attributes.headers]" doc:name="Set initial headers" doc:id="fc32fbac-765c-4e51-bb59-bc013fcf6267" variableName="headers" />
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    processname: "postSalesOrderSimcards"&#10;}]' doc:name="Set variables" doc:id="c1b497e0-10b2-4d5e-aa8f-524b73753c8e" variableName="variablesRequest" />
+		<set-variable value='#[%dw 2.0&#10;output text/plain&#10;---&#10;write({&#10;	"Audit": {&#10;		"Canal": vars.headers.name&#10;	},&#10;	"Billing_Address": payload.billingAddress,&#10;  	"Delivery_Address": {&#10;	    "Address": payload.deliveryAddress.address,&#10;	    "City": payload.deliveryAddress.city,&#10;	    "City_DANE": payload.deliveryAddress.cityDane,&#10;	    "Department": payload.deliveryAddress.department,&#10;	    "Department_DANE": payload.deliveryAddress.departmentDane,&#10;	    "District": payload.deliveryAddress.district&#10;  },&#10;	"Delivery_Type": payload.deliveryType,&#10;	"Delivery_Invoice_Type": payload.deliveryInvoiceType,&#10;	"Order_Number": payload.orderNumber&#10;},&#10;"application/json"&#10;)]' doc:name="Set request info" doc:id="d4938190-02e7-4c52-bc11-40ba22678896" variableName="requestInfo" />
+		<flow-ref doc:name="Flow Reference" doc:id="654d0453-8c09-4679-aa87-bc171215aec1" name="salesOrder-encrypted-sendClient-decrypted-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="post-payments-orchestratorSub_Flow" doc:id="4907d3be-4446-4430-a01c-c6e93cb9ecaa" >
+		<set-variable value="#[attributes.headers]" doc:name="Set initial headers" doc:id="4392347c-51bb-490e-b0e0-103c7a4c2c27" variableName="headers" />
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    processname: "postSalesOrderpayments"&#10;}]' doc:name="Set variables" doc:id="37868fb6-4050-4998-86dd-e7a3644be69a" variableName="variablesRequest" />
+		<set-variable value='#[%dw 2.0&#10;output text/plain&#10;---&#10;write({&#10;  Audit: {&#10;    Canal: vars.headers.name&#10;  },&#10;  Order_Number: payload.orderNumber,&#10;  Attributes: payload.attributes map (item) -&gt; {&#10;    Attribute: item.attribute,&#10;    Value: item.value&#10;  }&#10;},&#10;"application/json"&#10;)]' doc:name="Set request info" doc:id="5411898a-4627-4931-af78-ab92b18b8bca" variableName="requestInfo" />
+		<flow-ref doc:name="Flow Reference" doc:id="788d781b-11d4-4f5c-92f8-d7e587401400" name="salesOrder-encrypted-sendClient-decrypted-orchestratorSub_Flow" />
+	</sub-flow>
+	<sub-flow name="post-portabilitiesOperation-orchestratorSub_Flow" doc:id="f5e32d01-67ae-4cbf-8d3a-2b9e0c52d546" >
+		<set-variable value="#[attributes.headers]" doc:name="Set initial headers" doc:id="1c9126a5-a3ea-4569-8388-7781c65d7678" variableName="headers" />
+		<set-variable value="#[%dw 2.0&#10;output application/java&#10;var operation = attributes.uriParams.'operation'&#10;---&#10;{&#10;	operation: operation,&#10;    processname: &#10;        if (operation == &quot;request&quot;) &quot;postPortabilitiesOperationRequest&quot;&#10;        else &quot;postPortabilitiesOperationValidation&quot;&#10;}]" doc:name="Set variables" doc:id="12b149a4-3440-46a3-8da7-ab4740555f11" variableName="variablesRequest" />
+		<set-variable value='#[%dw 2.0&#10;output text/plain&#10;var operation = vars.variablesRequest.operation&#10;---&#10;write({&#10;	"Audit": {&#10;		"Canal": vars.headers.name&#10;	},&#10;	Date: payload.date,&#10;	NIP: payload.nip,&#10;	Num_Order: payload.numOrder,&#10;	Operator: payload.operator,&#10;	Operator_Code: payload.operatorCode,&#10;	Plan_Type: payload.planType,&#10;	Phone: payload.phone,&#10;	Resend: payload.resend,&#10;	Extended_Month: payload.extendedMonth&#10;},&#10;"application/json"&#10;)]' doc:name="Set pending request info" doc:id="b15c0b4b-9d35-45df-9514-69f104e064db" variableName="requestInfo" />
+		<flow-ref doc:name="Flow Reference" doc:id="85b73e5a-250a-4389-866d-2b7fc5219a62" name="salesOrder-encrypted-sendClient-decrypted-orchestratorSub_Flow" />
+	</sub-flow>
+	<sub-flow name="post-createOrder-orchestratorSub_Flow" doc:id="75eaf748-a875-46af-b7fe-3692f6a74e27" >
+		<set-variable value="#[attributes.headers]" doc:name="Set initial headers" doc:id="0e9cf76d-9a67-4fd0-bad1-e60d16a89e93" variableName="headers" />
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    processname: "execSaleOrderCreate"&#10;}]' doc:name="Set variables" doc:id="20d0bb3f-48b5-4d2e-94bf-0b1bda1a7c67" variableName="variablesRequest" />
+		<choice doc:name="Choice" doc:id="1057b7f7-fada-48e8-b002-ad3295056379" >
+			<when expression='#[payload.order.flow == "FIJA"]'>
+				<set-variable value='#[%dw 2.0&#10;output text/plain&#10;var operation = vars.variablesRequest.operation&#10;---&#10;write({&#10;	"Audit": {&#10;		"Canal": vars.headers.name&#10;	} filterObject ((value, key) -&gt; value != null),&#10;	"Customer": {&#10;		"Document_Number": payload.customer.documentNumber,&#10;		"Document_Type": payload.customer.documentType&#10;	} filterObject ((value, key) -&gt; value != null),&#10;	"Profiling": {&#10;		"Floors_House": payload.order.profiling.floors,&#10;		"Hobbies": payload.order.profiling.hobbies,&#10;		"Hours_Entertainment": payload.order.profiling.entertainmentTime,&#10;		"Hours_Study": payload.order.profiling.studyTime,&#10;		"Hours_Work": payload.order.profiling.workTime,&#10;		"House_Size": payload.order.profiling.sizeHome,&#10;		"Number_Of_Devices": payload.order.profiling.numberOfDevices&#10;	} filterObject ((value, key) -&gt; value != null),&#10;	"FTTx": {&#10;		"Address": payload.order.fttx.address,&#10;		"Cod_City": payload.order.fttx.cityCode,&#10;		"Cod_Departament": payload.order.fttx.departmentCode,&#10;		"Latitude": payload.order.fttx.latitude,&#10;		"Longitude": payload.order.fttx.longitude,&#10;		"Stratum": payload.order.fttx.stratum,&#10;		"Zone": payload.order.fttx.zone&#10;	} filterObject ((value, key) -&gt; value != null),&#10;	"Portability": payload.order.mobile.portability,&#10;	"Plan": payload.order.fttx.plan,&#10;	"Preactive_Sims": payload.order.mobile.preactiveSims,&#10;	"SVAs": payload.order.svas&#10;} filterObject ((value, key) -&gt; value != null),&#10;"application/json"&#10;)]' doc:name="Set create request info" doc:id="04ce88d0-af5b-4a77-96ba-e22792473a75" variableName="requestInfo" />
+			</when>
+			<when expression='#[payload.order.flow == "LTE"]'>
+				<set-variable value='#[%dw 2.0&#10;output text/plain&#10;var operation = vars.variablesRequest.operation&#10;---&#10;write({&#10;	"Audit": {&#10;		"Canal": vars.headers.name&#10;	} filterObject ((value, key) -&gt; value != null),&#10;&#10;	"Customer": {&#10;		"Document_Number": payload.customer.documentNumber,&#10;		"Document_Type": payload.customer.documentType&#10;	} filterObject ((value, key) -&gt; value != null),&#10;&#10;	"Plan": payload.order.lte.plan,&#10;	"Portability": payload.order.lte.Portability,&#10;	"Preactive_Sims": payload.order.lte.Preactive_Sims,&#10;	"SVAs": payload.order.lte.svas&#10;} filterObject ((value, key) -&gt; value != null),&#10;"application/json"&#10;)]' doc:name="Set create request info" doc:id="bd43fe69-b6ad-4940-be7c-f63ebc2d8663" variableName="requestInfo" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="4d89d5db-8782-4496-903a-0ff26d4e3cfe" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "INVALID_FIELD",
+  message: {
+    message: "The field 'flow' must be LTE or FTTH"
+  },
+  messageServer: "Validation error: unsupported value in field 'flow'. Expected [LTE, FTTH]."
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<flow-ref doc:name="Flow Reference" doc:id="ec5eb111-7f15-4c23-95c8-070cfd2f5bd7" name="salesOrder-encrypted-sendClient-decrypted-orchestratorSub_Flow" />
+	</sub-flow>
+
+</mule>

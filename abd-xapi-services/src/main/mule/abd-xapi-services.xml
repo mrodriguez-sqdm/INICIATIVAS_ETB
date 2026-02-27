@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:xml-module="http://www.mulesoft.org/schema/mule/xml-module" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:apikit-soap="http://www.mulesoft.org/schema/mule/apikit-soap"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit-soap http://www.mulesoft.org/schema/mule/apikit-soap/current/mule-apikit-soap.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/xml-module http://www.mulesoft.org/schema/mule/xml-module/current/mule-xml-module.xsd">
+	<flow name="abd-xapi-services-main" doc:id="a6e86790-3357-43d7-a288-2325b992d8df" >
+		<http:listener doc:name="Listener" doc:id="6654f86b-3b72-4b84-bcb2-678d82176b5d" path="/*" config-ref="HTTP_Listener_config">
+			<http:response statusCode="#[vars.httpStatus default 200]" />
+		</http:listener>
+		<ee:transform doc:name="SystemId and processname" doc:id="390e1393-1ed8-4d78-a8bb-6b0dbde3a271" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="systemId" ><![CDATA[%dw 2.0
+output application/java
+---
+"MIGRACION"]]></ee:set-variable>
+				<ee:set-variable variableName="processname" ><![CDATA[%dw 2.0
+output application/java
+---
+"Portabilidad"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="e931a127-97af-4380-8af1-9c442a430ee0">
+			<ee:transform doc:name="Map request log" doc:id="c51c8b6d-2d33-4efe-b546-265ba5155aaa" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw) as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="audits-client_log-audits-information" doc:id="c70c97bd-83a2-43a0-8884-0cf3e2a12f30" name="post_log_audits-sapi-clientSub_Flow" />
+		</async>
+		<try doc:name="Try" doc:id="b2e559e5-254f-4c45-a2dc-7b52dca7b668" >
+			<ee:transform doc:name="Input as string" doc:id="dad5bcf6-24d3-4b3f-8e13-3b99802d99b6" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="stringPayload" ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+---
+(substringBefore(((write(payload.^raw)) as String), " as Binary {base: \"64\"}") replace  "\"" with "") as Binary {base: "64"}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="Transform Content-Type" doc:id="10188046-f490-4524-8268-8b87811ac4fe">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output multipart/related boundary="Part_8798_679455190172806"
+import * from dw::core::Strings
+var boundary = substringAfterLast(substringBeforeLast(vars.stringPayload, "--"), "--")
+var transformedPayload = 
+vars.stringPayload replace  "Content-Type: FC" with "Content-Type: application/pdf"
+	 replace  "Content-Type: DC" with "Content-Type: application/pdf"
+	 replace  "Content-Type: FR" with "Content-Type: application/pdf" 
+	 replace  "Content-Type: UO" with "Content-Type: application/pdf" 
+	 replace  "Content-Type: LD" with "Content-Type: application/pdf" 
+	 replace  "Content-Type: LS" with "Content-Type: application/pdf" 
+	 replace  "Content-Type: NA" with "Content-Type: application/pdf" 
+	 replace  "Content-Type: NI" with "Content-Type: application/pdf" 
+	 replace  "Content-Type: LA" with "Content-Type: application/pdf" 
+	 replace  "Content-Type: ID" with "Content-Type: application/pdf" 
+	 replace  "Content-Type: AT" with "Content-Type: application/pdf" 
+	 replace  "Content-Type: CC" with "Content-Type: application/pdf"
+---
+read(transformedPayload, "multipart/related", {"boundary": boundary})]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<ee:transform doc:name="Update Attributes" doc:id="45997606-0128-41ff-a076-ec9c7f476f47">
+				<ee:message>
+					<ee:set-attributes ><![CDATA[%dw 2.0
+output application/java
+---
+attributes  update {
+    case .headers."content-type" -> "multipart/related; boundary=\"Part_8798_679455190172806\"; type=\"text/xml\"; start=\"part0\""
+}]]></ee:set-attributes>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="96088558-6145-4964-91fc-4fe908c27ff6" >
+					<set-payload value="#[payload]" doc:name="Set Payload" doc:id="27c96c18-6ff2-462e-8549-ba633dfbde79" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<apikit-soap:router doc:name="SOAP Router" doc:id="a74d960e-0e6d-4df8-aa9c-cd8d00e734d3" config-ref="APIKit_for_SOAP_Configuration">
+			<apikit-soap:attributes><![CDATA[#[attributes]]]></apikit-soap:attributes>
+		</apikit-soap:router>
+		<async doc:name="Async" doc:id="c0a2fb75-b81a-4e37-9aeb-77e8821a9314">
+			<flow-ref doc:name="Call logging" doc:id="ee27f389-0672-4503-add7-32455dbf6689" name="loggin-client-call"/>
+		</async>
+	</flow>
+<!-- [STUDIO:"WSGetMessageABD:\APIKit_for_SOAP_Configuration"]	<flow name="WSGetMessageABD:\APIKit_for_SOAP_Configuration" doc:id="e7e732be-f00e-44be-9462-fbf5ce022923" >
+		<try doc:name="Try" doc:id="8e0faa33-0580-4553-9d46-7f8b24fea52f" >
+			<xml-module:validate-schema doc:name="Validate schema" doc:id="45d346c1-d22f-4e09-bb05-a3f32132c06c" schemas="schemas\inputAbdMessage.xsd">
+			<xml-module:content><![CDATA[#[payload.body&#93;&#93;&#93;></xml-module:content>
+		</xml-module:validate-schema>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="541102e9-cdd4-48d3-a7dd-7a54c397a306" >
+					<ee:transform doc:name="BAD REQUEST" doc:id="d3f3e7a0-533c-471a-9a67-ed505b4f7e51" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+&#45;&#45;-
+400&#93;&#93;></ee:set-variable>
+							<ee:set-variable variableName="errorDescription" ><![CDATA[%dw 2.0
+output application/java
+&#45;&#45;-
+error.muleMessage.payload[0&#93;.description&#93;&#93;></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="Authentication" doc:id="88254060-5586-4e46-b5ef-48b88a2810d0">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="authenticated"><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+var user = payload.body.WSGetMessageABD.userId
+var pass = payload.body.WSGetMessageABD.password
+&#45;&#45;-
+toBase64(user ++ ":" ++ pass) == p('auth.basic')&#93;&#93;></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="d163a2d3-3b2e-4693-8d38-6460f6129031">
+			<when expression="#[vars.authenticated == true&#93;">
+				<logger level="INFO" doc:name="Logger" doc:id="5652842b-e71a-411f-8dc6-ece1dda336f1" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Unauthorized" doc:id="249d8939-0000-4493-ab13-24b5fdae6ee3">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+&#45;&#45;-
+{
+	"Fault": {
+		faultcode: "soap:Client",
+		faultstring: "Unauthorized. Username or password invalid"
+	}
+}&#93;&#93;></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+&#45;&#45;-
+401&#93;&#93;></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6f1cbbd0-2f71-4ac7-94c6-08973e82f692" type="XML-MODULE:SCHEMA_NOT_HONOURED" >
+				<ee:transform doc:name="Generic error" doc:id="fda1dde7-4d6c-401b-bfbf-d56bd60501cc" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+&#45;&#45;-
+{
+	soap#Envelope: {
+		soap#Body: {
+			Fault: {
+				faultcode: "soap:Server",
+				faultstring: vars.errorDescription default error.description
+			}
+		}
+	}
+}&#93;&#93;></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+&#45;&#45;-
+vars.httpStatus default 500&#93;&#93;></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-continue>
+		</error-handler>
+	</flow> [STUDIO] -->
+	<flow name="receiveMessage:\APIKit_for_SOAP_Configuration" doc:id="9dd175a9-3a7f-40d6-b6d6-b6ebf7e64eb2" >
+<!-- [STUDIO:"Try"]		<try doc:name="Try" doc:id="e790f56a-9f36-4e93-963e-05f3960d3cc3" >
+			<xml-module:validate-schema doc:name="Validate schema" doc:id="8a648a2f-5989-4bbe-9711-c7138e8b3cbd" schemas="schemas\inputAbdMessage.xsd">
+			<xml-module:content><![CDATA[#[payload.body&#93;&#93;&#93;></xml-module:content>
+		</xml-module:validate-schema>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="797e6e05-d0e6-401d-92ac-6c9100119a3b" >
+					<ee:transform doc:name="BAD REQUEST" doc:id="ae95b159-02df-4f39-857d-dfbe2532a500" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+&#45;&#45;-
+400&#93;&#93;></ee:set-variable>
+							<ee:set-variable variableName="errorDescription" ><![CDATA[%dw 2.0
+output application/java
+&#45;&#45;-
+error.muleMessage.payload[0&#93;.description&#93;&#93;></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-propagate>
+			</error-handler>
+		</try> [STUDIO] -->
+		<ee:transform doc:name="Authentication" doc:id="2dc92aea-664d-43b1-a1af-dd2c2e168b5e">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="authenticated"><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+import * from dw::Runtime
+var user = (try(() -> payload.body.receiveMessage.userId)).result
+var pass = (try(() -> payload.body.receiveMessage.password)).result
+---
+if (!isBlank(user))
+    if (!isBlank(pass))
+        if(toBase64(user ++ ":" ++ pass) == p('auth.basic'))
+            {
+                "authenticated": true,
+                "description": null
+            }
+        else 
+            {
+                "authenticated": false,
+                "description": {
+                    "Fault": {
+                        faultcode: "soap:Client",
+                        faultstring: "Unauthorized. Username or password invalid"
+                    }
+                }
+            }
+    else
+        {
+                "authenticated": false,
+                "description": {
+                    "Fault": {
+                        faultcode: "soap:Server",
+                        faultstring: "Missing required element 'password'"
+                    }
+                }
+            }
+else
+    {
+        "authenticated": false,
+        "description": {
+            "Fault": {
+                faultcode: "soap:Server",
+                faultstring: "Missing required element 'userId'"
+            }
+        }
+    }]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="3412c494-fa50-481e-bf5b-4c6fa04802ee" >
+			<when expression="#[vars.authenticated.authenticated == true]" >
+				<flow-ref doc:name="Go to Handler" doc:id="15670410-ce58-4698-89d3-7f42bdbd0b9c" name="get-MessageAbd-handlerSub_Flow" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Unauthorized" doc:id="f39e3adb-e14c-4f34-819c-a1dddef9618f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+---
+vars.authenticated.description]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+401]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="a81e4345-c882-4729-bcc7-b5a7ed2fca3d" type="XML-MODULE:SCHEMA_NOT_HONOURED" >
+				<ee:transform doc:name="Generic error" doc:id="d08c88fa-13c1-4e6d-a6d4-e3e70d10e3f9" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+---
+{
+	soap#Envelope: {
+		soap#Body: {
+			Fault: {
+				faultcode: "soap:Server",
+				faultstring: vars.errorDescription default error.description
+			}
+		}
+	}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.httpStatus default 500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>

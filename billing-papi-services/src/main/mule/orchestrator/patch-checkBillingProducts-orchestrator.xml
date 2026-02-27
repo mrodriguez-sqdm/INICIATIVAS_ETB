@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-checkBillingProducts-orchestratorSub_Flow" doc:id="685f27ff-2363-4b30-b604-69420a621b30" >
+		<flow-ref doc:name="Get Order" doc:id="1c3352db-78eb-428d-ad45-88fe6f1eebf2" name="obtain-order" target="responseById" />
+		<ee:transform doc:name="Get actualItem" doc:id="92c7844d-9f85-48b5-9cdf-e075b5ac218e">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="actualItem"><![CDATA[%dw 2.0
+output application/java
+---
+(vars.responseById.resultados[0].items filter $.idItem == vars.initialice.Revchain_Respuesta_Proceso.WsRequestBody.orden_comercial)[0]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Proceso exitoso?" doc:id="d7a46da1-3b76-4d22-967f-27af09e7ef85" >
+			<when expression='#[vars.responseById.resultado == "Negativo"]'>
+				<ee:transform doc:name="ERROR" doc:id="07a691c2-31a8-4b2d-9771-d45f71228244">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseById]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[vars.actualItem == null]">				
+			<ee:transform doc:name="ERROR actualItem" doc:id="c11d95de-3f57-4743-8aeb-81dacc59e394">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ordenOM: vars.initialice.Revchain_Respuesta_Proceso.WsRequestBody.orden_om,
+	fecha: now(),
+ 	resultado: "Negativo",
+ 	descripcion: "El orden_comercial no corresponde a ningun item de la orden."
+} 
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform></when>
+			<when expression="#[output application/java --- payload.Revchain_Respuesta_Proceso.WsRequestBody.Codigo_Respuesta as Number == 0]">
+				<ee:transform doc:name="Set variables" doc:id="293d1095-4dd4-401d-88c4-d6ebcc9ebce2">
+					<ee:message>
+					</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM200"]]></ee:set-variable>
+							<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"RESPUESTA_FACT_PRODUCTOS_PROCESADA"]]></ee:set-variable>
+							<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"RESPUESTA_FACT_PRODUCTOS_PROCESADA"]]></ee:set-variable>
+						</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update items" doc:id="bea66dc0-38e6-42f2-aa14-3c92ba48e562" name="itemsStateManager" />
+				<flow-ref doc:name="updateAndNotifySf" doc:id="6433c2fa-acc3-4e93-9ee3-5a66cc8d9e6d" name="updateAndNotifySf"/>
+				<ee:transform doc:name="Set response" doc:id="2ef256d2-0ddd-4164-a1ca-aa954152c45f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ordenOM: vars.initialice.Revchain_Respuesta_Proceso.WsRequestBody.orden_om,
+	fecha: now()
+} ++ 
+if(vars.resp_salesforce.resultado == "Positivo")
+{
+ 	resultado: "Positivo",
+ 	descripcion: "Se actualizaron satisfactoriamente los estados de los items"
+}
+else 
+{
+ 	resultado: "Negativo",
+ 	descripcion: "No se pudo actualizar la orden."
+} 
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.resp_salesforce.resultado == "Positivo")
+200
+else 500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set variables" doc:id="29063567-328c-43e2-8987-d3986563b4cd">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM191"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-RESPUESTA_FACT_PRODUCTOS_EN_PROCESO"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-RESPUESTA_FACT_PRODUCTOS_EN_PROCESO"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update items" doc:id="577142ae-4ea7-4e71-8421-581ba8d3272b" name="itemsStateManager"/>
+				<ee:transform doc:name="Set response" doc:id="3d33b22d-4b7c-48a9-bb5e-831985a71a0d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ordenOM: vars.initialice.Revchain_Respuesta_Proceso.WsRequestBody.orden_om,
+	fecha: now()
+} ++ 
+if(payload.resultado == "Positivo")
+{
+ 	resultado: "Positivo",
+ 	descripcion: "Se actualizaron satisfactoriamente los estados de los items"
+}
+else 
+{
+ 	resultado: "Negativo",
+ 	descripcion: "No se pudo actualizar la orden."
+} 
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="updateAndNotifySf" doc:id="8a6695b8-c51a-47ec-9878-f7dcd7e00d57" >
+		<flow-ref doc:name="Get Order" doc:id="3774598f-aeb7-4a83-abe5-4a83f7b06beb" name="obtain-order" target="responseById" />
+		<flow-ref doc:name="updateStateITM500" doc:id="fdeaa43b-3da2-411a-929a-310644bcb28c" name="updateStateITM500"/>
+		<set-variable value="#[true]" doc:name="Set notifySf" doc:id="c946ad2a-2bda-4302-a07b-406cf34cdb3d" variableName="notifySf"/>
+		<flow-ref doc:name="updateOrderState" doc:id="89f850bc-3029-44eb-a763-98a1a53f845c" name="updateOrderState"/>
+	</sub-flow>
+	<sub-flow name="updateOrderState" doc:id="d5515d1f-fa59-41de-86f5-aadfebe7dfe7" >
+		<flow-ref doc:name="Get Order" doc:id="3bf50d73-7c3e-4fee-99a1-f1e78ccb5d96" name="obtain-order" target="responseById" />
+		<ee:transform doc:name="Validate ITM500" doc:id="b63ffbba-1d53-4ecd-bc21-d6b2de2f1f01" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="flagItem" ><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+var orden = vars.responseById.resultados[0]
+output application/json
+---
+(orden.items.estadoItem.codigoEstado every ($ == "ITM500"))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="0acad808-5dbe-4cbb-855f-e91673b6b228" >
+			<when expression="#[vars.flagItem]">
+				<ee:transform doc:name="Set estadoOrden" doc:id="7d90650f-2688-41a0-8b75-b17f532968bd">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+---
+vars.responseById.resultados[0] update "estadoOrden" with 
+{
+  "fecha": now(),
+  "codigoEstado": "OR0050",
+  "nombreEstado": "ORDEN_COMPLETADA",
+  "observaciones": "ORDEN_COMPLETADA"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Update Order OM" doc:id="fdadf98a-4986-4c33-b3d4-15b9121a67f4" name="update-order" />
+				<choice doc:name="Choice" doc:id="ec2d9500-58b1-4649-b022-4954a9458c54" >
+					<when expression="#[vars.notifySf]">
+						<flow-ref doc:name="Get Order" doc:id="7b972f23-3ae4-4bf5-8475-62cd4dfe638b" name="obtain-order" target="responseById" />
+						<set-variable value='#["Completada"]' doc:name="status Provisioning" doc:id="3b24bbf7-cc78-4073-afce-a4794c5e9650" variableName="statusProvisioning" />
+						<flow-ref doc:name="Notify SF Billeable without State" doc:id="a3d08c3e-fc8f-48ee-8674-fb25b0c81e2f" name="notifySFWithoutState" />
+					</when>
+				</choice>
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

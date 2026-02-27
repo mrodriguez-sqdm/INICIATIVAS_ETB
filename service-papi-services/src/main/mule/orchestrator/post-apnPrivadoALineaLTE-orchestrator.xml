@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-apnPrivadoALineaLTE-orchestratorSub_Flow" doc:id="3627a916-72f0-4308-b1ca-b20cdc94f329" >
+		<logger level="INFO" doc:name="Logger - Orchestrator Started" doc:id="logger-orchestrator-start" message="Orchestrator apnPrivadoALineaLTE started. MSISDN: #[vars.inputPayload.msisdn]" />
+		<set-variable value="#[vars.inputPayload.msisdn]" doc:name="integration Id as connection Number" doc:id="35489233-2811-4201-b88b-4bde8ff0c7db" variableName="connectionNumber" />
+		<logger level="INFO" doc:name="Logger - Before Get Subscription" doc:id="logger-before-subscription" message="About to call get-subscription-client-by-msisdn with connectionNumber: #[vars.connectionNumber]" />
+		<flow-ref doc:name="Get subscription by external id" doc:id="415ab80c-e37f-401f-8bc8-6c58fa7573e2" name="get-subscription-client-by-msisdn" target="subscription" />
+		<logger level="INFO" doc:name="Logger - After Get Subscription" doc:id="logger-after-subscription" message="Subscription response received. Content: #[vars.subscription.content]" />
+		<choice doc:name="Choice" doc:id="ffd4d33c-7cf2-473e-9446-e4433c1e77d0" >
+			<when expression="#[!isEmpty(vars.subscription.content)]" >
+				<set-variable value="#[vars.subscription.content[0].id]" doc:name="subscription_id" doc:id="d4347bfd-7ffb-44e2-a09d-a4deeeed264e" variableName="subscription_id"/>
+				<try doc:name="Try" doc:id="fbb32ad8-951f-4034-b4f9-e5bb10caae60" >
+					<ee:transform doc:name="Mapping to CreateOrder" doc:id="19a78837-8dd8-448c-9ad1-005c083a3193" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"type": "RETAIL",
+	"salesChannel": "OWN_CALLCENTER",
+	"status": "CONFIRMED",
+	"packages": [
+		{
+			"id": vars.inputPayload.id
+		}
+	],
+	"subscription": {
+		"id": vars.subscription.content[0].id
+	}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="CreateOrder" doc:id="73de3b92-5c41-4dea-a819-6f0c94f91412" name="post-order-client"/>
+					<ee:transform doc:name="Clean Payload" doc:id="e2ca5f2d-1287-4409-b52b-a33ab0b97304" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="Apply order" doc:id="a51ea1a8-4fcb-4066-a39e-5c776d3a7239" name="patch-endOrder-client"/>
+					<flow-ref doc:name="Get Feature APN" doc:id="3c347dbf-8534-45e9-a57d-c0a3d481f517" name="get-subscription-id-features" />
+					<ee:transform doc:name="Mapping Body to Update" doc:id="191aecdc-cda9-464a-9ada-2e8da16bfc5e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+((if (payload is Array) payload else (payload.content default [])) filter (f) -> f != null and ((f.featureID default f.featureId default "") == "DataStrategy" or (f.featureID default f.featureId default "") == "IPv4EndUserAddress")) map (f) -> if ((f.featureID default f.featureId default "") == "IPv4EndUserAddress") (f ++ { "extString": ((vars.inputPayload default {}).direccionIP default "") }) else (f ++ { "extString": ((vars.inputPayload default {}).nombreAPNCliente default "") })
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					<flow-ref doc:name="Parch Feature APN" doc:id="e99167c5-4489-434f-8eee-0a988c66563b" name="patch-subscription-id-features" />
+					<ee:transform doc:name="Output" doc:id="8d67ca8b-db45-4a14-8751-2527a6cf27ad" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 0,
+	"descripcion": "Procesamiento exitoso"
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="8053073d-5ba2-4bab-9737-e60527825c4d" >
+							<ee:transform doc:name="Error output" doc:id="ef6076f9-4e20-45c0-bcb8-73fba36b205e" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "APN Private to Line LTE",
+	"message": {
+	  "message": vars.errorMessageOutput
+	},
+	"messageServer": "Error in adding apn private to line",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+								</ee:message>
+								<ee:variables >
+									<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error Output" doc:id="869b820e-8e76-497d-bf02-739f9d42fa59" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 1,
+	"description": "El subscription relacionado a la solicitud no existe."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-rmcaAccounts-orchestratorSub_Flow" doc:id="f0a4e2d5-27fd-4420-967a-32446666651f" >
+		<choice doc:name="Choice" doc:id="62648256-7fc0-41d7-8c8a-0a19b67a0ba8" >
+			<when expression="#[%dw 2.0&#10;import * from dw::core::Arrays&#10;output application/json&#10;---&#10;(p('rmca.createAccount') == 'false') or (payload.OrderFulfilment.SalesOrderLine.AltKey some ($.AltKeyName == 'ETB Facturable' and $.AltKeyValue == p('rmca.isFacturable')))]">
+				<ee:transform doc:name="Mapping final response" doc:id="f76be21a-ac01-45bc-92b0-52a2b2ffd7ee" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "Z_RM_RFC_CREATE_MASTER_DATA": {
+        "RETURN": {
+            "TYPE": "E",
+            "CODE": "002",
+            "MESSAGE": "NO SE PUDO CREAR LA CA"
+        },
+        "CTRACPARTNERDETAIL": null,
+        "DIRECCIONES": null,
+        "EMAIL": null,
+        "FAX": null,
+        "IDENTIFICACION": null,
+        "RELACIONES": null,
+        "SECT_IND": null,
+        "TELEFONOS": null,
+        "T_ERRORES": null,
+        "USO_DIRECCIONES": null
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to homologate request" doc:id="d2df4f0c-9106-48b5-89b1-4fa8106c1d92" name="homologate-request-Sub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="homologate-request-Sub_Flow" doc:id="88b1269d-96e4-4b37-aac6-c6370c53b2ad" >
+		<ee:transform doc:name="Mapping homologates request" doc:id="c8477ecd-2005-497b-ac9c-ef36aeaa686f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"Tx_id": payload.OrderFulfilment.Identification.ID,
+	"BPKIND": payload.OrderFulfilment.CustomerPartyAccount.TypeCode,
+	"IDENTIFICATIONCATEGORY": payload.BillingProcess.Customer.DocumentType,
+	"KTOL": payload.OrderFulfilment.CustomerPartyAccount.TypeCode
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to call to catalogs" doc:id="c8f9db53-4a26-49b4-9b18-a77b556be389" name="call-to-catalogs-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="call-to-catalogs-orchestratorSub_Flow" doc:id="c75428f5-63e5-48ff-b9fb-f155e392085a" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="5054aea4-c1f7-4817-bd69-372f11fbd9be">
+			<route>
+				<ee:transform doc:name="Homologate BPKIND request" doc:id="d1191673-99cb-4e1b-9160-eb80407fd4f7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"id_nit" : payload.BPKIND,
+	"id_catalog" : p("catalog.bpkind")
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Go to common sapi client" doc:id="799a8ba0-7255-4bf8-a860-b2ec9f35f813" name="common-sapi-client-catalogSub_Flow" />
+			</route>
+			<route>
+				<ee:transform doc:name="Homologate IDENTIFICATION CATEGORY request" doc:id="68ab0119-1b20-471d-9770-5437faf9f491">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"id_nit" : payload.IDENTIFICATIONCATEGORY,
+	"id_catalog" : p("catalog.identificationCategory")
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Go to common sapi client" doc:id="d2e91ee7-b193-4cb3-8661-2f8641228162" name="common-sapi-client-catalogSub_Flow" />
+			</route>
+			<route>
+				<ee:transform doc:name="Homologate KTOL request" doc:id="d0e8dc8c-dfbd-492c-81fe-0c838f8a7ab7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"id_nit" : payload.KTOL,
+	"id_catalog" : p("catalog.ktol")
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Go to common sapi client" doc:id="92653af6-5713-4369-8c83-e9c473e6fb6c" name="common-sapi-client-catalogSub_Flow" />
+			</route>
+		</scatter-gather>
+		<flow-ref doc:name="Go to homologate response" doc:id="f6ee5ef8-ccb6-4938-9684-0743532d2277" name="homologate-response-Sub_Flow"/>
+	</sub-flow>
+	<sub-flow name="homologate-response-Sub_Flow" doc:id="73bd61c6-6ef3-4f69-840e-dc09bd361842" >
+		<ee:transform doc:name="Mapping of homologates" doc:id="23e11edd-54bf-49ca-8077-65999bc6c0a8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"Tx_id": vars.payloadInitial.OrderFulfilment.Identification.ID,
+	"BPKIND": payload[0].payload[0].VALOR_HOMOLOGADO,
+	"IDENTIFICATIONCATEGORY": payload[1].payload[0].VALOR_HOMOLOGADO,
+	"KTOL": payload[2].payload[0].VALOR_HOMOLOGADO
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="Set Homologates" doc:id="c1412f4b-1f46-4357-bd97-6e3c990f9283" variableName="homologates"/>
+		<flow-ref doc:name="Go to RMCA BP" doc:id="48756189-1360-476a-a45c-4845b5671092" name="RMCA-BP-Sub_Flow" />
+	</sub-flow>
+	<sub-flow name="RMCA-BP-Sub_Flow" doc:id="80b0e242-79c5-4c24-86fa-94f44c4fc9a4" >
+		<ee:transform doc:name="Mapping RMCA BP request" doc:id="7b2cf66d-9ee6-45e5-b934-1e8a96887e0f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/xml
+var typePerson = vars.payloadInitial.OrderFulfilment.CustomerPartyAccount.TypeCode
+var buType = if ( typePerson == p("rmca.typePerson.legal") ) p("rmca.buType.legal") else p("rmca.buType.natural")
+var nameOrg1 = if ( sizeOf(vars.payloadInitial.OrderFulfilment.CustomerPartyAccount.Name)>40 ) substring(vars.payloadInitial.OrderFulfilment.CustomerPartyAccount.Name,0,40) else vars.payloadInitial.OrderFulfilment.CustomerPartyAccount.Name
+var nameFirst = (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.firstName"))[0].AltKeyValue
+var lastName = (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.lastName"))[0].AltKeyValue
+var extAddressNumber = (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.extAddressNumber"))[0].AltKeyValue
+---
+"Z_RM_RFC_CREATE_MASTER_DATA": {
+	"import": {
+		"BUSINESSPARTNEREXTERN": {
+			"BU_TYPE": buType,
+			"BPKIND": payload.BPKIND,
+			"BPEXT": vars.payloadInitial.OrderFulfilment.CustomerPartyAccount.Identification.ID,
+			"SEARCHTERM1": vars.payloadInitial.OrderFulfilment.CustomerPartyAccount.Custom.DocumentNumber,
+			"TITLE_KEY": if ( buType == p("rmca.buType.legal") ) p("rmca.titleKey.legal") else p("rmca.titleKey.natural"),
+			"BUPINFOREL": p("rmca.bupinforel")
+		},
+		"CENTRALDATA_ORGAN": {
+			"NAME_ORG1": if ( buType == p("rmca.buType.legal") ) nameOrg1 else ""
+		},
+		"CENTRALDATA_PERSON": {
+			"NAME_FIRST": if ( buType == p("rmca.buType.natural") ) nameFirst else "",
+			"LASTNAME": if ( buType == p("rmca.buType.natural") ) lastName else "",
+			"XSEXU": if ( buType == p("rmca.buType.natural") ) p("rmca.xsexu") else "",
+			"NATIO": p("rmca.natio")
+		},
+		"SEL_CONTROL": {
+			"ID_TRS": if ( p("rmca.subTypesForMod") contains("|$(vars.payloadInitial.OrderFulfilment.Custom.OrderSubType)|") ) p("rmca.idTrsM") else p("rmca.idTrsC"),
+			"OBJETO": p("rmca.bp"),
+			"CICLO": if ( vars.payloadInitial.BillingProcess.CustomerBill.InvoicingCycle != null and vars.payloadInitial.BillingProcess.CustomerBill.InvoicingCycle != '' ) vars.payloadInitial.BillingProcess.CustomerBill.InvoicingCycle else p("rmca.cycle")
+		}
+	},
+	"tables": {
+		"CTRACPARTNERDETAIL": {
+		},
+		"DIRECCIONES": {
+			"row": {
+				"CITY1": (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.city"))[0].AltKeyValue,
+				"REGION": substring(vars.payloadInitial.BillingProcess.Customer.ContactInfo.ContactAddress.DaneCode, 0, 2),
+				"STREET": (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.street"))[0].AltKeyValue,
+				"COUNTRY": p("rmca.country"),
+				"LANGU": p("rmca.langu"),
+				"EXTADDRESSNUMBER": extAddressNumber
+			}
+		},
+		"IDENTIFICACION": {
+			"row": {
+				"IDENTIFICATIONCATEGORY": payload.IDENTIFICATIONCATEGORY,
+				"IDENTIFICATIONNUMBER": vars.payloadInitial.BillingProcess.Customer.DocumentNo
+			}
+		},
+		"TELEFONOS": {
+			"row": {
+				"EXTADDRESSNUMBER": extAddressNumber,
+				"TELEPHONE": (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.phone"))[0].AltKeyValue,
+				"TIPO": p("rmca.phoneType")
+			}
+		},
+		"USO_DIRECCIONES": {
+			"row": {
+				"EXTADDRESSNUMBER": extAddressNumber,
+				"ADDRESSTYPE": p("rmca.addressType")
+			}
+		}
+	}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to sap sapi client" doc:id="97d77fd8-2639-47df-8ad5-1f3005a10b0a" name="sap-sapi-clientSub_Flow" />
+		<flow-ref doc:name="Go to condition RMCA BP response" doc:id="4fe39374-9a7c-422f-b708-e94c47742965" name="condition-RMCA-BP-response-Sub_Flow"/>
+	</sub-flow>
+	<sub-flow name="condition-RMCA-BP-response-Sub_Flow" doc:id="963a4b68-d2bb-4c6d-abce-8f083d0afa7f" >
+		<choice doc:name="Choice" doc:id="3c77b8bc-d5bc-4137-a8a6-ea5e178d5dd0">
+			<when expression='#[payload.Z_RM_RFC_CREATE_MASTER_DATA.RETURN.CODE == "000" or payload.Z_RM_RFC_CREATE_MASTER_DATA.RETURN.CODE == "904"]'>
+				<flow-ref doc:name="Go to subsegment" doc:id="07e8dae2-b543-40c7-8dcd-43e0f579f5ef" name="Subsegment_Sub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Mapping BP error response" doc:id="cd26b505-1a1c-497c-832f-d7c7df832b90" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="Subsegment_Sub_Flow" doc:id="f431d02a-9b82-4825-b011-9cc11d7607f7" >
+		<ee:transform doc:name="Mapping subsegmento" doc:id="78311954-c23a-4502-b7f7-62a81ebce70a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+var segmento = (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == "Segmento")[0].AltKeyValue
+var subsegmento = (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.subsegmento"))[0].AltKeyValue
+---
+{
+	"subsegmento": if ( subsegmento == "Pequeñas" ) "$(segmento)%7c$(p('rmca.subsegmentoPequenas'))" else "$(segmento)%7c$(subsegmento)"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to call catalog subsegment" doc:id="6b49f84a-9e95-4d09-881f-97accbc54405" name="call-to-catalog-subsegment-Sub_Flow"/>
+	</sub-flow>
+	<sub-flow name="call-to-catalog-subsegment-Sub_Flow" doc:id="b378f2d8-f409-45bd-9438-efe8e8e06ee8" >
+		<ee:transform doc:name="Homologate subsegment request" doc:id="8900b7da-427d-417b-ac4e-2218cf63c394">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"id_nit" : payload.subsegmento,
+	"id_catalog" : p("catalog.subsegmento")
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to common sapi client" doc:id="53981b07-2a05-4f4e-919d-1cbab1ca39cf" name="common-sapi-client-catalogSub_Flow" />
+		<flow-ref doc:name="Go to homProcedimiento response" doc:id="7eb0c7c6-ea0a-488a-8009-87b1906ef7bf" name="hom-procedimiento-response-Sub_Flow"/>
+	</sub-flow>
+	<sub-flow name="hom-procedimiento-response-Sub_Flow" doc:id="fc2074d9-c0c5-423e-940c-008e92486017" >
+		<ee:transform doc:name="Mapping homProcedimiento response" doc:id="834e465a-ae9e-414c-a009-cb35995daccf" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"homProcedimiento": payload[0].VALOR_HOMOLOGADO
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to RMCA CA" doc:id="d4093f8d-a50f-4085-b826-f18100425d21" name="RMCA-CA-Sub_Flow" />
+	</sub-flow>
+	<sub-flow name="RMCA-CA-Sub_Flow" doc:id="ead5b3a4-de45-4987-b9ab-ee2f2a2d3cb3" >
+		<ee:transform doc:name="Mapping RMCA CA request" doc:id="68d43609-0d7a-4fb8-8c7d-b306b9531fb8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/xml
+var sysOrgAK = (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.sysOrgAK"))[0].AltKeyValue
+var claimMethod = (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.claimMethod"))[0].AltKeyValue
+var extAddressNumber = (vars.payloadInitial.OrderFulfilment.SalesOrderLine.AltKey filter $["AltKeyName"] == p("rmca.altFields.extAddressNumber"))[0].AltKeyValue
+---
+{
+	"Z_RM_RFC_CREATE_MASTER_DATA": {
+		"import": {
+			"BUSINESSPARTNEREXTERN": null,
+			"CTRACCREATEINFO": {
+				"LEGACY_ACCT": vars.payloadInitial.BillingProcess.CustomerBill.SuscriberId,
+				"BPEXT": vars.payloadInitial.OrderFulfilment.CustomerPartyAccount.Identification.ID,
+				"ACCT_NAME": if ( sizeOf(vars.payloadInitial.BillingProcess.Customer.FullName) > 35 ) substring(vars.payloadInitial.BillingProcess.Customer.FullName, 0, 35) else trim(vars.payloadInitial.BillingProcess.Customer.FullName)
+			},
+			"SEL_CONTROL": {
+				"ID_TRS": if ( p("rmca.subTypesForMod") contains("|$(vars.payloadInitial.OrderFulfilment.Custom.OrderSubType)|") ) p("rmca.idTrsM") else p("rmca.idTrsC"),
+				"OBJETO": p('rmca.ca'),
+				"CICLO": vars.payloadInitial.BillingProcess.CustomerBill.InvoicingCycle
+			}
+		},
+		"tables": {
+			"CTRACPARTNERDETAIL": {
+				"row": {
+					"EXVKO": vars.payloadInitial.OrderFulfilment.CustomerPartyAccount.Identification.ID,
+					"KTOKL": if ( sysOrgAK == p('rmca.salesForce') ) payload.homProcedimiento else if ( sysOrgAK == p('rmca.salesForceLTE') ) claimMethod else vars.homologates.KTOL,
+					"EXTADDRESSNUMBER": extAddressNumber
+				}
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to sap sapi client" doc:id="a2a82ee3-4b7d-4c18-a670-cec5ade87ef6" name="sap-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Mapping RMCA CA response" doc:id="c6395b83-ce91-48a8-9803-1a542d3b2216">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+</mule>
