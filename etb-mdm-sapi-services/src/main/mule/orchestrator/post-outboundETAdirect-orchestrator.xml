@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-outboundETAdirect-orchestratorSub_Flow" doc:id="61cdebf3-4439-478a-b6f6-7e933fc162e5" >
+		<ee:transform doc:name="Prepare body request" doc:id="9d009d65-5b23-4a8f-9dc8-9005b7381ac3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns mdm http://www.etb.com.co/Gateway/MDM_Logic_Services
+---
+soapenv#Envelope: {
+   soapenv#Header: null,
+   soapenv#Body: {
+      mdm#OSM_OFSC_Message: {
+         mdm#WSRequestHeader: {
+            mdm#system: {
+               mdm#name: attributes.headers.name,
+               mdm#correlationId: attributes.headers.'x-correlation-id',
+               mdm#processingServer: attributes.headers.source
+            }
+         },
+         mdm#WSRequestBody: {
+            mdm#OrderId: payload.PeticionOutboundETAdirect.EncabezadoMensaje.IdOrdenETAdirect,
+            mdm#MessageId: payload.PeticionOutboundETAdirect.EncabezadoMensaje.IdMensaje,
+            mdm#RequestDate: payload.PeticionOutboundETAdirect.EncabezadoMensaje.FechaPeticion,
+            mdm#RequestType: payload.PeticionOutboundETAdirect.DetalleMensaje.TipoPeticion,
+            mdm#Message: if (!payload.Message?) write(payload, 'text/xml') else payload.Message,
+         }
+      }
+   }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="4d95c17d-086a-4a79-b193-b05df31838f7" name="mdm-logicServices-clientSub_Flow"/>
+		<ee:transform doc:name="Prepare output" doc:id="d6dd0c4f-4203-40b1-a956-bd99931341b8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "ServiceOutput": {
+        "Header": {
+            "transactionId": payload.Envelope.Body.OFSC_OSM_MessageResponse.OFSC_OSM_MessageResult.WSResponseHeader.system.correlationId,
+            "sourceSystem": payload.Envelope.Body.OFSC_OSM_MessageResponse.OFSC_OSM_MessageResult.WSResponseHeader.system.name
+        },
+        "OutputMessage": {
+            "id": payload.Envelope.Body.OFSC_OSM_MessageResponse.OFSC_OSM_MessageResult.WSResponseHeader.system.correlationId,
+            "code": payload.Envelope.Body.OFSC_OSM_MessageResponse.OFSC_OSM_MessageResult.WSResponseBody.OperationResult,
+            "description": payload.Envelope.Body.OFSC_OSM_MessageResponse.OFSC_OSM_MessageResult.WSResponseBody.OperationResultDesc
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

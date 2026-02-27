@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="delete-cancelSchedule-client" doc:id="9a156aa3-8e88-46fa-b5a4-1ce8d0cceee5" >
+		<try doc:name="Try" doc:id="29246b5d-e649-45c9-b7fd-04584f58fbe4" >
+			<http:request method="DELETE" doc:name="Request to remedy-sapi" doc:id="2a92d526-9c77-4df5-a78d-b5d339f40132" config-ref="remedy_sapi" path="#[p('remedy-sapi.path.incidence') ++ vars.incidence_id ++ p('remedy-sapi.path.agenda') ++ vars.agenda_id]" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"name" : attributes.headers.name,
+	"X-CORRELATION-ID" : correlationId,
+	"client_secret" : p('credentials.client_secret'),
+	"client_id" : p('credentials.client_id'),
+	"source": attributes.headers.source,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="f316772e-ceb5-42fe-9f01-76c13a1107c8" type="HTTP:INTERNAL_SERVER_ERROR" when='#[error.muleMessage.typedValue.code == "ERROR"]' >
+					<ee:transform doc:name="Mapping Error Output" doc:id="5694f6a4-8773-4296-90ae-53c5725d5e7c" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "code": "ERROR",
+   "fault": error.muleMessage.typedValue.fault
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="httpStatus 500" doc:id="82d71895-717a-430d-8534-7dcbc85c62ab" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

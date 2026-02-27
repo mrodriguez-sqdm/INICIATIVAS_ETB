@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-NotifyBillToMDM-orchestratorSub_Flow" doc:id="79da6e5e-f7d4-480c-a959-f9208264da68" >
+		<choice doc:name="Choice" doc:id="b2836e4d-b30c-43d0-9834-df6276d2f1d9" >
+			<when expression="#[!isEmpty(payload.NotifyBillInput.Request.EquipmentBill)]">
+				<ee:transform doc:name="Mapping EquipmentBill" doc:id="b2814452-61a9-4b93-ba4b-77bfe0e1ec59">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services
+var numFactura = if (payload.NotifyBillInput.Request.Source.system == "OpenFlex") payload.NotifyBillInput.Request.ServiceBill.billNumber else payload.NotifyBillInput.Request.EquipmentBill.number
+---
+{
+    soapenv#"Envelope": {
+        soapenv#"Header": null,
+        soapenv#"Body": {
+            mdm#"Set_FacturaOnLine": {
+                mdm#"WSRequestHeader": {
+                    mdm#"system": {
+                        mdm#"name": p('mdmDataServices.name'),
+                        mdm#"correlationId": attributes.headers.'x-correlation-id',
+                        mdm#"processingServer": p('mdmDataServices.processingServer')
+                    }
+                },
+                mdm#"WSRequestBody": {
+                   (mdm#"codigo_barras": payload.NotifyBillInput.Request.ServiceBill.barcode) if (!isEmpty(payload.NotifyBillInput.Request.EquipmentBill.barcode)),
+                   (mdm#"numero_cuenta_facturacion": payload.NotifyBillInput.Request.Source.billingAccount) if (!isEmpty(payload.NotifyBillInput.Request.Source.billingAccount)),
+                   (mdm#"numero_factura": numFactura) if (!isEmpty(numFactura)),
+                    mdm#"fecha_oportuna_pago": payload.NotifyBillInput.Request.EquipmentBill.paymentDueDate,
+                    mdm#"fecha_limite_Pago": payload.NotifyBillInput.Request.EquipmentBill.paymentDeadline,
+                   (mdm#"valor": payload.NotifyBillInput.Request.EquipmentBill.amount) if (!isEmpty(payload.NotifyBillInput.Request.EquipmentBill.amount)),
+                    mdm#"origen_factura": payload.NotifyBillInput.Request.Source.system,
+                   (mdm#"periodo_facturado": payload.NotifyBillInput.Request.ServiceBill.billPeriod) if (!isEmpty(payload.NotifyBillInput.Request.ServiceBill.billPeriod)),
+                    mdm#"id_registro": attributes.headers.'x-correlation-id',
+                   (mdm#"estado_factura": payload.NotifyBillInput.Request.ServiceBill.billStatus) if (!isEmpty(payload.NotifyBillInput.Request.ServiceBill.billStatus)),
+                   (mdm#"numero_conexion": payload.NotifyBillInput.Request.ServiceBill.connectionNumber) if (!isEmpty(payload.NotifyBillInput.Request.ServiceBill.connectionNumber)),
+                    mdm#"numero_identificacion": payload.NotifyBillInput.Request.Customer.id,
+                    mdm#"nombre_cliente": payload.NotifyBillInput.Request.Customer.name
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Mapping ServiceBill" doc:id="8d93bea9-9dc0-4ef7-8f63-c719640fc059" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services
+import substring from dw::core::Strings
+---
+{
+    soapenv#"Envelope": {
+        soapenv#"Header": null,
+        soapenv#"Body": {
+            mdm#"Set_FacturaOnLine": {
+                mdm#"WSRequestHeader": {
+                    mdm#"system": {
+                        mdm#"name": p('mdmDataServices.name'),
+                        mdm#"correlationId": attributes.headers.'x-correlation-id',
+                        mdm#"processingServer": p('mdmDataServices.processingServer')
+                    }
+                },
+                mdm#"WSRequestBody": {
+                   (mdm#"codigo_barras": payload.NotifyBillInput.Request.ServiceBill.barcode) if (!isEmpty(payload.NotifyBillInput.Request.ServiceBill.barcode)),
+                   (mdm#"numero_cuenta_facturacion": payload.NotifyBillInput.Request.Source.billingAccount) if (!isEmpty(payload.NotifyBillInput.Request.Source.billingAccount)),
+                    mdm#"numero_factura": payload.NotifyBillInput.Request.ServiceBill.number,
+                    mdm#"fecha_oportuna_pago": payload.NotifyBillInput.Request.ServiceBill.paymentDueDate,
+                    mdm#"fecha_limite_Pago": payload.NotifyBillInput.Request.ServiceBill.paymentDeadline,
+                   (mdm#"valor": payload.NotifyBillInput.Request.ServiceBill.amount) if (!isEmpty(payload.NotifyBillInput.Request.ServiceBill.amount)),
+                    mdm#"origen_factura": payload.NotifyBillInput.Request.Source.system,
+                    mdm#"numero_ciclo": if (payload.NotifyBillInput.Request.Source.system == "08")  substring(payload.NotifyBillInput.Request.ServiceBill.billPeriod, 4, 6) else "",
+                    mdm#"periodo_facturado": if (payload.NotifyBillInput.Request.Source.system == "08")  ("20" ++ substring(payload.NotifyBillInput.Request.ServiceBill.billPeriod, 0, 4)) else "",
+                    mdm#"id_registro": attributes.headers.'x-correlation-id',
+                   (mdm#"estado_factura": payload.NotifyBillInput.Request.ServiceBill.billStatus) if (!isEmpty(payload.NotifyBillInput.Request.ServiceBill.billStatus)),
+                   (mdm#"numero_conexion": payload.NotifyBillInput.Request.ServiceBill.connectionNumber) if (!isEmpty(payload.NotifyBillInput.Request.ServiceBill.connectionNumber)),
+                    mdm#"numero_identificacion": payload.NotifyBillInput.Request.Customer.id,
+                    mdm#"nombre_cliente": payload.NotifyBillInput.Request.Customer.name
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<flow-ref doc:name="Go to Client" doc:id="24708630-5e21-4440-958d-4c5c13e6bdc9" name="post-NotifyBillToMDM-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="3988079b-810a-40a4-8bd8-e47980c9efe5" >
+			<when expression='#[output application/xml --- payload.Envelope.Body.Set_FacturaOnLineResponse.Set_FacturaOnLineResult.WSResponseBody.OperationResult == "1"]'>
+				<ee:transform doc:name="Prepare output" doc:id="862474d4-dd18-4af0-a5cd-5a6bae4cd164" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "NotifyBillOutput": {
+    "WSResponseHeader2": {
+      "System": {
+        "name": payload.Envelope.Body.Set_FacturaOnLineResponse.Set_FacturaOnLineResult.WSResponseHeader.system.name,
+        "correlationID": payload.Envelope.Body.Set_FacturaOnLineResponse.Set_FacturaOnLineResult.WSResponseHeader.system.correlationId,
+        "processingServer": p('mdmDataServices.processingServer')
+      },
+      "Service": {
+        "status": p('mdmDataServices.response.service.passCode')
+      }
+    },
+    "Result": {
+      "code": payload.Envelope.Body.Set_FacturaOnLineResponse.Set_FacturaOnLineResult.WSResponseBody.OperationResult,
+      "description": payload.Envelope.Body.Set_FacturaOnLineResponse.Set_FacturaOnLineResult.WSResponseBody.OperationResultDesc
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="07a901b8-d45e-47bd-97e8-1396f2e320bc" type="MDM:FAILED_OPERATION" description="#[payload.Envelope.Body.Set_FacturaOnLineResponse.Set_FacturaOnLineResult.WSResponseHeader.service.statusDetail default payload.Envelope.Body.Set_FacturaOnLineResponse.Set_FacturaOnLineResult.WSResponseBody.OperationResultDesc]"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="patch-updateStatusOrder-client" doc:id="88f4affb-635f-4837-a0df-4cb554f8bfcf" >
+		<try doc:name="Try" doc:id="8ae3e5d0-85c0-4c24-bb1c-ecef621447a9" >
+			<async doc:name="Async" doc:id="792410b8-faad-43be-92c6-e00e18b8181c" >
+				<flow-ref doc:name="Call logger before" doc:id="c4ab385b-841c-4403-9f16-4b2e382b66a2" name="loggin-client-call" />
+			</async>
+			<http:request method="POST" doc:name="Request" doc:id="8400cd27-45b4-4f80-94d0-e0017362af46" config-ref="HTTP_Request_mdm_wsdl" path="#[p('mdm-wsdl.path')]" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"action" : "http://www.etb.com.co/Gateway/MDM_Data_Services/Set_PQR",
+	"Content-Type" : "text/xml; charset=utf-8"
+}]]]></http:headers>
+			</http:request>
+			<async doc:name="Async1" doc:id="f4f93025-24a4-4cd9-89ca-f645ef0c497d" >
+				<flow-ref doc:name="Call logger after" doc:id="93fa6234-a540-4942-a4c7-01ca58e27576" name="loggin-client-call" />
+			</async>
+			<ee:transform doc:name="Transform Message" doc:id="9f6cae4e-a063-46c5-aee1-5751f3d8d747" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+				</ee:message>
+				<ee:variables />
+			</ee:transform>
+			<ee:transform doc:name="responseUpdate" doc:id="cd766f33-9b77-4841-8b37-1688e7833f9e" >
+				<ee:message />
+				<ee:variables >
+					<ee:set-variable variableName="responseUpdate" ><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.Envelope.Body.Set_PQRResponse == null or 
+payload.Envelope.Body.Set_PQRResponse.Set_PQRResult.WSResponseBody == null or
+(payload.Envelope.Body.Set_PQRResponse.Set_PQRResult.WSResponseHeader.service.statusDetail contains ("FAIL"))) "FAIL" 
+else if(vars.setType == "I" and payload.Envelope.Body.Set_PQRResponse.Set_PQRResult.WSResponseBody.database_id == null) "FAIL"
+else "PASS"]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="Final response" doc:id="83478ba1-da9d-475f-b71e-63e2f5c0c268" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(vars.responseUpdate == "PASS")
+{
+	"status": "PASS",
+    "responseDate": now(),
+    "database_id": payload.Envelope.Body.Set_PQRResponse.Set_PQRResult.WSResponseBody.database_id,
+    "CodigoRespuesta": 1,
+    "OperationResultDesc": "Operación Exitosa"
+}
+else
+{
+	"status": "FAIL",
+    "responseDate": now(),
+    "CodigoRespuesta": 0,
+    "OperationResultDesc": payload.Envelope.Body.Set_PQRResponse.Set_PQRResult.WSResponseBody.OperationResultDesc
+}
+]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="43772cd0-1afc-410b-ada7-adff1f254317" >
+					<ee:transform doc:name="Transform Message" doc:id="f7456632-473a-4cd5-9940-1f8a17e9e799" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[404]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

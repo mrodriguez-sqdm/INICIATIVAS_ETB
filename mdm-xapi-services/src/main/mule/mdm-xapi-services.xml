@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    
+    <flow name="mdm-xapi-services-main">
+        <http:listener path="/*" config-ref="mdm-xapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call initial logger" doc:id="d1276dea-ab37-4099-b279-e36c7284f315" name="initial-loggin-Sub_Flow" />
+        <apikit:router config-ref="mdm-xapi-services-config" />
+        <async doc:name="Async" doc:id="15273871-0099-4226-a068-f4aabbd370a8">
+            <flow-ref doc:name="Flow Reference" doc:id="32f5de8e-ee44-4f0c-b59c-cf8a3ec0fe00" name="loggin-client-call" />
+        </async>
+        <error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="mdm-xapi-services-console">
+        <http:listener path="/console/*" config-ref="mdm-xapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="mdm-xapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="delete:\fulfillment\v1\incident\(incidence_id)\schedule\agenda\(agenda_id):mdm-xapi-services-config">
+        <flow-ref doc:name="Flow Reference" doc:id="c4d709e4-be04-4c48-86dd-3d262f4d388c" name="delete-cancelSchedule-handler" />
+    </flow>
+    <flow name="patch:\fulfillment\v1\incident\(incidence_id)\vias:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="89ed3e53-62ae-4e5f-98a2-cfabced15576" name="patch-updateVias-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\fulfillment\v1\incident\orders:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="4de0c07b-89ff-49bf-99d0-f8f3038f1889" name="patch-updateOT-handler" />
+    </flow>
+    <flow name="patch:\fulfillment\v1\incident\(incidence_id)\schedule\(schedule_id):application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="ab98ca8d-dabc-4bf1-a863-d0599dd4d364" name="patch-schedule-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\relation_pqr:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="64c22a1d-be0b-464e-8670-7181183db39d" name="post-createRelationPQR-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\relation_pqr:application\xml:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="b4a5fc37-e8ca-4822-b7f5-e0164562729f" name="post-createRelationPQR-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\fulfillment\v1\tipologyRVC:application\json:mdm-xapi-services-config" doc:id="357b0c89-9d0b-415a-bb4a-870afd2805af">
+        <flow-ref doc:name="Go to Handler" doc:id="7dad30da-faf6-4ea8-984e-e4b8d0104fb2" name="patch-updateTipologyRVC-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\orders\(order_id)\delivery:application\json:mdm-xapi-services-config" doc:id="cc43f3de-580d-42cc-92ca-2b47d2003c2e">
+        <flow-ref doc:name="Go to handler" doc:id="9b7aeaaf-4e8d-4e7f-bedd-8e97ef378970" name="post-createDispatchOrder-handlerSub_Flow" />
+    </flow>
+    <flow name="put:\operations\v1\connections\(misdn):mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="16692aee-4764-4208-9507-9b10cc0d413f" name="put-suspensionsReconnections-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\logs\audits:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="6b2e231d-40c1-4eb1-8f7c-14bb17d5f461" name="post-auditLogs-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\logs\spnpqr:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="abfb20e8-93bb-4a94-9f34-2e38d921ad89" name="post-spnpqrLogs-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\logs\conversation:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="071f393a-1d6d-48ec-982b-353916608246" name="post-conversationLogs-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\logs\suma:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="16316084-5a26-4ea9-ad34-40d507a96ed4" name="post-sumaLogs-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\logs\convertibility:application\json:mdm-xapi-services-config" doc:id="5d380964-0587-4093-8f5b-f93e1ebd8599">
+        <flow-ref doc:name="Go to Handler" doc:id="ba17d534-b50f-401a-96a1-7fefd0e7a2d5" name="post-convertibilityLogs-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\notifySFOrderBillingFinished:application\xml:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="c3a9b55e-d447-4c7f-910d-980b57b66930" name="post-notifySFOrderBillingFinished-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\billing\v1\complaints\(case-number)\status:mdm-xapi-services-config">
+        <flow-ref doc:name="Call to Handler" doc:id="703d1c64-d9f0-474d-bcd8-8e96de7be8c0" name="get-consultaSAAW-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\billing\v1\complaints\(case-number)\status:mdm-xapi-services-config" doc:id="41e6848e-0f4d-4055-ac08-23cc62ed896a">
+        <flow-ref doc:name="Go to Handler" doc:id="3f838f1f-84eb-417f-ab73-82880ac74381" name="patch-ajusteSAAW-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\pqr\details:application\json:mdm-xapi-services-config" doc:id="7e89f890-f992-48a2-81c1-55022b9adf43">
+        <flow-ref doc:name="Go to handler" doc:id="4815b241-fb1e-4f12-97ab-5314999a82a8" name="post-consultPQR-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\fulfillment\v1\order_handling\(order_id)\schedule:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="3e10db07-213e-49d5-88c9-44add1631d8e" name="patch-updateScheduleStatus-handlerSub_Flow" />
+    </flow>
+    <flow name="put:\operations\v1\materials:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="3a416b29-cf9a-457e-98f8-be64a5c35d2b" name="put-updateMaterials-handler" />
+    </flow>
+    <flow name="get:\operations\v1\pqr\compensations:mdm-xapi-services-config" doc:id="900f7f40-36ab-496a-82d2-ba46b317a05d">
+        <flow-ref doc:name="Go to handler" doc:id="15240168-8aab-4a00-8914-5215d65070ba" name="get-pqrCompensation-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\billing\v1\portability\compensations:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="df91e742-2c37-4b7e-918a-6866f7056790" name="patch-portabilityCompensationIntf-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\text-messages:application\json:mdm-xapi-services-config" doc:id="4db494be-55e6-4d3d-b089-01290e9ae6ee">
+        <flow-ref doc:name="Go to handler" doc:id="48afefd7-9abd-48a2-85b6-cc7ed57acd5d" name="post-sendTextMessage-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\billing\v1\bills:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="67291868-d57a-441e-8ec1-8da90db3995d" name="get-bills-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\operations\v1\products\orders:application\json:mdm-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="e5c0f836-035f-439d-a0ad-c85bcc36c12f" name="patch-updateSLFServicesStatus-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\orders\(order_id)\characteristics:application\json:mdm-xapi-services-config" doc:id="33b931d3-c5e4-4c06-848a-640bd60f6f49">
+        <flow-ref doc:name="Go to handler" doc:id="6c7a44e6-f91c-48c1-bac8-a2dc8bebce8a" name="post-orderCharacteristics-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\operations\v1\schedule:application\json:mdm-xapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="ca98dd49-8def-4d3b-9ba7-eff19bf20527" name="patch-operations-schedule-handlerSub_Flow"/>
+    </flow>
+</mule>

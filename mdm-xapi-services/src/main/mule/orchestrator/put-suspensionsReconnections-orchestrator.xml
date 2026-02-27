@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="put-suspensionsReconnections-orchestratorSub_Flow" doc:id="31daeff7-93d1-45db-bb8f-9adddb07163a" >
+		<choice doc:name="Choice" doc:id="a2198555-2cef-48f3-82e0-458c8f33dc9a" >
+			<when expression="#[vars.currentAction == 'R' or vars.currentAction == 'S']">
+				<ee:transform doc:name="Prepare request body" doc:id="dd35be61-e95a-4964-9463-573b21ee55b3">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var lock = if (vars.currentAction == 'S') true else false
+var lockValues = [{"name": "ISDN", "value": attributes.uriParams.misdn}, {"name": "ODBOC", "value": "BAOC"}, {"name": "ODBPOS", "value": "BAPOS"}, {"name": "ODBPOSTYPE", "value": "BOTH"}, {"name": "MSISDN", "value": attributes.uriParams.misdn}, {"name": "STATUS", "value": "3"}]
+var unlockValues = [{"name": "ISDN", "value": attributes.uriParams.misdn}, {"name": "ODBOC", "value": "BOCROAM"}, {"name": "ODBPOS", "value": "NOBPOS"}, {"name": "ODBPOSTYPE", "value": "BOTH"}, {"name": "MSISDN", "value": attributes.uriParams.misdn}, {"name": "STATUS", "value": "2"}, {"name": "RECURSOS", "value": attributes.queryParams.recursos}]
+---
+createOrderByValueRequest: {
+    orderValue: {
+        apiClientId: if (lock)"LTESuspend-OracleComms_OSM_O2A_SomProvisionLTE_Sample-1.0.0.0.0" else "LTERec-OracleComms_OSM_O2A_SomProvisionLTE_Sample-1.0.0.0.0",
+        orderKey: {
+            applicationDN: "System/DEVC/ApplicationType/ServiceActivation/Application/1-0;7-2;ASAP/Comp/",
+            'type': "javax.oss.order.CreateOrderValue",
+            primaryKey: "MS-LTE" ++ correlationId
+        },
+        requestedCompletionDate: now() >> "America/Bogota",
+        services: {
+            item: {
+                serviceKey: {
+                    applicationContext: {
+                        factoryClass: "",
+                        url: "",
+                        systemProperties: ""
+                    },
+                    applicationDN: "System/DEVC/ApplicationType/ServiceActivation/Application/1-0;7-2;ASAP/Comp/",
+                    'type': if (lock) "C_SUS_LTE" else "C_REC_LTE",
+                    primaryKey: if (lock) "C_SUS_LTE" else "C_REC_LTE"
+                },
+                asdlRoute: if (lock) "ROUTE_TO_NEP" else "",
+                serviceValues: {
+                    serviceValue : if (lock) lockValues map (item, value) -> {
+                    name: item.name,
+                    value: item.value,
+                    'type': "OPTIONAL_SCALAR"
+                } else unlockValues map ((item, index) -> {
+                    name: item.name,
+                    value: item.value,
+                    'type': "OPTIONAL_SCALAR"
+                })
+                },
+                
+            }
+        },
+        origin: "OracleComms_OSM_O2A_SomProvisionLTE_SampleOrder",
+        rollbackState: "rollback_required",
+        processType: "IMMEDIATE",
+        srqAction: "ADD",
+        command: "UPDATE"
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to Client" doc:id="d55e1955-45ca-4f7e-a125-de54d00eae80" name="asap-clientSub_Flow" />
+				<ee:transform doc:name="Prepare output" doc:id="6191a6c7-73fa-4b60-ada3-c9309206ebe9" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	action: if (vars.currentState == 'S') 'Locked' else 'Unlocked',
+	ACK: payload.ACK,
+	currentState: payload.currentState,
+	reason: payload.reason,
+	eventId: payload.eventId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Prepare output" doc:id="8c438520-5f95-4c22-9d2c-62b8ce416489" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	action: vars.currentAction,
+	ack: "FAIL",
+	currentState: "",
+	reason: "Accion desconocida: (S) suspender (R) reconectar",
+	eventId: -1
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

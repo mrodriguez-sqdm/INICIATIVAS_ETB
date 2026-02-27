@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-registerLog-orchestratorSub_Flow" doc:id="cb4b4164-5ac1-4452-a7d6-d0b29ba9ebda" >
+		<ee:transform doc:name="Set body" doc:id="df180e55-9f9d-417d-95f5-daad53f38dbe" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services_V2
+---
+soapenv#Envelope: {
+    soapenv#Header:{},
+    soapenv#Body:{
+        mdm#Set_LogTransaccional:{
+            mdm#WSRequestHeader:{
+                mdm#system:{
+                    mdm#name: "Mulesoft",
+                    mdm#correlationId: payload.Identificador_Peticion,
+                    mdm#processingServer: "Mulesoft"
+                }
+            },
+            mdm#WSRequestBody: {
+                mdm#Identificador_Peticion: payload.Identificador_Peticion,
+                mdm#Tipo_Documento: payload.Tipo_Documento,
+                mdm#Numero_Identificacion: payload.Numero_Identificacion,
+                mdm#Numero_Conexion: payload.Numero_Conexion,
+                mdm#Tipo_Transaccion: payload.Tipo_Transaccion,
+                mdm#Fecha_Inicio: payload.Fecha_Inicio,
+                mdm#Fecha_Fin: payload.Fecha_Fin,
+                mdm#Estado_Transaccion: payload.Estado_Transaccion,
+                mdm#Sistema_Origen: payload.Sistema_Origen,
+                mdm#Atributos: {
+                    mdm#Atributo: payload.Atributos map (value, index) -> {
+                        mdm#name: value.name,
+                        mdm#value: value.value
+                    }
+                }
+
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="9e817568-7d3a-4e0b-b73c-a48ed9c4770a" name="post-registerLog-clientSub_Flow"/>
+		<choice doc:name="is the result true?" doc:id="3838260d-8823-4b53-bad2-d379cda24d50" >
+			<when expression='#[payload.Envelope.Body.Set_LogTransaccionalResponse.Set_LogTransaccional_Response.WSResponseBody.Resultado == "true"]'>
+				<ee:transform doc:name="Set successful response" doc:id="cd447c2b-52d4-4873-8d8e-d86824717fa2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "Status": payload.Envelope.Body.Set_LogTransaccionalResponse.Set_LogTransaccional_Response.WSResponseHeader.service.status,
+   "responseDate": payload.Envelope.Body.Set_LogTransaccionalResponse.Set_LogTransaccional_Response.WSResponseHeader.service.responseDate,
+   "Resultado": "Proceso ejecutado con éxito",
+   "Descripcion": payload.Envelope.Body.Set_LogTransaccionalResponse.Set_LogTransaccional_Response.WSResponseBody.Descripcion
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set unsuccesful response" doc:id="1d4153e7-52c6-4eac-811c-32095462d43f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "CodigoError": "1",
+   "DescripcionError": payload.Envelope.Body.Set_LogTransaccionalResponse.Set_LogTransaccional_Response.WSResponseBody.Descripcion,
+   "responseDate": payload.Envelope.Body.Set_LogTransaccionalResponse.Set_LogTransaccional_Response.WSResponseHeader.service.responseDate default now(),
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="202" doc:name="Http Status" doc:id="60d52124-559d-44fd-86cc-0bd1d129036b" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

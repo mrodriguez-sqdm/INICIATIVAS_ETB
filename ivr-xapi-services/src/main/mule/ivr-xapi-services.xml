@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="ivr-xapi-services-main">
+        <http:listener path="${https.path}" config-ref="ivr-xapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers></http:headers>
+            </http:error-response>
+        </http:listener>
+        <set-variable value="#[attributes.queryParams.bponame]" doc:name="Set Variable" doc:id="70a256b8-8c28-4916-a3de-ee830a9162f9" variableName="bponame"/>
+		<flow-ref doc:name="Call initial Logger" doc:id="1dc80235-6852-4fb2-bf7c-c85f66e74120" name="initial-loggin-Sub_Flow" />
+		<apikit:router config-ref="ivr-xapi-services-config"/>
+		<async doc:name="Async" doc:id="c443ee74-e142-47c0-b685-30c8ed18a473" >
+			<flow-ref doc:name="Call logger" doc:id="d5df6f5e-fb5c-4fab-9088-fe9b329e00c4" name="loggin-client-call" />
+		</async> 
+		<error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="ivr-xapi-services-console">
+        <http:listener path="/console/*" config-ref="ivr-xapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="ivr-xapi-services-config"/>
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\contactos-frecuentes:application\json:ivr-xapi-services-config">
+        <flow-ref doc:name="Go To Handler" doc:id="a3caac76-d7e1-4a70-bfe6-16836b638ca1" name="post-contactos-frecuentes-handlerSub_Flow"/>
+    </flow>
+    <flow name="patch:\operations\v1\process\reconnection:application\json:ivr-xapi-services-config" doc:id="a31c92a4-4d2c-47e8-9338-16f0d18444c0">
+        <flow-ref doc:name="Go To Handler" doc:id="57a493c8-c26a-4a57-abbe-44f88456e21e" name="patch-reconnectionRMCA-handlerSub_Flow"/>
+    </flow>
+	<flow name="post:\v1\send-context:application\json:ivr-xapi-services-config" doc:id="67f30a03-5b69-466f-a79b-6a50baf744ab" >
+		<flow-ref doc:name="Go To Handler" doc:id="7bd701a2-f3af-400b-bf47-90cce380a1cd" name="post-send-context-handlerFlow"/>
+	</flow>
+
+</mule>

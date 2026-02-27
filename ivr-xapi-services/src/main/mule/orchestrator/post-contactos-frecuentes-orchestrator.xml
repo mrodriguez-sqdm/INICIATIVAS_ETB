@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-contactos-frecuentes-orchestratorSub_Flow" doc:id="83f77a63-ed0f-4573-bd2f-1f30f349102f" >
+		<ee:transform doc:name="Validations" doc:id="cbf9fb1b-d706-410c-9e4b-0599728f3f5c" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="validations" ><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.tipoConsulta == "cliente")
+payload.cliente? and !isEmpty(payload.cliente) and !isBlank(payload.numeroIVR) and !isBlank(payload.numeroConexion)
+else 
+payload.numeroIVR? and !isBlank(payload.numeroIVR)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="9263f46a-9a37-4198-8b5f-1898511e3fee" >
+			<when expression="#[vars.validations]">
+				<flow-ref doc:name="Go To Client" doc:id="21b7030c-85fa-4c37-aa60-8601b06d6e74" name="post-contactos-frecuentes-clientSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="BAD REQUEST 400" doc:id="3cbe496f-3f7f-4518-bfd1-f0847241060f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 400,
+    "code": "BAD_REQUEST",
+    "message": {
+        "message": "Los datos de entrada no coinciden con el tipoConsulta especificado"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "ivr-xapi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

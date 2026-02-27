@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd  http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+    <flow name="revchain-sapi-services-main">
+        <http:listener config-ref="revchain-sapi-services-httpListenerConfig" path="/revchain/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+		<flow-ref doc:name="Call capture log vars" doc:id="d78b82a2-80f3-4c1e-bf60-fabf31063167" name="processAndSystem-logginSub_Flow" />
+		<apikit:router config-ref="revchain-sapi-services-config" />
+        <error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="revchain-sapi-services-console">
+        <http:listener config-ref="revchain-sapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="revchain-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\subscribers:application\json:revchain-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="8150c34f-978e-4fa1-9d0b-f2d2e372c7e7" name="post-subscriber-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\cycles:application\json:revchain-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="ed771a93-cfbd-47a3-8c5e-af5e3d7c7ec2" name="post-cycles-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billing_accounts:application\json:revchain-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="4b873525-ff3b-48ab-bc03-8a47c04113b3" name="post-billing-accounts-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\tipologyRVC:application\xml:revchain-sapi-services-config" doc:id="1e5a7a02-ad18-4654-bcc4-2a9435fb40ba">
+        <flow-ref doc:name="Go to Handler" doc:id="2a7ce347-8453-406a-a44d-7ac35ae85eeb" name="patch-updateTipologyRVC-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billing_operation:application\json:revchain-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="1ed5a090-f4a2-4cd8-8769-1e17586e7ff8" name="post-billing-operation-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billing_products:application\json:revchain-sapi-services-config" doc:id="d4bfd338-6b7c-4fd3-939a-ef9e9fac043e">
+        <flow-ref doc:name="Go to handler billing_operation" doc:id="88fd361c-fbdc-442f-b732-1551f10170f7" name="post-billing-operation-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billing\provisioning\services:application\json:revchain-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="2c185354-2cd8-45da-abb2-6ca1130e513f" name="post-invokeProvisioningService-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\numberAndPrice:application\json:revchain-sapi-services-config" doc:id="1cf90521-e465-40bb-81f6-9b79e0289ed5">
+        <flow-ref doc:name="Go to Handler" doc:id="aedf4949-946a-42ce-a387-9293062eba1a" name="patch-numberAndPrice-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billingAdjustment:application\json:revchain-sapi-services-config" doc:id="034fc552-fc29-4346-9c6e-e73b0205d71c">
+        <flow-ref doc:name="Go to Handler" doc:id="663e487c-2d07-47b6-b6b0-6dc7c8988e60" name="post-billingAdjustment-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\subscribers:application\json:revchain-sapi-services-config">
+        <flow-ref doc:name="patch-subscribers-handlerSub_Flow" doc:id="4e808185-1cb2-4125-af12-92c2e680ed70" name="patch-subscribers-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\orders\(order_id):application\json:revchain-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="637fe162-f7ba-4f88-9c81-c5e3f2f19c63" name="patch-portabilityCompensationIntf-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\billing\concepts:revchain-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="68e71af7-4e01-450c-bfa7-62eae1464b2a" name="get-billing-concepts-handlerSub_Flow"/>
+    </flow>
+    <flow name="get:\v1\billing\variations:revchain-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="a350f8d4-d80a-40fd-aedc-bd0411eb0d50" name="get-billing-variations-handlerSub_Flow"/>
+    </flow>
+</mule>

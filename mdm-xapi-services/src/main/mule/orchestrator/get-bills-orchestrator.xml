@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-bills-orchestratorSub_Flow" doc:id="029ef645-665b-4898-ab04-d95832e50dd2" >
+		<flow-ref doc:name="get-bills-clientSub_Flow" doc:id="50f3ca69-4cb6-4645-914b-fe404807b5cd" name="get-bills-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="90a2e540-3cd0-4d44-8e65-2bb1302b3830" >
+			<when expression="#[payload.Bills != null]" >
+				<set-variable value="200" doc:name="Set httpStatus" doc:id="353932cc-85ca-48e1-a1e6-81daedcfc2a7" variableName="httpStatus" />
+				<ee:transform doc:name="SET SUCCESS" doc:id="dd3ad399-c77e-47ed-9cdc-aae86e12d1c8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "GetBillsOutput": {
+        "WSResponseHeader2" :
+        {
+            "System":{
+				"name": vars.attributes.name,
+				"correlationID": correlationId,
+				"processingServer": vars.attributes.processingServer
+            },
+            "Service":{
+                "status" : payload.Result.status
+            }
+        },
+        "Bills" : payload.Bills,
+        "Result" : payload.Result-"status"
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="Set httpStatus" doc:id="906c9cfd-1d52-43cc-8210-a1c5698822a2" variableName="httpStatus" />
+				<ee:transform doc:name="Set FAIL" doc:id="fd714b8e-dac1-4df3-a4b4-c1e93be8fc70" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "GetBillsOutput": {
+        "WSResponseHeader2" :
+        {
+            "System":{
+				"name": vars.attributes.name,
+				"correlationID": correlationId,
+				"processingServer": vars.attributes.processingServer
+            },
+            "Service":{
+                "status" : payload.Result.status,
+                "statusDetail": {
+                    "errorCode" : payload.Result.code,
+                    "errorMessage" : payload.Result.description
+                }
+            }
+        },
+        "Result" : payload.Result-"status"
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

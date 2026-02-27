@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateIncidentStatus-orchestratorSub_Flow" doc:id="f92e0274-9b42-46f6-b1bd-dfca07c9b4a7" >
+		<ee:transform doc:name="Prepare request body" doc:id="32d95c8d-2260-48bd-8432-7d5309df2be2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns urn urn:ETB_Update_INC_SF_ESTADO
+---
+{
+    soapenv#Envelope: {
+        soapenv#Header: {
+            urn#AuthenticationInfo: {
+                urn#userName: p('mdm-remedy.credentials.user'),
+                urn#password: p('mdm-remedy.credentials.password')
+            }
+        },
+        soapenv#Body: {
+            urn#Update_Edo_SF_RMD: {
+                urn#ACCION_UPD_EDO: if (!isEmpty(payload.accion_upd_edo)) payload.accion_upd_edo else p('mdm-remedy.updateEntIncidentStatus.actionUpdEdo'),
+                urn#IN_NRO_INCIDENCIA: vars.incidenceId,
+                urn#IN_ID_SALESFORCE: vars.salesforceId,
+                urn#IN_ESTADO: vars.status,
+                (urn#IN_SUB_EDO: payload.sub_edo) if (!isEmpty(payload.sub_edo)),
+                (urn#IN_NIVEL_1: payload.nivel_1) if (!isEmpty(payload.nivel_1)),
+                (urn#IN_NIVEL_2: payload.nivel_2) if (!isEmpty(payload.nivel_2)),
+                (urn#IN_NIVEL_3: payload.nivel_3) if (!isEmpty(payload.nivel_3)),
+                (urn#IN_NIVEL_4: payload.nivel_4) if (!isEmpty(payload.nivel_4)),
+                (urn#IN_NIVEL_5: payload.nivel_5) if (!isEmpty(payload.nivel_5)),
+                (urn#IN_SOLUCION: payload.solucion) if (!isEmpty(payload.solucion)),
+                (urn#IN_COD_CIERRE: payload.cod_cierre) if (!isEmpty(payload.cod_cierre)),
+                (urn#IN_RESPONSABLE: payload.responsable) if (!isEmpty(payload.responsable)),
+                (urn#IN_SUBRESPONSABLE: payload.subresponsable) if (!isEmpty(payload.subresponsable)),
+                (urn#IN_PERTINENCIA_HORAS: payload.pertinencia_horas) if (!isEmpty(payload.pertinencia_horas)),
+                (urn#IN_PERTINENCIA_MINUTOS: payload.pertinencia_minutos) if (!isEmpty(payload.pertinencia_minutos)),
+                (urn#IN_PERTINENCIA_SEGUNDOS: payload.pertinencia_segundos) if (!isEmpty(payload.pertinencia_segundos)),
+                (urn#IN_FECHA_SOLUCION: payload.fecha_solucion) if (!isEmpty(payload.fecha_solucion)),
+                (urn#IN_FECHA_FIN_AFECTACION: payload.fecha_fin_afectacion) if (!isEmpty(payload.fecha_fin_afectacion))
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="29a3fcf4-50f5-4e2d-b5cf-5c8e56d7de5f" name="patch-updateIncidentStatus-serviceSub_Flow"/>
+		<ee:transform doc:name="payload" doc:id="57259381-eedf-4918-b0a4-0d4b0c1ce1d1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"OUT_AKNOWLEDGE": payload.Envelope.Body.Update_Edo_SF_RMDResponse.OUT_AKNOWLEDGE,
+	"OUT_ERROR_EDO": payload.Envelope.Body.Update_Edo_SF_RMDResponse.OUT_ERROR_EDO default "",
+	"OUT_ERROR_RMD": payload.Envelope.Body.Update_Edo_SF_RMDResponse.OUT_ERROR_RMD default ""
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.Envelope.Body.Update_Edo_SF_RMDResponse.OUT_AKNOWLEDGE == 'KO') 500
+else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

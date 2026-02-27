@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-consultInventroyDetail-orchestratorSub_Flow" doc:id="2e9d4440-350c-48bb-ba10-0ce15ae22bf6" >
+		<parse-template doc:name="Generate request body" doc:id="8fc3a6a7-c84e-44dc-9f4c-19ef851bab9b" location="soap\schemas\templates\soap-consultInventoryDetail-request.xml"/>
+		<flow-ref doc:name="Go to Client" doc:id="33d9976f-7bf9-48a6-b136-85661be279aa" name="get-consultInventoryDetail-clientSub_Flow"/>
+		<ee:transform doc:name="Prepare output" doc:id="5b32918f-8b11-4adb-be3f-a43fd38a0fb9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var response = payload.Envelope.Body.Consulta_detalle_inventarioResponse.Consulta_detalle_inventarioResult
+---
+{
+    consultInventoryDetailOutput: {
+      wsResponseHeader: {
+        system: {
+          correlationId: vars.correlationId,
+          name: "MULESOFT",
+          processingServer: "MULESOFT"
+        },
+        service: {
+          responseDate: vars.responseDate,
+          status: "PASS"
+        }
+      },
+      bodyResponse: {
+        consult_inventory_detailResponse: {
+          inventory_actions: response.accion_inventario.*'Scheme_Services.PS_ACCION_INVENTARIO' map ((item, index) -> {
+inventory_action: {
+    quantity: item.cantidad as Number,
+    final_state: item.estado_final,
+    initial_state: item.estado_inicial,
+    provisioning_id: item.id_aprovisionamiento,
+    final_state_id: item.id_estado_final,
+    initial_state_id: item.id_estado_inicial,
+    action_type_id: item.id_tipo_accion,
+    observation: item.observacion,
+    action_type: item.tipo_accion
+}
+          }),
+          inventory_attributes: response.atributos_inventario.*'Scheme_Services.PS_ATRIBUTO_INVENTARIO' map ((item, index) -> {
+inventory_attribute: {
+    description: item.descripcion,
+    attribute_id: item.id_atributo,
+    name: item.nombre,
+    order: item.orden as Number,
+    data_type: item.tipo_dato,
+    value: item.valor
+}
+          }),
+          cellar: response.bodega,
+          quantity: response.cantidad as Number,
+          reservation_quantity: response.cantidad_reserva as Number,
+          cost_center: response.centro_costo,
+          appreciation_class: response.clase_valoracion,
+          document: response.documento,
+          is_active: response.es_activo as Boolean default null,
+          state: response.estado,
+          up_date: response.fecha_alta,
+          cellar_id: response.id_bodega,
+          state_id: response.id_estado,
+          product_id: response.id_producto,
+          batch: response.lote,
+          client_nit: response.nit_cliente,
+          position: response.posicion,
+          product: response.producto,
+          serial: response.serial,
+          ubication: response.ubicacion,
+          unit_value: response.valor_unitario as Number
+        }
+      }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

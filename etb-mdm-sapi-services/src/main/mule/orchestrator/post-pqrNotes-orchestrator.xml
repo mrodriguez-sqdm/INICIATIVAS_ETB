@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-pqrNotes-orchestratorSub_Flow" doc:id="08134d90-50bd-4c7e-8737-b52aed3809cb" >
+		<ee:transform doc:name="Transform to XML" doc:id="c3491fe2-0407-462e-adfb-f0345a7646f9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+var request = payload.pqrActivityNotes
+output text/xml
+---
+{
+  soapenv#Envelope: {
+    soapenv#Header: null,
+    soapenv#Body: {
+      mdm#Set_PQR_Actividad_Notas: {
+        mdm#WSRequestHeader: {
+          mdm#system: {
+            mdm#name: request.requestHeader.system.name,
+            mdm#correlationId: request.requestHeader.system.correlationId,
+            mdm#processingServer: request.requestHeader.system.processingServer
+          },
+          mdm#property: {
+            mdm#Property: request.requestHeader.property map ((item, index) -> 
+            {
+                mdm#name: item.name,
+                mdm#value: item.value
+            })
+          }
+        },
+		mdm#WSRequestBody: {
+		          mdm#id: request.requestBody.id,
+		          mdm#PQR_number: request.requestBody.pqrNumber,
+		          mdm#Activity_Number: request.requestBody.activityNumber,
+		          mdm#Activity_Notes:
+		          {
+		              mdm#PQR_Actividad_Notas_Set_Body: request.requestBody.activityNotes map ((item, index) -> 
+		              	mdm#Nota: item.note
+		              )
+		          },
+		          mdm#set_type: request.requestBody.setType
+		}
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-pqrNotes-clientSub_Flow" doc:id="91ecc439-0b9e-432c-8049-3515a3aa1712" name="post-pqrNotes-clientSub_Flow"/>
+		<ee:transform doc:name="Transform to JSON" doc:id="fce2f64d-061b-4199-8811-559b7a2e3eb5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+var responseWS = payload.Envelope.Body.Set_PQR_Actividad_NotasResponse.Set_PQR_Actividad_NotasResult
+output application/json
+---
+{
+    status: responseWS.WSResponseHeader.service.status,
+    operationResult: responseWS.WSResponseBody.OperationResult,
+    operationResultDesc: responseWS.WSResponseBody.OperationResultDesc,
+    responseDate: responseWS.WSResponseHeader.service.responseDate,
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

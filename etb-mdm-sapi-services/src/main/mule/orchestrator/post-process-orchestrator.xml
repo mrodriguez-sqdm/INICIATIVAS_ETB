@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-process-orchestratorSub_Flow" doc:id="a5d7c4f5-61ff-4879-9130-2d7e8a428f76" >
+		<ee:transform doc:name="Missing Parameters" doc:id="37ae239f-47a6-40ff-9920-49d0c238f8f5" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="missingParameters" ><![CDATA[%dw 2.0
+output application/json
+var parameters = [
+    ("name") if payload.ProcessOPInput.WSRequestHeader2.System.name == null,
+    ("correlationID") if payload.ProcessOPInput.WSRequestHeader2.System.correlationID == null,
+    ("Action") if payload.ProcessOPInput.ProcessRequest.Action == null, 
+    ("Order") if payload.ProcessOPInput.ProcessRequest.Order == null,
+    ("Reason") if payload.ProcessOPInput.ProcessRequest.Reason == null,
+    ("Comments") if payload.ProcessOPInput.ProcessRequest.Comments == null,
+]
+---
+parameters joinBy  ", "]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="45630b1e-61be-468f-b8f1-cba729e82752" />
+		<choice doc:name="Choice" doc:id="c3011e2a-eb4c-4a79-ac84-175dd346075c">
+		<when expression="#[sizeOf(vars.missingParameters) &gt; 0]">
+				<ee:transform doc:name="Error Faltan parámetros" doc:id="3d478ad2-14d2-4ee6-8337-cd94a208924f">
+					<ee:message>
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "ActivityInput": {
+    "message": "Faltan los siguientes parámetros: " ++ vars.missingParameters,
+    "messageCode": "PROCORDER02"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<when expression='#[upper(vars.action) == "COMPLETE"]'>
+				<ee:transform doc:name="Create COMPLETE Body" doc:id="bfb23525-f1b1-43fe-a6fe-141d5d8c7816">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false, encoding="UTF-8"
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns orq http://www.etb.com.co/orquestador
+ns orq1 http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Entidades.Agendamiento
+---
+soapenv#Envelope @("xmlns:tem": "http://tempuri.org/",
+                    "xmlns:orq": "http://www.etb.com.co/orquestador",
+                    "xmlns:orq1": "http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Entidades.Agendamiento")
+                    :{
+    soapenv#Header: null,
+    soapenv#Body: {
+        tem#CompletarOrden: {
+            tem#solicitud:{
+                orq#Encabezado: {
+                    orq#Sistema: {
+                        orq#IdCorrelacion: payload.ProcessOPInput.WSRequestHeader2.System.correlationID,
+                        orq#Nombre: payload.ProcessOPInput.WSRequestHeader2.System.name
+                    }
+                },
+                orq#DatosSolicitud: {
+                    orq#Orden: payload.ProcessOPInput.ProcessRequest.Order,
+                    orq#Comentarios: payload.ProcessOPInput.ProcessRequest.Comments
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[p('mdmWS.complete.action')]" doc:name="Set action" doc:id="37e8a4bf-f940-4fc7-bb22-e4d4b0e7c33e" variableName="action" />
+				<flow-ref doc:name="Go to Client" doc:id="9a159fdf-2609-4857-9b96-246bcbf070d3" name="post-process-clientSub_Flow" />
+				<ee:transform doc:name="Set response" doc:id="1091401d-a8ef-4cf1-b09b-e8fb128385ad">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"ProccessResponse":{
+    "Code": payload.Envelope.Body.CompletarOrdenResponse.Resultado.Codigo,
+    "Description": payload.Envelope.Body.CompletarOrdenResponse.Resultado.Descripcion
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="73a4cb9c-9bae-4899-a3f8-808b3fdeaee5" />
+			</when>
+			<when expression='#[upper(vars.action) == "SUSPEND"]'>
+				<ee:transform doc:name="Create SUSPEND Body" doc:id="2236db43-6018-4008-a11e-3b1173f01863">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false, encoding="UTF-8"
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns orq http://www.etb.com.co/orquestador
+ns orq1 http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Entidades.Agendamiento
+---
+soapenv#Envelope @("xmlns:tem": "http://tempuri.org/",
+                    "xmlns:orq": "http://www.etb.com.co/orquestador",
+                    "xmlns:orq1": "http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Entidades.Agendamiento")
+                    :{
+    soapenv#Header: null,
+    soapenv#Body: {
+        tem#SuspenderOrden: {
+            tem#solicitud:{
+                orq#Encabezado: {
+                    orq#Sistema: {
+                        orq#IdCorrelacion: payload.ProcessOPInput.WSRequestHeader2.System.correlationID,
+                        orq#Nombre: payload.ProcessOPInput.WSRequestHeader2.System.name
+                    }
+                },
+                orq#DatosSolicitud: {
+                    orq#Orden: payload.ProcessOPInput.ProcessRequest.Order,
+                    orq#Razon: payload.ProcessOPInput.ProcessRequest.Reason,
+                    orq#Comentarios: payload.ProcessOPInput.ProcessRequest.Comments
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[p('mdmWS.suspend.action')]" doc:name="Set action" doc:id="187215b2-a0ef-4a10-a28c-6468f0a5d8b6" variableName="action" />
+				<flow-ref doc:name="Go to Client" doc:id="d85dfb6e-322c-4514-8074-222dc448a568" name="post-process-clientSub_Flow" />
+				<ee:transform doc:name="Set response" doc:id="bc70394b-0626-46fa-84f3-b6a36b65a3ee">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"ProccessResponse":{
+    "Code": payload.Envelope.Body.SuspenderOrdenResponse.Resultado.Codigo,
+    "Description": payload.Envelope.Body.SuspenderOrdenResponse.Resultado.Descripcion
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="3328841b-b711-4bf3-bfbf-72a49fd954d4" />
+			</when>
+			<when expression='#[upper(vars.action) == "NOTDONE"]'>
+				<ee:transform doc:name="Create NOTDONE Body" doc:id="9819fba6-5105-4dc6-9ee6-f66e9830f45d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false, encoding="UTF-8"
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns orq http://www.etb.com.co/orquestador
+ns orq1 http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Entidades.Agendamiento
+---
+soapenv#Envelope @("xmlns:tem": "http://tempuri.org/",
+                    "xmlns:orq": "http://www.etb.com.co/orquestador",
+                    "xmlns:orq1": "http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Entidades.Agendamiento")
+                    :{
+    soapenv#Header: null,
+    soapenv#Body: {
+        tem#NoCompletarOrden: {
+            tem#solicitud:{
+                orq#Encabezado: {
+                    orq#Sistema: {
+                        orq#IdCorrelacion: payload.ProcessOPInput.WSRequestHeader2.System.correlationID,
+                        orq#Nombre: payload.ProcessOPInput.WSRequestHeader2.System.name
+                    }
+                },
+                orq#DatosSolicitud: {
+                    orq#Orden: payload.ProcessOPInput.ProcessRequest.Order,
+                    orq#Razon: payload.ProcessOPInput.ProcessRequest.Reason,
+                    orq#Comentarios: payload.ProcessOPInput.ProcessRequest.Comments
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[p('mdmWS.notdone.action')]" doc:name="Set action" doc:id="a39b9620-66d6-494a-8ff5-2d7e8f741dcf" variableName="action" />
+				<flow-ref doc:name="Go to Client" doc:id="2fa99cbe-2b4d-412b-a2c8-6221de7331fb" name="post-process-clientSub_Flow" />
+				<ee:transform doc:name="Set response" doc:id="f54ea3ad-8590-48b2-8012-c504fcfd9353">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"ProccessResponse":{
+    "Code": payload.Envelope.Body.NoCompletarOrdenResponse.Resultado.Codigo,
+    "Description": payload.Envelope.Body.NoCompletarOrdenResponse.Resultado.Descripcion
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="0afc00b4-b749-425e-8588-691f532b0870" />
+			</when>
+			
+			<otherwise>
+				<ee:transform doc:name="Set error 'action' inválido" doc:id="f904e7e3-88e0-469c-8345-964b0036fe25">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "ActivityInput": {
+    "message": "El parámetro 'action' es inválido",
+    "messageCode": "PROCORDER02"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-consultPQR-orchestratorSub_Flow" doc:id="30854328-8e74-44c6-9a71-da514bb325bf" >
+		<flow-ref doc:name="Go To Client" doc:id="4046c7c7-09d2-412c-b201-15753e34b4eb" name="post-consultPQR-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="aa444d99-6f70-4a73-bf43-ea7fc3511943" >
+			<when expression="#[payload.response.get_pqrResponse.get_pqrResult.wsResponseHeader.service.status == 'OK']">
+				<ee:transform doc:name="Transform Message" doc:id="4cd849e7-7793-4f96-a180-10f25a6ba244">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 200,
+  "code": "OK",
+  "response": {
+    "consultPQRResponse": {
+      "wSResponseHeader": {
+        "system": {
+          "correlationID": vars.correlationId,
+          "source": "MULESOFT"
+        },
+        "service": {
+          "status": if(payload.response.get_pqrResponse.get_pqrResult.wsResponseHeader.service.status != 'OK') 'FAIL' else 'PASS'
+        }
+      },
+      "ocs_spcConsultar_spcPQR_spcWS_Output": {
+        "error_spcCode": payload.response.get_pqrResponse.get_pqrResult.wsResponseHeader.service.status default null,
+        "error_spcMessage": payload.response.get_pqrResponse.get_pqrResult.wsResponseHeader.service.statusDetail default null,
+        "object_spcId": "",
+        "process_spcInstance_spcId": "",
+        "listOfOcsServiceRequest": payload.response.get_pqrResponse.get_pqrResult.wsResponseBody map (obj,ind) ->
+          	do{var varActivity = obj.pqrActivitiesPQR filter($.pqrActivityPQR.activityName == 'AJUSTES(F12)' and $.pqrActivityPQR.activityStatus == 'En progreso')
+          		---
+          	"serviceRequest": {
+              "contactFirstName": obj.pqrPQR.customerName,
+              "customerRefNumber": obj.pqrPQR.cun,
+              "ocsAccountDocumentNumber": obj.pqrPQR.identificationNumber,
+              "ocsAccountDocumentType": obj.pqrPQR.documentType,
+              "ocsContactDocumentNumber": obj.pqrPQR.contactDocumentNumber,
+              "ocsContactDocumentType": obj.pqrPQR.contactDocumentType,
+              "ocsAccountBillingNumber": obj.pqrPQR.billingAccount,
+              "openedDate": obj.pqrPQR.creationDate as LocalDateTime as String {format: 'MM/dd/yyyy HH:mm:ss'},
+              "srId": obj.pqrPQR.rowIdPQR,
+              "srNumber": obj.pqrPQR.pqrNumber,
+              "status": if (upper(obj.pqrPQR.pqrStatus) == 'CERRADO' or upper(obj.pqrPQR.pqrStatus) == 'ANULADO') 'Cerrado' else varActivity[0].pqrActivityPQR.activityStatus default "",
+              "ocsAccountSegment": obj.pqrPQR.customerSegment,
+              "ocsCausal": obj.pqrPQR.pqrCausal,
+              "ocsSymptom": obj.pqrPQR.pqrSymptom,
+              "ocsOrderNumber": obj.pqrPQR.orderNumber,
+              "ocsValClaimed": obj.pqrPQR.claimedValue,
+              "activity": varActivity[0].pqrActivityPQR.activityRowId,
+              "technology": obj.pqrPQR.technology
+            }
+          },
+        "siebel_spcOperation_spcObject_spcId": ""
+      }
+    }
+}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="c7d6ccbb-8965-4f4f-a1b2-1aa6afd7e153" type="SOAP:GET_PQR" description="#[payload.response.get_pqrResponse.get_pqrResult.wsResponseHeader.service.statusDetail default null]"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

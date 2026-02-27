@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-pqrMassiveFailure-orchestratorSub_Flow" doc:id="1d5ee789-9670-411a-b120-b194af7572ff" >
+		<ee:transform doc:name="Transform to XML" doc:id="414b05f2-c12e-4df0-a112-a398117008b0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+ns soap12 http://www.w3.org/2003/05/soap-envelope
+output text/xml
+var request = payload.pqrMassiveFailure
+---
+{
+  soap12#Envelope @('xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance", 'xmlns:xsd':"http://www.w3.org/2001/XMLSchema"): {
+    soap12#Body: {
+      Set_Data_Falla_Masiva @('xmlns':"http://www.etb.com.co/Gateway/MDM_Data_Services"): {
+        WSRequestHeader: {
+          system: {
+            name: request.requestHeader.system.name,
+            correlationId: request.requestHeader.system.correlationId,
+            processingServer: request.requestHeader.system.processingServer
+          },
+          property: request.requestHeader.property map ((item, index) -> 
+          {
+            Property: {
+              name: item.name,
+              value: item.value
+            }
+          })
+        },
+        WSRequestBody: {
+          numero_pqr: request.requestBody.pqrNumber,
+          tes: request.requestBody.tes,
+          mitigado: request.requestBody.mitigado,
+          set_type: request.requestBody.operationType,
+          cierre1: request.requestBody.cierre1,
+          cierre2: request.requestBody.cierre2,
+          cierre3: request.requestBody.cierre3,
+          fechaSolucion: request.requestBody.fechaSolucion,
+          imputabilidad: request.requestBody.imputabilidad,
+          respuestaPQR: request.requestBody.respuestaPQR,
+          codigoResolucion: request.requestBody.codigoResolucion,
+          descripcionResolucion: request.requestBody.descripcionResolucion,
+          rowIdActividad: request.requestBody.rowIdActividad,
+          estadoActividad: request.requestBody.estadoActividad,
+          comentarios: request.requestBody.comentarios
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="0510c6b5-2362-460b-9b51-d3ab8eea18cf" name="post-pqrMassiveFailure-clientSub_Flow"/>
+		<ee:transform doc:name="Transform to JSON" doc:id="69e2eeaf-783c-434c-ac2b-592ddae2ca9f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+var responseWS = payload.Envelope.Body.Set_Data_Falla_MasivaResponse.Set_Data_Falla_MasivaResult
+output application/json
+---
+{
+    status: responseWS.WSResponseHeader.service.status,
+    operationResult: responseWS.WSResponseBody.OperationResult,
+    operationResultDesc: responseWS.WSResponseBody.OperationResultDesc,
+    responseDate: responseWS.WSResponseHeader.service.responseDate,
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

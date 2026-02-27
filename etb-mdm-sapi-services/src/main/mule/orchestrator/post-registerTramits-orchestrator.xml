@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-registerTramits-orchestrator" doc:id="194fb9c6-eaa3-4ded-b01d-4e9719f6719e" >
+		<ee:transform doc:name="Transform to XML" doc:id="83a926af-0e2a-4cfe-8863-9268a0bb412b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import appendNamespace from modules::utilitaries
+output text/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns col Collection_Siebel
+---
+soapenv#Envelope: {
+    soapenv#Header: {},
+    soapenv#Body: {
+        col#RegistroTramiteMasivo: {
+        	col#Origen: payload.Origen,
+            col#DatosRegistro: {
+            	col#RequestRegistroTramiteMasivo: payload.DatosRegistro.RequestRegistroTramiteMasivo map ((item, index) -> {
+                    col#Pedido: item.Pedido  default null,
+            		col#Abonado: item.Abonado default null,
+            		col#TipoTramite: item.TipoTramite default null,
+            		col#FechaIngresoTramite: item.FechaIngresoTramite default null,
+            		col#TipoDocumento: item.TipoDocumento default null,
+            		col#NumeroDocumento: item.NumeroDocumento default null,
+            		col#CuentaFacturacion: item.CuentaFacturacion default null,
+            		col#CuentaServicio: item.CuentaServicio default null,
+            		col#IdTransaccion: item.IdTransaccion default "?",
+            		col#sMotivo: item.sMotivo default "?",
+            		col#FechaOperacion: item.FechaOperacion default "?"
+                })
+            }
+        }
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-registerTramits-client" doc:id="749ac2f9-a085-4b00-ae52-4ca2ec68f2a2" name="post-registerTramits-client"/>
+		<ee:transform doc:name="Transform to Json" doc:id="892df10d-329d-4c93-88e9-f85e511caa4f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var tramits = payload..*RespuestaTramiteMasivo
+---
+{
+  "System": {
+    "correlationID": vars.inputData.correlationId,
+    "processingServer": vars.inputData.processingServer,
+    "responseDate": now()
+  },
+  Response: {
+    ResponseTramits: 
+        tramits map () -> {
+            orderNumber: $.NumeroPedido,
+            responseCode: $.CodigoRespuesta,
+            responseDescription: $.DescripcionRespuesta,
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload..*CodigoRespuesta contains("0")) 202
+else 201]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

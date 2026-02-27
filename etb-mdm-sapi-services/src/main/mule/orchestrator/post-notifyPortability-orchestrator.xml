@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-notifyPortabilityUpdateIntf-orchestratorSub_Flow" doc:id="4f9cc832-222c-4705-9557-64cc1378347d" >
+		<parse-template doc:name="Parse to XML" doc:id="91faacf3-aafe-47f6-a9cb-2114df82c0cb" location="soap/schemas/templates/soap-notifyPortability-request.xml" outputMimeType="application/xml"/>
+		<flow-ref doc:name="Go to Service" doc:id="e06ae3ce-937c-43f2-8927-7b4b9c5c9167" name="post-notifyPortabilityUpdateIntf-serviceSub_Flow"/>
+		<ee:transform doc:name="Transform Payload to JSON" doc:id="9c704e03-b3ad-42e5-9403-34607b0da03f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Filter Response" doc:id="0ebd52c9-3972-4e24-85a9-acf865eb745a" >
+			<when expression='#[payload.Envelope.Body.Recepcion_Mensajes_PortabilidadResponse.Recepcion_Mensajes_PortabilidadResult.Resultado_Proceso == "0"]'>
+				<set-variable value="201" doc:name="Set httpStatus 201" doc:id="ef37ccc8-fa07-4f96-b2a2-e1a557b9de38" variableName="httpStatus" />
+				<ee:transform doc:name="201 Response" doc:id="94d15801-43fe-4b40-b061-f43caa505432">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+
+{
+  "status": vars.httpStatus,
+  "code": "CREATED",
+  "response": {
+    "code": payload.Envelope.Body.Recepcion_Mensajes_PortabilidadResponse.Recepcion_Mensajes_PortabilidadResult.Resultado_Proceso
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<set-variable value="500" doc:name="Set httpStatus 500" doc:id="bb162929-d9ed-4901-8cd2-666aef78ca2c" variableName="httpStatus"/>
+				<ee:transform doc:name="500 Response" doc:id="c7242e09-f58a-43cb-9da2-7a25f0ebe813">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+ "messageServer": {
+    "Envelope": {
+      "Header": null,
+      "Body": {
+        "createReqResponse": {
+          "status": "Fallido",
+          "errorDetail": payload.Envelope.Body.Fault.faultstring
+        }
+      }
+    }
+  }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-notifyPortability1002-orchestratorSub_Flow" doc:id="ce65e6fd-f957-42a2-8e45-0139d8efa7c7" >
+		<ee:transform doc:name="Prepare input 1002" doc:id="efbb3556-4d39-4c09-a214-fcf7f51af913" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="mdmBody" ><![CDATA[%dw 2.0
+output application/xml
+ns soap http://www.w3.org/2003/05/soap-envelope
+ns mdm http://www.etb.com.co/Gateway/MDM_Logic_Services_V2
+fun appendNamespace(data, nsSelector) =
+  data match {
+    case is Array -> data map appendNamespace($, nsSelector)
+    case is Object -> data mapObject do {
+      var ns0 = nsSelector
+      ---
+      if (ns0 != null) ns0#"$($$)": appendNamespace($, nsSelector)
+      else ($$): appendNamespace($, nsSelector)
+    }
+    else -> data
+}
+---
+{
+    soap#Envelope: {
+        soap#Header: null,
+        soap#Body: {
+            mdm#Portabilidad_Saliente_1002: {
+                mdm#WSRequestHeader: {
+                    mdm#system: {
+                        mdm#name: "MULESOFT-PORTABILIDAD",
+					    mdm#correlationId: payload.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+					    mdm#processingServer: "Mulesoft Prod"
+                    }
+                },
+                mdm#WSRequestBody: {
+                    (mdm#DireccionAbonado: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DireccionAbonado) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DireccionAbonado)),
+                    mdm#FechaCreacionMensaje: payload.MensajeABD.CabeceraMensaje.FechaCreacionMsg,
+                    mdm#IdMensaje: payload.MensajeABD.CabeceraMensaje.IdentificadorMensaje,
+                    mdm#IdOperadorEmisor: payload.MensajeABD.CabeceraMensaje.Emisor,
+                    mdm#IdProceso: payload.MensajeABD.CabeceraMensaje.IdentificadorProceso,
+                    (mdm#NRN: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.NRN) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.NRN)),
+                    (mdm#NombreAbonado: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.NombreRazonSocialAbonado) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.NombreRazonSocialAbonado)),
+                    (mdm#Numeracion: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.ListaNumeracionNip.NumeracionNip[0].Numero) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.ListaNumeracionNip.NumeracionNip[0].Numero)),
+                    (mdm#NumeroIdentidad: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.IdentificacionAbonado) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.IdentificacionAbonado)),
+                    (mdm#OperadorDonante: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.Donante) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.Donante)),
+                    (mdm#SolicitudRealizadaXTercero: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.SolicitudTerceros) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.SolicitudTerceros)),
+                    mdm#TipoMensaje: payload.MensajeABD.CabeceraMensaje.TipoMsg,
+                    (mdm#TipoServicio: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoServicio) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoServicio)),
+                    (mdm#TipoUsuario: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoUsuario) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoUsuario)),
+                    (mdm#DocumentoID: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoID) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoID)),
+                    (mdm#DocumentoAT: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoAT) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoAT)),
+                    (mdm#DocumentoCC: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoCC) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.DocumentoCC)),
+                    (mdm#TipoDocumentoIdentificacion: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoDocumentoIdentificacion) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoDocumentoIdentificacion)), 
+                    (mdm#FechaExpedicionIdentificacion: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.FechaExpedicionIdentificacion) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.FechaExpedicionIdentificacion)), 
+                    (mdm#TipoDocumentoIdentificacionRepresentanteLegal: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoDocumentoIdentificacionRepresentanteLegal) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.TipoDocumentoIdentificacionRepresentanteLegal)),
+                    (mdm#IdentificacionRepresentanteLegal: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.IdentificacionRepresentanteLegal) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.IdentificacionRepresentanteLegal)), 
+                    (mdm#FechaExpedicionIdentificacionRepresentanteLegal: payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.FechaExpedicionIdentificacionRepresentanteLegal) if (!isBlank(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.FechaExpedicionIdentificacionRepresentanteLegal)),      
+                    mdm#ListaNumeracionNip: appendNamespace(payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.ListaNumeracionNip, mdm)
+                }
+            }
+        }
+    }
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<foreach doc:name="For Each Numeracion" doc:id="0bb59b49-1e11-4f88-ab02-6506dac1e833" collection="#[payload.MensajeABD.CuerpoMensaje.ReplicaSolicitudPortacion.ListaNumeracionNip.NumeracionNip]">
+			<set-payload value="#[vars.mdmBody]" doc:name="Set Payload" doc:id="afc3d0d9-a01e-413f-86f1-f440452612f3" />
+			<flow-ref doc:name="Go to Client" doc:id="5f963535-fe4a-41a5-98a2-9a43d9937581" name="post-notifyPortability1002-serviceSub_Flow"/>
+		</foreach>
+	</sub-flow>
+</mule>

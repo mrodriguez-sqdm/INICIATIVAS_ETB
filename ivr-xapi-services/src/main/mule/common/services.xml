@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities" xmlns:dotnet="http://www.mulesoft.org/schema/mule/dotnet"
+	xmlns:crypto="http://www.mulesoft.org/schema/mule/crypto"
+	xmlns:azure-key-vault="http://www.mulesoft.org/schema/mule/azure-key-vault" xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/azure-key-vault http://www.mulesoft.org/schema/mule/azure-key-vault/current/mule-azure-key-vault.xsd
+http://www.mulesoft.org/schema/mule/crypto http://www.mulesoft.org/schema/mule/crypto/current/mule-crypto.xsd
+http://www.mulesoft.org/schema/mule/dotnet http://www.mulesoft.org/schema/mule/dotnet/current/mule-dotnet.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd">
+	<sub-flow name="validate-systems" doc:id="f5831cd7-bdc2-4394-8478-e7db2bac8c87" >
+		<ee:transform doc:name="Saving headers" doc:id="a83a25e7-5c61-4627-9726-0e3ed528f9ba">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value='#[vars.headers."X_SYSTEM"]' doc:name="system" doc:id="58100a51-8ef0-4c26-92d3-932a4e5f578b" variableName="system" />
+<!-- [STUDIO:"Get Ms Sytems"]		<flow-ref doc:name="Get Ms Sytems" doc:id="8fb73c02-5440-48a6-ae57-2b40761247dc" name="get-ms-systems"/> [STUDIO] -->
+		<ee:transform doc:name="MOCK system" doc:id="bcacf1f1-5ba5-4257-ac0c-808e69959e6a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+[{}]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Have access to systems?" doc:id="4e2bdb14-55ec-46d1-92cd-3150c86cc5d8" >
+			<when expression="#[!isEmpty(payload)]">
+				<set-payload value="#[true]" doc:name="Positive" doc:id="b2697c37-fbec-4311-8e86-29fa4e3dbc0f" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Negative 401 Unauthorized" doc:id="d9cacb05-016c-4bae-ad93-2d1472d7f0dd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 401,
+  "code": "UNAUTHORIZED",
+  "message": {
+    "message": "Unauthorized to access to the system"
+  },
+  "messageServer": "Request not authorized.",
+  "cause": [
+    {
+      "origin": "ivr-xapi-services",
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

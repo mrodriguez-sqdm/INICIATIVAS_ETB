@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateOT-client" doc:id="225b8177-25ce-4714-b650-89ebe9bf6e61" >
+		<try doc:name="Try" doc:id="45e581c7-8549-4e99-a2ac-1de9e2866a69" >
+			<http:request method="PATCH" doc:name="Go to mdm-sapi-services" doc:id="bb4a0159-fd58-4908-b162-29cb911811ea" path="#[p('remedy-sapi.path.incidence') ++ p('remedy-sapi.path.order')]" config-ref="remedy_sapi">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.source,
+	"name" : attributes.headers.name,
+	"X-CORRELATION-ID" : correlationId,
+	client_secret : p('credentials.client_secret'),
+	client_id : p('credentials.client_id'),
+	systemId: vars.systemId
+}]]]></http:headers>
+		</http:request>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="_On Error Continue" doc:id="d7aa089e-a5f4-429b-8516-eb293cc81820" type="HTTP:INTERNAL_SERVER_ERROR" when='#[error.muleMessage.typedValue.code == "ERROR"]' >
+					<ee:transform doc:name="Mapping Error Output" doc:id="4552378b-13bb-4b77-a9aa-b10aac14e1a0" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "code": "ERROR",
+   "fault": error.muleMessage.typedValue.fault
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="httpStatus 500" doc:id="643013db-32b3-4ec9-926e-3907cd43f858" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

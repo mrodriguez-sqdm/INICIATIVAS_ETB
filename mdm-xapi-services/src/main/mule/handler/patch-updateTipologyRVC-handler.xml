@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateTipologyRVC-handlerSub_Flow" doc:id="30d2a103-ddef-414b-ba5d-8ca3b9a2d739" >
+		<ee:transform doc:name="Set Data" doc:id="d5d2f551-2920-41ad-8ce7-7396339466c9" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="Data" ><![CDATA[%dw 2.0
+output application/xml
+import * from dw::core::Strings
+---
+subscribers @('xmlns:xsi':"http://www.w3.org/2001/XMLSchema-instance", 'xsi:noNamespaceSchemaLocation':"xsd/ModificarDatosCuentaInput.xsd"):{
+	subscriber_particulars:{
+		subscriber_data @(action:"modify"):{
+			user: payload.user,
+			subscriber_id: payload.Customer.SubscriberId,
+			first_name: payload.Customer.FirstName,
+			last_name: payload.Customer.LastName,
+			subscriber_name: payload.Customer.SuscriberName
+		},
+		billing_address_data @(action:"modify"): {
+			bill_address1: payload.Address.Address,
+			bill_city: rightPad(payload.Address.CityCode, 8, "0"),
+			bill_country_code: payload.Address.CountryCode,
+			bill_state_code: leftPad(payload.Address.StateCode, 2, "0"),
+			bill_billing_name: payload.Customer.BillBillingName
+		},
+		address_data @(action:"modify"): {
+			address1: payload.Address.Address,
+			address_geo_code: rightPad(payload.Address.CityCode, 8, "0"),
+			city: payload.Address.City,
+			country_code: payload.Address.CountryCode,
+			state_code: leftPad(payload.Address.StateCode, 2, "0")
+		},
+		(email_data @(action:"add"): {
+			email_address: payload.Customer.Email default "",
+			email_is_primary_flag: if (payload.InvoiceMethod.DeliveryType == "Email") "Y" else "N"
+		}) if (!isBlank(payload.Customer.Email)),
+		invoice_method_data @(action:"modify"):{
+			invoice_method_name: payload.InvoiceMethod.MethodName,
+			invoice_delivery_name: payload.InvoiceMethod.DeliveryType,
+			invoice_delivery_mobile: payload.InvoiceMethod.MobilePhone	
+		}
+	}
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to orchestrator" doc:id="08bc916e-9cb6-441c-89cf-74699452c872" name="patch-updateTipologyRVC-orchestratorSub_Flow"/>
+	</sub-flow>
+</mule>

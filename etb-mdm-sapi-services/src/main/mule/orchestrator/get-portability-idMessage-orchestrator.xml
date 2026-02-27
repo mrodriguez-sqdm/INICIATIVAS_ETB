@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-portability-idMessage-orchestratorSub_Flow" doc:id="839b27b1-96dc-42f9-bdc9-d96a66d4e437" >
+		<ee:transform doc:name="Map Body Request" doc:id="2c8c97a7-cc48-47f5-9304-6e0c780c3175" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml writeDeclaration= false
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns orc http://orchestration.cloud.etb.com.co
+---
+soapenv#Envelope:{
+   soapenv#Header: null,
+   soapenv#Body:{
+       orc#RunOrchService:{
+           orc#OrchInput:{
+               orc#OrchRequestHeader:{
+                   orc#ExternalId: p('mdm-orchestration-service.vars.externalId'),
+                   orc#System: p('mdm-orchestration-service.vars.system')
+               },
+               orc#OrchRequestBody:{
+                   orc#Id: p('mdm-orchestration-service.vars.id'),
+                   orc#Version: p('mdm-orchestration-service.vars.version'),
+                   orc#Parameters:[
+                       {
+                         orc#Parameter:{
+                                orc#Attribute: p('mdm-orchestration-service.vars.attribute'),
+                                orc#Value: p('mdm-orchestration-service.vars.value')
+                         }  
+                       }
+                   ]
+               }
+           }
+       }
+   }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="4e46600c-cff9-433f-80c6-40458f53335f" name="get-portability-idMessage-clientSub_Flow"/>
+		<ee:transform doc:name="Map Output" doc:id="4a03efb7-f31c-4902-a14a-36fe0d61c448" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json
+var consecutivo = try(() -> payload.Envelope.Body.RunOrchServiceResponse.OrchOutput.OrchResponseBody.XmlData.OrchContext.Consecutivo)
+---
+if (consecutivo.success == true and !isEmpty(consecutivo.result)) 
+	{
+    	status: "OK",
+    	consecutivo: consecutivo.result
+    }
+ else{ status: "FAIL"}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

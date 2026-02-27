@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-tramits-orchestratorSub_Flow" doc:id="25749643-3f42-4ec7-8aed-c010aa81b6c4" >
+		<ee:transform doc:name="Set body" doc:id="ed52dff8-b82e-4694-bae2-52f6b5be65cd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns col Collection_Siebel
+---
+soapenv#Envelope: {
+    soapenv#Header:{},
+    soapenv#Body:{
+        col#ConsultaFlujoEstadosMasivo:{
+            col#Origen: vars.headers.sourceSystem,
+            col#DatosConsulta: {( payload map (object, index) ->
+                    {
+                        col#RequestConsultaFlujoMasivo: {
+                            col#Abonado: object.connectionNumber,
+                            col#CodigoTramite: object.code,
+                            col#FechaActivacion: object.activationDate,
+                            col#TipoDocumento: object.idType,
+                            col#NumeroDocumento: object.id,
+                            col#CuentaFacturacion: object.billingAccountId,
+                            col#CuentaServicio: object.serviceAccountId,
+                        }
+                    }
+                )
+            },
+            col#FlagHistoriaTramite: if (vars.headers.checkOrderHistory == "true") 1 else 0
+        }
+    }    
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="cbe5a203-9dd9-41c6-8ad6-f032ad89b12f" name="get-tramits-clientSub_Flow"/>
+		<ee:transform doc:name="Transform to Json" doc:id="3270fbee-8f74-477e-b652-a18dd8c077fc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Set response and httpStatus" doc:id="30be28a2-2e67-4c36-afec-93e32613ae3f">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.Envelope.Body.ConsultaFlujoEstadosMasivoResponse.ConsultaFlujoEstadosMasivoResult.*ConsultaFlujoMasivo map (value, index) -> {
+    Service: {
+        connectionNumber: value.NumeroConexion default "",
+        documentType: value.TipoDocumento default "",
+        documentId: value.NumeroDocumento default "",
+        activationDate: value.FechaActivacion default "",
+        tramit: value.Tramite default ""
+    },
+    (Order: {
+        id: value.NumeroPedido default "",
+        code: value.CodigoTramite default "",
+        startDate: value.FechaIngreso default ""    
+    }) if (value.NumeroPedido != null),
+    WorkPlan: {
+        code: value.CodigoFlujo default "",
+        description: value.DescripcionFlujo default ""
+    },
+    Action: {
+        code: value.CodigoRespuesta default "",
+        description: value.DescripcionRespuesta default ""
+    },
+    Resultado: {
+        status: "PASS",
+        code: if (value.CodigoRespuesta == "1") "SUCCESS" else "FAIL",
+        description: if (value.CodigoRespuesta == "1")  "SUCCESS" else "FAIL"
+    }
+}]]></ee:set-payload>
+					</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+var respuestas = payload.Envelope.Body.ConsultaFlujoEstadosMasivoResponse.ConsultaFlujoEstadosMasivoResult.*ConsultaFlujoMasivo
+---
+if(
+	(sizeOf(respuestas filter (value, index) -> value.DescripcionRespuesta == "Sin Datos en la consulta")
+default 0) +
+(sizeOf (respuestas filter (value, index) -> value.DescripcionRespuesta == "Error de datos en MDM") default 0)
+==
+sizeOf(respuestas))
+202
+else 200]]></ee:set-variable>
+			</ee:variables>
+				</ee:transform>
+	</sub-flow>
+</mule>

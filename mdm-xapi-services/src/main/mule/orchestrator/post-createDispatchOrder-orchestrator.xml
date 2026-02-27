@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-createDispatchOrder-orchestratorSub_Flow" doc:id="05259d0d-015a-4065-bcbe-773835b6e9da" >
+		<choice doc:name="Choice" doc:id="d9068c75-cee7-4186-b4d0-ea5b2c2b5e78" >
+			<when expression="#[(p('createDispatchOrder.mock') as Boolean) == true]">
+				<ee:transform doc:name="mocked response" doc:id="03e1aecf-b662-4e4e-af7c-11bab6fdf3ca">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 200,
+	"code": "OK",
+	"response": {
+		"createOrderRequestResponse": {
+			"return": {
+				"WSResponseHeader2": {
+					"System": {
+						"name": "Mulesoft",
+						"correlationID": attributes.headers.'x-correlation-id',
+						"processingServer": "Mulesoft"
+					},
+					"Service": {
+						"status": "PASS",
+						"responseDate": (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS"},
+						"statusDetail": {
+							"errorCode": 0,
+							"errorMessage": "El MSG se proceso Correctamentamente"
+						}
+					}
+				},
+				"CrearOrdenIn": {
+					"recibido": true
+				}
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="7a8173cf-33d8-49ba-aa82-bbd89e763247">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var inputMessage = payload.wsInputCreateDispatchOrder.parameters.wsInputCreateDispatchOrder
+---
+{
+  "createOrderRequest": {
+    "createOrderIn": {
+      "order": {
+        "cunNumber": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.cunNumber as String,
+        "reference": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.reserveNumber default "",
+        "date": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.date,
+        "resend": {
+          "dispatchOrder": inputMessage.wsRequestHeader.property[0].REENVIO default 'false' ,
+          "quantity": if (inputMessage.wsRequestHeader.property[0].REENVIO == 'True') inputMessage.wsRequestHeader.property[0].INTENTOS as Number else 0 
+        },
+        "orderType": inputMessage.wsRequestHeader.property[0].TIPOORDEN,
+        "entryType": inputMessage.wsRequestHeader.property[0].TIPOENTREGA default "",
+        "observations": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.clientObservations default "",
+        "collection": {
+          "required": if (inputMessage.wsRequestHeader.property[0].RECAUDO == 'True') true else false,
+          "value": if (inputMessage.wsRequestHeader.property[0].RECAUDO == 'True') inputMessage.wsRequestHeader.property[0].VALORRECAUDO as Number else 0 
+        },
+        "address": {
+          "address": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.address,
+          "district": inputMessage.wsRequestHeader.property[0].BARRIO default "",
+          "city": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.city as String,
+          "department": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.department as String
+        },
+        "contact": {
+          "names": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.names,
+          "surnames": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.surnames,
+          "documentType": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.documentType,
+          "documentNumber": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.documentNumber as String,
+          "mobilePhone": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.mobileNumber as String,
+          "mobilePhone2": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.mobileNumber2 as String default "",
+          "phoneNumber": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.phoneNumber as String default "",
+          "email": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.email default ""
+        },
+        "item": {
+          "store": inputMessage.inputCreateDispatchOrder.dispatchOrderHeader.callCenter,
+          "material": inputMessage.inputCreateDispatchOrder.dispatchOrderDetail[0].dispatchOrderCode.partNumber,
+          "type": "SIMCard",
+          "subType": inputMessage.wsRequestHeader.property[0].SUBTIPO,
+          "name": inputMessage.wsRequestHeader.property[0].NOMBRE,
+          "campaign": inputMessage.wsRequestHeader.property[0].CAMPANA,
+          "value": inputMessage.inputCreateDispatchOrder.dispatchOrderDetail[0].dispatchOrderCode.equipmentValue,
+          "quantity": inputMessage.inputCreateDispatchOrder.dispatchOrderDetail[0].dispatchOrderCode.quantity
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Go To Client" doc:id="9d31f6b6-e7f5-4faf-9995-b7dda8eda720" name="post-createDispatchOrder-clientSub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="etb-mdm-sapi-services-main">
+        <http:listener config-ref="etb-mdm-sapi-services-httpListenerConfig" path="${http.path}">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call capture log vars" doc:id="5aaee63e-b3d3-49e0-9e56-8cfe8f8c90ae" name="processAndSystem-logginSub_Flow" />
+        <apikit:router config-ref="etb-mdm-sapi-services-config" />
+        <error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="etb-mdm-sapi-services-console">
+        <http:listener config-ref="etb-mdm-sapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="etb-mdm-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\registerLog:application\json:etb-mdm-sapi-services-config" doc:id="de97401c-fe50-4c14-bbd8-3b270639fec1">
+        <flow-ref doc:name="Go to Handler" doc:id="c6f87f37-ff48-4afe-8f48-53c6c48aebaa" name="post-registerLog-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\pqr\details:application\json:etb-mdm-sapi-services-config">
+        <flow-ref doc:name="Go To Handler" doc:id="a661ab73-ec89-4568-a89c-5163b355e587" name="get-consultPQR-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\tramits:application\json:etb-mdm-sapi-services-config" doc:id="b9fbe793-30e7-4d1b-8588-4c7aa173ff56">
+        <flow-ref doc:name="post-registerTramits-handler" doc:id="2efa1026-8a21-4604-afa4-e29f83eafbad" name="post-registerTramits-handler" />
+    </flow>
+    <flow name="post:\v1\outboundETAdirect:application\json:etb-mdm-sapi-services-config" doc:id="0ce94a9c-6b9a-402d-babb-a843ca5fd18c">
+        <flow-ref doc:name="Go to Handler" doc:id="c42640e7-ec1d-4b0a-9c29-74a05bc2772b" name="post-outboundETAdirect-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\technician:application\json:etb-mdm-sapi-services-config" doc:id="38e12b18-775b-4856-9d98-752e3498ccb9">
+        <flow-ref doc:name="Go to Handler - Technician" doc:id="5c687959-8a2d-41a3-b70a-7f7840e1332b" name="patch-updateTechnicianRemedyIntf-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\trasladoServiciosCuentaClienteyFacturacion:application\json:etb-mdm-sapi-services-config" doc:id="419028c2-5935-4904-a232-81c9a8892d92">
+        <flow-ref doc:name="Go to handler" doc:id="0083ae12-105c-46cd-89e5-2cb3aa336385" name="post-trasladoServiciosCuentaClienteyFacturacion-handler" />
+    </flow>
+    <flow name="post:\v1\pqr\notes:application\json:etb-mdm-sapi-services-config">
+        <flow-ref doc:name="post-pqrNotes-handlerSub_Flow" doc:id="ae23d7d0-4894-4479-8c70-966591cbbae4" name="post-pqrNotes-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\pqr\massiveFailure:application\json:etb-mdm-sapi-services-config" doc:id="22884173-4f62-4901-8084-5b6ec3c24ac7">
+		<flow-ref doc:name="Go To Handler" doc:id="244ee426-0cf8-49c6-ae5d-5ece7bf1188c" name="post-pqrMassiveFailure-handlerSub_Flow" />
+	</flow>
+    <flow name="get:\v1\inventory\(id_inventory)\details:etb-mdm-sapi-services-config" doc:id="d22b9bae-32c0-4a41-8e85-96dc7179e17b">
+        <flow-ref doc:name="Go to Handler" doc:id="d8b77090-b45a-408a-a1ec-00c468dfe318" name="get-consultInventoryDetail-handlerSub_Flow" />
+    </flow>
+	<flow name="post:\v1\portability:application\json:etb-mdm-sapi-services-config" doc:id="a10fa6e7-cf7d-44a9-b8db-0bf121722852" >
+		<flow-ref doc:name="Go to Handler" doc:id="ec473a4f-d778-4ffe-ab19-a42b43c70233" name="post-notifyPortabilityUpdateIntf-handlerSub_Flow" />
+	</flow>
+	<flow name="get:\v1\portability\idMessage:etb-mdm-sapi-services-config" doc:id="76795a5a-9a5e-44d4-8334-2873ee2f1cbc" >
+		<flow-ref doc:name="Go to Handler" doc:id="d2ad3a1d-b8a3-4ec3-96ad-5c2768d4e4e3" name="get-portability-idMessage-handlerSub_Flow"/>
+	</flow>
+	<flow name="get:\v1\portability\idProcess:etb-mdm-sapi-services-config" doc:id="e6efb742-fecc-40e0-8ba9-f1a7f7604229" >
+		<flow-ref doc:name="Go to Handler" doc:id="0132e168-e151-47de-b2bd-b147e512de39" name="get-portability-idProcess-handlerSub_Flow" />
+	</flow>
+    <flow name="post:\v1\tramits\newQuery:application\json:etb-mdm-sapi-services-config">
+		<flow-ref doc:name="Go to Handler" doc:id="de99137a-a86c-410d-958e-af8b0af6cd45" name="get-tramits-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\process:application\json:etb-mdm-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="f5b8b4d5-81ea-4ff3-8066-422a91141d54" name="post-process-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billing\notification:application\json:etb-mdm-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="df22ca88-9ba3-4e1f-ba4c-b38de1b22680" name="post-NotifyBillToMDM-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\orders\(order_id)\characteristics:application\json:etb-mdm-sapi-services-config" doc:id="78895ace-e50b-4bcf-be0a-8c35ecab25b6">
+		<flow-ref doc:name="Go to handler" doc:id="77c5d93c-219f-4b9c-b70e-51f0b6b1cac8" name="post-updateOrderCharacteristics-handlerSub_Flow" />
+    </flow>
+	<flow name="patch:\v1\orders\orderStatus:application\json:etb-mdm-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="eb72a570-9787-4706-a49e-c6f43c2ae381" name="patch-updateStatusOrder-handler" />
+    </flow>
+</mule>

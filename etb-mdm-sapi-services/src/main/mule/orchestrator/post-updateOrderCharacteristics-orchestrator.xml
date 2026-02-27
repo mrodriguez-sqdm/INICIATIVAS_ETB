@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-updateOrderCharacteristics-orchestratorSub_Flow" doc:id="09fbd5cc-be93-417b-baf1-e5fae0f1beca" >
+		<ee:transform doc:name="Prepare request body" doc:id="5c0dc575-fafd-40c5-bd85-96ccab970891" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/ 
+ns por http://schemas.datacontract.org/2004/07/PortalFibra.Modelo.ModeloOrden
+
+var inputValue =if (isEmpty(payload.updateOrderCharacteristics.characteristics))
+{
+	soapenv#Envelope: {
+		soapenv#Header: null,
+		soapenv#Body: {
+			tem#ActualizarCaracteristicaOrden: {
+				tem#Numero_Orden: vars.order_id,
+				tem#caracteristicas: {
+                   
+                },
+				tem#usuario: payload.updateOrderCharacteristics.user
+			}
+		}
+	}
+}
+else
+{
+	soapenv#Envelope: {
+		soapenv#Header: null,
+		soapenv#Body: {
+			tem#ActualizarCaracteristicaOrden: {
+				tem#Numero_Orden: vars.order_id,
+				tem#caracteristicas: {
+                    por#Caracteristica_Orden: payload.updateOrderCharacteristics.characteristics map (obj, ind) -> {
+											por#"_x003C_Caracteristica_x003E_k__BackingField": obj.orderCharacteristic.characteristic,
+						por#"_x003C_Valor_x003E_k__BackingField": obj.orderCharacteristic.value
+					}
+                },
+				tem#usuario: payload.updateOrderCharacteristics.user
+			}
+		}
+	}
+}
+---
+inputValue]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="def6fe9f-38d1-4dec-b379-77752dae5b2e" name="post-updateOrderCharacteristics-clientSub_Flow"/>
+		<ee:transform doc:name="Prepare output" doc:id="a3576653-2e83-4272-bfe3-21ec920b1e3e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"updateOrderCharacteristicsOutput": {
+    "wsResponseHeader": {
+      "system": {
+        "correlationId": vars.headersVar.'X-CORRELATION-ID',
+        "name": vars.headersVar.'name',
+        "processingServer": vars.headersVar.'source'
+      },
+      "service": {
+        "responseDate": vars.responseDate,
+        "status": "PASS"
+      }
+    },
+    "bodyResponse": {
+      "updateOrderCharacteristicsResponse": {
+          "updateOrderCharacteristicsResult": payload.Envelope.Body.ActualizarCaracteristicaOrdenResponse.ActualizarCaracteristicaOrdenResult as Boolean
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

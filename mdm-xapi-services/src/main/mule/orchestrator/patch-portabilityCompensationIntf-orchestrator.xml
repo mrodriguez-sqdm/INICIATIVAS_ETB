@@ -1,0 +1,98 @@
+<!-- [STUDIO:"Choice"]<?xml version="1.0" encoding="UTF-8"?> [STUDIO] -->
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-portabilityCompensationIntf-orchestratorSub_Flow" doc:id="cd842236-7367-409a-ac6f-f4f659a407a8" >
+		<ee:transform doc:name="Transform XML Map" doc:id="56818b5a-6678-43de-b598-0877b9fcc56c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+portalfija_data: {
+    compensacion_portabilidad:{
+        id: payload.PortabilityCompensationIN.PortabilityCompensationInput.portalfija_data.PortabilityCompensation.Id,
+        cuenta: payload.PortabilityCompensationIN.PortabilityCompensationInput.portalfija_data.PortabilityCompensation.Account,
+        horas: payload.PortabilityCompensationIN.PortabilityCompensationInput.portalfija_data.PortabilityCompensation.Hours
+    }
+}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call to Revchain-sapi-services" doc:id="35f6580b-74e2-4603-b8ff-1f375a61385a" name="patch-portabilityCompensationIntf-clientSub_Flow" />
+		<set-variable value="#[now() as String { format: &quot;yyyy-MM-dd' T 'HH:mm:ss&quot; }]" doc:name="Variable - Date" doc:id="97fef304-69e5-4d4a-bb33-75217d2546fa" variableName="date"/>
+		<choice doc:name="Choice" doc:id="5bca4676-dd95-4063-8ae3-1295f3799b8c" >
+			<when expression='#[payload.portalfija_data.resultado == "0"]'>
+				<set-variable value="201" doc:name="Set Variable" doc:id="4b2efdcd-e064-4d53-8852-41e2e8561838" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform Message" doc:id="b7ed5d5a-d126-48f9-b8d3-415cab53ebf2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "PortabilityCompensationOUT": {
+    "WSResponseHeader2": {
+      "System": {
+        "name": vars.nameHeader,
+        "correlationID": vars.correlationIdHeader,
+        "processingServer": p('template.portabilityCompensationIntf.processingServer')
+      },
+      "Service": {
+        "status": p('template.portabilityCompensationIntf.status'),
+        "responseDate": vars.date
+      },
+    },
+    "PortabilityCompensationOutput": {
+      "ResponseService": {
+      	"Id": payload.portalfija_data.idRegistro,
+        "Result": payload.portalfija_data.resultado,
+        "DescriptionError": payload.portalfija_data.descError
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="400" doc:name="Set Variable" doc:id="0d8cf9f1-7eb8-450b-89c7-9c618070614c" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform Message" doc:id="55cf3bc1-1e3d-4cdc-bcd2-eb915319bb07" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "PortabilityCompensationOUT": {
+    "WSResponseHeader2": {
+      "System": {
+        "name": vars.nameHeader,
+        "correlationID": vars.correlationIdHeader,
+        "processingServer": p('template.portabilityCompensationIntf.processingServer')
+      },
+      "Service": {
+        "status": p('template.portabilityCompensationIntf.status400'),
+        "responseDate": vars.date,
+        "statusDetail": {
+          "errorCode": payload.portalfija_data.resultado,
+          "errorMessage": payload.portalfija_data.descError
+        }
+      }
+    },
+    "PortabilityCompensationOutput": {
+      "ResponseService": {
+        "Result": "E",
+        "DescriptionError": payload.portalfija_data.descError
+      }
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+
+		</choice>
+	</sub-flow>
+</mule>

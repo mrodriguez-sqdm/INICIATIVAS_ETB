@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-bills-clientSub_Flow" doc:id="2b33a5f3-6a96-4a18-bbf9-42bf8989c781" >
+		<http:request method="GET" doc:name="Call sap-sapi bills operation" doc:id="4c617309-4eae-4e46-a5b8-dd6124efcaa2" config-ref="sap-sapi-services-config" path="${sap-sapi.path.bills}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : correlationId,
+	"name" : vars.attributes.name,
+	"client_secret" : p('sap-sapi.client_secret'),
+	"processingServer" : vars.attributes.processingServer,
+	"client_id" : p('sap-sapi.client_id'),
+	"source": attributes.headers.source,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"date" : vars.attributes.date
+}]]]></http:query-params>
+		</http:request>
+		<ee:transform doc:name="Transform Message" doc:id="c6b2764e-aae3-4f57-92af-e15841f96864" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+    "Bills": if(payload.ZFI_PAGOS_LINEA.tables.T_FACTURAS != null) 
+    {
+        "Bill" : payload.ZFI_PAGOS_LINEA.tables.T_FACTURAS mapObject ((value, key, index) -> {
+            (key): value
+        })
+    }  else null,
+    "Result" : {
+        "status": if(payload.ZFI_PAGOS_LINEA.tables.T_FACTURAS != null) "PASS" else "FAIL",
+        "code" : if(payload.ZFI_PAGOS_LINEA.export.RETURN.TYPE == 'S') 'SUCCESS' else payload.ZFI_PAGOS_LINEA.export.RETURN.CODE,
+        "description" : payload.ZFI_PAGOS_LINEA.export.RETURN.MESSAGE
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

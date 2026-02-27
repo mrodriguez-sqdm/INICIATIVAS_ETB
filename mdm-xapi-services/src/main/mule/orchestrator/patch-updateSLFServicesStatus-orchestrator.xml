@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="patch-updateSLFServicesStatus-orchestratorSub_Flow" doc:id="52beb268-17aa-4d55-b993-eebe66d678de" >
+		<ee:transform doc:name="Transform Message" doc:id="cae8e023-aa2d-440c-b84b-0e7b72985716" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://www.etb.com.co/NPlay/framework/BusAnyMessage/v1.0
+ns ns1 http://www.etb.com.co/NPlay/commons/Header/v1.0
+ns ns2 http://www.etb.com.co/LTE/commons/WSRequestHeader/v1.0
+---
+{
+  ns0#"BusAnyMessage": {
+    ns1#"Header": {
+      ns1#"ID": payload.updateSLFServicesStatusRequest.'input'.updateSLFServicesStatusInput.wsRequestHeader2.system.correlationID default "",
+      ns1#"Operation": "UpdateSLFServicesStatus",
+      ns1#"RequestSystem": "MDM.Collections.Interface",
+      ns1#"Version": "1",
+      ns1#"Type": "IN",
+      ns1#"ReqType": "SYNC",
+      ns1#"RequestDateTime": now(),
+      ns1#"ResponseDateTime": now()
+    },
+    ns0#"Body": {
+      ns1#"WSInputUpdateServiceStatus_SF": {
+        ns2#"WSRequestHeader": {
+          ns2#"System": payload.updateSLFServicesStatusRequest."input".updateSLFServicesStatusInput.wsRequestHeader2.system.name
+        },
+        ns2#"RequestActualizacionEstadosOrdenes": {
+          ns2#"Ordenes": payload.updateSLFServicesStatusRequest."input".updateSLFServicesStatusInput.updates.update map (item, index) -> {
+            ns2#"NumeroDeConexion": item.customer.service.connectionNumber,
+            ns2#"NumeroDeDocumento": item.customer.id,
+            ns2#"TipoDeDocumento": item.customer.idType,
+            ns2#"Tramite": item.order.subtype
+          }
+        }
+      }
+    }
+  }
+  }
+ 
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go To Client" doc:id="62e1df74-cdd7-4151-bb73-67a8e9f10cb4" name="patch-updateSLFServicesStatus-clientSub_Flow"/>
+		<ee:transform doc:name="Map for JAR" doc:id="f2b30ef6-9368-4d1e-ae8c-6276c6bda9de" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+ns ns0 http://soap.sforce.com/schemas/class/LTE_ServiciosSuspenda_ws
+---
+{
+  soap#"Envelope": {
+    soap#"Header": {
+      "SessionHeader": {
+        "sessionId": payload.Envelope.Body.loginResponse.result.sessionId
+      }
+    },
+    soap#"Body": {
+      ns0#"actualizacionEstadosOrdenes": {
+        ns0#"co": {
+          ns0#"numeroDeConexion": vars.initialPayload.updateSLFServicesStatusRequest."input".updateSLFServicesStatusInput.updates.update.customer.service.connectionNumber,
+          ns0#"numeroDocumento": vars.initialPayload.updateSLFServicesStatusRequest."input".updateSLFServicesStatusInput.updates.update.customer.id,
+          ns0#"tipoDocumento": vars.initialPayload.updateSLFServicesStatusRequest."input".updateSLFServicesStatusInput.updates.update.customer.idType,
+          ns0#"tramite": vars.initialPayload.updateSLFServicesStatusRequest."input".updateSLFServicesStatusInput.updates.update.order.subtype
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go To updateSLFServicesStatus-JAR" doc:id="cc462dd7-3513-40ed-958b-888e94919693" name="patch-updateSLFServicesStatus-JAR"/>
+	</sub-flow>
+	<sub-flow name="patch-updateSLFServicesStatus-JAR" doc:id="e9d6d943-9fef-4776-9666-cdb8887c713e" >
+		<flow-ref doc:name="Go To updateSLFServicesStatus-client-JAR" doc:id="70827d68-9f01-47f8-a3c1-621f84f1a024" name="patch-updateSLFServicesStatus-client-JAR"/>
+		<choice doc:name="Choice" doc:id="91e171f8-1b51-4abd-9013-31d3093c2e35" >
+			<when expression="#[payload.Envelope.Body.actualizacionEstadosOrdenesResponse != null]">
+				<ee:transform doc:name="success map" doc:id="1f1c078d-c309-46b3-bdb5-7964f84d9462" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "UpdateSLFServicesStatusOutput": {
+    "WSResponseHeader2": {
+      "System": {
+        "name": vars.initialPayload.updateSLFServicesStatusRequest.'input'.updateSLFServicesStatusInput.wsRequestHeader2.system.name default "",
+        "correlationID": vars.initialPayload.updateSLFServicesStatusRequest.'input'.updateSLFServicesStatusInput.wsRequestHeader2.system.correlationID default "",
+        "processingServer": vars.initialPayload.updateSLFServicesStatusRequest.'input'.updateSLFServicesStatusInput.wsRequestHeader2.system.processingServer default "",
+      },
+      "Service": {
+        "status": "PASS"
+      }
+    },
+    "Outcomes": {
+      "Outcome": {
+        "Order": {
+          "orderId": null
+        },
+        "Response": {
+          "code": payload.Envelope.Body.actualizacionEstadosOrdenesResponse.result.codigo,
+          "description": payload.Envelope.Body.actualizacionEstadosOrdenesResponse.result.mensajeError,
+        }
+      }
+    },
+    "Result": {
+      "code": "SUCCESS",
+      "description": "SUCCESS"
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="exception map" doc:id="d5d80bbc-195e-4e60-99db-757b88d2dbae" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Envelope": {
+    "Body": {
+      "UpdateSLFServicesStatusOutput": {
+        "WSResponseHeader2": {
+          "System": {
+			"name": vars.initialPayload.updateSLFServicesStatusRequest.'input'.updateSLFServicesStatusInput.wsRequestHeader2.system.name default "",
+        	"correlationID": vars.initialPayload.updateSLFServicesStatusRequest.'input'.updateSLFServicesStatusInput.wsRequestHeader2.system.correlationID default "",
+        	"processingServer": vars.initialPayload.updateSLFServicesStatusRequest.'input'.updateSLFServicesStatusInput.wsRequestHeader2.system.processingServer default ""
+          },
+          "Service": {
+            "status": "FAIL",
+            "responseDate": now(),
+            "statusDetail": {
+              "errorCode": "NOK",
+              "errorMessage": ""
+            }
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
