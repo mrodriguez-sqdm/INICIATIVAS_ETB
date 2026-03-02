@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="common-papi-services-main">
+        <http:listener config-ref="common-papi-services-httpListenerConfig" path="/common/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call initial Logger" doc:id="339fc537-5f9f-411a-88d2-3034a54f8f45" name="processAndSystem-logginSub_Flow" />
+		<apikit:router config-ref="common-papi-services-config" />
+		<async doc:name="Async" doc:id="68f033ee-607e-4961-b265-6051aebc0007" >
+			<flow-ref doc:name="Call end logger" doc:id="48bf5a5e-3ba8-4be0-ad2c-872e42c1e840" name="loggin-client-call" />
+		</async>
+		<error-handler>
+            <on-error-propagate type="APIKIT:BAD_REQUEST">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Bad request"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Method not allowed"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">405</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_ACCEPTABLE">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Not acceptable"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">406</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Unsupported media type"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">415</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_IMPLEMENTED">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Not Implemented"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">501</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="common-papi-services-console">
+        <http:listener config-ref="common-papi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="common-papi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="get:\geographicAddressManagement\v1\geographicAddress\(operation):common-papi-services-config">
+        <flow-ref doc:name="Go to handler operation" doc:id="27ce5050-21f2-4ac7-9c25-4525a139110f" name="geographic-address-operation-handlerSub_Flow"/>
+    </flow>
+    <flow name="post:\geographicAddressManagement\v1\geographicAddress\geoAddress:common-papi-services-config">
+        <flow-ref doc:name="Go to handler operation" doc:id="89cd56f7-d84d-4413-ae22-a28ee3f2ee9f" name="geographic-address-geoAddress-handlerSub_Flow"/>
+    </flow>
+    <flow name="get:\geographicAddressManagement\v1\geographicAddress\coverage:common-papi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="e517a6aa-61bf-442b-b785-26d5c1755a33" name="geographic-address-coverage-handlerSub_Flow"/>
+    </flow>
+    <flow name="get:\geographicAddressManagement\v1\geographicAddress\geocodificar:common-papi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="geocodificar-handler-ref" name="geocodificar-handlerSub_Flow"/>
+    </flow>
+    <flow name="get:\geographicAddressManagement\v1\geographicAddress\georeference:common-papi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="georeference-handler-ref" name="georeference-handlerSub_Flow"/>
+    </flow>
+    <flow name="get:\geographicAddressManagement\v1\geographicCoverage:common-papi-services-config">
+        <logger level="INFO" message="get:\geographicAddressManagement\v1\geographicCoverage:common-papi-services-config" />
+    </flow>
+    <flow name="get:\geographicAddressManagement\v1\normalizeAddress:common-papi-services-config">
+        <logger level="INFO" message="get:\geographicAddressManagement\v1\normalizeAddress:common-papi-services-config" />
+    </flow>
+</mule>

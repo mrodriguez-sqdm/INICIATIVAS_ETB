@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="geographic-address-operation-orchestratorSub_Flow" doc:id="607d1950-70fa-453a-b676-98aa72ad6971" >
+		<choice doc:name="Choice" doc:id="29470841-b9d8-424b-b2d7-4dadecac4e45" >
+			<when expression='#[vars.operation == "complements"]'>
+				<set-variable value="#[attributes.queryParams.address]" doc:name="Set original address" doc:id="set-original-address" variableName="originalAddress"/>
+				<flow-ref doc:name="Go to client" doc:id="edd9b1e2-eb2d-4055-a7a8-25dfd088f837" name="get-address-geoAddress-clientSub_Flow"/>
+				<logger level="INFO" doc:name="Log MongoDB response" doc:id="log-mongodb-response" message="#['Respuesta de MongoDB: ' ++ write(payload, 'application/json') ++ ', Size: ' ++ sizeOf(payload)]"/>
+				<ee:transform doc:name="Transform to API Response" doc:id="transform-api-response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var addresses = payload
+var queryAddress = vars.originalAddress
+---
+// Verificar si hay direcciones en la respuesta
+if (addresses != null and sizeOf(addresses) > 0)
+  // Caso: Hay direcciones encontradas
+  do {
+    var firstAddress = addresses[0]
+    var baseAddress = firstAddress.Direccion_Actual
+    var city = firstAddress.Municipio
+    var relatedAddresses = addresses map $.Direccion_Detallada
+
+    // Extraer complementos quitando la dirección base
+    var complements = relatedAddresses map (address) -> 
+      if (address contains baseAddress)
+        address replace baseAddress with ""
+      else
+        ""
+
+    // Filtrar complementos vacíos y hacer distinct
+    var uniqueComplements = complements 
+      filter ($ != "" and $ != null)
+      distinctBy $
+
+    // Reemplazar números por # para crear patrones y hacer distinct final
+    var complementPatterns = (uniqueComplements 
+      map (complement) -> complement replace /[0-9]+/ with "###") distinctBy $
+
+    ---
+    {
+      "address": baseAddress,
+      "city": city,
+      "geographicSubAddress": [],
+      "characteristic": [
+        {
+          "name": "complementPatterns",
+          "value": complementPatterns
+        },
+        {
+          "name": "relatedAddresses",
+          "value": relatedAddresses
+        }
+      ]
+    }
+  }
+else
+  {
+    "address": queryAddress,
+    "geographicSubAddress": [],
+    "characteristic": [
+      {
+        "name": "complementPatterns",
+        "value": []
+      },
+      {
+        "name": "relatedAddresses",
+        "value": []
+      }
+    ]
+  }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Operation invalid" doc:id="56e5cb39-875f-414d-bfd8-a212f37cf8fa" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"code": 1,
+	"description": "invalid operation"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="geographic-address-geoAddress-orchestratorSub_Flow" doc:id="2e0ee497-88e0-43a6-830c-ad58581fdd63" >
+		<try doc:name="Try" doc:id="geo-address-try-catch">
+			<choice doc:name="Choice" doc:id="ee0aea86-b2f6-4ebc-ae2b-fa3217b5b4cb" >
+				<when expression='#[payload.geoAddress.actionType == "DELETE"]'>
+					<flow-ref doc:name="Go to delete client" doc:id="5f41ceff-e845-4f38-bdf8-c80dea175aac" name="delete-geoAddress-clientSub_Flow"/>
+				</when>
+				<otherwise >
+					<flow-ref doc:name="Go to get address by id" doc:id="70163b8c-16b9-4f17-920b-55f071196032" name="get-geoAddressId-clientSub_Flow" target="addressQuery"/>
+					<choice doc:name="Choice" doc:id="cbf5621b-7149-4245-99fc-ce7f774dd42b" >
+						<when expression="#[vars.addressQuery.Id_Address != null]">
+							<flow-ref doc:name="Go to patch" doc:id="8d46c4ff-177b-413a-a145-d60467c5c9ce" name="patch-geoAddress-clientSub_Flow"/>
+						</when>
+						<otherwise >
+							<flow-ref doc:name="Go to post" doc:id="1747a6ad-1890-459a-9581-7a3cc84f4501" name="post-geoAddress-clientSub_Flow"/>
+						</otherwise>
+					</choice>
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="geo-address-error-handler" type="ANY">
+					<ee:transform doc:name="Set Error Response" doc:id="geo-address-error-response">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var correlationId = attributes.headers."x-correlation-id" default uuid()
+var currentDate = now()
+---
+{
+	system: {
+		correlationId: correlationId,
+		processingServer: "common-papi-services",
+		responseDate: currentDate
+	},
+	response: {
+		code: "500",
+		message: "Error processing geographic address: " ++ error.description,
+		"type": "ERROR"
+	}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="geographic-address-coverage-orchestratorSub_Flow" doc:id="1aa7adc5-494a-4f4f-935b-a88a12fe18fd" >
+		<flow-ref doc:name="Go to client" doc:id="450cd0d7-453f-4554-9c24-200b768f48c9" name="get-coverage-clientSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="geocodificar-orchestratorSub_Flow" doc:id="geocodificar-orchestrator-subflow" >
+		<flow-ref doc:name="get-geocodificar-clientSub_Flow" doc:id="geocodificar-client-ref" name="get-geocodificar-clientSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="georeference-orchestratorSub_Flow" doc:id="georeference-orchestrator-subflow" >
+		<flow-ref doc:name="get-georeference-clientSub_Flow" doc:id="georeference-client-ref" name="get-georeference-clientSub_Flow"/>
+	</sub-flow>
+</mule>

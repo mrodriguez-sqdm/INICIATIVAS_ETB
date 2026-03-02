@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="geographic-address-operation-handlerSub_Flow" doc:id="ae552d8c-6c20-4fe8-833a-a9cabff496b2" >
+		<set-variable value="#[attributes.uriParams.operation]" doc:name="Set operation" doc:id="bc2ac671-5466-4dc0-a4bc-e0007e2d9783" variableName="operation" />
+		<flow-ref doc:name="Go to orchestrator operation" doc:id="faf8f615-efe8-4c0b-aaa9-9253d5f8919e" name="geographic-address-operation-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="geographic-address-geoAddress-handlerSub_Flow" doc:id="512c28a8-604d-4098-8ac7-1e07985fabf5" >
+		<!-- LÓGICA DE NEGOCIO: Maneja formato GeoDireccion y geoAddress -->
+		<!-- Si viene GeoDireccion (de portal-xapi), transforma a geoAddress -->
+		<!-- Si viene geoAddress directo, pasa sin cambios -->
+		<choice doc:name="Check input format" doc:id="check-input-format">
+			<when expression="#[payload.GeoDireccion != null]">
+				<!-- Formato GeoDireccion: transformar a geoAddress -->
+				<ee:transform doc:name="Transform GeoDireccion to geoAddress" doc:id="transform-geodireccion-geoaddress">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var geoDireccionData = payload.GeoDireccion
+---
+{
+	geoAddress: {
+		chip: geoDireccionData.Chip default "NO_CHIP",
+		propertyClass: geoDireccionData.ClasePredio default "N",
+		detailedAddress: geoDireccionData.DireccionDetallada default "NO_ADDRESS",
+		catastroStratum: (geoDireccionData.EstratoCatastro default 0) as String,
+		detailUpdateDate: geoDireccionData.FechaActualizacionDetalle default (now() as String),
+		addressModificationDate: geoDireccionData.FechaModificacionAddress default (now() as String),
+		addressId: geoDireccionData.IdAddress default "NO_ID",
+		neighborhoodId: geoDireccionData.IdBarrio default "000000",
+		departmentId: geoDireccionData.IdDepartamento default "0",
+		localityId: geoDireccionData.IdLocalidad default "0",
+		municipalityId: geoDireccionData.IdMunicipio default "0",
+		propertyId: geoDireccionData.IdPredio default "00",
+		latitude: (geoDireccionData.Latitud default 0) as Number,
+		longitude: (geoDireccionData.Longitud default 0) as Number,
+		property: geoDireccionData.Predio default "N",
+		distanceType: geoDireccionData.TipoDistancia default "A",
+		addressType: geoDireccionData.Type default "Residential",
+		currentAddress: "",
+		actionType: geoDireccionData.TipoAccion default "INSERT",
+		municipality: "BOGOTA",
+		locality: "TEST",
+		neighborhood: "TEST"
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		</when>
+		<otherwise>
+			<!-- Formato geoAddress: ya viene correcto, no transformar -->
+			<logger level="INFO" doc:name="Log geoAddress format" doc:id="logger-geoaddress-format" message="Formato geoAddress recibido correctamente, no se requiere transformación"/>
+		</otherwise>
+	</choice>
+		<flow-ref doc:name="Go to orchestrator" doc:id="694198d0-cf92-4983-aea0-445dbd5207c6" name="geographic-address-geoAddress-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="geographic-address-coverage-handlerSub_Flow" doc:id="76610c98-79ef-4951-b16c-36ca136f5027" >
+		<flow-ref doc:name="Go to orchestrator" doc:id="8923c962-d691-497a-bfe8-0a94853fd055" name="geographic-address-coverage-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="geocodificar-handlerSub_Flow" doc:id="a093b19f-45fb-4eab-8a3a-98e783e84d30" >
+		<flow-ref doc:name="geocodificar-orchestratorSub_Flow" doc:id="df24efb6-6976-4102-88aa-22e208c7a855" name="geocodificar-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="georeference-handlerSub_Flow" doc:id="georeference-handler-subflow" >
+		<flow-ref doc:name="georeference-orchestratorSub_Flow" doc:id="georeference-orchestrator-ref" name="georeference-orchestratorSub_Flow"/>
+	</sub-flow>
+</mule>
