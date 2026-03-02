@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow
+		name="patch-geoDireccion-orchestratorSub_Flow"
+		doc:id="752785fd-64cb-4593-a972-fbea47d0674f">
+		<ee:transform doc:name="Transform to Xml" doc:id="ba0c0750-1614-409e-81d3-841dc1948572" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+ns por http://schemas.datacontract.org/2004/07/PortalFibra.Modelo.ModeloGeolocalizacion
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+var data = payload.GeoDireccion
+---
+soapenv#Envelope @('xmlns:por' : por): {
+	soapenv#Header: {},
+	soapenv#Body: {
+		tem#ActualizarGeoDireccion: {
+			tem#geoDireccion: {
+				'por:Chip': data.Chip,          
+                'por:Clase_Predio': data.ClasePredio,            
+                'por:Direccion_Detallada': data.DireccionDetallada,        
+                'por:Estrato_Catastro': data.EstratoCatastro,      
+                'por:Fecha_Actualizacion_Detalle': data.FechaActualizacionDetalle,
+                'por:Fecha_Modificacion_Address': data.FechaModificacionAddress,    
+                'por:Id_Address': data.IdAddress,         
+                'por:Id_Barrio': data.IdBarrio,        
+                'por:Id_Departamento': data.IdDepartamento,         
+                'por:Id_Localidad': data.IdLocalidad,          
+                'por:Id_Municipio': data.IdMunicipio,          
+                'por:Id_Predio': data.IdPredio,         
+                'por:Latitud': data.Latitud,        
+                'por:Longitud': data.Longitud,         
+                'por:Predio': data.Predio,          
+                'por:Tipo_Accion': data.TipoAccion,          
+                'por:Tipo_Distancia': data.TipoDistancia,         
+                'por:Type': data.Type
+			}
+		}
+	}
+}	
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref
+			doc:name="patch-geoDireccion-client"
+			doc:id="c1ef5249-6d03-4df6-a583-53bd2dffdffd"
+			name="patch-geoDireccion-clientSub_Flow" />
+		<async doc:name="Async" doc:id="e63033fd-2bde-4088-b58d-1f019a5df707" >
+			<flow-ref doc:name="Process Log" doc:id="a735639a-f927-4f04-a1da-d74d5a420b7d" name="process-loggin-migration_Sub_Flow"/>
+		</async>
+		<ee:transform doc:name="Transform to Json" doc:id="f84a3b34-0ca8-4e83-8c5b-4c60651896a4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var result = payload.Envelope.Body.ActualizarGeoDireccionResponse.ActualizarGeoDireccionResult
+---
+{
+  System: {
+  	correlationID: vars.inputData.correlationId,
+    processingServer: vars.inputData.processingServer,
+    responseDate: now()
+  },
+  Response: {
+    Codigo: result.Codigo,
+    Mensaje: result.Mensaje,
+    Tipo: result.Tipo
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Set httpStatus" doc:id="5bab747d-9411-49be-b7d0-94050dc25e38" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.Response.Codigo == 'OK')
+	200
+else 
+	500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async
+			doc:name="Async"
+			doc:id="4feba7fb-e1e6-47c7-8ba7-62a0e6acacab">
+			<flow-ref
+				doc:name="Final Log"
+				doc:id="8fef039b-1123-451c-a684-bfd5aa4a7263"
+				name="final-loggin-migration_Sub_Flow" />
+		</async>
+	</sub-flow>
+</mule>

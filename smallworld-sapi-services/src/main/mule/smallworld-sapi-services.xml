@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    
+    <flow name="smallworld-sapi-services-main">
+        <http:listener config-ref="smallworld-sapi-services-httpListenerConfig" path="/smallworld/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+		<apikit:router config-ref="smallworld-sapi-services-config" />
+        <error-handler ref="error-handlerError_Handler"/>
+    </flow>
+    <flow name="smallworld-sapi-services-console">
+        <http:listener config-ref="smallworld-sapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="smallworld-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="get:\v1\georeference:smallworld-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="ffb99a63-db3e-4580-8dda-28b87ad36eda" name="get-georeference-handlerSub_Flow"/>
+    </flow>
+	<flow
+		name="patch:\v1\geoDireccion:application\json:smallworld-sapi-services-config">
+		<flow-ref
+			doc:name="patch-geoDireccion-handler"
+			doc:id="d2ea3e12-1ce4-4f92-8674-389fd1562b6d"
+			name="patch-geoDireccion-handlerSub_Flow" />
+	</flow>
+	<flow name="get:\v1\zonaAltoRiesgo:smallworld-sapi-services-config" doc:id="2b00ffbc-b315-4bc1-922c-059adff76526" >
+		<flow-ref doc:name="Flow Reference" doc:id="6c9ece7d-03e3-4299-9cb3-3a3f70077e3b" name="get-zonaAltoRiesgoService-orchestadorSub_Flow"/>
+	</flow>
+	<flow name="get:\v1\coverage:smallworld-sapi-services-config" doc:id="b238fe50-d7e0-4b86-bbc2-c0fb6d01e2ef" >
+		<flow-ref doc:name="Go to handler" doc:id="ef0f5001-e1cb-4765-80d0-ede2311bc1d2" name="get-coverage-handlerSub_Flow"/>
+	</flow>
+	<flow name="get:\v1\geocodificar:smallworld-sapi-services-config" doc:id="geocodificar-flow" >
+		<flow-ref doc:name="Go to handler" doc:id="geocodificar-handler-ref" name="catastro-geocodificar-handlerSub_Flow"/>
+	</flow>
+</mule>
