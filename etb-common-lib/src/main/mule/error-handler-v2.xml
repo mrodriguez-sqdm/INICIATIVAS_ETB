@@ -127,20 +127,33 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
             <ee:message>
                 <ee:set-payload><![CDATA[%dw 2.0
 output application/json
+fun getError(errorPayload, cause) = 
+	errorPayload match {
+	case is Object ->  [{
+		origin: if ( errorPayload.cause[0].origin? ) errorPayload.cause[0].origin else p("app.name"),
+		message: if ( errorPayload.cause[0].message? ) errorPayload.cause[0].message else cause
+	}]
+	case is String -> [{
+		origin: p("app.name"),
+		message: errorPayload
+	}]
+	case is Null -> [{
+		origin: p("app.name"),
+		message: cause
+	}]
+	else -> [{
+		origin: p("app.name"),
+		message: "Unexpected Error: Please contact support."
+	}]
+}
 ---
 {
-    status: vars.httpStatus,
-    code: error.errorType.namespace ++ ":" ++ error.errorType.identifier,
-    message: error.description default "Unexpected error",
-    messageServer: error.description default "",
-    cause: [
-        {
-            origin: p("app.name"),
-            message: error.exception.cause.class default error.cause.class
-        }
-    ]
-}
-]]></ee:set-payload>
+	status: vars.httpStatus,
+	code: error.errorType.namespace ++ ":" ++ error.errorType.identifier,
+	message: p("app.name") ++ ": " ++ error.description default "Unexpected Error",
+	messageServer: error.failingComponent default "Unexpected Error",
+	cause: getError(error.errorMessage.payload, error.cause.message)
+}]]></ee:set-payload>
             </ee:message>
         </ee:transform>
         <async>
