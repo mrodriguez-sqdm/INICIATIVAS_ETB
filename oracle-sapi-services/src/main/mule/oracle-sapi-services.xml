@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="oracle-sapi-services-main">
+        <http:listener config-ref="oracle-sapi-services-httpListenerConfig" path="/oracle/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call capture log vars" doc:id="cd3dd315-2d66-466e-9226-6018f2b40efe" name="processAndSystem-logginSub_Flow" />
+        <apikit:router config-ref="oracle-sapi-services-config" />
+		<error-handler ref="common-error-handler-v2" />
+    </flow>
+    <flow name="oracle-sapi-services-console">
+        <http:listener config-ref="oracle-sapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="oracle-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\normalizeAddressBogota:application\json:oracle-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="1428fd86-0b00-4a28-9de9-37e1b9045d59" name="normalizeAddressBogota-handler" />
+    </flow>
+    <flow name="post:\v1\normalizeAddressGeneral:application\json:oracle-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="08abb151-98f9-433f-8c48-67884df61b16" name="normalizeAddressGeneral-handler" />
+    </flow>
+    <flow name="patch:\v1\processId:application\json:oracle-sapi-services-config">
+        <flow-ref doc:name="Flow Reference" doc:id="f73af7bf-3f81-4d00-bea1-6ab004073379" name="patch-processId-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\processId:oracle-sapi-services-config">
+        <flow-ref doc:name="Flow Reference" doc:id="dea1efc5-b6cf-4e5e-9380-044d65359afe" name="get-processId-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\processId:application\json:oracle-sapi-services-config">
+        <flow-ref doc:name="Flow Reference" doc:id="5ffc6b73-abdb-45ce-aabe-860e25d4a56d" name="post-processId-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\health_check:oracle-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="14751eae-39d3-40ef-ba45-6b0c1aa8a492" name="get-health-check-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\cancelOrder:application\json:oracle-sapi-services-config" doc:id="e97a7f64-81c9-4c89-8942-8d9bfaddafc1">
+        <flow-ref doc:name="Go to handler" doc:id="423da573-d0d6-4d31-a326-bba35755e296" name="post-cancelOrder-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\sendMessage:application\json:oracle-sapi-services-config" doc:id="0dda0d29-e64b-4ee3-9ba1-40e51060d7e5">
+        <flow-ref doc:name="Go to Handler" doc:id="640a1250-bb9c-44ca-9257-487810319ef8" name="post-sendMessage-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\document\homologation\(idDocument):oracle-sapi-services-config" doc:id="af046fe7-3aec-4c0c-ba09-8ca89aec1bc3">
+        <flow-ref doc:name="Go to Handler" doc:id="129c40ec-b33c-4a35-83b2-9515cfbc51db" name="get-document-homologation-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\nonStandardAddress\(address):oracle-sapi-services-config" doc:id="03f817b9-d3d3-45f2-92dc-38d8a1393eb4">
+        <flow-ref doc:name="Go to Handler" doc:id="e4e444ce-f9ea-4486-b93c-2f903bfb204d" name="get-nonStandardAddress-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\nonStandardAddress:application\json:oracle-sapi-services-config" doc:id="82b21078-7c53-4d99-9946-643bfa1d9c4d">
+        <flow-ref doc:name="Go to Handler" doc:id="eee4e3bf-742b-42e2-a515-bae1cd40b318" name="post-nonStandardAddress-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\nonStandardAddress\specialMunicipalities\(municipality):oracle-sapi-services-config" doc:id="1c622cff-71c3-4b1e-81bf-e7d73ac41613">
+        <flow-ref doc:name="Go to Handler" doc:id="3d98656a-9595-44ed-9814-cde4df264b0b" name="get-specialMunicipalities-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\homologation\(genericValue)\(catalog):oracle-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="df0916d8-bf4f-4196-8fd5-0a948598d80c" name="get-homologation-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\resInvList\(externalId):oracle-sapi-services-config" doc:id="6a18339f-8fb4-4c8e-b336-2bd4101568c5">
+        <flow-ref doc:name="Go to Handler" doc:id="29d12f67-1ae6-4f80-8157-04fecd7435b9" name="get-revInvList-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\invokeETADirectInbound:application\json:oracle-sapi-services-config" doc:id="c581df49-c418-43e3-a45a-cf7f318e9601">
+        <flow-ref doc:name="Go to Handler" doc:id="126bff50-9f6c-4ae4-8f39-d5ab8e2beedb" name="post-invokeETADirectInbound-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\order:application\json:oracle-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="7f26e5de-9bf2-4ee9-bd1e-08f3eb78da47" name="post-createOrder-handlerSub_Flow"/>
+    </flow>
+	<flow name="post:\v1\getCapacity:application\json:oracle-sapi-services-config">
+        <flow-ref doc:name="post-capacity-handler" doc:id="8786aff9-f6ff-46a6-b702-74266840d6fb" name="post-capacity-handler.xml" />
+    </flow>
+	<flow name="get:\v1\assurance\order\(activityId):oracle-sapi-services-config" doc:id="0f3198ef-4e0d-4f60-b627-24a1b05b1145">
+		<flow-ref doc:name="Go to Handler" doc:id="4ec1962f-669d-4067-be8e-2d4b90dbd1d5" name="get-assurance-order-handlerSub_Flow" />
+	</flow>
+	<flow name="post:\v1\assurance\order:application\json:oracle-sapi-services-config" doc:id="6684fc94-b75b-4b7f-83cc-1676792393df" >
+		<flow-ref doc:name="Go to Handler" doc:id="b5fd89ee-0e13-4d6a-bda3-91b6b0dfbc57" name="post-assuranceOrder-handlerSub_Flow"/>
+	</flow>
+	<flow name="patch:\v1\assurance\order\(activityId):application\json:oracle-sapi-services-config" doc:id="a730537d-c930-479e-bccc-a363b64df3ea">
+		<flow-ref doc:name="Go to Handler" doc:id="4b347b76-a7c5-45d6-b8cc-cc29dcaf8321" name="patch-assurance-order-handlerSub_Flow" />
+	</flow>
+	<flow name="post:\v1\api\responsys\enviogeneral:oracle-sapi-services-config" doc:id="5434e452-f15a-4e22-852b-0124658d3239" >
+		<flow-ref doc:name="Flow Reference" doc:id="3f798679-c891-4f6d-8ade-217b6c517fad" name="post-responsys-enviogeneral-handlerSub_Flow"/>
+	</flow>
+	<flow name="get:\v1\resources\(id):oracle-sapi-services-config" doc:id="9b3af6fb-12bd-4e02-ada3-5eab8dfdb28c" >
+		<flow-ref doc:name="Flow Reference" doc:id="57f7a85f-4d4c-4895-903a-b6ea6019ec97" name="get-resources-id-orchestratorSub_Flow"/>
+	</flow>
+	<flow name="get:\v1\resources\inArea:oracle-sapi-services-config" doc:id="279f94fd-3941-47e7-9324-2469155cc535" >
+		<flow-ref doc:name="Flow Reference" doc:id="dc957416-3198-43b3-ad55-1f0c4dc71136" name="get-resources-inArea-orchestratorSub_Flow"/>
+	</flow>
+
+</mule>

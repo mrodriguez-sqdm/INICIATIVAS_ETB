@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-cancelOrder-orchestratorSub_Flow" doc:id="dc143f09-2e87-40e7-be41-f06c8a43513f" >
+		<flow-ref doc:name="shaPass" doc:id="fe6701b3-083b-4a74-9529-fca870749b87" name="get-shaPass-orchestrator.xml"/>
+		<ee:transform doc:name="Create XML Body" doc:id="27451935-ae38-43c3-b187-67305188f42b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false, encoding="UTF-8"
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+---
+soapenv#Envelope @("xmlns:urn":"urn:toatech:InboundInterface:1.0"): {
+    soapenv#Header: null,
+    soapenv#Body: {
+        "urn:inbound_interface_request" @("xmlns:ns0":"urn:toatech:InboundInterface:1.0"): {
+            "user": {
+                "now": vars.shaPass.now,
+                "login": p('cancelOrder.shalogin'),
+                "company": p('cancelOrder.company'),
+                "auth_string": vars.shaPass.shaPass
+            },
+            "head": {
+                "processing_mode": p('cancelOrder.processing_mode'),
+                "upload_type": p('cancelOrder.upload_type'),
+                "date": now(),
+                "appointment": {
+                    "keys": {
+                        "field": p('cancelOrder.appointment_keys_field')
+                    }
+                },
+                "inventory": {
+                    "keys": {
+                        "field": p('cancelOrder.inventory_keys_field1'),
+                        "field": p('cancelOrder.inventory_keys_field2')
+                    },
+                    "upload_type": p('cancelOrder.inventory_upload_type')
+                }
+            },
+            "data": {
+                "commands": {
+                    "command": {
+                        "type": p('cancelOrder.command_type'),
+                        "external_id": payload.CancelOrderInput.Bucket default "",
+                        "appointment": {
+                            "appt_number": payload.CancelOrderInput.Order.id
+                        }
+                    }
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="4b140253-bafc-4d8f-9e10-ebe218e9a47b" name="post-cancelOrder-clientSub_Flow" target="response"/>
+		<choice doc:name="Choice" doc:id="eaf5c9da-6625-4354-b892-bfd9b84ca31b" >
+			<when expression='vars.response.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.message.result == "error"'>
+				<raise-error doc:name="Raise error" doc:id="f6d1587e-ae18-4fa2-b0ca-f14c014f0c16" type="CUSTOM:APPOINTMENT_NOT_FOUND" description="#[vars.response.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.message.description]"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set Success response" doc:id="ab0b4b04-03fb-43ae-8b46-9d054de28709">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "CancelOrderOutput": {
+        "appointmentId": vars.response.Envelope.Body.inbound_interface_response.data.commands.command.appointment.aid,
+        "appt_number":vars.response.Envelope.Body.inbound_interface_response.data.commands.command.appointment.appt_number,
+        "message": vars.response.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.*message
+        
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
