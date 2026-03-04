@@ -273,15 +273,13 @@ output application/json
 					</ee:variables>
 				</ee:transform>
 				<flow-ref doc:name="mongo-db-sapi-get-score-georeference-sub-flow" doc:id="1231254b-847f-4cd6-b1d5-7fa1e13eaf4e" name="mongo-db-sapi-get-score-georeference-sub-flow" target="getGeoreferenceResponse" />
-				<ee:transform doc:name="set validation response" doc:id="6270959f-87f1-48ee-9b03-9cbd87d2fbc8">
+				<choice doc:name="technology validation" doc:id="a1392149-89a1-464e-aa66-f626ba9b37ef" >
+					<when expression='#[vars.initialPayload.model.technology == "LTE"]'>
+						<ee:transform doc:name="set lte validation response" doc:id="6270959f-87f1-48ee-9b03-9cbd87d2fbc8">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
-var scoreToCheck = if ( vars.initialPayload.model.technology == "LTE" ) 
-	vars.getIdentityResponse.identity[0].'score_movil'.Valor 
-else 
-	vars.getIdentityResponse.identity[0].'score_fija'.Valor
-	
+var scoreToCheck = vars.getIdentityResponse.identity[0].'score_movil'.Valor default 0
 var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
 
 var matchedRange = rangos filter (rango) -> do {
@@ -292,20 +290,57 @@ var matchedRange = rangos filter (rango) -> do {
 	scoreToCheck >= low and scoreToCheck <= high
 }
 
-var score = (matchedRange[0].Detalle map ((item, index) -> {
+var lteScore = (matchedRange[0].Detalle map ((item, index) -> {
 	"Status Score": item.Nombre,
 	"Valor Maximo": item.Valor as Number,
 	"Oferta": vars.initialPayload.model.technology,
-    "Segmento": vars.initialPayload.model.segment,
+    "Segmento": vars.initialPayload.model.segment
 }))[0]
 ---
 {
   code: "200",
   message: "cliente validado exitosamente",
-  result: score
+  result: lteScore
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="set fixed validation response" doc:id="7e3f6bee-84ef-4503-9224-b385efdf1c38" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+var numberToCheck = vars.getIdentityResponse.identity[0].'score_fija'.Valor default 0
+var estrato = 1 // will be replaced once we get the logic
+var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
+
+var matchedRange = rangos filter (rango) -> do {
+    var parts = rango.Codigo splitBy "_"
+    var low = parts[0] as Number
+    var high = parts[1] as Number
+    ---
+    numberToCheck >= low and numberToCheck <= high
+  }
+
+var matchedDetalle = (matchedRange[0].Detalle default []) filter (d) -> d.Nombre == ("ESTRATO " ++ (estrato as String))
+
+var fixedScore = (matchedDetalle map ((item, index) -> {
+    "Status Score": item.Nombre,
+    "Valor Maximo": item.Valor as Number,
+	"Oferta": vars.initialPayload.model.technology,
+    "Segmento": vars.initialPayload.model.segment
+}))[0]
+
+output application/json  
+---
+{
+    code: "200",
+    message: "cliente validado exitosamente",
+    result: fixedScore
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
 			</otherwise>
 		</choice>
 	</sub-flow>
@@ -405,12 +440,13 @@ output application/json
 					</ee:variables>
 				</ee:transform>
 				<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="965a8267-32dd-4412-b45f-964b97678d40" name="mongo-db-sapi-patch-identity-validation-sub-flow"/>
-				<ee:transform doc:name="set score response" doc:id="c4fab289-27f1-42e7-8d11-369d8116d64a">
+				<choice doc:name="technology validation" doc:id="c2a428e5-0e67-4b22-ac18-f0d2edb991f6" >
+					<when expression='#[vars.osValidationDetail.technology == "LTE"]'>
+						<ee:transform doc:name="set lte score response" doc:id="c4fab289-27f1-42e7-8d11-369d8116d64a">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 var scoreToCheck = vars.postLisimScoreResponse.score
-	
 var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
 
 var matchedRange = rangos filter (rango) -> do {
@@ -421,20 +457,57 @@ var matchedRange = rangos filter (rango) -> do {
 	scoreToCheck >= low and scoreToCheck <= high
 }
 
-var score = (matchedRange[0].Detalle map ((item, index) -> {
+var lteScore = (matchedRange[0].Detalle map ((item, index) -> {
 	"Status Score": item.Nombre,
 	"Valor Maximo": item.Valor as Number,
 	"Oferta": vars.osValidationDetail.technology,
-    "Segmento": vars.osValidationDetail.segment,
+    "Segmento": vars.osValidationDetail.segment
 }))[0]
 ---
 {
   code: "200",
   message: "cliente validado exitosamente",
-  result: score
+  result: lteScore
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="set fixed score response" doc:id="c011fe85-44c9-4fbc-8a29-1b8213e97e4a" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+var numberToCheck = vars.postLisimScoreResponse.score
+var estrato = vars.initialPayload.stratum
+var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
+
+var matchedRange = rangos filter (rango) -> do {
+    var parts = rango.Codigo splitBy "_"
+    var low = parts[0] as Number
+    var high = parts[1] as Number
+    ---
+    numberToCheck >= low and numberToCheck <= high
+  }
+
+var matchedDetalle = (matchedRange[0].Detalle default []) filter (d) -> d.Nombre == ("ESTRATO " ++ (estrato as String))
+
+var fixedScore = (matchedDetalle map ((item, index) -> {
+    "Status Score": item.Nombre,
+    "Valor Maximo": item.Valor as Number,
+	"Oferta": vars.osValidationDetail.technology,
+    "Segmento": vars.osValidationDetail.segment
+}))[0]
+
+output application/json  
+---
+{
+    code: "200",
+    message: "cliente validado exitosamente",
+    result: fixedScore
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
 			</when>
 			<otherwise >
 				<raise-error doc:name="SCORE_VALIDATION:DETAILS_NOT_FOUND" doc:id="56ee4ea6-c3e0-457e-b9a3-5926865a9529" type="SCORE_VALIDATION:DETAILS_NOT_FOUND" description="the validation details does not exist in OS"/>
