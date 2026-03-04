@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-georeference-orchestratorSub_Flow" doc:id="1d58cd3d-2e3f-4350-8c56-dfe1d904b183" >
+		<parse-template doc:name="Parse XML" doc:id="b9ee08bc-9551-433f-b7e7-554bc63796ca" location="soap\schemas\template\smallworld-request.xml"/>
+		<logger level="INFO" doc:name="Logger" doc:id="900d6485-11e6-46fd-8c2b-2939a384fff7" message="#[payload]"/>
+		<flow-ref doc:name="Go to smallworld client" doc:id="19158d6d-dac4-4a44-b2c6-b16ace37ba32" name="smallworld-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="5335605b-9e44-45bb-a929-2529d158f7bc" >
+			<when expression="#[(payload.Envelope.Body.&quot;WSGeorreferenciarCR-RS&quot;.GisRespuestaProceso.CodigoError != null) and (&#10;(vars.address contains /^AC /) or&#10;(vars.address contains /^CL /) or&#10;(vars.address contains /^AK /) or&#10;(vars.address contains /^KR /)&#10;) and (p('georetry') == &quot;yes&quot;)]">
+				<ee:transform doc:name="Set alternative address" doc:id="c5d7a868-084e-4b5b-86e1-d51d345c3054">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="address"><![CDATA[if(vars.address contains /^AC /) vars.address replace /^AC / with("CL ") else
+if(vars.address contains /^CL /) vars.address replace /^CL / with("AC ") else
+if(vars.address contains /^AK /) vars.address replace /^AK / with("KR ") else vars.address replace /^KR / with("AK ")]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<parse-template doc:name="Parse XML" doc:id="1f38955b-61d9-423b-8191-cb60fe432510" location="soap\schemas\template\smallworld-request.xml" />
+				<logger level="INFO" doc:name="Logger" doc:id="c02ebda2-a69b-4eba-969d-67a31f379a24" message="#[payload]" />
+				<flow-ref doc:name="Go to smallworld client" doc:id="0aa8dbff-7d9b-4e2f-9e5e-1fd2a2b21455" name="smallworld-clientSub_Flow" />
+			</when>
+		</choice>
+		<ee:transform doc:name="Mapping Output" doc:id="11c4faca-0f92-4e07-8a06-2c786fc0313b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+
+var codigoError = payload.Envelope.Body."WSGeorreferenciarCR-RS".GisRespuestaProceso.CodigoError
+var descripcionError = payload.Envelope.Body."WSGeorreferenciarCR-RS".GisRespuestaProceso.DescripcionError
+var correctCode = payload.Envelope.Body."WSGeorreferenciarCR-RS".GisRespuestaProceso.CodigoError replace  ("-0") with ("")
+var codeGeo = "GEOREF"
+---
+
+if(codigoError == null) outputMessage: payload.Envelope.Body 
+  
+  else{
+     	"outPutMessage": {
+     		
+          "message": descripcionError,
+          "messageCode": codeGeo ++ correctCode
+      }
+  } 
+    ]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="583d9826-6563-4797-a1f0-4ac6f75de1e3" >
+			<when expression='#[payload.outPutMessage.messageCode == "GEOREFERR01"]'>
+				<set-variable value="200" doc:name="HTTP STATUS 200 (Business Error)" doc:id="791aa5c6-27b7-481b-a59d-e34c0c47b3c1" variableName="httpStatus"/>
+			</when>
+			<when expression='#[payload.outPutMessage.messageCode == "GEOREFERR02"]'>
+				<set-variable value="200" doc:name="HTTP STATUS 200 (Business Error)" doc:id="e8a93f70-8d38-4ce6-a35b-b7c372ff1484" variableName="httpStatus"/>
+			</when>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="fad6ffc6-6d11-4210-b179-6aca8b15d9be" message="#[payload]"/>
+	</sub-flow>
+</mule>
+

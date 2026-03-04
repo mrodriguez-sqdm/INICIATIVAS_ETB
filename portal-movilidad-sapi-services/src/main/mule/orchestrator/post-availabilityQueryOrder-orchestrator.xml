@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-availabilityQueryOrder-orchestratorSub_Flow" doc:id="65ead394-64a2-4434-acaf-2674e8dc96e4" >
+		<ee:transform doc:name="Transform to XML" doc:id="b72c58c2-3e21-4711-8a9f-81832cdaec9e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+ns tem http://tempuri.org/
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns inv http://schemas.datacontract.org/2004/07/InventarioLTE
+---
+soapenv#Envelope @('xmlns:inv' : inv):{
+    soapenv#Header:{},
+    soapenv#Body:{
+        tem#GestionarInventarioLTE:{
+        	tem#composite:{
+	        	'inv:Canal': payload.Canal,
+	            'inv:Categoria': payload.Categoria,
+	            'inv:ICCID': payload.ICCID,
+	            'inv:IdPedido': payload.IdPedido,
+	            'inv:IdServicio': payload.IdServicio,
+	            'inv:MSISDN': payload.MSISDN,
+	            'inv:NuevoIdent': payload.NuevoIdent,
+	            'inv:Operacion': payload.Operacion,
+	            'inv:Subcategoria': payload.Subcategoria,
+	            'inv:Tramite': payload.Tramite
+			}
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="58f3d281-3f07-4cf0-bd0f-8025d6e4f282" name="post-availabilityQueryOrder-clientSub_Flow"/>
+		<ee:transform doc:name="Set response" doc:id="8700a35c-5953-4c1f-9311-e094defa81fc" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+output application/json
+var result = payload.Envelope.Body.GestionarInventarioLTEResponse.GestionarInventarioLTEResult
+var errorDesc = ": " ++ payload..DescripcionError[0] default ""
+---
+if(result.DescripcionError == "Timeout") {
+	"ResponseCode": "00",
+	"ResponseDescription": "Timeout M6, Comuníquese con el área correspondiente"
+}
+else if (result.Resultado == "OK") {
+	"ResponseCode": "01",
+	"ResponseDescription": "FACTIBLE"
+}
+else {
+	"ResponseCode": "00",
+	"ResponseDescription": "NO FACTIBLE" ++ errorDesc
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform to JSON" doc:id="d18deead-5218-444b-9051-c0bd4824fa8f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var result = payload.Envelope.Body.GestionarInventarioLTEResponse.GestionarInventarioLTEResult
+---
+{
+    "AQOLTEResponse": {
+        "OrderId": result.IdPedido,
+        "ResponseCode": vars.response.ResponseCode,
+        "ResponseDescription": vars.response.ResponseDescription,
+        "Number": result.MSISDN,
+        "IMSI": result.IMSI,
+        "PIN": result.PIN,
+        "PUK": result.PUK,
+        "PIN2": result.PIN2,
+        "PUK2": result.PUK2,
+        "SDP": result.SDP
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[if (vars.response.ResponseDescription contains "Timeout")
+	408
+else if(vars.response.ResponseCode == "01")
+	200
+else
+	202]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

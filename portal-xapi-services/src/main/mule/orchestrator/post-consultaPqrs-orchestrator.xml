@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-consultaPqrs-orchestratorSub_Flow" doc:id="0e59c6b1-9a5f-4c71-8fa6-7fcb15970e7b" >
+		<try doc:name="Try" doc:id="e3cb98c0-1a36-46dc-9d4c-9357dc6200f9" >
+			<flow-ref doc:name="Go to client" doc:id="d42c1d9a-2bf2-42f5-9686-35534bfc54ec" name="get-pqrFallaMasiva-clientSub_Flow" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="05f15736-a453-4b83-a2a4-08b0975585a8" type="HTTP:NOT_FOUND" >
+					<ee:transform doc:name="Error NO EXISTE PQR" doc:id="c03d66e0-2cb5-48b7-ad64-109934d1caf5">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "resultado": "404",
+  "res-pqr": "NO EXISTE PQR"
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="Log auditoria" doc:id="575898b3-ac9a-41ee-bf14-d9888402fdc7" name="post-log-auditoria"/>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue1" doc:id="7eff4b0c-d521-4218-93e2-b5cfa05f9be3" type="ANY" >
+					<ee:transform doc:name="Error INTERNAL SERVER ERROR" doc:id="7ed7bb2c-d2fa-4eef-a59a-9d52eb7987c7" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "resultado": "500",
+  "res-pqr": "INTERNAL SERVER ERROR"
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="Log auditoria" doc:id="a76a75b0-1657-40df-9836-5301813c9d58" name="post-log-auditoria" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-log-auditoria" doc:id="3e9431bc-3d51-4525-b46c-5df860ff6bda">
+		<async doc:name="Async" doc:id="c5770418-f040-4a2f-863d-25d877319a6b">
+						<choice doc:name="Choice" doc:id="5ff1ff88-cb30-49be-b0ab-c192951d8bc1">
+							<when expression="#[vars.requiere_auditoria]">
+								<ee:transform doc:name="Transform Message" doc:id="701f8661-df6c-4d27-a994-ec889bccfd4b">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	numero_solicitud_app: vars.inputPayload.numero_solicitud_app,
+	aplicacion: vars.inputPayload.aplicacion,
+	ip: vars.inputPayload.ip,
+	navegador: vars.inputPayload.navegador,
+	nombre_equipo: vars.inputPayload.nombre_equipo,
+	usuario: vars.inputPayload.usuario
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+							</when>
+						</choice>
+					</async>
+	</sub-flow>
+</mule>

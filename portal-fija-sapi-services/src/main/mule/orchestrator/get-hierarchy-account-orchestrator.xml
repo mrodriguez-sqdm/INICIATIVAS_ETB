@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-hierarchy-account-orchestrator" doc:id="9e4c8b08-b346-4ad1-9aa2-3db99420d62c" >
+		<parse-template doc:name="Parse to XML" doc:id="c0550ee1-87ce-4bc7-a59c-ee30a9fc9267" location="soap\schemas\templates\soap-portal-hierarchy-account.xml"/>
+		<flow-ref doc:name="Go to Client" doc:id="fdefaaef-3d04-4df0-8989-3f2a460fdd93" name="get-hierarchy-account-client"/>
+		<ee:transform doc:name="Result" doc:id="2fe5de88-71e6-4554-b370-5199808f6c9c">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+var xml = payload.Envelope.Body.jerarquiaCuentaResponse.return
+var response = (((xml splitBy ('operation="'))[1] splitBy("<"))[0]) replace ('"') with ("")
+output application/json
+---
+{
+	"result": trim (((response splitBy ("result="))[1] splitBy ("system"))[0]),
+    "response_operation": trim ((response splitBy ("result="))[0]),
+    "system": (trim ((response splitBy ("system="))[1]) splitBy (">"))[0]
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Output to XML" doc:id="f7da8895-3986-4e21-8b6c-353fb00b33ac" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/json
+var xmlBody = read(payload.Envelope.Body.jerarquiaCuentaResponse.return,"application/xml")
+---
+xmlBody]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Result == 'S'?" doc:id="b7cc20da-a7df-4dd1-afa1-ad81ac0dd869" >
+			<when expression="#[vars.response.result == 'S']">
+				<ee:transform doc:name="Response" doc:id="005cd547-0523-485c-8ad6-9ac2c22163b2">
+			<ee:message>
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var response = payload.replies.reply.response.portalfija_data
+---
+{
+    "fecha_factura": response.jerarquia_cuentas.fecha_factura,
+    "estado": response.jerarquia_cuentas.estado,
+    "ciclo_origen": response.jerarquia_cuentas.ciclo_origen,
+    "ciclo_destino": response.jerarquia_cuentas.ciclo_destino,
+    "resultado": response.resultado,
+    "desc_error": response.descError,
+    "result": vars.response.result,
+    "response_operation": vars.response.response_operation,
+    "system": vars.response.system
+}]]></ee:set-payload>
+			</ee:message>
+					<ee:variables>
+					</ee:variables>
+		</ee:transform>
+				<ee:transform doc:name="Format Output" doc:id="b8e69ea6-9a30-4271-9f8c-9cd29f447772" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "Headers": {
+        "service.status": "PASS",
+        "service.responseDate": attributes.headers.date
+    },
+    "Body": {
+        "HierarchyAccounts": {
+            "operation": payload.response_operation,
+            "result": payload.result,
+            "system": payload.system,
+            "portalData": {
+                "hierarchyAccounts": {
+                    "invoiceDate": payload.fecha_factura,
+                    "state": payload.estado,
+                    "sourceBillingCycle": payload.ciclo_origen,
+                    "destinationBillingCycle": payload.ciclo_destino
+                }
+            }
+        },
+        "errorResult": payload.resultado,
+        "errorDescription": payload.desc_error
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Map Error" doc:id="2b93a02e-c9b5-4b28-b09a-32caa6aa6770" name="error-response"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="error-response" doc:id="de3c6510-da8b-4321-ae42-ccf8565628ed" >
+		<ee:transform doc:name="Format Output" doc:id="1ba580d6-ac29-4070-aabb-9146e497e681" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "ResponseGetAccountCycle": {
+        "operation": vars.response.response_operation,
+        "result": vars.response.result,
+        "status": "FAIL",
+        "responseDate": now(),
+        "statusDetail": {
+            "errorCode": 500,
+            "errorMessage": payload.replies.reply.response.portalfija_data.descError
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[500]" doc:name="500" doc:id="c1c353d9-4ece-4d1f-b4f4-4ac0ae8317e4" variableName="httpStatus"/>
+	</sub-flow>
+</mule>

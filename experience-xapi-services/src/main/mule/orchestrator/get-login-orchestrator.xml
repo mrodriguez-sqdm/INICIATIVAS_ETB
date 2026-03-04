@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-login-orchestratorSub_Flow" doc:id="f2be539b-7e54-41f7-be35-4c592cdc0665" >
+		<try doc:name="Try" doc:id="12f1f846-695c-4353-aa24-6192c768a253" >
+			<ee:transform doc:name="Map Body" doc:id="40c21cbd-55dc-4e16-9aed-50594e5e5e66" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var queryString = attributes.queryString
+---
+{
+	"email" :  attributes.queryParams.email,
+	"password" : if (queryString startsWith "password") ((queryString splitBy "&")[0] splitBy "password=")[1] else (queryString splitBy "&password=")[1]
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Go to client" doc:id="ab38874f-b20b-4e45-9983-13cda78b8c32" name="get-login-clientSub_Flow" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="29df0347-d282-41e6-b555-83370711bfb1" type="HTTP:NOT_FOUND" >
+					<ee:transform doc:name="Response Error 200" doc:id="c474f1c0-d8ba-48b9-915e-5d26569d5224" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "200",
+	descripcion: "ERROR CREDENCIALES"
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="15931f62-7586-4588-af28-205f5456afc8">
+					<ee:transform doc:name="Response Error 500" doc:id="987b898f-37b4-4178-a6a4-00d732683d8b" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	descripcion: "ERROR CONSULTA"
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

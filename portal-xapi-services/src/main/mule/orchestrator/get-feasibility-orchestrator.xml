@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-feasibility-orchestratorSubFlow" doc:id="6a8d70d4-0b5b-4b53-8d52-6b5f55da512c" >
+		<logger level="INFO" doc:name="Logger" doc:id="d2a465b8-d0ae-4de0-97bf-f2d345bc336e" message="#[attributes.queryParams]" />
+		<flow-ref doc:name="Go to sisext client" doc:id="185201b3-1eff-4a9a-b73d-d94c8d47c581" name="sisext-sapi-client-feasibility" />
+		<ee:transform doc:name="Transform Message" doc:id="d85b3a99-6a82-4856-8107-1b641b43e81d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+import substring from dw::core::Strings
+var responseDate = payload.feasibilityResponse.outputMessage."M6ConsultarBloquearRecursos-RS".DetalleRespuesta.FechaRespuesta
+var statusResp = payload.feasibilityResponse.outputMessage."M6ConsultarBloquearRecursos-RS".DetalleRespuesta.Resultado
+---
+{
+    "GetFeasibilityFTTHOutput":{
+        "WSResponseHeader2": {
+            "System":{
+                "name": "" ,
+                "correlationID": vars.correlationId,
+                "source": "portal-xapi-services"
+            },
+            "Service":{
+                "status": payload.feasibilityResponse.outputMessage."M6ConsultarBloquearRecursos-RS".DetalleRespuesta.Resultado,
+                "responseDate": substring (responseDate, 0, 4) ++ '/' ++ substring (responseDate, 4, 6) ++ '/' ++ substring (responseDate, 6, 8) ++ ' ' ++ substring (responseDate, 8, 10) ++ ':' ++ substring (responseDate, 10, 12) ++ ':' ++ substring (responseDate, 12, 14),
+                "statusDetail":{
+                    "errorCode": payload.feasibilityResponse.outputMessage."M6ConsultarBloquearRecursos-RS".DetalleRespuesta.CodigoErrorResultado,
+                    "errorDetailCode": "",
+                    "errorMessagge": payload.feasibilityResponse.outputMessage."M6ConsultarBloquearRecursos-RS".DetalleRespuesta.DescripcionErrorResultado
+                }
+            }, 
+            "GetFeasibilityFTTHResponse": if(statusResp == "OK"){
+    			"Feasibility": payload.feasibilityResponse.outputMessage."M6ConsultarBloquearRecursos-RS".RespuestaFactibilidad
+    		} else null
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

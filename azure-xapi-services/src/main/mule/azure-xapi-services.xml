@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="azure-xapi-services-main">
+        <http:listener config-ref="azure-xapi-services-httpListenerConfig" path="/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call initial Logger" doc:id="394bf71e-b1f5-412d-ba89-4a04c8fa3925" name="initial-loggin-Sub_Flow" />
+		<apikit:router config-ref="azure-xapi-services-config" />
+		<async doc:name="Async" doc:id="528eb48e-a9d7-436d-b73d-c217e2712ed6" >
+			<flow-ref doc:name="Call logger" doc:id="bfababb0-042e-4e92-818e-74e0ba320d02" name="loggin-client-call" />
+		</async>
+		<error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="azure-xapi-services-console">
+        <http:listener config-ref="azure-xapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="azure-xapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="put:\v1\entries\(entryId)\(formName):application\json:azure-xapi-services-config">
+		<flow-ref doc:name="put-entries-handlerSub_Flow" doc:id="96290948-902e-467d-bccf-ce7359f38800" name="put-entries-handlerSub_Flow"/>
+    </flow>
+    <flow name="get:\v1\entries\(entryId)\(formName):azure-xapi-services-config">
+		<flow-ref doc:name="get-entries-handlerSub_Flow" doc:id="975ae7ef-023a-467a-87d6-3238ebf3f988" name="get-entries-handlerSub_Flow"/>
+    </flow>
+</mule>

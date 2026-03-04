@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+	<error-handler name="error-handlerError_Handler"
+		doc:id="9c16c3ad-776d-466f-9d0b-a2cef1a7e263">
+		<on-error-continue enableNotifications="true"
+			logException="true" doc:name="On Error Continue"
+			doc:id="d32643b1-064f-43a1-a04a-3dc16dea56a6">
+			<set-variable value="Error" doc:name="Set Log Level"
+				doc:id="f97b2fe5-6d43-4ab2-b05d-9ac64a58e0e6"
+				variableName="logLevel" />
+			<flow-ref doc:name="Analise Error"
+				doc:id="32fa21fe-3fdf-43e7-96f1-74294dee0435" name="analyse_error" />
+			<flow-ref doc:name="Make Error Response"
+				doc:id="b6f325aa-e3fe-46f2-bec5-092e438693ec"
+				name="make_error_response" />
+		</on-error-continue>
+	</error-handler>
+	<sub-flow name="analyse_error">
+		<!-- Errors raised by a custom policy do not include an exception object, 
+			so we must handle the exception object being null -->
+		<ee:transform
+			doc:name="Record the root cause exception message"
+			doc:id="4a4545f1-a7c5-4cef-92b7-1fff7627bed3">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="exceptionCause"><![CDATA[%dw 2.0
+output application/java
+---
+error.exception.cause.class default error.cause.class
+	
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform
+			doc:name="Record the message of the root exception"
+			doc:id="14d40d6e-64c8-4638-852a-2a2d5d4a0b69">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="exceptionMessage"><![CDATA[%dw 2.0
+output application/json
+---
+if(error.exception != null)
+	if ( error.description != null )
+		message: error.description 
+	else
+		message: ""
+else
+	message: "No root cause exception"
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+
+		<choice doc:name="Do we have an exception object">
+			<when expression="#[vars.exceptionCause == null]">
+				<ee:transform doc:name="Transform Message"
+					doc:id="4e709104-7ad8-4163-8744-564024d82309">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<set-variable variableName="kind" value="UNKNOWN_ERROR"
+					doc:name="Variable" />
+
+			</when>
+			<otherwise>
+				<choice doc:name="Set response fields based on the exception">
+					<when
+						expression='#[vars.exceptionCause contains "java.net.UnknownHostException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="01348953-2279-43bb-9394-0af96c6659ac">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="Variable" />
+
+					</when>
+
+
+
+					<when
+						expression='#[vars.exceptionCause contains "java.net.SocketTimeoutException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="ad8678d6-4168-45d8-8765-1ce85517d10f">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="Variable" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "sun.security.provider.certpath.SunCertPathBuilderException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="c3bafc1b-473e-4b24-92ae-1a79180a3bac">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="Variable" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "java.util.concurrent.TimeoutException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="f97ef797-8f9c-4d37-a048-3097269a3f88">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="Variable" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "java.nio.channels.UnresolvedAddressException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="716d1e3c-c726-4a4c-bebd-5e9752795705">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="Variable" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "java.net.ConnectException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="c08ff5aa-e7f4-4f86-abca-c81959e3a2aa">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="CONNECTION_ERROR" doc:name="Variable" />
+
+					</when>
+
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.api.exception.InvalidUriParameterException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="d691841f-7b77-47b3-b0f7-f13ecf42ce0b">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="Set Type" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.api.exception.BadRequestException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="5bf63916-f709-4a44-8960-20b6fdeaeff8">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind" value="BAD_REQUEST"
+							doc:name="Set Type" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.exception.NotFoundException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="acaf1a07-9164-4657-bf2f-a08cb73a453b">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="Set Type" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.exception.MethodNotAllowedException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="183f2c1c-a6db-4290-b9b2-169383ce5b75">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[405]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="Set Type" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.exception.NotAcceptableException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="80008a2b-1742-49ac-b2ad-7b7a2e716e74">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[406]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="Set Type" />
+
+					</when>
+					<when
+						expression='#[vars.exceptionCause contains "org.mule.module.apikit.exception.UnsupportedMediaTypeException"]'>
+						<ee:transform doc:name="Transform Message"
+							doc:id="d226393a-2be1-4e25-9782-4dd254075534">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[415]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="REQUEST_ERROR" doc:name="Set Type" />
+
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Transform Message"
+							doc:id="dd291784-4628-4a64-a7d6-2de0e0235a49">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="messageServer"><![CDATA[%dw 2.0
+output application/java
+---
+error.muleMessage.payload]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<ee:transform doc:name="Transform Message"
+							doc:id="f60926fb-3e79-4c0a-a830-6c70982e1b1f">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[error.muleMessage.attributes.StatusCode default 500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<set-variable variableName="kind"
+							value="#[error.errorType.identifier]" doc:name="Set Type" />
+
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+		<ee:transform
+			doc:name="Copy_of_Record the message of the root exception"
+			doc:id="7208c083-6fe2-42b6-a9be-e7a1915321b6">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="exceptionMessage"><![CDATA[%dw 2.0
+output application/json
+---
+if(error.exception != null)
+	if ( error.description != null )
+		message: error.description 
+	else
+		message: ""
+else
+	message: "No root cause exception"
+]]></ee:set-variable>
+				<ee:set-variable variableName="messageFromServer"><![CDATA[%dw 2.0
+output application/java
+---
+error.muleMessage.payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+
+	</sub-flow>
+	
+	<sub-flow name="make_error_response" doc:id="215a29fe-2283-4ae8-b0b6-b5e8de717c50">
+		<set-payload value="#[{}]" doc:name="Set Payload" doc:id="0ebdfa23-f111-4f86-bee6-67a55e8da7d9" />
+		<ee:transform doc:name="Transform Message" doc:id="d86adfab-9c5d-49ed-8f38-ef9db23ba6a3">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": vars.httpStatus,
+	"code": vars.kind default "",
+	"message": vars.exceptionMessage default "",
+	"messageServer": vars.messageServer default "",
+	"cause": [
+		{
+			"origin": p('app.name'),
+			"message": vars.exceptionCause default ""
+		}
+	]	
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="7f284ade-02fe-4e04-85e5-7594c3998ef5" message='type="#[vars.kind]" error="#[vars.exceptionMessage]"' />
+		<logger level="INFO" doc:name="Print Error" doc:id="22809dd9-2ee2-473f-b054-4d6c3deb0a3a" message="#[payload]" />
+	</sub-flow>
+
+
+</mule>

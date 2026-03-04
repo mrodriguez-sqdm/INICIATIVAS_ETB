@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-consultaPqrs-elementos-orchestratorSub_Flow" doc:id="f5241629-8022-4906-9704-200fd776479e" >
+		<try doc:name="Try" doc:id="20993561-98fa-48c2-ac97-f2145ccc82ae" >
+			<flow-ref doc:name="Go to client" doc:id="07ab3f92-a520-4aca-8042-80587fb21edc" name="get-pqrFallaMasiva-clientSub_Flow" />
+			<choice doc:name="Choice" doc:id="0eff6468-361b-40e5-bf4f-ea1126d2b6c7">
+			<when expression='#[payload.elementos_multiples == "true"]'>
+				<ee:transform doc:name="Response elementos_en_falla" doc:id="b6d78b3f-0d83-46b5-80f3-7ea4f69292a7">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "resultado": "200",
+  "res-pqr": payload.elementos_en_falla
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Response elementos_red" doc:id="aa1aa3ee-bc46-4067-9649-17e571549727">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "resultado": "200",
+  "res-pqr": payload.elementos_red
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e08f215e-7a92-4d40-978a-d9c3e6d21e0f" type="HTTP:NOT_FOUND">
+					<ee:transform doc:name="Error NO EXISTE PQR" doc:id="1ae58054-717a-44b4-b621-70f1836585ea" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "resultado": "404",
+  "res-pqr": "NO EXISTE PQR"
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="Log auditoria" doc:id="7f645f83-4e0b-468c-9d46-d8573ec95ff6" name="post-log-auditoria"/>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="36e8d97f-5c4c-4829-81d3-feb0c9623a5d" type="ANY">
+					<ee:transform doc:name="Error INTERNAL SERVER ERROR" doc:id="0bc7ced5-3efe-455c-8f59-484ea62b544f" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "resultado": "500",
+  "res-pqr": "INTERNAL SERVER ERROR"
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="Log auditoria" doc:id="6247b58e-0ef5-4ad0-9ec9-e1d71349c1b3" name="post-log-auditoria" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="put-entries-orchestratorSub_Flow" doc:id="9d480377-e850-4875-b6d5-632e7662bc16" >
+		<flow-ref doc:name="remedy-get-entries-clientSub_Flow" doc:id="03ec1aec-5d6a-457e-8b00-8e9880f7195d" name="remedy-get-entries-clientSub_Flow"/>
+		<ee:transform doc:name="Get SYSpbi" doc:id="fb9afc31-a1f8-4a44-9785-3b9b05fb1b2f">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="SYSpbi"><![CDATA[%dw 2.0
+output application/java
+---
+payload.entries[0].values."Sys-Problem Investigation ID"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<choice doc:name="Choice" doc:id="81f340c7-e1df-47c2-8d30-c1fef328c2cf" >
+			<when expression='#[!isEmpty(vars.initialPayload.values."EstadoINI")]'>
+				<ee:transform doc:name="Homologate status" doc:id="db101720-2578-4351-bb41-519e4e90e0c6">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="statusHomologated" ><![CDATA[%dw 2.0
+output application/java
+
+var estados = p('status-homologate')
+---
+(((estados splitBy  "|") filter ($ contains vars.initialPayload.values."EstadoINI"))[0] splitBy  "-")[1]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Set Payload" doc:id="ba087adc-9512-418e-baf2-a124ae3168a6">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+values: 
+vars.initialPayload.values -"EstadoINI" ++ 
+{
+  "ETB_EDO_REQ": vars.statusHomologated
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<set-payload value="#[vars.initialPayload]" doc:name="Set Payload" doc:id="6036b5f9-6c4d-4627-bb24-507ba7b3a22c" />
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="f04bdab1-7181-4145-ac9c-70583e290af5" message="#[payload]" />
+		<flow-ref doc:name="remedy-put-entries-clientSub_Flow" doc:id="895f890a-c235-475f-8b1d-d4caf997c1b8" name="remedy-put-entries-clientSub_Flow" />
+	</sub-flow>
+</mule>

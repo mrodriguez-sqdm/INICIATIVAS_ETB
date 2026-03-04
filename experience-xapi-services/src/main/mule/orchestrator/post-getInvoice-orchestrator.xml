@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd">
+	<sub-flow name="post-getInvoice-orchestratorSub_Flow" doc:id="bf1ac6a7-8c38-45c2-852a-fdefb86306c2" >
+		<choice doc:name="Choice" doc:id="2f2ba832-039d-44b3-baf7-6596037696c6" >
+			<when expression="#[p('mockInvoiceFormat') == &quot;true&quot;]">
+				<ee:transform doc:name="Set response" doc:id="5db1b417-32cd-4e0f-8079-78b897953b13" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Response": {
+		"mimeType": "PDF",
+		"fileName": "/home/tibco/shared/lte/corporativo/salesforce/1234-567.PDF"
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set request body" doc:id="909f246a-b70f-4698-9384-3f72c3780db2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+---
+{
+  "NomCli": payload.clientName,
+  "CelCli": payload.clientNumber,
+  "Factura": payload.invoiceNumber,
+  "FechFact": payload.invoiceDate,
+  "Pin1": payload.PIN1,
+  "Pin2": payload.PIN2,
+  "Valor": payload.amount,
+  "ValorIva": payload.IVA,
+  "ValorTotal": payload.totalAmount
+} ++ (payload.invoiceDetail reduce ((item, acc = {
+  "Detalle": "",
+  "Imei": "",
+  "DetVal": "",
+  "DetIva": "",
+  "DetValTotal": ""
+}) -> {
+  "Detalle": if(acc.Detalle == "") 
+    acc.Detalle ++ (if(sizeOf(item.description)>20) substring(item.description,0,20) else item.description)
+    else acc.Detalle ++ "|" ++ (if(sizeOf(item.description)>20) substring(item.description,0,20) else item.description),
+  "Imei": if(acc.Imei == "") 
+    acc.Imei ++ item.IMEI 
+    else acc.Imei ++ "|" ++ item.IMEI,
+  "DetVal": if(acc.DetVal == "") 
+    acc.DetVal ++ item.deviceCost 
+    else acc.DetVal ++ "|" ++ item.deviceCost,
+  "DetIva": if(acc.DetIva == "") 
+    acc.DetIva ++ item.IVA 
+    else acc.DetIva ++ "|" ++ item.IVA,
+  "DetValTotal": if(acc.DetValTotal == "") 
+  acc.DetValTotal ++ item.totalIVA 
+  else acc.DetValTotal ++ "|" ++ item.totalIVA
+}))]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Go to Client" doc:id="c17a9e53-8ff7-44cb-9131-0395ac9fd2cd" name="post-getInvoice-clientSub_flow" target="client_response"/>
+				<ee:transform doc:name="Transform Message" doc:id="cb3d411c-fd2e-4bfe-9e57-dc53d914f8f6">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output multipart/form-data
+import * from dw::core::Binaries
+---
+{
+	parts:
+	{
+		test:
+		{
+			headers:
+			{
+				"Content-Type": "appication/pdf"
+			},
+			content: fromBase64(vars.client_response.return)
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<set-payload value="#[payload]" doc:name="Set Payload" doc:id="738ec325-5a9d-44e9-826d-b24ec60ca48d" mimeType="application/pdf" />
+				<ee:transform doc:name="Set path" doc:id="25e3d9c4-154a-4c6a-8647-f8a98ecc8d25">
+							<ee:message>
+							</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.requestSystem == "WS.BillingLTECorporate")
+	p('sftp.path.getInvoiceWS') ++ correlationId ++ '.' ++ upper(vars.client_response.tipoArchivo)
+else
+	p('sftp.path.getInvoiceDefault') ++ correlationId ++ '.' ++ upper(vars.client_response.tipoArchivo)]]></ee:set-variable>
+					</ee:variables>
+						</ee:transform>
+				<try doc:name="Try" doc:id="88a56893-3a78-48f2-acaf-02c23702402b" >
+					<sftp:write doc:name="Write" doc:id="6a51bde6-9a3e-416a-9ce7-33864b8663b6" config-ref="SFTP_Config" path="#[vars.path as String]" />
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="0e36bed1-bc1b-4e77-8754-13ede825b132" >
+							<set-variable value="true" doc:name="Set Error == true" doc:id="7dfa6e94-a3d4-44a8-b1e4-9a607ae04282" variableName="error"/>
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<choice doc:name="Choice" doc:id="31f0c20e-789b-4947-b4a2-2f2557864b88">
+					<when expression='#[vars.error == "true"]'>
+						<ee:transform doc:name="Set error" doc:id="f3d976c0-a417-4730-996b-4664553bf132">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 500,
+    "code": "SFTP_ERROR",
+    "message": {
+        "message": "Error writing file"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "experience-xapi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Set response" doc:id="6627effd-dd83-4e13-8043-72a9826c6610">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Response": {
+		"mimeType": upper(vars.client_response.tipoArchivo),
+		"fileName": vars.path
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

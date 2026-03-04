@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<mule xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit-soap="http://www.mulesoft.org/schema/mule/apikit-soap" xmlns:batch="http://www.mulesoft.org/schema/mule/ee/batch" xmlns:bti="http://www.mulesoft.org/schema/mule/ee/bti" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:http-policy="http://www.mulesoft.org/schema/mule/mule-http" xmlns:kryo="http://www.mulesoft.org/schema/mule/kryo" xmlns:module="http://www.mulesoft.org/schema/mule/module" xmlns:sockets="http://www.mulesoft.org/schema/mule/sockets" xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/apikit-soap http://www.mulesoft.org/schema/mule/apikit-soap/current/mule-apikit-soap.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
+    <flow name="eta-xapi-services-main" doc:id="f4b7182e-95cb-4097-9a47-91760b7a7d75">
+        <http:listener path="/*" config-ref="api-httpListenerConfig">
+            <http:response statusCode="#[attributes.additionalTransportData.statusCode default 200]">
+                <http:headers><![CDATA[#[attributes.protocolHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[attributes.additionalTransportData.statusCode default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[attributes.protocolHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call initial logger" doc:id="2a830c34-b741-4755-8040-daaa8dd682de" name="initial-loggin-Sub_Flow" />
+		<set-variable value="#[payload]" doc:name="input" doc:id="42b04173-cb22-46db-a01a-d1b27be9fa63" variableName="inp"/>
+		<apikit-soap:router config-ref="soapkit-config">
+            <apikit-soap:attributes><![CDATA[#[%dw 2.0
+              output application/java
+              ---
+              {
+                  headers: attributes.headers,
+                  method: attributes.method,
+                  queryString: attributes.queryString
+            }]]]></apikit-soap:attributes>
+        </apikit-soap:router>
+		<async doc:name="Async" doc:id="7b903886-3c5a-46df-b3b9-e13262be5d17" >
+			<flow-ref doc:name="Call logger" doc:id="8b771120-c596-4630-beef-a3da5130582f" name="loggin-client-call" />
+		</async>
+		<error-handler ref="error-handlerError_Handler" />
+    </flow>
+	<flow name="send_message:\soapkit-config" doc:id="1f93ceb9-38d5-446b-a72b-5def4d5d0af6">
+				<flow-ref doc:name="Go to Handler" doc:id="0ee7278e-0d72-4307-bae0-16ef3f7bfd83" name="send-message-handlerSub_Flow"/>
+    </flow>
+    <flow name="update_remedy:\soapkit-config" doc:id="a28dbbf4-5472-444b-85d1-417e8044f168">
+		<flow-ref doc:name="Go to Handler" doc:id="0956b443-cbd1-4b05-84e1-58873ec2e917" name="update-remedy-handlerSub_Flow"/>
+    </flow>
+</mule>

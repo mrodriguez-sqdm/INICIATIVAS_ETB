@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-completeInventory-orchestrator" doc:id="186ecaeb-680a-467f-95ff-88efc959913c" >
+		<ee:transform doc:name="Transform to Xml" doc:id="b4908457-65ae-4c3e-afa0-bc4732fedf8d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+ns tem http://tempuri.org/
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns inv http://schemas.datacontract.org/2004/07/InventarioLTE
+---
+if(payload.Tramit == "RETIRAR EN LINEA")
+    soapenv#Envelope @('xmlns:inv' : inv):{
+        soapenv#Header:{},
+        soapenv#Body:{
+            tem#GestionarInventarioLTE:{
+                tem#composite:{             
+                    'inv:ICCID': payload.ICCID,
+                    'inv:IdPedido': payload.OrderId,
+                    'inv:IdServicio': payload.ServiceId,
+                    'inv:MSISDN': payload.MSISDN,
+                    'inv:Operacion': "RETIRAR",
+                    'inv:Tramite': payload.Tramit            
+                }
+            }
+        }
+    }
+else 
+    soapenv#Envelope @('xmlns:inv' : inv):{
+        soapenv#Header:{},
+        soapenv#Body:{
+            tem#GestionarInventarioLTE:{
+                tem#composite:{             
+                    'inv:ICCID': payload.ICCID,
+                    'inv:IdPedido': payload.OrderId,
+                    'inv:IdServicio': payload.ServiceId,
+                    'inv:MSISDN': payload.MSISDN,
+                    "inv:NuevoIdent": payload.NewMSISDN,
+                    'inv:Operacion': "COMPLETAR",
+                    'inv:Tramite': payload.Tramit               
+                }
+            }
+        }
+    }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-completeInventory-client" doc:id="0526547a-7231-4534-a45d-e64fcc917ae7" name="post-completeInventory-client"/>
+		<ee:transform doc:name="Transform to Json" doc:id="0aed67bf-250d-4b19-bc29-0d0825ecf847" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var result = payload.Envelope.Body.GestionarInventarioLTEResponse.GestionarInventarioLTEResult
+---
+{
+   Resultado: result.Resultado,
+   Codigo: result.CodigoError,
+   Descripcion: result.DescripcionError,
+   Estado: result.Estado,
+   EstadoRecurso: result.EstadoRecurso,
+   Fecha: result.Fecha,
+   ICCID: result.ICCID,
+   IMSI: result.IMSI,
+   IdPedido: result.IdPedido,
+   IdServicio: result.IdServicio,
+   MSISDN: result.MSISDN,
+   Modelo: result.Modelo,
+   Operacion: result.Operacion,
+   PIN: result.PIN,
+   PUK: result.PUK,
+   PIN2: result.PIN2,
+   PUK2: result.PUK2,
+   TipoRecurso: result.TipoRecurso,
+   Tramite: result.Tramite
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+var result = payload.Envelope.Body.GestionarInventarioLTEResponse.GestionarInventarioLTEResult.Resultado
+---
+if ( result == "OK" ) 
+	201
+else 
+	500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

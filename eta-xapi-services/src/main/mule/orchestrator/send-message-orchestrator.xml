@@ -1,0 +1,1363 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="send-message-orchestratorSub_Flow" doc:id="23820dcc-6ac7-46f6-a1f6-2b78af3b3ef7" >
+		<ee:transform doc:name="Filter known subjects" doc:id="c8c461d5-b099-4072-90bc-29c5e9baeb33" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="filteredMessages" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload.Body.send_message.messages.*message filter (p('global.knownSubjects') contains upper($.subject))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Parse body to Json" doc:id="2c11879d-0386-4c96-9dad-2eec3bb77c95">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="payloadParsed"><![CDATA[%dw 2.0
+output application/json
+import * from dw::util::Values
+---
+vars.filteredMessages update "body"
+    with (
+        (read($,"application/xml").message) 
+            mapObject ((value, key, index) -> do{
+                var label = key.@n
+                ---
+                ("$label": value) if (label != null)
+            })
+    )
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="c81e83f8-e659-437c-a131-fb44a14ccbe7" target="msgResponse">
+			<route >
+				<flow-ref doc:name="COMPLETED, SUSPENDED, NOT DONE" doc:id="6df1e815-0791-4d79-b4d9-b130359af0d8" name="CompletedSuspendedNotDone"/>
+			</route>
+			<route >
+				<flow-ref doc:name="MDM-FIBRA | otroPrefijo" doc:id="fc81bc6c-ebd0-4a77-b91a-79d8068cdee4" name="MdmFibraOtroPrefijo" />
+			</route>
+			<route >
+				<flow-ref doc:name="INVENTORY MOVE" doc:id="5739b65f-0e61-41a0-b9cd-58df10bf5979" name="InventoryMove" />
+			</route>
+			<route >
+				<flow-ref doc:name="ORDER ADDED" doc:id="d74b083a-23c4-4567-8877-f1777a344c08" name="Order_Added"/>
+			</route>
+			<route >
+				<flow-ref doc:name="INVENTORY RETURN" doc:id="cd5046a9-d481-4c67-b13d-67f46ddaa4bc" name="InventoryReturn" />
+			</route>
+			<route >
+				<flow-ref doc:name="INITIATE INSTALLATION" doc:id="9e1f607e-9d8f-4b87-be03-d88685327776" name="InitiateInstallation"/>
+			</route>
+			<route >
+				<flow-ref doc:name="NOT DONE" doc:id="407a55af-eff1-45ea-bc09-069b4e7c8b9c" name="OrdenNoRealizada" />
+			</route>
+			<route >
+				<flow-ref doc:name="SUSPENDED" doc:id="f85bc306-136e-47e0-92a0-d45ab70cd6f6" name="Suspended"/>
+			</route>
+			<route >
+				<flow-ref doc:name="INSTALL EQUIPMENT" doc:id="66046b95-bb08-4706-8f47-3393fd1ee8db" name="EnvioInstalacionExitosa" />
+			</route>
+			<route >
+				<flow-ref doc:name="UNINSTALL EQUIPMENT" doc:id="c963b753-1c7b-4725-bdf6-bb7abc3e00aa" name="UninstallEquipment"/>
+			</route>
+			<route >
+				<flow-ref doc:name="COMPLETED" doc:id="2c7a7fb4-e513-45d7-a18f-10600adc94c5" name="EnvioCompletadoOrden" />
+			</route>
+			<route >
+				<flow-ref doc:name="UPDATE-REMEDY" doc:id="6ca8106e-e524-400d-b473-c655d2ad0e41" name="UpdateRemedyMessage"/>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="MapOut" doc:id="04d83e56-9b4e-4b41-9190-e567d1193c2d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns s http://schemas.xmlsoap.org/soap/envelope
+ns xsi http://www.w3.org/2001/XMLSchema-instance
+ns xsd http://www.w3.org/2001/XMLSchema
+var messageResponse = vars.msgResponse."0".payload ++ vars.msgResponse."1".payload ++ vars.msgResponse."2".payload ++ vars.msgResponse."3".payload ++ vars.msgResponse."4".payload ++ vars.msgResponse."5".payload ++ vars.msgResponse."6".payload ++ vars.msgResponse."7".payload ++ vars.msgResponse."8".payload ++ vars.msgResponse."9".payload ++ vars.msgResponse."10".payload ++ vars.msgResponse."11".payload
+var allIds = vars.inputPayload.Body.send_message.messages.*message.message_id
+var noEvaluated = if (messageResponse.message_id != null)
+						(allIds -- messageResponse.message_id) 
+							map {
+									"message_id": $,
+									"status": "delivered",
+									"description": "delivered"
+								}
+                  else
+                    allIds map {
+									"message_id": $,
+									"status": "delivered",
+									"description": "delivered"
+						    	}
+---
+{
+	s#Envelope: {
+        xsi#Body @('xmlns:xsd':"http://www.w3.org/2001/XMLSchema"):{
+            send_message_response @(xmlns: "urn:toatech:agent"): 
+            {"message_response": ( (messageResponse default []) ++ (noEvaluated default []))}
+        }
+	}
+}
+
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="CompletedSuspendedNotDone" doc:id="25ca0490-5540-442f-a641-f066018bdd58" >
+		<ee:transform doc:name="Case Completed, Suspended, Not Done" doc:id="447f5923-16dc-4acb-a71d-651168f30c52" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[output application/json
+import * from dw::core::Strings
+var filteredMessagges = vars.payloadParsed filter ($.subject == "Completed" or
+												   $.subject == "Suspended" or
+												   $.subject == "Not Done")
+---
+filteredMessagges filter ( upper(substring($.body.'appt_number', 0, 3)) == "INC" 
+							and 
+						    $.body.XA_Technology_Name == "CU"
+						 )]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="03329d6c-458f-4eca-82f1-3a27baa8fdb0" >
+			<when expression="#[!isEmpty(payload)]" >
+				<ee:transform doc:name="Add Msg Response" doc:id="2d951901-b31f-4c5c-9dd4-b0d4befe3c5c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload map {
+	message_id : $.message_id,
+	status: "delivered",
+	description: "delivered"
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="1b32d80e-8d26-47bd-8497-2f600c846f65" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="MdmFibraOtroPrefijo" doc:id="fe2e9263-571e-4163-b43b-7fb09c51eb4a" >
+		<ee:transform doc:name="Case MDM-FIBRA o OtroPrefijo" doc:id="77019188-7da1-4744-ab4f-a1e4366a41d2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[output application/json
+var prefijos = p("message.prefijos") splitBy "|"
+---
+vars.payloadParsed filter ( 
+								sizeOf( 
+									prefijos filter (o,i) -> $.body.'appt_number' contains(o)
+								) > 0
+						   )]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="9000087c-1fde-418e-a0e9-fc8ed08c2f8f" >
+			<when expression="#[!isEmpty(payload)]" >
+				<ee:transform doc:name="Add Msg Response" doc:id="02570159-b6b4-4641-aceb-58b50bde2844" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload map {
+	message_id : $.message_id,
+	status: "delivered",
+	description: "delivered"
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="8b07db07-b795-444f-b993-9368bfb08da6" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="InventoryMove" doc:id="ed3c6272-d0d1-4616-bc6a-68193497c431">
+		<ee:transform doc:name="Inventory Move Filter" doc:id="7d3f65c1-98a3-42d7-b7b3-7a755ed2e9ff">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="inventoryMoveFilter"><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload.Body.send_message.messages.*message 
+	filter (upper($.subject) == "INVENTORY MOVE")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="e12e57c0-f360-4140-b5f9-90c49ae22377">
+			<when expression="#[!isEmpty(vars.inventoryMoveFilter)]">
+<ee:transform doc:name="Body to Mongo" doc:id="1046df93-fa2f-4034-b9b1-13434993641b">
+			<ee:message>
+									<ee:set-payload><![CDATA[output application/json
+---
+{
+	"transactionId": vars.inventoryMoveFilter.message_id[0],
+	"XML": vars.inventoryMoveFilter,
+	"Fecha": now(),
+	"Estado": "0"
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		</ee:transform>
+				<try doc:name="Try" doc:id="5dc6ee7e-c0c4-4944-b6d1-8fabc87b4ee1">
+			<flow-ref doc:name="Go to Client" doc:id="da8e33e6-68c3-4cb8-bdee-223e180199d0" name="post-message-clientSub_Flow" />
+					<ee:transform doc:name="Add Msg Response" doc:id="393f7fce-0ecf-4b12-8383-20069a223753">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.inventoryMoveFilter 
+	map {	
+			message_id : $.message_id,
+			status: "delivered",
+			description: "delivered"
+		}
+
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="cbe24289-41b9-40cc-abc1-bb2bc43b0f67" >
+							<ee:transform doc:name="Empty Result" doc:id="49e0cd07-b5b8-4acc-9697-45125bbca5c3" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inventoryMoveFilter 
+	map {	
+			message_id : $.message_id,
+			status: "failed",
+			description: "Error, no se pudo procesar el mensaje."
+		}
+
+]]></ee:set-payload>
+								</ee:message>
+								<ee:variables />
+							</ee:transform>
+						</on-error-continue>
+			</error-handler>
+				</try>
+			</when>
+						<otherwise>
+							<ee:transform doc:name="Empty Result" doc:id="f8d0347f-1238-4d83-844c-7056a13b05ac">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+								</ee:variables>
+							</ee:transform>
+						</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="InventoryReturn" doc:id="c897b895-3910-4726-bc8a-382b8249de21">
+		<ee:transform doc:name="Inventory Return Filter" doc:id="974e91b3-6b33-47ec-b9db-419d26710e23">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="inventoryReturnFilter" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload.Body.send_message.messages.*message 
+	filter (upper($.subject) == "INVENTORY RETURN")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Parse filtered body to Json" doc:id="1fad7a16-540b-43bf-9e74-569221fe08b3">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="payloadParsed"><![CDATA[%dw 2.0
+output application/json
+fun descomponerObj (obj) = obj mapObject ((value, key, index) ->
+    if (key as String == "f")
+        do{
+            var label = key.@n
+            ---
+            "$label": value
+        }else "$key": transformObject(descomponerObj(value))
+    )
+fun transformObject(obj) =
+  obj mapObject ((value, key) ->
+      if (key as String == "deinstalled_inventory" or key as String == "installed_inventory")
+        "$key": flatten([value] map $.*inventory)
+      else {"$key": value}
+  )
+---
+vars.inventoryReturnFilter
+    map  ($ mapObject ((value, key, index) ->
+            if(key as String == "body")
+              "body": descomponerObj(read(value,"application/xml"))
+            else "$key": value
+        )
+    )]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<choice doc:name="Choice" doc:id="379382dd-bc71-4215-a5c6-9abffdc6b529" >
+			<when expression="#[!isEmpty(vars.payloadParsed.body.message.*inventory)]">
+				<ee:transform doc:name="Prepare output body" doc:id="c881f89b-70ec-457a-a146-ef124d283314" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    inbound_interface_request: {
+        head: {
+            trx_id: vars.payloadParsed.message_id[0],
+            component: "Outbound_INVMOVE",
+            processing_mode: "appointment_only",
+            upload_type: "incremental",
+            date: now() >> "America/Bogota",
+            appointment: [
+                {
+                    keys: ["appt_number"]
+                }
+            ],
+            inventory: [
+                {
+                    keys: ["invsn", "invtype_label"],
+                    upload_type: "incremental"
+                }
+            ],
+            properties_mode: "update"
+        },
+        data: {
+            commands: vars.payloadParsed.body.message.*inventory map do{
+    var current_quantity = $.current_quantity as Number default 0
+var returned_quantity = if (sizeOf($.returned_quantity) == 0) 1 else $.returned_quantity as Number default 0
+var quantity = current_quantity - returned_quantity
+    ---
+     {
+            "type": if (quantity > 0) "update_inventory" else "delete_inventory",
+            external_id: $.external_id,
+            inventories: [
+                {
+                    properties: [
+                        {
+                            label: "invsn",
+                            value: $.invsn default ""
+                        },
+                        {
+                            label: "invtype_label",
+                            value: $.invtype default ""
+                        },
+                        ({
+                            label: "quantity",
+                            value: quantity as String
+                        }) if (quantity > 0),
+                        {
+                            label: "XI_Warehouse",
+                            value: $.XI_Warehouse default ""
+                        },
+                        {
+                            label: "XI_Logistic_Centre",
+                            value: $.XI_Logistic_Centre default ""
+                        },
+                        {
+                            label: "XI_Lote",
+                            value: $.XI_Lote default ""
+                        },
+                        {
+                            label: "XI_Material_ID",
+                            value: $.XI_Material_ID default ""
+                        }
+                    ],
+                    userdata: ""
+                }
+            ]
+        }
+}
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<try doc:name="Try" doc:id="441dc7f7-d556-42a5-82a2-979533d27f9c" >
+					<flow-ref doc:name="Go to Client" doc:id="7327bc5f-555a-4e93-97ce-564101f9fcb8" name="post-invokeETADirectInboundSub_Flow" />
+					<ee:transform doc:name="Add Msg Response" doc:id="1014dea2-8dbb-4667-b08c-c82a9a6687a1" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.inbound_interface_response.data.commands.report.result == "success") [	
+	{	
+			message_id : vars.payloadParsed.message_id[0],
+			status: "delivered",
+			description: "delivered"
+	}
+]
+else
+[	
+	{	
+			message_id : vars.payloadParsed.message_id[0],
+			status: payload.inbound_interface_response.data.commands[0].report[0].result,
+			description: payload.inbound_interface_response.data.commands[0].report[0].description
+	}
+]]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="a0af5b96-a4b6-4197-9ce1-29cf75b5fc72" >
+							<ee:transform doc:name="Failed Result" doc:id="2ff462e5-9a47-4cff-a1e9-2650b39b4571" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[	
+	{	
+			message_id : vars.payloadParsed.message_id[0],
+			status: "failed",
+			description: "Error, no se pudo procesar el mensaje."
+	}
+]]]></ee:set-payload>
+								</ee:message>
+								<ee:variables />
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="4c125626-f560-4b76-9f09-1d77f1a9117f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="Order_Added" doc:id="39272b47-5b6e-4256-a973-e49955434434" >
+		<ee:transform doc:name="OrderAdded Filter" doc:id="6bd28553-fc7b-45aa-b96b-f3b6e50e8d31" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="orderAddedFilter" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.payloadParsed filter ($.subject == "ORDER_ADDED")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="f942ea95-8ebb-4968-b8d4-9084487850b3" >
+			<when expression="#[!isEmpty(vars.orderAddedFilter)]" >
+				<set-variable value="#[[]]" doc:name="outOrder Added" doc:id="47eb478c-2f2f-4e01-8eaa-4791b4ea8594" variableName="outOrderAdded"/>
+				<foreach doc:name="For Each" doc:id="6ed0192e-c781-4b8c-af0f-937fc1e4ae95" collection="#[vars.orderAddedFilter]">
+					<choice doc:name="Choice" doc:id="c11b0380-5abc-44fd-a663-8add7d7525b4" >
+						<when expression="#[(payload.body.appt_number startsWith p('global.prefix1'))&#10;or &#10;(payload.body.appt_number startsWith p('global.prefix2'))&#10;or&#10;(payload.body.appt_number startsWith p('global.prefix3'))]">
+							<async doc:name="Async" doc:id="bb1a8eb7-e94a-4996-8543-e316e2681d7a">
+								<ee:transform doc:name="mapping AssignTechnician TOA" doc:id="3da3dd1f-7e27-4f83-a2af-a177c3140538">
+					<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "IN_message_id": payload.message_id,
+   "IN_appt_number": payload.body.appt_number,
+   "IN_external_id": payload.body.external_id,
+   "IN_resource_name": payload.body.resource_name,
+   "IN_time_slot": payload.body.time_slot
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+								</ee:variables>
+				</ee:transform>
+								<flow-ref doc:name="Request to AssignTechnicianTOA" doc:id="fc06957b-723c-4241-8f21-a0dcb5cf9da2" name="AssignTechnicianTOA" target="responseAssignTechnicianTOA" />
+							</async>
+							<async doc:name="Async" doc:id="fb067c88-232a-404a-9880-d027d6821c02" >
+								<set-variable value="#[p('global.technicianRemedy')]" doc:name="requestType Remedy" doc:id="c1bc11b7-dfc9-4a56-a3e0-4c33b8357fd4" variableName="requestType"/>
+								<flow-ref doc:name="sendBody Technician Remedy Intf" doc:id="7f40c2f0-0b6b-47ff-8c90-0f4a458bc671" name="sendBodyTechnicianRemedyIntf" />
+							</async>
+							<ee:transform doc:name="Output Order Added" doc:id="f9769e0b-92e8-4384-95ea-91d2e46e9f69" >
+								<ee:message >
+								</ee:message>
+								<ee:variables >
+									<ee:set-variable variableName="outOrderAdded" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outOrderAdded <<
+	{	
+		message_id : payload.message_id,
+		status: "delivered",
+		description: "delivered"
+	}
+
+]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</when>
+						<otherwise >
+							<async doc:name="Async" doc:id="095800e1-5325-4fe6-9385-a5153c9a11e4">
+								<set-variable value="#[p('global.technicianCRM')]" doc:name="requestType CRM" doc:id="9320ee4b-20e0-4fad-aa2f-fa93a7f84d41" variableName="requestType" />
+								<flow-ref doc:name="sendBody Technician CRM" doc:id="438d117e-461d-4375-bd95-5ec27c2c2020" name="sendBodyTechnicianRemedyIntf" />
+							</async>
+							<ee:transform doc:name="Add Msg Response" doc:id="18ed1fe9-75e2-40da-8436-06ee71b216ce">
+								<ee:message>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="outOrderAdded"><![CDATA[%dw 2.0
+output application/json
+---
+vars.outOrderAdded << 
+{	
+	message_id : payload.message_id,
+	status: "delivered",
+	description: "delivered"
+}
+]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</otherwise>
+					</choice>
+				</foreach>
+				<set-payload value="#[vars.outOrderAdded]" doc:name="Set Payload" doc:id="172e985a-30f5-4856-86c2-c9925297a17c" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="e68f5ddb-c3d7-4471-a166-2388b9ca0656" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sendBodyTechnicianRemedyIntf" doc:id="ac5f20b3-5d0b-4ff3-a0e1-c58fff5d5efa">
+		<choice doc:name="Choice" doc:id="498019ec-ec8d-4938-b1c7-1f916167e14c">
+			<when expression="#[!(payload.body.appt_number contains p('global.mdm')) and (p('global.filterMDMMessagesOnly') == &quot;true&quot;)]">
+				<logger level="INFO" doc:name="Fin - Logic" doc:id="d479400e-3911-4e3e-ba89-19bcde6057c0" message="#['Fin - Logic - UpdateTechnicianRemedyIntf - NO MDM Mesagge']" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="mapping UpdateTechnicianRemedyIntf" doc:id="6caa8c8b-98ec-408a-84aa-3f1ffcf83a7e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "system": {
+    "name": "MULESOFT",
+    "correlationId": correlationId,
+    "processingServer": "ETB_MDM_Integration_MDM_2" 
+  },
+  "orderId": payload.body.appt_number,
+  "messageId": payload.message_id as Number, 
+  "requestDate": now(),
+  "requestType": vars.requestType,
+  "message": {
+    "create_ActualizaTecnico": {
+      "inMessageId": payload.message_id, 
+      "inApptNumber": payload.body.appt_number,
+      "inExternalId": payload.body.external_id,
+      "inResourcenName": payload.body.resource_name,
+      "inTimeSlot": payload.body.time_slot
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Request to UpdateTechnicianRemedyIntf" doc:id="84950d09-7105-4133-812a-209fdcf3b160" name="UpdateTechnicianRemedyIntf" target="responseUpdateTechnicianRemedyIntf" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="InitiateInstallation" doc:id="27c35dee-0494-4aa9-9774-3d15bfa9dbd6" >
+		<ee:transform doc:name="Initiate Installation Filter" doc:id="5c8db47d-8a99-4aae-80fe-c423506e6954" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="initiateInstallation" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.payloadParsed filter (upper($.subject) == p('global.initiateInstallation'))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="ce8d619e-2a89-454a-bbb5-8ec0764605d6" >
+			<when expression="#[!isEmpty(vars.initiateInstallation)]">
+				<set-variable value="#[[]]" doc:name="outInitiate Installation" doc:id="ed6a6736-7bbf-4c3a-9925-a1a3955aca82" variableName="outInitiateInstallation"/>
+				<foreach doc:name="For Each" doc:id="e07efdc5-01a0-4000-acd8-7b89278130f6" collection="#[vars.initiateInstallation]">
+					<set-variable value="#[payload.message_id]" doc:name="message_id" doc:id="7535bb7d-3cb9-4132-a7c8-f24e954b4a23" variableName="message_id"/>
+					<ee:transform doc:name="Mapeo Outbound ETADirect" doc:id="d15b94e1-9ac0-49e9-9563-554a5ec9d859">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "PeticionOutboundETAdirect": {
+    "EncabezadoMensaje": {
+      "IdOrdenETAdirect": payload.body.appt_number,
+      "IdMensaje": payload.message_id,
+      "FechaPeticion": payload.send_to as LocalDateTime { format: "yyyy-MM-dd HH:mm:ss" } as String { format: "yyyy-MM-dd'T'HH:mm:ss'-05:00'" }
+    },
+    "DetalleMensaje": {
+      "IdRecurso": payload.body.external_id,
+      "Servicio": payload.body.XA_Service,
+      "TipoPeticion": payload.subject,
+      "Observaciones": payload.body.XA_Comments_Order
+    }
+  }
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<try doc:name="Try" doc:id="4f73e2c8-4ce8-49d2-9312-66ef2ede37f9" >
+						<flow-ref doc:name="Go to OutboundETADirect" doc:id="a1f30aee-a5c9-4917-85d1-8bb1ad884927" name="OutboundETADirect" />
+						<ee:transform doc:name="Output Order Added" doc:id="fb1b5111-626d-4ceb-b215-607df0c74bc8">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="outInitiateInstallation"><![CDATA[%dw 2.0
+output application/json
+---
+vars.outInitiateInstallation <<
+	{	
+		message_id : vars.message_id,
+		status: "delivered",
+		description: "delivered"
+	}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+						<error-handler >
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="2ea2d1cc-79b7-4128-b86d-defed8d1a9c6" >
+								<ee:transform doc:name="Failed Result" doc:id="012d8712-4c63-4a31-8233-03b331edc294" >
+									<ee:message />
+									<ee:variables >
+										<ee:set-variable variableName="outInitiateInstallation" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outInitiateInstallation <<
+	{	
+		message_id : vars.message_id,
+		status: "failed",
+		description: "Error, no se pudo procesar el mensaje."
+	}]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</on-error-continue>
+						</error-handler>
+					</try>
+				</foreach>
+				<set-payload value="#[vars.outInitiateInstallation]" doc:name="Set Out" doc:id="4fe2d958-6e29-43b0-a025-d5dd0a5c9e53" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="e227314b-d76e-4c22-9607-c3fee10e4e0c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="OrdenNoRealizada" doc:id="76e85075-29a9-4fb3-b71d-17bc08c8598f">
+		<ee:transform doc:name="Not Done Return Filter" doc:id="6de9c0df-046d-45a1-b271-aefc8bc7e553">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="notDoneFilter" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload.Body.send_message.messages.*message 
+	filter (upper($.subject) == "NOT DONE")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Parse filtered body to Json" doc:id="807ffffd-5c5a-4cc5-af2e-e77aa9170c72">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="payloadParsed"><![CDATA[%dw 2.0
+output application/json
+fun descomponerObj (obj) = obj mapObject ((value, key, index) ->
+    if (key as String == "f")
+        do{
+            var label = key.@n
+            ---
+            "$label": value
+        }else "$key": transformObject(descomponerObj(value))
+    )
+fun transformObject(obj) =
+  obj mapObject ((value, key) ->
+      if (key as String == "deinstalled_inventory" or key as String == "installed_inventory")
+        "$key": flatten([value] map $.*inventory)
+      else {"$key": value}
+  )
+---
+vars.notDoneFilter
+    map  ($ mapObject ((value, key, index) ->
+            if(key as String == "body")
+              "body": descomponerObj(read(value,"application/xml"))
+            else "$key": value
+        )
+    )]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<choice doc:name="If there are messages" doc:id="151a515f-7884-4687-b5f5-1889479df50c" >
+			<when expression="#[!isEmpty(vars.payloadParsed)]">
+				<set-variable value="#[[]]" doc:name="outputMessage" doc:id="7b6025a3-aa2b-4953-82f1-0867947a826b" variableName="outputMessage"/>
+				<foreach doc:name="For Each Message" doc:id="83dd71a6-11f6-4015-91ed-4484c98c2044" collection="#[vars.payloadParsed]">
+					<ee:transform doc:name="Prepare output body" doc:id="b8fb7531-1761-4ee3-acf9-c8f763b35715">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var petitionDate = payload.send_to as LocalDateTime { format: "yyyy-MM-dd HH:mm:ss" } as String { format: "yyyy-MM-dd'T'HH:mm:ss'-05:00'" }
+---
+{
+    PeticionOutboundETAdirect: {
+        EncabezadoMensaje: {
+            IdOrdenETAdirect: payload.body.message.appt_number,
+            IdMensaje: payload.message_id,
+            FechaPeticion: petitionDate
+        },
+        DetalleMensaje: {
+            IdRecurso: payload.body.message.external_id,
+            Servicio: payload.body.message.XA_Service,
+            TipoPeticion: payload.subject,
+            MotivoPeticion: {
+                CodigoMotivo: payload.body.message.XA_Problem_Code,
+                RazonMotivo: payload.body.message.XA_NotDone_Reason
+            },
+            Observaciones: payload.body.message.XA_Comments_Order
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="messageId" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.message_id]]></ee:set-variable>
+						</ee:variables>
+				</ee:transform>
+					<try doc:name="Try" doc:id="45099a9d-92e9-41a3-a6f2-07ea34cc79d9">
+					<flow-ref doc:name="Go to Client" doc:id="14e8205b-9031-4881-8fb8-2071542c45a0" name="OutboundETADirect" />
+					<ee:transform doc:name="Add Msg Response" doc:id="438d1319-a676-4bc7-9033-4f1a0855de07">
+						<ee:message>
+						</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="outputMessage" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage << {
+    message_id: vars.messageId,
+    status: "delivered",
+    description: payload.ServiceOutput.OutputMessage.description
+}]]></ee:set-variable>
+							</ee:variables>
+					</ee:transform>
+						<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="80d412ee-b638-4819-ad07-6e8881237daa">
+							<ee:transform doc:name="Failed Result" doc:id="cb085223-f15b-4515-bec2-aadfdd58dedc">
+								<ee:message>
+								</ee:message>
+								<ee:variables >
+										<ee:set-variable variableName="outputMessage" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage << {	
+			message_id : vars.messageId,
+			status: "failed",
+			description: "Error, no se pudo procesar el mensaje."
+	}]]></ee:set-variable>
+									</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+				</foreach>
+				<ee:transform doc:name="Output" doc:id="5ec2fbc6-5a9a-449f-96ed-b8b5ca6e0ed8">
+							<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage]]></ee:set-payload>
+						</ee:message>
+							<ee:variables>
+							</ee:variables>
+						</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="c3a0d9c3-2820-4ac1-8e8a-a31300594989" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="Suspended" doc:id="0fa62508-3a8a-4a2f-846e-adffb07f90e1" >
+		<ee:transform doc:name="Suspended Filter" doc:id="2974c7db-bf62-4236-999f-e14a0896b72f" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="suspededFilter" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.payloadParsed filter (upper($.subject) == p('global.suspended'))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="6f8ae1b0-8316-415d-9ac4-b189faa9ad05" >
+			<when expression="#[!isEmpty(vars.suspededFilter)]" >
+				<set-variable value="#[[]]" doc:name="out Suspended" doc:id="c3309b58-38b9-4ef0-9070-ec48178c2a57" variableName="outSuspended" />
+				<foreach doc:name="For Each suspededFilter" doc:id="030e8c22-deab-40e0-a05a-b673f9286235" collection="#[vars.suspededFilter]" >
+					<set-variable value="#[payload.message_id]" doc:name="message_id" doc:id="7cee0b7f-fd51-4275-b9c2-6a1f2fb428e1" variableName="message_id" />
+					<ee:transform doc:name="Mapeo Outbound ETADirect" doc:id="d9dd19c5-9edf-4ca6-abb2-fa294badcf0a" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  PeticionOutboundETAdirect: {
+    EncabezadoMensaje: {
+      IdOrdenETAdirect: payload.body.appt_number,
+      IdMensaje: payload.message_id,
+      FechaPeticion: payload.send_to as LocalDateTime { format: "yyyy-MM-dd HH:mm:ss" } as String { format: "yyyy-MM-dd'T'HH:mm:ss'-05:00'" }
+    },
+    DetalleMensaje: {
+      (IdRecurso: payload.body.external_id) if(payload.body.external_id != null),
+      Servicio: payload.body.XA_Service,
+      TipoPeticion: payload.subject,
+      (MotivoPeticion:{
+          (CodigoMotivo: payload.body.XA_Problem_Code) if (payload.body.XA_Problem_Code != null),
+          (Motivo: payload.body.XA_Reason) if (payload.body.XA_Reason != null),
+          (RazonMotivo: payload.body.XA_Suspended_Reason) if (payload.body.XA_Suspended_Reason != null)
+      }) if (payload.body.XA_Problem_Code != null or payload.body.XA_Reason != null or payload.body.XA_Suspended_Reason != null),
+      (Observaciones: payload.body.XA_Comments_Order) if (payload.body.XA_Comments_Order != null)
+    }
+  }
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<try doc:name="Try" doc:id="1d74bfbc-9bd7-4954-abd6-23744348df01" >
+						<flow-ref doc:name="Go to OutboundETADirect" doc:id="a41a7565-f7dd-4fea-88f9-2987e23f8940" name="OutboundETADirect" />
+						<ee:transform doc:name="Output Order Added" doc:id="81e98bac-8bd1-46ae-b2b7-6a2a09345777" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="outSuspended" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outSuspended <<
+	{	
+		message_id : vars.message_id,
+		status: "delivered",
+		description: "delivered"
+	}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<error-handler >
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="34e2cddf-e4ff-47fd-bfc9-760a672d6a45" >
+								<ee:transform doc:name="Failed Result" doc:id="3587a1b8-06f5-4080-a11d-317e1d5da641" >
+									<ee:message />
+									<ee:variables >
+										<ee:set-variable variableName="outSuspended" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outSuspended <<
+	{	
+		message_id : vars.message_id,
+		status: "failed",
+		description: "Error, no se pudo procesar el mensaje."
+	}]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</on-error-continue>
+						</error-handler>
+					</try>
+				</foreach>
+				<set-payload value="#[vars.outSuspended]" doc:name="Set Out" doc:id="adf02aa7-7daf-471d-a9e9-adc20c8c4aff" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="58039950-a8b9-4ff5-829a-bd0ff9489f53" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="EnvioInstalacionExitosa" doc:id="a9ef4a3b-d99d-4563-8dd4-d5f235a0cc1b">
+		<ee:transform doc:name="Install Equipment Filter" doc:id="be891be6-47e9-462e-bc8b-17d512a4f0f7">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="installEquipmentFilter" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.payloadParsed filter ((upper($.subject) == "INSTALL EQUIPMENT") or (upper($.subject) == "SERVICE ACTIVATION"))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="If there are messages" doc:id="7be847fd-20a4-4d0d-bb83-3f488713d8b8" >
+			<when expression="#[!isEmpty(vars.installEquipmentFilter)]">
+				<set-variable value="#[[]]" doc:name="outputMessage" doc:id="d96e11d6-d684-4bf1-a87f-5f60ac9a5443" variableName="outputMessage"/>
+				<foreach doc:name="For Each Message" doc:id="728e0d0c-f17c-4080-bd09-c013a5e0808d" collection="#[vars.installEquipmentFilter]">
+					<ee:transform doc:name="Prepare output body" doc:id="b491c6c3-83fc-4478-9c0f-df0fc4a63048">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var petitionDate = payload.send_to as LocalDateTime { format: "yyyy-MM-dd HH:mm:ss" } as String { format: "yyyy-MM-dd'T'HH:mm:ss'-05:00'" }
+---
+{
+    PeticionOutboundETAdirect: {
+        EncabezadoMensaje: {
+            IdOrdenETAdirect: payload.body.appt_number,
+            IdMensaje: payload.message_id,
+            FechaPeticion: petitionDate
+        },
+        DetalleMensaje: {
+            SerialEquipo: payload.body.invsn default "",
+            MacEquipo: payload.body.XI_macn default "",
+            TipoEquipo: payload.body.invtype default "",
+            PuertoEquipo: payload.body.XI_portnumber default "",
+            MacEquipoPadre: payload.body.XI_macn_parent default "",
+            SerialEquipoPadre: payload.body.XI_invsn_parent default "",
+            PuertoEquipoPadre: payload.body.XI_portnumber default "",
+            RevertirAccion: payload.body.XA_revert default "",
+            IdRecurso: payload.body.external_id default "",
+            Servicio: payload.body.XA_Service default "",
+            TipoPeticion: if (p('global.serviceActivation') == "true") "" else payload.subject default "",
+            Observaciones: payload.body.XA_Comments_Order default ""
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="messageId" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.message_id]]></ee:set-variable>
+						</ee:variables>
+				</ee:transform>
+					<try doc:name="Try" doc:id="884337c6-2a71-4aef-bc58-2377123a47f8">
+					<flow-ref doc:name="Go to Client" doc:id="99b9c8c0-a96d-4efb-a801-6c178cd9db91" name="OutboundETADirect" />
+					<ee:transform doc:name="Add Msg Response" doc:id="dbf3722c-594e-4d3a-a24a-18eeb856fa6e">
+						<ee:message>
+						</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="outputMessage" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage << {
+    message_id: vars.messageId,
+    status: "delivered",
+    description: payload.ServiceOutput.OutputMessage.description
+}]]></ee:set-variable>
+							</ee:variables>
+					</ee:transform>
+						<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="408d2ab9-16cc-4596-96a1-e11e51237ed1">
+							<ee:transform doc:name="Failed Result" doc:id="738904ec-92ef-437f-b7a3-73b78108bf86">
+								<ee:message>
+								</ee:message>
+								<ee:variables >
+										<ee:set-variable variableName="outputMessage" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage << {	
+			message_id : vars.messageId,
+			status: "failed",
+			description: "Error, no se pudo procesar el mensaje."
+	}]]></ee:set-variable>
+									</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+				</foreach>
+				<ee:transform doc:name="Output" doc:id="d59a8599-aaa4-4636-aa3a-433d2829b300">
+							<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage]]></ee:set-payload>
+						</ee:message>
+							<ee:variables>
+							</ee:variables>
+						</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="ce967578-aced-4634-95e9-980adc5b3bcf" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="UninstallEquipment" doc:id="1a934fce-dca9-469b-a997-9be6ac2759b9" >
+		<ee:transform doc:name="UninstallEquipmentFilter" doc:id="f0f7d3f0-7a00-4f1a-a2c4-649d9e94b465" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="uninstallEquipmentFilter" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.payloadParsed filter (upper($.subject) == p('global.uninstallEquipment'))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="3948b869-5d24-4af8-abbe-ac0fb850f9a1" >
+			<when expression="#[!isEmpty(vars.uninstallEquipmentFilter)]" >
+				<set-variable value="#[[]]" doc:name="out Uninstall Equipment" doc:id="31c0b5ac-1c5b-434d-95e5-d075529b4f48" variableName="outUninstallEquipment" />
+				<foreach doc:name="For Each uninstallEquipmentFilter" doc:id="d10c875a-578c-42ba-8c02-f6cec5d6c88b" collection="#[vars.uninstallEquipmentFilter]" >
+					<set-variable value="#[payload.message_id]" doc:name="message_id" doc:id="820eb1e1-9917-4c4e-b790-fb94ec64459f" variableName="message_id" />
+					<ee:transform doc:name="Mapeo Outbound ETADirect" doc:id="789bcad0-2912-4411-96c7-acbe30d52f26" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  PeticionOutboundETAdirect: {
+    EncabezadoMensaje: {
+      IdOrdenETAdirect: payload.body.appt_number,
+      IdMensaje: payload.message_id,
+      FechaPeticion: payload.send_to as LocalDateTime { format: "yyyy-MM-dd HH:mm:ss" } as String { format: "yyyy-MM-dd'T'HH:mm:ss'-05:00'" }
+    },
+    DetalleMensaje: {
+      (SerialEquipo: payload.body.invsn) if(payload.body.invsn != null),
+      (MacEquipo: payload.body.XI_macn) if(payload.body.XI_macn != null),
+      (TipoEquipo: payload.body.invtype) if(payload.body.invtype != null),
+      (PuertoEquipo: payload.body.XI_portnumber) if(payload.body.XI_portnumber != null),
+      (MacEquipoPadre: payload.body.XI_macn_parent) if(payload.body.XI_macn_parent != null),
+      (SerialEquipoPadre: payload.body.XI_invsn_parent) if(payload.body.XI_invsn_parent != null),
+      (PuertoEquipoPadre: payload.body.XI_portnumber) if(payload.body.XI_portnumber != null),
+      (RevertirAccion: payload.body.XA_revert) if(payload.body.XA_revert != null),
+      (IdRecurso: payload.body.external_id) if(payload.body.external_id != null),
+      Servicio: payload.body.XA_Service,
+      TipoPeticion: payload.subject,
+      (Observaciones: payload.body.XA_Comments_Order) if (payload.body.XA_Comments_Order != null)
+    }
+  }
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<try doc:name="Try" doc:id="a3bdb267-c288-48cf-a13e-1258136d19b2" >
+						<flow-ref doc:name="Go to OutboundETADirect" doc:id="39b53e48-abbd-4b26-b6e8-f4647f5de62c" name="OutboundETADirect" />
+						<ee:transform doc:name="Output Order Added" doc:id="86d4e475-9cdd-4c6f-acae-326326f33281" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="outUninstallEquipment" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outUninstallEquipment <<
+	{	
+		message_id : vars.message_id,
+		status: "delivered",
+		description: "delivered"
+	}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<error-handler >
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6ca4dfaf-1c3f-4727-a58e-20e823a6b7c7" >
+								<ee:transform doc:name="Failed Result" doc:id="f0d64210-442d-49aa-8145-836441e00eea" >
+									<ee:message />
+									<ee:variables >
+										<ee:set-variable variableName="outUninstallEquipment" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outUninstallEquipment <<
+	{	
+		message_id : vars.message_id,
+		status: "failed",
+		description: "Error, no se pudo procesar el mensaje."
+	}]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</on-error-continue>
+						</error-handler>
+					</try>
+				</foreach>
+				<set-payload value="#[vars.outUninstallEquipment]" doc:name="Set Out" doc:id="9dda3a2e-7b6b-42d5-be78-49ea1356bf5a" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="13f060b3-fefc-43bc-b73f-bd76f524b47d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="EnvioCompletadoOrden" doc:id="396adb6a-85c9-4d82-9685-c907afd22c97">
+		<ee:transform doc:name="Completed Filter" doc:id="2b39c7e9-3078-482b-bf86-c6091bae87e5">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="completedFilter" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputPayload.Body.send_message.messages.*message 
+	filter ((upper($.subject) == "COMPLETED"))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Parse filtered body to Json" doc:id="4622c3cb-64e5-46eb-bde7-25b9a9cb7f93">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="payloadParsed"><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+fun descomponerObj (obj) = obj mapObject ((value, key, index) ->
+    if (key as String == "f")
+        do{
+            var label = key.@n
+            ---
+            "$label": value
+        }else "$key": transformObject(descomponerObj(value))
+    )
+fun transformObject(obj) =
+  obj mapObject ((value, key) ->
+      if (key as String == "deinstalled_inventory" or key as String == "installed_inventory")
+        "$key": flatten([value] map $.*inventory)
+      else {"$key": value}
+  )
+---
+vars.completedFilter
+    map  ($ mapObject ((value, key, index) ->
+            if(key as String == "body")
+              "body": descomponerObj(read(value,"application/xml"))
+            else "$key": value
+        )
+    )]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="If there are messages" doc:id="bb3325ac-45ae-4ec8-b817-d08776993a58" >
+			<when expression="#[!isEmpty(vars.completedFilter)]">
+				<set-variable value="#[[]]" doc:name="outputMessage" doc:id="e7b5e22f-40ef-40c7-a84e-0596bf035c02" variableName="outputMessage"/>
+				<foreach doc:name="For Each Message" doc:id="19e5d0fc-1c28-4db3-a635-8f5e0d1c9cca" collection="#[vars.payloadParsed]">
+					<choice doc:name="Choice" doc:id="a4a12b9b-b6cc-4675-95af-acbb6c848d43" >
+						<when expression="#[(sizeOf(payload.body.message.installed_inventory) default 0) &gt; 0 or (sizeOf(payload.body.message.deinstalled_inventory) default 0) &gt; 0]">
+							<ee:transform doc:name="Add Msg Response" doc:id="aedf8d6e-8e54-4f74-89a3-73b2ae5d8886" >
+								<ee:message />
+								<ee:variables >
+									<ee:set-variable variableName="outputMessage" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage << {
+    message_id: payload.message_id,
+    status: "delivered"
+}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</when>
+						<otherwise >
+							<ee:transform doc:name="Prepare output body" doc:id="f371a123-cd18-4a6e-9133-14f9f95263ca">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var petitionDate = payload.send_to as LocalDateTime { format: "yyyy-MM-dd HH:mm:ss" } as String { format: "yyyy-MM-dd'T'HH:mm:ss'-05:00'" }
+var technologyFilter = (p('global.technologies') splitBy "|") contains payload.body.message.XA_Technology_Name
+---
+if (technologyFilter)
+{
+    PeticionOutboundETAdirect: {
+        EncabezadoMensaje: {
+            IdOrdenETAdirect: payload.body.message.appt_number,
+            IdMensaje: payload.message_id,
+            FechaPeticion: payload.send_to
+        },
+        DetalleMensaje: {
+            TipoPeticion: payload.subject default "",
+            Servicio: ""
+        }
+    },
+    Message: write(vars.inputPayload.Body, "application/xml")
+}
+else
+{
+    PeticionOutboundETAdirect: {
+        EncabezadoMensaje: {
+            IdOrdenETAdirect: payload.body.message.appt_number,
+            IdMensaje: payload.message_id,
+            FechaPeticion: petitionDate
+        },
+        DetalleMensaje: {
+            IdRecurso: payload.body.message.external_id default "",
+            Servicio: payload.body.message.XA_Service default "",
+            TipoPeticion: payload.subject default "",
+            Observaciones: payload.body.message.XA_Comments_Order default ""
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="messageId"><![CDATA[%dw 2.0
+output application/java
+---
+payload.message_id]]></ee:set-variable>
+						</ee:variables>
+				</ee:transform>
+							<try doc:name="Try" doc:id="e22d1c71-efbd-44c2-925b-e9500e86ab3c">
+					<flow-ref doc:name="Go to Client" doc:id="f8b7cda7-12e6-4cab-bc69-f106e694159e" name="OutboundETADirect" />
+					<ee:transform doc:name="Add Msg Response" doc:id="93e14dfc-74ae-4008-9c62-ef9a02ce9416">
+						<ee:message>
+						</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="outputMessage"><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage << {
+    message_id: vars.messageId,
+    status: "delivered",
+    description: payload.ServiceOutput.OutputMessage.description
+}]]></ee:set-variable>
+							</ee:variables>
+					</ee:transform>
+						<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="8c639fc9-6706-493a-aea9-4eaf039bce92">
+							<ee:transform doc:name="Failed Result" doc:id="6187a257-3de0-4b8f-9799-a2721a50513e">
+								<ee:message>
+								</ee:message>
+								<ee:variables>
+										<ee:set-variable variableName="outputMessage"><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage << {	
+			message_id : vars.messageId,
+			status: "failed",
+			description: "Error, no se pudo procesar el mensaje."
+	}]]></ee:set-variable>
+									</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+						</otherwise>
+					</choice>
+				</foreach>
+				<ee:transform doc:name="Output" doc:id="995211a0-e31b-44f4-ac03-196f7379c3d7">
+							<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.outputMessage]]></ee:set-payload>
+						</ee:message>
+							<ee:variables>
+							</ee:variables>
+						</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Empty Result" doc:id="2cdc50ec-16cb-4ee4-9c3d-c1328209b392" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="UpdateRemedyMessage" doc:id="e5b57f86-b141-488e-b7ba-1805486583da" >
+		<ee:transform doc:name="UPDATE-REMEDY" doc:id="fbd8036e-62b7-44ce-b587-85b74bc8446d" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="updateRemedyBody" ><![CDATA[output application/json
+import * from dw::core::Strings
+---
+vars.payloadParsed filter ($.subject == p('message.updateRemedy'))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="8503f27e-6339-49d7-9899-3a9793cd5355">
+			<when expression="#[!isEmpty(vars.updateRemedyBody)]">
+				<set-variable value="#[[]]" doc:name="outUpdateRemedy" doc:id="053acc16-4120-44b9-8721-bbb7d308ff82" variableName="outUpdateRemedy" />
+				<foreach doc:name="For Each" doc:id="92050cc6-595a-4855-b774-8b7c20359c78" collection="#[vars.updateRemedyBody]">
+					<set-variable value="#[payload.message_id]" doc:name="message_id" doc:id="b5dab534-b2e4-4450-939b-3afe5477cfb3" variableName="message_id" />
+					<set-variable value="#[payload.body.id]" doc:name="Entry id" doc:id="7d26c964-478c-4f27-afbd-0c6f68e2398e" variableName="entry_id"/>
+					<set-variable value="#[payload.body.form_name]" doc:name="Form name" doc:id="d68562da-93d2-4bca-a286-b3f18345fa52" variableName="form_name"/>
+					<ee:transform doc:name="Prepare input remedy" doc:id="fa8c6623-d174-4e79-8945-6b0bb3636fb7" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+		output application/json
+		---
+		{
+		    values: payload.body -- ["id", "form_name"]
+		}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<try doc:name="Try" doc:id="e2c8b220-e6bc-4ce8-954d-374abbbddf97" >
+						<flow-ref doc:name="Go to Client" doc:id="b88df4ef-790d-4d11-bbf0-1c9769c97131" name="update-remedy-clientSub_Flow"/>
+						<ee:transform doc:name="Output update remedy" doc:id="a4be0d82-ed2c-40b8-bcc0-217bb501c8ff">
+								<ee:message />
+								<ee:variables>
+								<ee:set-variable variableName="outUpdateRemedy" ><![CDATA[%dw 2.0
+		output application/json
+		---
+		vars.outUpdateRemedy <<
+			{	
+				message_id : vars.message_id,
+				status: "delivered",
+				description: "delivered"
+			}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						<error-handler >
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b4707433-7ebb-4755-9a17-27208ea7065b" >
+								<ee:transform doc:name="Failed Result" doc:id="dfbe4935-f808-483b-adad-bd907bf23c25">
+											<ee:message />
+											<ee:variables>
+										<ee:set-variable variableName="outUpdateRemedy" ><![CDATA[%dw 2.0
+		output application/json
+		---
+		vars.outUpdateRemedy <<
+			{	
+				message_id : vars.message_id,
+				status: "failed",
+				description: "Error, no se pudo procesar el mensaje."
+			}]]></ee:set-variable>
+											</ee:variables>
+											</ee:transform>
+							</on-error-continue>
+						</error-handler>
+					</try>
+				</foreach>
+				<set-payload value="#[vars.outUpdateRemedy]" doc:name="Set Out" doc:id="233c53ac-102f-4a68-808a-a7a005100c4e" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Empty Result" doc:id="66c99f8c-e619-4a79-9a63-4fda37ce2faf">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

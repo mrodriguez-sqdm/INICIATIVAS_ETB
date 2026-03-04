@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+		xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">	
+	<sub-flow name="post-authorizationTV-orchestratorSub_Flow" doc:id="eaab3f9a-30f5-4bb1-b88e-37331015f27f" >
+		<flow-ref doc:name="set-cache" doc:id="8990a497-09e7-432b-9c63-aa575bc596c1" name="post-authorizationTV-cache" />
+		<ee:transform doc:name="Filter URN" doc:id="424f7405-6805-42c0-b661-4a4490c9dc9b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/java
+var busquedaURN = vars.inputPayload.resource_id splitBy  p('parameters.pipe')
+---
+payload filter (($.parametros_bundle some ((item) -> 
+	sizeOf((busquedaURN filter ((item.valor splitBy p('parameters.semicolon')) contains $))) > 0
+)))]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<choice doc:name="Choice" doc:id="f2a9e399-ec99-4e33-a410-5be90ce0fa16" >
+			<when expression='#[!isEmpty(payload)]'>
+				<ee:transform doc:name="Set tipoDoc y numDoc" doc:id="8ac5519e-db42-48a7-82fc-03179b25a435">
+			<ee:message>
+			</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="doc"><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/java
+---
+p('directv.d' ++ substring(vars.inputPayload.subscriber_id, 0, 3))]]></ee:set-variable>
+						<ee:set-variable variableName="numDoc"><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/java
+---
+reverse(substring(vars.inputPayload.subscriber_id, 3, sizeOf(vars.inputPayload.subscriber_id)))]]></ee:set-variable>
+					</ee:variables>
+		
+</ee:transform>
+				<flow-ref doc:name="Go to validate-services" doc:id="4eb07ca4-e08c-460c-a099-d6f9e74de33a" name="validate-services"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set response error" doc:id="2150a612-5c4b-415b-9d75-49c349df2c39" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "No existen datos con las URN proporcionadas"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-authorizationTV-cache" doc:id="345bfd57-6950-48ab-aeb4-6c5383732bec" >
+		<set-variable value='#["oferta"]' doc:name="Set oferta" doc:id="8275ee96-9c29-4516-8700-61317d1a1f23" variableName="oferta" />
+		<ee:cache doc:name="Cache_oferta" doc:id="6358c348-43df-4e40-a4e3-b8fa3aad034d" cachingStrategy-ref="Caching_Strategy_oferta">
+					<flow-ref doc:name="get-producto-mongo-sapi" doc:id="7188e561-2f5e-4246-b66f-4310f4e3d1ef" name="get-producto-mongo-sapi"/>
+			<set-payload value="#[output application/json&#10;---&#10;payload]" doc:name="Set Payload" doc:id="9beea8cb-04e3-4278-a4cf-ba4c6deb1927" />
+		</ee:cache>
+		<choice doc:name="Choice" doc:id="f81f5376-b79c-4287-b1de-fb8948e01961" >
+			<when expression="#[isEmpty(payload)]">
+				<raise-error doc:name="Raise error" doc:id="a10dd479-dce9-4693-9027-437342af8330" type="ERROR:URN" description="Not data found 'parametros_bundle.parametro': 'URN'" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validate-services" doc:id="eb4e2cff-487c-4b78-8737-cad2340813dc" >
+		<set-variable value='#["N"]' doc:name="Set activo" doc:id="c024625a-f2a4-43ae-9bcf-4d0219837866" variableName="activo"/>
+		<try doc:name="Try" doc:id="6ba8a5e9-4a08-498e-94e5-9938a95d3001" >
+			<flow-ref doc:name="get-services-mongo-sapi" doc:id="6961ddfc-872b-417c-9439-98d50c00eb73" name="get-services-mongo-sapi" target="clientInformation" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="119c6e78-72a2-4c83-87ab-fd997218c061" type="HTTP:NOT_FOUND">
+					<ee:transform doc:name="Transform Message" doc:id="d6fcd85e-f365-40b0-add0-e34ee6db1fed" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="clientInformation" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice" doc:id="d4eb6d37-2225-416a-8f68-0e6538aec793" >
+			<when expression="#[!isEmpty(vars.clientInformation)]">
+				<ee:transform doc:name="Set existServices" doc:id="1c5e192a-c74e-4b15-8148-1b18ad4afbf5">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="existServices"><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+var split = p('parameters.statusActiveCod') splitBy ","
+var services = vars.clientInformation filter (split contains $.Estado.Principal.Codigo)
+---
+if(sizeOf(services) > 0)
+(payload some ((item) -> 
+	if(item.cod_configuracion == null) 
+	(services some ($.Servicios_Auxiliares some 
+		($.Bundle.Numero_Agrupacion == item.num_agrupacion)
+	))
+	else 
+	((services some ($.Opcionales some 
+		($.Codigo_Configuracion == item.cod_configuracion)
+	)) or 
+	(services some ($.Bundle.Primarios some 
+		($.Secundarios some 
+			($.Codigo_Configuracion == item.cod_configuracion)
+		)
+	)) or 
+	(services some ($.Servicios_Auxiliares some 
+		($.Bundle.Primarios some ($.Secundarios some 
+			($.Codigo_Configuracion == item.cod_configuracion)
+		))
+	)))
+))
+else false]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="c7c79d51-2b13-446d-9611-fca20d6c9fbb" >
+					<when expression="#[!vars.existServices]">
+						<flow-ref doc:name="Go to validate-active-services" doc:id="32742ca7-1b69-429a-9412-d5621c645b9b" name="validate-active-services" />
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Response final" doc:id="bb1e41de-9e17-43ec-8460-4671185d80e8">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var busquedaURN = vars.inputPayload.resource_id splitBy p('parameters.pipe') map ($)
+---
+"authorizations_response": 
+busquedaURN map ((item) -> 
+{
+      "urn": item,
+      "access": "true",
+      "max_rating": p('parameters.maxRating'),
+      "ttl": p('parameters.ttl')
+})]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to validate-active-services" doc:id="9bf56191-737d-4ad3-a9a5-fb16d0c8323b" name="validate-active-services"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validate-active-services" doc:id="1c3c5d50-1682-4254-954a-8aba65dc7554">
+		<set-variable value='#["Y"]' doc:name="Set activo" doc:id="e21e090f-f402-4b10-a425-37ca2a56f4f2" variableName="activo" />
+		<try doc:name="Try" doc:id="ebbcbe4b-e08f-4121-942c-24f1931e1122">
+			<flow-ref doc:name="get-activeServices-mongo-sapi" doc:id="2a5c5905-dde1-478c-9ce7-c1d005a3b696" name="get-services-mongo-sapi" target="clientInformation" />
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4c7ce256-4339-4712-88e3-bff8b14200af" type="HTTP:NOT_FOUND">
+					<ee:transform doc:name="Transform Message" doc:id="55af6aa9-c758-4cdd-9ea1-b064d6ce4594">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="clientInformation"><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice" doc:id="ad14d3ce-1e77-4bf7-8bbd-1f633ca3fbad">
+					<when expression="#[!isEmpty(vars.clientInformation)]">
+						<ee:transform doc:name="Set existServices" doc:id="cc4adcdc-64a7-4dac-9121-8aa43a8566f9">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="existServices"><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+var services = vars.clientInformation filter (upper($.Estado) == upper(p('parameters.statusActive')))
+---
+if (sizeOf(services) > 0)
+(payload some ((item) -> 
+	if(item.cod_configuracion == null) 
+	(services some ($.Bundles some 
+		($.bundle_auxiliar some 
+			($.id_catalogo == item.num_agrupacion as String)
+	)))
+	else 
+	((services some ($.Bundles some 
+		($.Opcionales.id_opcional == item.cod_configuracion)
+	)) or 
+	(services some ($.Bundles some 
+		($.primarios some ($.secundarios some 
+			($.id_secundario == item.cod_configuracion)
+		))
+	)) or 
+	(services some ($.Bundles some 
+		($.bundle_auxiliar some 
+			($.primarios some ($.secundarios some 
+				($.id_secundario == item.cod_configuracion)
+			))
+		)
+	)))
+))
+else false]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<ee:transform doc:name="Response final" doc:id="fe66a673-2fd2-456a-b56a-0fb27dba2a1d">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var busquedaURN = vars.inputPayload.resource_id splitBy p('parameters.pipe') map ($)
+---
+"authorizations_response": 
+busquedaURN map ((item) -> 
+{
+      "urn": item,
+      "access": vars.existServices as String,
+      "max_rating": p('parameters.maxRating'),
+      "ttl": p('parameters.ttl')
+})]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+			<otherwise>
+				<ee:transform doc:name="Response final" doc:id="9865920f-cfe8-46b9-8a3d-c1561180de82" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var busquedaURN = vars.inputPayload.resource_id splitBy p('parameters.pipe') map ($)
+---
+"authorizations_response": 
+busquedaURN map ((item) -> 
+{
+      "urn": item,
+      "access": "false",
+      "max_rating": p('parameters.maxRating'),
+      "ttl": p('parameters.ttl')
+})]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+					</otherwise>
+				</choice>
+			</sub-flow>
+</mule>

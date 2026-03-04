@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+<sub-flow name="get-coverage-orchestratorSub_Flow" doc:id="710fefda-d77f-4e66-aafe-bfad61ae07c9" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="177466ff-2acc-431f-876a-e4c51e367d67" variableName="parameters" />
+		<ee:transform doc:name="Transform Message" doc:id="030f7605-1124-4cc1-bef9-b1054c03dc37">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns gis http://www.etb.net.co/gis
+
+var qp = attributes.queryParams
+---
+gis#`wsValidarCoberturas-RQ`: {
+    gis#Latitud: qp.latitude default "",
+    gis#Longitud: qp.longitude default ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="8b57b4d2-66a6-4863-919d-25a8242df239" name="smallworld-getWsValidarCoberturas-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message1" doc:id="c5d6ccf8-8b28-4a7b-ad47-028c1ce3308b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var body = payload.body."wsValidarCoberturas-RS"
+
+// Fecha simple YYYY/MM/DD → ISO
+fun formatFecha(f) =
+    if ((f default "") != "")
+        (f replace "/" with "-") ++ "T00:00:00Z"
+    else ""
+
+// Fecha YYYYMMDDHHMMSS → YYYY-MM-DDTHH:MM:SSZ
+fun formatFechaGis(f) =
+    if ((f default "") != "" and sizeOf(f) == 14)
+        f[0 to 3] ++ "-" ++
+        f[4 to 5] ++ "-" ++
+        f[6 to 7] ++ "T" ++
+        f[8 to 9] ++ ":" ++
+        f[10 to 11] ++ ":" ++
+        f[12 to 13] ++ "Z"
+    else ""
+
+---
+{
+    fechaSolicitud: formatFecha(body.FechaSolicitud),
+    idNap: body.IdNap,
+    nombreNap: body.NombreNap,
+    mayorista: body.Mayorista,
+
+    tecnologias:
+        (body.Tecnologias.Tecnologia match {
+            case t if (t is Object and !(t is Array)) -> [t]
+            else -> body.Tecnologias.Tecnologia
+        }) map (t) -> {
+            tipo: t.Tipo default "",
+            propietario: t.Propietario default "",
+            estratoPredominante: t.EstratoPredominante default "",
+            tipoCobertura: t.TipoCobertura default "",
+            cobertura: t.Cobertura default "",
+            nombreCobertura: t.NombreCobertura default "",
+            tipoArea: t.TipoArea default "",
+            area: t.Area default "",
+            migracionOLT: t.MigracionOLT default "",
+            nombreOLT: t.NombreOLT default ""
+        },
+
+    respuestaFactibilidad: {
+        factible: body.RespuestaFactibilidad.Factible default "",
+        tecnologia: body.RespuestaFactibilidad.Tecnologia default "",
+        motivo: body.RespuestaFactibilidad.Motivo default ""
+    },
+
+    informacionDireccion: {
+        codigoDireccion: body.InformacionDireccion.CodigoDireccion default "",
+        estrato: body.InformacionDireccion.Estrato default "",
+        codigoLote: body.InformacionDireccion.CodigoLote default "",
+        chip: body.InformacionDireccion.Chip default "",
+        barrio: body.InformacionDireccion.Barrio default "",
+        localidad: body.InformacionDireccion.Localidad default "",
+        estadoGeo: body.InformacionDireccion.EstadoGeo default "",
+        destino: body.InformacionDireccion.Destino default "",
+        tipoDistancia: body.InformacionDireccion.TipoDistancia default ""
+    },
+
+    gisRespuestaProceso: {
+        codigoRespuesta: body.GisRespuestaProceso.CodigoRespuesta default "",
+        fechaRespuesta: {
+            date: formatFechaGis(body.GisRespuestaProceso.FechaRespuesta.date)
+        },
+        codigoError: body.GisRespuestaProceso.CodigoError default "",
+        descripcionError: body.GisRespuestaProceso.DescripcionError default ""
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

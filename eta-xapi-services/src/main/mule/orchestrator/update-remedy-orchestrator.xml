@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="update-remedy-orchestratorSub_Flow" doc:id="2b2ad689-44f1-4bc4-8216-fb1d005dbd79" >
+		<ee:transform doc:name="Prepare input" doc:id="cf56d914-1a75-417b-ad1b-f8b8c38f23b1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    values: vars.inputPayloadBody.update_remedy.*values reduce ((item, accumulator={}) -> accumulator ++ {(item.atribute): item.value})
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<try doc:name="Try" doc:id="59044aab-011c-409e-b72e-3cc4f862d562" >
+			<flow-ref doc:name="Go to Client" doc:id="ee2919eb-d529-42f2-baf0-fc5930d1c7a4" name="update-remedy-clientSub_Flow" />
+			<ee:transform doc:name="Prepare output" doc:id="ab1adef2-48e9-4045-8606-489e144fc9a8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+---
+{
+	update_remedy_response: {
+		codigo: payload.codigo
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e389b1a9-97a1-4762-b69b-5b5d62fc23f8" >
+					<ee:transform doc:name="Prepare output" doc:id="a9f3e70e-e793-4aed-a610-63d6c2ac7579" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+---
+{
+	update_remedy_response: if (error.muleMessage.payload != null) error.muleMessage.payload
+		else {
+			codigo: 500,
+			description: error.description
+			}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

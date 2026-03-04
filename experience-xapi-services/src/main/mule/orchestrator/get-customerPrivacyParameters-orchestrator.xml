@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-customerPrivacyParameters-orchestratorSub_Flow" doc:id="be5c935b-910e-4784-902c-3747e3f15c34" >
+		<choice doc:name="Choice" doc:id="746155a7-83ce-4b4a-ac95-e9c43a21f6c6" >
+			<when expression='#[vars.operationType == "CANALES_HORARIOS"]'>
+				<scatter-gather doc:name="Scatter-Gather" doc:id="24a16d9b-f2c0-4c6d-bdd0-cabb1ce29190" >
+					<route >
+						<set-variable doc:name="Canales" doc:id="a3139d32-333e-4b4d-a085-679bbfd5078b" variableName="parameterType" value="#[p('mongo-sapi.getParametersByType.types.canales')]"/>
+						<try doc:name="Try" doc:id="09f3bf5b-ea92-4b4e-8207-ed02684868f3" >
+							<flow-ref doc:name="Go to Client CANALES" doc:id="ca9a4ebe-a6fd-463e-be87-f090091f9a65" name="get-customerPrivacyParameters-client" />
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e58f6300-db3c-451a-b2bb-355fd6af9c28" when="#[error.muleMessage.payload.status == 404]">
+									<logger level="INFO" doc:name="Print payload" doc:id="b4a45c28-6b73-4888-ab95-17186952b7c3" message="#[payload]"/>
+									<ee:transform doc:name="Transform Message" doc:id="9e07404a-d4b8-4f19-8d33-791a5d60fd3e" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+								</on-error-continue>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="03c77ebb-d5d3-4022-bd26-2c61050cba70" >
+									<logger level="INFO" doc:name="Print payload" doc:id="c91ed8d0-ea8a-4996-82f6-802600dfedeb" message="#[payload]" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+					</route>
+					<route >
+						<set-variable doc:name="Horarios" doc:id="ea04e030-0e71-4107-89bb-543d0db32f2c" variableName="parameterType" value="#[p('mongo-sapi.getParametersByType.types.horarios')]"/>
+						<try doc:name="Try" doc:id="15dd34f7-a9ab-4b7e-8ae4-c99b770738d0" >
+							<flow-ref doc:name="Go to Client HORARIOS" doc:id="53d32de8-c367-4bc6-9cae-651f4af448af" name="get-customerPrivacyParameters-client" />
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4b74ac85-8db7-4c4d-9e77-e456ac15421c" when="#[error.muleMessage.payload.status == 404]" >
+									<logger level="INFO" doc:name="Print payload" doc:id="915111b3-c6ba-4cee-9ed5-d23146bbe508" message="#[payload]" />
+									<ee:transform doc:name="Transform Message" doc:id="b381e9e3-f027-4218-9751-f35543a9e577" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+								</on-error-continue>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="1852ca54-3daf-489f-8069-08f98cc34080" >
+									<logger level="INFO" doc:name="Print payload" doc:id="44f75dfe-40c0-4209-8f76-b261bc59ffc5" message="#[payload]" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+					</route>
+				</scatter-gather>
+				<ee:transform doc:name="Prepare output" doc:id="141b70a1-c544-4fe1-a1cb-226d9c63ecc1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (isEmpty(payload.'0'.payload) and isEmpty(payload.'1'.payload))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "There are no matching records"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+else
+{
+        "codigo": 200,
+        "res-ley-intimidad": (payload.'0'.payload[0].Valores default []) ++ (payload.'1'.payload[0].Valores default []) filter $.Codigo == "1"
+    }]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (isEmpty(payload.'0'.payload) and isEmpty(payload.'1'.payload))
+404 
+else 200]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<when expression='#[vars.operationType == "OBLIGATORIEDAD"]'>
+				<set-variable doc:name="Obligatoriedad" doc:id="b875c1ac-d83f-4bc4-bd1e-baa22c80d735" variableName="parameterType" value="#[p('mongo-sapi.getParametersByType.types.obligatoriedad')]"/>
+				<flow-ref doc:name="Go to Client" doc:id="079e3469-b076-4dd2-80a8-281217b61554" name="get-customerPrivacyParameters-client"/>
+				<ee:transform doc:name="Prepare output" doc:id="07180838-a917-4475-ac2b-27a923f8c3c8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+        "codigo": 200,
+        "res-ley-intimidad": payload[0].Valores filter $.Codigo == "1"
+    }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Unreachable" doc:id="b535d68a-2d6b-4894-a52f-6b1c14061ac0" message="ERROR"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-customerPrivacyParameters-orchestratorSub_Flow_v2" doc:id="6fd3ff9c-de94-4210-a522-1eaee4ef0d69" >
+		<choice doc:name="Choice" doc:id="c45c4b10-8d5d-4ebe-9980-63ef53e5e09f" >
+			<when expression='#[vars.operationType == "CANALES_HORARIOS"]' >
+				<scatter-gather doc:name="Scatter-Gather" doc:id="83c8182f-1e78-41d8-a82c-fd27144b18ed" >
+					<route >
+						<set-variable value="#[p('mongo-sapi.getParametersByType.types.canales')]" doc:name="Canales" doc:id="c926e51c-2361-4d70-b2f3-8f4d658c4c26" variableName="parameterType" />
+						<try doc:name="Try" doc:id="35084ced-7ba6-494a-9eee-73f1594b65c2" >
+							<flow-ref doc:name="Go to Client CANALES" doc:id="49c3b6ab-f7b0-4efe-9327-1b1bf08e9e89" name="get-customerPrivacyParameters-client" />
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="aafb4312-805e-43b9-bde4-81c4fc44484d" when="#[error.muleMessage.payload.status == 404]" >
+									<logger level="INFO" doc:name="Print payload" doc:id="777565af-fd88-4b7f-9552-13577771aa18" message="#[payload]" />
+									<ee:transform doc:name="Transform Message" doc:id="79c75eab-9ca3-4630-a87e-d74dbc5a1301" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+								</on-error-continue>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="17e22ef7-8248-4707-b7d9-4acee9f15649" >
+									<logger level="INFO" doc:name="Print payload" doc:id="6139ffd8-fc17-4e64-8f16-69beaa544393" message="#[payload]" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+					</route>
+					<route >
+						<set-variable value="#[p('mongo-sapi.getParametersByType.types.horarios')]" doc:name="Horarios" doc:id="52843a8b-5676-4429-a337-22c7673a2c17" variableName="parameterType" />
+						<try doc:name="Try" doc:id="89ba7cfe-1a88-48de-8384-5c6b3ec90334" >
+							<flow-ref doc:name="Go to Client HORARIOS" doc:id="70c33f1c-a149-48d2-bcce-ba3d2a6eaf85" name="get-customerPrivacyParameters-client" />
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="f3a83e0a-2bae-4f65-b12a-bc59ab66d43a" when="#[error.muleMessage.payload.status == 404]" >
+									<logger level="INFO" doc:name="Print payload" doc:id="c34a39ff-2dfa-4ad3-bb77-dd60eadac1e7" message="#[payload]" />
+									<ee:transform doc:name="Transform Message" doc:id="568c5db4-f870-4472-9267-c84806376574" >
+										<ee:message >
+											<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+								</on-error-continue>
+								<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="0f14068e-523a-4cae-9b99-a6864cdad89b" >
+									<logger level="INFO" doc:name="Print payload" doc:id="8ac4def8-ff30-41aa-81f5-5e7a7ccee9f0" message="#[payload]" />
+								</on-error-propagate>
+							</error-handler>
+						</try>
+					</route>
+				</scatter-gather>
+				<ee:transform doc:name="Prepare output" doc:id="b7b14d3e-9354-4e27-98de-0cd60fd9fb4e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (isEmpty(payload.'0'.payload) and isEmpty(payload.'1'.payload))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "There are no matching records"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+else
+{
+  "codigo": 200,
+  "res-ley-intimidad": {
+    "canales": (payload.'0'.payload[0].Valores default []) filter $.Codigo == "1",
+    "horarios": (payload.'1'.payload[0].Valores default []) filter $.Codigo == "1"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (isEmpty(payload.'0'.payload) and isEmpty(payload.'1'.payload))
+404 
+else 200]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<when expression='#[vars.operationType == "OBLIGATORIEDAD"]' >
+				<set-variable value="#[p('mongo-sapi.getParametersByType.types.obligatoriedad')]" doc:name="Obligatoriedad" doc:id="419901f6-09ed-49a9-83ac-aebbdd73adeb" variableName="parameterType" />
+				<flow-ref doc:name="Go to Client" doc:id="76e69bd6-c19a-4583-949e-a1fb18cdb0bf" name="get-customerPrivacyParameters-client" />
+				<ee:transform doc:name="Prepare output" doc:id="94a614bb-d307-43b2-bfd3-ce88dbc0f8f5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+        "codigo": 200,
+        "res-ley-intimidad": payload[0].Valores filter $.Codigo == "1"
+    }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Unreachable" doc:id="8054246d-5e5f-4ec6-b355-fa63d7bb3907" message="ERROR" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-creationOtp-orchestratorSub_Flow" doc:id="33cc662b-d08e-4ee8-b805-b59feef3b8d1" >
+		<ee:transform doc:name="Create OTP" doc:id="8babc34c-ad70-4c5c-b066-f7cdc4e5ad93" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="otpCode" ><![CDATA[%dw 2.0
+output application/java
+---
+randomInt(1000000) as String {format: "000000"}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Create transaction" doc:id="e223bee8-032c-4f6a-9639-0c2599c385c9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	aplicacion: payload.aplicacion,
+    canal: payload.tipo_canal,
+    codigo: vars.otpCode
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="idTransaction" ><![CDATA[%dw 2.0
+output application/java
+import * from dw::Crypto
+var str = payload.aplicacion ++ "-" ++ 
+		payload.valor_canal ++ "-" ++ 
+		payload.identificacion_cliente ++ "-" ++ 
+		vars.otpCode
+---
+dw::Crypto::MD5(str as Binary)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<os:store doc:name="OTP Store" doc:id="a5270549-74a5-4f04-a95c-f118fe2f94dd" key="#[vars.idTransaction]" objectStore="Object_store_OTP"/>
+		<ee:transform doc:name="Prepare Output" doc:id="32501bd5-1b38-4bba-a046-fdc490b90490" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"codigo": "200",
+	"id_transaccion": vars.idTransaction
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async Send Message" doc:id="29ddd95d-3648-418f-a3ac-092d1a430f32" >
+			<ee:transform doc:name="Prepare input" doc:id="0b88db86-af37-422f-b305-56e5c6f9a2f1">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var fields = if (vars.inputPayload.tipo_canal == "EMAIL") p('oracle-sapi.sendMessage.fieldsEmail') else p('oracle-sapi.sendMessage.fieldsSms')
+---
+{
+    "tipo_canal": vars.inputPayload.tipo_canal,
+    "addId": p('oracle-sapi.sendMessage.addId'),
+    "triggerId": if (vars.inputPayload.tipo_canal == "EMAIL") p('oracle-sapi.sendMessage.triggerEmail') else p('oracle-sapi.sendMessage.triggerSms'),
+    "fields": fields splitBy "|",
+    "records": [vars.inputPayload.nombre_cliente, vars.otpCode, vars.inputPayload.valor_canal]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<flow-ref doc:name="Go to Client" doc:id="69116c78-b8ab-4852-bcf1-26fbd8a08ed8" name="post-creationOtp-client" />
+		</async>
+	</sub-flow>
+</mule>

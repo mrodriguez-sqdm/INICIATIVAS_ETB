@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="get-health-check-orchestrator" doc:id="a9b18839-600d-49ff-9915-2dc0018ea23e" >
+		<ee:transform doc:name="PortalFija vars" doc:id="c7b776f3-44af-4c73-b736-9a92a0afa088">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="host"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"hostname":p('portal-fija-client.host'),
+	"port":p('portal-fija-client.port') as Number default 443,
+	"path":p('portal-fija-client.basePath') ++ p('portal-fija-client.path')
+}
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<flow-ref doc:name="Call tester procedure" doc:id="0f78642e-68cf-460a-a8f6-ec672eef09e3" name="orchestrateTesting" />
+		<ee:transform doc:name="Transform Message" doc:id="ed691773-3ea1-44dd-9f98-5e0818edd23e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[
+    {
+		host: payload.hostname,
+      	port: payload.port,
+      	path: payload.path,
+		status: payload.status
+    }
+  ]
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="7b107e80-528f-4a8d-8d70-b56a0dbca631" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="healthy" ><![CDATA[%dw 2.0
+output application/json
+---
+sizeOf(payload filter ((value,index) -> (value.status == "Up")))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="ff57c7a6-d625-4794-a7e2-ff90cb91d400" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"application": app.name,
+	"status": if(vars.healthy == 1) "Up" else "Critical",
+	"dependencies": payload	
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="orchestrateTesting" doc:id="cc4559f4-585e-4b56-85a9-535a1a9e5051">
+		<flow-ref doc:name="Call tester" doc:id="5b1cd7c5-39dc-4f41-af9d-bb113d85ac35" name="test-channel" />
+		<ee:transform doc:name="Transform Message" doc:id="70b73a12-1ec7-40eb-ac87-1bd901b11631">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+
+vars.host ++ { "status" : payload }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+	<sub-flow name="test-channel" doc:id="3fddd2fa-3a68-429e-b5bf-d7c8aa11d558">
+		<java:new constructor="Tester()" doc:name="New Tester" doc:id="700a02e7-53b4-4225-9762-4476ad67999a" class="com.globant.Connectivity.Tester" />
+		<java:invoke doc:name="Invoke" doc:id="dae71264-0c57-4c41-b675-74df9156a428" instance="#[payload]" class="com.globant.Connectivity.Tester" method="testHost(String, Integer)">
+			<java:args><![CDATA[#[{
+	host: vars.host.hostname, 
+	port: vars.host.port
+}]]]></java:args>
+		</java:invoke>
+	</sub-flow>
+</mule>

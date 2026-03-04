@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	
+	<sub-flow name="consultaPermanencia-orchestadorSub_Flow" doc:id="1c557598-83fc-4003-a998-836057b20f2e">
+		<ee:transform doc:name="Transform Message" doc:id="0e3893ab-a59b-4550-8d00-edd98f60e81f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/plain
+
+var qp = attributes.queryParams
+
+---
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>" ++
+"<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lte=\"http://PortalFijaWS.etb.com/lte\">" ++
+    "<soapenv:Header/>" ++
+    "<soapenv:Body>" ++
+        "<lte:consultaPermanencia>" ++
+            "<xmlString><![CDATA[" ++
+                "<portalfija_data>" ++
+                    "<clausula>" ++
+                        "<cuenta_padre>" ++ (qp.cuentaPadre default "") ++ "</cuenta_padre>" ++
+                        "<integration_id>" ++ (qp.integrationId default "") ++ "</integration_id>" ++
+                        "<active_date>" ++ (qp.activeDate default "") ++ "</active_date>" ++
+                        "<valor_penalidad>" ++ (qp.valorPenalidad default "") ++ "</valor_penalidad>" ++
+                    "</clausula>" ++
+                "</portalfija_data>" ++
+            "]]" ++ "></xmlString>" ++
+        "</lte:consultaPermanencia>" ++
+    "</soapenv:Body>" ++
+"</soapenv:Envelope>"
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="87c44db6-eae9-487d-9b47-77315d100898" name="portalFijaService-consultaPermanencia-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message" doc:id="d81710d2-122b-4eb7-8978-b24774b22f18" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+ns s http://schemas.xmlsoap.org/soap/envelope/
+ns ns2 http://PortalFijaWS.etb.com/lte
+
+var innerXml = read(
+    ((((payload.s#Envelope.s#Body.ns2#consultaPermanenciaResponse.return)
+        replace "&lt;" with "<")
+        replace "&gt;" with ">")
+        replace "&#xd;" with "")
+        replace "&quot;" with "\"",
+    "application/xml"
+)
+
+fun clean(obj) =
+    obj 
+        mapObject ((v, k) -> 
+            if (v is Object) 
+                (k): clean(v) 
+            else 
+                (k): v
+        )
+        filterObject ((v, k) -> 
+            v != null and 
+            !(v is Object and isEmpty(v))
+        )
+
+fun deepClean(o) =
+    if (o is Object)
+        do {
+            var cleaned = clean(o)
+            ---
+            cleaned filterObject ((v, k) -> 
+                not (v is Object and isEmpty(v))
+            )
+        }
+    else o
+
+var cargoInicial = (innerXml.replies.reply.response.portalfija_data.clausula.Internet.CargoInicial default "0") as Number
+var cuotasInicial = (innerXml.replies.reply.response.portalfija_data.clausula.Internet.CuotasInicial default "0") as Number
+var cuotasActual = (innerXml.replies.reply.response.portalfija_data.clausula.Internet.CuotasActual default "0") as Number
+var valorPenalidad = 
+    if (cuotasInicial > 0) 
+        (cargoInicial * ((cuotasInicial - cuotasActual) / cuotasInicial)) as Number
+    else 0
+
+---
+deepClean({
+    clausula: {
+        cuenta_padre: innerXml.replies.reply.response.portalfija_data.clausula.cuenta_padre default null,
+        integration_id: innerXml.replies.reply.response.portalfija_data.clausula.integration_id default null,
+        Internet: {
+            CargoInicial: innerXml.replies.reply.response.portalfija_data.clausula.Internet.CargoInicial default null,
+            SaldoActual: innerXml.replies.reply.response.portalfija_data.clausula.Internet.SaldoActual default null,
+            CuotasInicial: innerXml.replies.reply.response.portalfija_data.clausula.Internet.CuotasInicial default null,
+            CuotasActual: innerXml.replies.reply.response.portalfija_data.clausula.Internet.CuotasActual default null,
+            fecha_inicio: innerXml.replies.reply.response.portalfija_data.clausula.Internet.fecha_inicio default null,
+            fecha_fin: innerXml.replies.reply.response.portalfija_data.clausula.Internet.fecha_fin default null
+        },
+        valor_penalidad: valorPenalidad
+    },
+    resultado: innerXml.replies.reply.response.portalfija_data.resultado,
+    descError: innerXml.replies.reply.response.portalfija_data.descError
+})
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+
+</sub-flow>
+	
+	</mule>

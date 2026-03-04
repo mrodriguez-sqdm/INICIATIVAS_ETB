@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="normalizeAddress-client" doc:id="d581d012-047d-4ea3-a892-d85cb739826f" >
+		<try doc:name="Try" doc:id="cd07064f-23fe-4289-9021-bce2acaab571" >
+			<http:request method="POST" doc:name="normalizeAddress" doc:id="37ff4038-9fa3-4e8c-93f8-f759793d9626" path="${normalize-papi.path}" config-ref="normalizeAddress-HTTP_Request_configuration">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('credentials.client_secret'),
+	"client_id" : p('credentials.client_id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"source": attributes.headers.source,
+	"systemId": vars.systemId
+}]]]></http:headers>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="0d6d2d25-29b8-43d4-913d-7a43da08b87c" type="HTTP:INTERNAL_SERVER_ERROR">
+					<ee:transform doc:name="Output" doc:id="953c1e23-9916-4826-94a4-ecba49a0229d" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+error.muleMessage.typedValue]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="500" doc:id="cf340626-3ea2-4dc4-9e66-4153d420f0ed" variableName="httpStatus"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-accounts_cycles-orchestratorSub_Flow" doc:id="a60eb5bd-5bfd-4c13-80e9-a9a6486862ec" >
+		<flow-ref doc:name="Go to client" doc:id="76c66f2d-0f9a-47a6-8522-0e85045ce00e" name="get-accountCycle-clientSub_Flow"/>
+		<ee:transform doc:name="Set Final response" doc:id="d974dab7-e073-426e-b77a-a6fda6ee20da">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var status = if (payload.ResponseGetAccountCycle.result != 'S' or  payload.ResponseGetAccountCycle.portalfija_data.ciclo_cuenta.ciclo == 'N/A') "FAIL" else "SUCCESS"
+---
+{
+    operation: payload.ResponseGetAccountCycle.operation,
+    result: payload.ResponseGetAccountCycle.result,
+    status: status,
+    responseDate: now(),
+    portalfija_data:payload.ResponseGetAccountCycle.portalfija_data default "",
+    statusDetail: {
+    	errorCode: payload.ResponseGetAccountCycle.portalfija_data.resultado,
+    	errorMessage: payload.ResponseGetAccountCycle.portalfija_data.descError
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="c472ec3d-8894-4e27-a379-991f23fad960" >
+			<when expression='#[payload.status == "FAIL"]'>
+				<ee:transform doc:name="Validate errorMessage" doc:id="7cef7faa-c9fe-4df8-91a4-9660672a779a">
+					<ee:message>
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.statusDetail.errorMessage != "OK") payload.statusDetail.errorMessage else "N/A"]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+				<raise-error doc:name="Raise error" doc:id="5a616aad-f754-4e29-bd85-9d170631d960" type="ERROR:PORTAL_FIJA" description='#[payload]'/>
+			</when>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="24876517-5ea8-433f-9b8b-6c030bcfd778"/>
+	</sub-flow>
+</mule>

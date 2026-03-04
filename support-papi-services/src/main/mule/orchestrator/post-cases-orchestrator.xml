@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-cases-validateSource" doc:id="b4026058-9dbb-45e6-af18-331fd4e2815b" >
+		<ee:transform doc:name="Set sources" doc:id="deea5f6e-40d8-4c35-8d68-085974b32b2c" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="sources" ><![CDATA[%dw 2.0
+output application/json
+---
+p('global.set-cases.sources') splitBy " | "]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="f73b3b38-db03-4c9e-9bbb-2112a47df0d9" >
+			<when expression="#[vars.sources contains vars.headers.source]" >
+				<flow-ref doc:name="Go to post-contacts-orchestratorSub_Flow" doc:id="aaf71890-886d-4bc1-9c62-c31795115ea4" name="post-cases-orchestratorSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="BAD_REQUEST" doc:id="d1f65f3e-9ad8-4a21-abb4-f7b7c11126a8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Wrong source",
+  "cause": [
+    {
+      "origin": "support-papi-services",
+      "message": "Wrong source"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-cases-orchestratorSub_Flow" doc:id="2a60410c-370f-4c4a-92c7-079b69716fc4" >
+		<ee:transform doc:name="Set request body" doc:id="671fa77f-df64-47d9-8ec8-0079df78c516">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Fechaderadicacion__c": vars.inputPayload.FechaRadicacion,
+	"TipoCaso__c": vars.inputPayload.TipoCaso,
+	"AccountId": vars.inputPayload.idCuenta,
+	"ContactId": vars.inputPayload.idContacto,
+	"Subject": vars.inputPayload.Asunto,
+	"Description": vars.inputPayload.Descripcion,
+	"IDServicio__c": vars.inputPayload.IdServicio,
+	"Direccion_Instalacion__c": vars.inputPayload.Direccion,
+	"Proceso__c": if(vars.inputPayload.TipoCaso == "SOPORTE TECNICO") vars.inputPayload.Nivel2 else "",
+	"Agrupacion__c": if(vars.inputPayload.TipoCaso == "SOPORTE TECNICO") vars.inputPayload.Nivel1 else "",
+	"Tipologia__c": if(vars.inputPayload.TipoCaso == "SOPORTE TECNICO") vars.inputPayload.Nivel3 else if(vars.inputPayload.TipoCaso == "CASO PQR") vars.inputPayload.Tipologia else "",
+	"Status": vars.inputPayload.Estado,
+	"Nivel_1__c": if(vars.inputPayload.TipoCaso == "CASO PQR") vars.inputPayload.Nivel1 else "",
+	"Nivel_2__c": if(vars.inputPayload.TipoCaso == "CASO PQR") vars.inputPayload.Nivel2 else "",
+	"Nivel_3__c": if(vars.inputPayload.TipoCaso == "CASO PQR") vars.inputPayload.Nivel3 else "",
+	"Causal__c": vars.inputPayload.Causal,
+	"FechaInicioAfectacion__c": vars.inputPayload.FechaInicioAfectacion,
+	"RecordType": {
+		"Name": vars.inputPayload.TipoCaso
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to salesforce-sapi" doc:id="e03694e4-1838-49fa-9502-65c3960f6481" name="post-cases-salesforce-clientSub_Flow" target="salesforce_resp" />
+		<ee:transform doc:name="Set response" doc:id="7e2b78c8-d0b0-41b1-a08e-d054aaf1bcad">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var refCaseGet = vars.salesforce_resp.compositeResponse filter $.referenceId == "refCaseGet"
+---
+{
+  "Id" : (refCaseGet)[0].body.records[0].Id,
+  "CaseNumber" : (refCaseGet)[0].body.records[0].CaseNumber
+}]]></ee:set-payload>
+			</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[201]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

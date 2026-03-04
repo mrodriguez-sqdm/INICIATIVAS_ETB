@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd">
+    <flow name="gestor-xapi-services-main">
+        <http:listener config-ref="gestor-xapi-services-httpListenerConfig" path="/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call initial logger" doc:id="af75c045-f7b9-47b2-8392-d725bc7c0626" name="initial-loggin-Sub_Flow"/>
+		<apikit:router config-ref="gestor-xapi-services-config" />
+        <async doc:name="Async" doc:id="77ce66a6-8c7a-4058-b7ca-7cbeeac35d73" >
+			<flow-ref doc:name="Call logger" doc:id="442901d0-cf3b-4a6b-9963-3da78e40b3c2" name="loggin-client-call"/>
+		</async>
+		<error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="gestor-xapi-services-console">
+        <http:listener config-ref="gestor-xapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="gestor-xapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\billing\v1\billing_accounts:application\json:gestor-xapi-services-config">
+        <flow-ref doc:name="post-billingAccounts-handlerSub_Flow" doc:id="ee4c9b3d-9b7b-4220-b5fc-da540999480c" name="post-billingAccounts-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\billing\v1\billing_accounts:application\xml:gestor-xapi-services-config">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  system: "RevChain",
+  operation: "S",
+  result: "S",
+  faults: {
+    subscriber_id: "12054124652",
+    account_id: "a054y00000lClQhAAK",
+    plan_impuestos: {
+      type_name: "PLAN DE IMPUESTOS ETB LTE",
+      tax_plan_vendor: ""
+    },
+    ciclo_facturacion: "96",
+    fault_detail: {
+      error_description: "operation is successful",
+      error_code: "0"
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+    <flow name="post:\billing\v1\services\revchain:application\json:gestor-xapi-services-config">
+        <logger level="INFO" message="post:\billing\v1\services\revchain:application\json:gestor-xapi-services-config" />
+    </flow>
+    <flow name="post:\billing\v1\services\revchain:application\xml:gestor-xapi-services-config">
+        <logger level="INFO" message="post:\billing\v1\services\revchain:application\xml:gestor-xapi-services-config" />
+    </flow>
+	<flow name="post:\v1\viability:application\json:gestor-xapi-services-config" doc:id="dbc372e5-cdde-412e-9e16-d4119fb0f9d9" >
+		<flow-ref doc:name="Go to Handler" doc:id="89840f6a-1c30-4698-b36e-5e25db7b503d" name="post-viability-handlerSub_Flow" />
+	</flow>
+	<flow name="patch:\v1\viability:application\json:gestor-xapi-services-config" doc:id="b36d61c3-a7ff-4c35-8e4a-b6d480899f9e" >
+		<flow-ref doc:name="Go to handler" doc:id="9b45a43b-6a3a-46a2-8c0b-a00e4f93cc40" name="patch-updateViability-handlerSub_Flow"/>
+	</flow>
+	<flow name="post:\v1\provisioning:application\json:gestor-xapi-services-config" doc:id="1ceceeeb-d60d-44bf-84ee-155a9651d2c6" >
+		<flow-ref doc:name="Go to handler" doc:id="c23c6a6c-eddd-4f28-9efb-087ba0fbc612" name="post-provisioning-handlerSub_Flow"/>
+	</flow>
+	<flow name="patch:\v1\provisioning:application\json:gestor-xapi-services-config" doc:id="26ae6b4f-bad2-4af6-8242-89059c30b19d" >
+		<flow-ref doc:name="Go to handler" doc:id="0fcbf47c-01ea-42bf-b75b-a686da8e4869" name="patch-updateProvisioning-handlerSub_Flow"/>
+	</flow>
+	<flow name="patch:\v1\syncProduct:application\json:gestor-xapi-services-config" doc:id="2618b757-dc9d-46e0-9fd4-9ea2a1bea158" >
+		<flow-ref doc:name="Go to handler" doc:id="d4fc7dcb-015d-49c9-a0af-2f0fbeaae901" name="patch-syncProduct-handlerSub_Flow"/>
+	</flow>
+	<flow name="post:\v1\queryMaterials:application\json:gestor-xapi-services-config" doc:id="e4b0b897-7056-41bf-8057-f11c3a191d09" >
+		<flow-ref doc:name="Go to handler" doc:id="60b4d39c-4573-4482-8cdb-4f743565fe01" name="post-queryMaterials-handlerSub_Flow"/>
+	</flow>
+</mule>

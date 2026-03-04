@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-viability-clientSub_Flow" doc:id="211a62ab-84f0-49e4-bfb0-5fe5631e1221" >
+		<logger level="INFO" doc:name="Before" doc:id="f13b7f8c-6660-4764-9190-7986868f90d2" message="#[payload]" />
+		<try doc:name="Try" doc:id="6b59d808-be7d-4944-8df0-9b3bcef808b5" >
+			<http:request method="POST" doc:name="Request to process viability response" doc:id="763b78d0-aefe-4b6e-94ce-095dfa9294e9" config-ref="operation-papi" path="#[p('operation-papi.basepath') ++ p('operation-papi.path-processViabilityResponse')]">
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	client_secret : p('operation-papi.client_secret'),
+	source : p('operation-papi.source'),
+	client_id : p('operation-papi.client_id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": payload.respuestaViabilidad.correlationId default correlationId,
+	"systemId": vars.systemId
+}]]]></http:headers>
+			</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="cc4493c7-3554-4f8d-8111-187994cf3ace" type="HTTP:INTERNAL_SERVER_ERROR" when='error.muleMessage.typedValue.resultado == "Negativo"' >
+					<ee:transform doc:name="Output with status 500" doc:id="d075c5c3-e395-4edd-a740-33c32d1bafbe" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+error.muleMessage.typedValue]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

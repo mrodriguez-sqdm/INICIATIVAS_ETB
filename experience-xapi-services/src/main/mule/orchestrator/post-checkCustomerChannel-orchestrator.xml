@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-checkCustomerChannel-orchestratorSub_Flow" doc:id="930f2276-901b-4bb3-b976-fd5ab2b23442" >
+		<flow-ref doc:name="Go to Client" doc:id="ef0fc186-03e9-4187-8c6b-aed5b8795edd" name="post-checkCustomerChannel-client"/>
+		<ee:transform doc:name="Validate channel" doc:id="b6b0f1c5-4f58-45f6-acb7-ed5814f38a6c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (sizeOf(payload) < 1 or (sizeOf(payload) == 1 and payload[0].Numero_Identificacion == vars.inputPayload.cliente))
+{
+	codigo: 200
+}
+else
+{
+	codigo: 201
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="0deab656-9663-4084-874f-ed0e3c49396d" >
+			<ee:transform doc:name="Transform Message" doc:id="f329e4f6-968b-43b9-a588-50c207c37842" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    numero_solicitud_app: correlationId,
+    aplicacion: vars.inputHeaders.source,
+    ip: vars.inputPayload.ip,
+    navegador: vars.inputPayload.navegador,
+    nombre_equipo: vars.inputPayload.nombre_equipo,
+    usuario: vars.inputPayload.usuario
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call audits-mongo logger" doc:id="cf0d6c4e-1642-4426-be0d-d8cfdb571b69" name="audits-mongo-log-before"/>
+		</async>
+	</sub-flow>
+</mule>

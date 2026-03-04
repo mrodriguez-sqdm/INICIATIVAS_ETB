@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="audits-mongo-log-before" doc:id="a96c8146-7b20-4921-978a-a4d2025924ae" >
+		<ee:transform doc:name="Transform Message" doc:id="dfd5a972-36d4-42f6-a8e5-10c07c940292">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "Identificador_Peticion": correlationId,
+    "Sistema_Origen": "MULESOFT",
+    "Servicio": vars.processname default "",
+    "Operacion": flow.name,
+    "TipoPista": "",
+    "Fecha_Peticion": now() >> "America/Bogota",
+    "Datos_Entrada": ((((write(payload.^raw, "application/json") default "NA")) replace "\n" with "") replace "\r" with "") replace "\t" with "",
+    "Observaciones": "",
+    "IP": ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="Call audits-mongo" doc:id="76ea6464-f5da-4115-bb76-2173452fcc64" config-ref="HTTP_Request_configuration_audits_mongo" path="${audits-mongo-sapi.path}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('audits-mongo-sapi.client_secret'),
+	"client_id" : p('audits-mongo-sapi.client_id')
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"api_id" : app.name
+}]]]></http:uri-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="audits-mongo-log-after" doc:id="d2eb43b6-b4ec-4a1e-a6bd-ed3fe0c464a9" >
+		<ee:transform doc:name="Map Log Body" doc:id="f6f81e7d-6672-407a-9cc6-fdf941a13f47" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[output application/json
+---
+{
+    "Identificador_Peticion": correlationId,
+    "Sistema_Origen": "MULESOFT",
+    "Servicio": vars.processname default "",
+    "Operacion": flow.name,
+    "TipoPista": "",
+    "Fecha_Peticion": now() >> "America/Bogota",
+    "Datos_Entrada": ((((write(payload.^raw, "application/json") default "NA")) replace "\n" with "") replace "\r" with "") replace "\t" with "",
+    "Observaciones": "",
+    "IP": ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="Call audits-mongo" doc:id="425bd5a1-ab3a-4e90-b473-b6c603345d1e" config-ref="HTTP_Request_configuration_audits_mongo" path="${audits-mongo-sapi.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('audits-mongo-sapi.client_secret'),
+	"client_id" : p('audits-mongo-sapi.client_id')
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"api_id" : app.name
+}]]]></http:uri-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="audits-mongo-log-error" doc:id="f0b1f2c9-bccb-4884-bdce-b2cbff2079dd" >
+		<ee:transform doc:name="Map Log Body" doc:id="5110cc6d-361d-4c47-93ef-8c1a18a9a3cc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[output application/json
+---
+{
+    "Identificador_Peticion": correlationId,
+    "Sistema_Origen": "MULESOFT",
+    "Servicio": vars.processname default "",
+    "Operacion": flow.name,
+    "TipoPista": "",
+    "Fecha_Peticion": now() >> "America/Bogota",
+    "Datos_Entrada": (error.muleMessage.typedValue default "NA"),
+    "Observaciones": "Error",
+    "IP": ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="Call audits-mongo" doc:id="b9f7a275-0dcb-485c-b496-41e3d3214c81" config-ref="HTTP_Request_configuration_audits_mongo" path="${audits-mongo-sapi.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('audits-mongo-sapi.client_secret'),
+	"client_id" : p('audits-mongo-sapi.client_id')
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"api_id" : app.name
+}]]]></http:uri-params>
+		</http:request>
+	</sub-flow>
+</mule>

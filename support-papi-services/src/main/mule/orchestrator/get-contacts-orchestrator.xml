@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-contacts-orchestratorSub_Flow" doc:id="8ac0a280-8733-4090-b7f5-73f8f5737140" >
+		<ee:transform doc:name="Set queryParams" doc:id="95603852-2be4-47c8-8473-0bb502346ef6">
+			<ee:variables>
+				<ee:set-variable variableName="queryParams"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="138639e6-a970-4e7d-a948-d2799d2303f2" name="get-contacts-salesforce-clientSub_Flow" target="salesforce_resp" />
+		<choice doc:name="Choice" doc:id="cb0493c0-615a-48ff-bcb8-102e6375be48">
+			<when expression="#[vars.salesforce_resp.done != true]">
+				<ee:transform doc:name="Error" doc:id="065d0acf-e608-4c77-9bc0-aa90fd5d8005">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cause = ((vars.salesforce_resp default []) map ((item, index) -> 
+        {
+            "origin": "salesforce-sapi-services",
+            "message": item.message default ""
+        }
+    ))
+---
+{
+  "status": 409,
+  "code": if(sizeOf(vars.salesforce_resp)!=1) "INTERNAL_SERVER_ERROR" else vars.salesforce_resp[0].errorCode default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": cause reduce ((i, acc = "") -> 
+    if(acc == "") i.message else if(i.message != "") acc ++ " | " ++ i.message else acc
+  ),
+  "cause": cause
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<choice doc:name="Choice" doc:id="77622b5d-0fcb-4fd6-b261-368fc9930695">
+					<when expression='#[(vars.headers.source == "WebChatEmpresas" or&#10;vars.headers.source == "WhatsappEmpresas") and vars.salesforce_resp.records[0].Id != null]'>
+						<ee:transform doc:name="Set response" doc:id="3d24d1b4-7b52-4b47-91ed-81f88766a9ca">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	id: vars.salesforce_resp.records[0].Id,
+	tipoDocumento: vars.salesforce_resp.records[0].Tipodedocumento__c,
+	numeroDocumento: vars.salesforce_resp.records[0].NumerodeIdentificacion__c, //Tabla de Homologacion?
+	nombres: upper(vars.salesforce_resp.records[0].FirstName),
+	apellidos: upper(vars.salesforce_resp.records[0].LastName),
+	celular: vars.salesforce_resp.records[0].MobilePhone,
+	telefono: vars.salesforce_resp.records[0].Phone,
+	correo: upper(vars.salesforce_resp.records[0].Email),	
+	cargo: vars.salesforce_resp.records[0].Cargo__c,
+	habeasData: vars.salesforce_resp.records[0].Autoriza_Tratamiento_de_Datos_Personales__c,
+	autorizado: if(vars.salesforce_resp.records[0].Contactoautorizadoparaopercciales__c) "SI" else "NO",
+	integrationId: vars.salesforce_resp.records[0].Identificador_Contacto_Mongo__c
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="NOT_FOUND" doc:id="4076dd17-6536-4f90-b208-2e9ed8f4bb10" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "No se encontraron datos",
+  "cause": [
+    {
+      "origin": "salesforce-sapi-services",
+      "message": ""
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
