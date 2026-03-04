@@ -1,0 +1,372 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="normalize-api-services-orchestrator" doc:id="14403658-3530-42f0-ad43-ba3ec0c51d4b">
+		<choice doc:name='If DANE contains "IN P"' doc:id="1b7f84aa-32d2-46f2-9c02-bb01f75cc15d">
+			<when expression='#[vars.address contains("IN P")]'>
+				<ee:transform doc:name="Response" doc:id="70465c60-39c6-452e-87ae-cd5c322d6b75">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "NormalizedAddressResponse": {
+    "NormalizedAddress": vars.address
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<choice doc:name='Contains "POS" ' doc:id="80a66d51-0670-407b-9355-852f677124a3">
+					<when expression='#[output application/java&#10;import substringAfter from dw::core::Strings&#10;---&#10;sizeOf("POS" ++ (vars.address substringAfter "POS")) &lt; 7]'>
+						<ee:transform doc:name="split address by POS" doc:id="7d077efb-a472-493d-af3b-639cd79aeb33">
+							<ee:message>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="addressWithNoPOS" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.address splitBy "POS"]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<ee:transform doc:name="Remove POS from address" doc:id="7318f786-8642-4489-976c-3cc82926ce18">
+							<ee:message>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="address" ><![CDATA[%dw 2.0
+output application/json
+---
+trim(vars.addressWithNoPOS[0])]]></ee:set-variable>
+								<ee:set-variable variableName="hasPOS" ><![CDATA[%dw 2.0
+output application/java
+---
+if (!isEmpty(vars.addressWithNoPOS[1])) " POS" ++ vars.addressWithNoPOS[1] else null]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+				<ee:transform doc:name="Address as URI" doc:id="c153dd82-b6af-4ac0-8eab-4d218f2fbe33">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="addressURI" ><![CDATA[%dw 2.0
+output application/java
+import encodeURIComponent from dw::core::URL
+---
+encodeURIComponent(vars.address)]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to Client" doc:id="d3276f25-9775-48de-85b8-041c11dd89f0" name="normalize-api-services-client-nonStandardAddress" />
+				<choice doc:name="If not Error" doc:id="e2ec6f97-e4dd-49cd-938d-971d72581b8c">
+					<when expression="#[vars.standardAddressResponse.outputSet.RETURN_VALUE != false]">
+						<ee:transform doc:name="Response" doc:id="bae8b67e-c506-4540-8b75-72c1846c5972">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "NormalizedAddressResponse": {
+    "NormalizedAddress": vars.address
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<flow-ref doc:name="List of dane codes" doc:id="e82f45e7-cb84-4dc7-b24d-4871bb3fa28e" name="listDaneCodes" />
+					</otherwise>
+				</choice>
+				</when>
+					<otherwise >
+						<flow-ref doc:name="Dirección no normalizable" doc:id="facabfbc-2b4a-49db-9ecd-47230cded295" name="direccionNoNormalizable" />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="listDaneCodes" doc:id="14dc1774-4f58-4160-98f8-644d00ea02f8">
+		<set-variable value="${normalize.NoNormalizationString}" doc:name="daneCodes" doc:id="c874606a-ad03-467c-bd9a-eaa79870905f" variableName="daneCodes" />
+		<ee:transform doc:name="Array of dane codes" doc:id="93fde90f-a7a8-4b40-b66d-9fbec813fa57">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="daneCodesList"><![CDATA[%dw 2.0
+output application/java
+---
+
+(vars.daneCodes splitBy ('|') map (value, index) -> value) filter ((item, index) -> !isEmpty(item))
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Address contains daneCode?" doc:id="4976643f-e6b7-44ca-b3a7-459b620b1b06">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="condition"><![CDATA[%dw 2.0
+output application/java
+---
+(vars.daneCodesList map ((item, index) -> vars.address contains item)) contains true]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="If Condition == True" doc:id="cae2d2eb-bd93-49f6-aaab-5c4c8ede813d">
+			<when expression="#[vars.condition == true]">
+				<flow-ref doc:name="Dirección no normalizable" doc:id="10fcda11-b313-488c-9d20-8e910fc35724" name="direccionNoNormalizable" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="municipioCode" doc:id="94c677ff-e780-4031-bc40-c17329f6834c" name="municipioCodeValidation" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="municipioCodeValidation" doc:id="959c8727-007f-4d3d-a2e2-58957cd1dcfd" >
+		<choice doc:name="municipio == 11001?" doc:id="dd0e1dbc-4c56-46d7-983b-c269a2e9c8b3" >
+			<when expression='#[vars.municipio == "11001"]'>
+				<try doc:name="Try" doc:id="16829ad2-6626-43e3-a372-0a7b294c9e2a">
+					<set-payload value='#[{&#10;  "inputs": {&#10;    "inputSet": {&#10;      "ZA": vars.address&#10;    }&#10;  }&#10;}]' doc:name="Set Payload" doc:id="bb614b93-d6b0-485f-a71e-4ab5140ed33a" />
+					<flow-ref doc:name="Go to Client" doc:id="f8749b26-e93e-46d0-bf0e-aa4e14f11349" name="normalize-api-services-client-normalizeAddressBogota" />
+					<set-variable value="#[payload.XSALIDA_BOGOTA[0]]" doc:name="normalizedAddress" doc:id="92507879-64d1-425a-9135-69b24ebf671d" variableName="normalizedAddress" />
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="96e07475-8954-4ef6-9ff0-666bf8bf1c96">
+							<set-variable value="#['1']" doc:name="Error" doc:id="31282007-43b6-4b9b-afbd-4ca7a49eafca" variableName="error" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<choice doc:name="If error" doc:id="4e37fdf7-07fb-4129-a2b3-cf2a28ae3d94">
+			<when expression="#[vars.error == '1']">
+				<flow-ref doc:name="Error de Integración" doc:id="599bfc4f-a372-4e1a-bae0-a239425f6981" name="errorIntegracion" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Process Bogota" doc:id="76c692e8-d4ff-47ed-9c07-cbedd4987942" name="processBogota" />
+			</otherwise>
+		</choice>
+			</when>
+			<otherwise >
+				<try doc:name="Try" doc:id="fbe1d8d0-96e0-4309-b702-6825d624c0c2">
+					<set-payload value='#[{&#10;  "inputs": {&#10;    "inputSet": {&#10;      "ZA": vars.address&#10;    }&#10;  }&#10;}]' doc:name="Set Payload" doc:id="44fa31da-bb7f-40ab-9b57-173c06d1bc5a" />
+					<flow-ref doc:name="Check for inversion" doc:id="c997bbb8-aa52-4d9c-901f-9cce3ca4fbd6" name="checkMunicipioCodesSub_Flow"/>
+					<set-variable value="#[payload.XSALIDA_GENERAL[0]]" doc:name="normalizedAddress" doc:id="22a1ed72-aac0-46a7-bbc8-c9e25dd25294" variableName="normalizedAddress" />
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="64792e5a-cdb1-4410-afd0-8c3c1599d0a6">
+							<set-variable value="#['1']" doc:name="Error" doc:id="0cc4da69-42f6-4ccc-81b6-d32edb32367b" variableName="error" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<choice doc:name="If error" doc:id="134f046d-1cd3-4410-955d-87872b5fac3c">
+						<when expression="#[vars.error == '1']">
+							<flow-ref doc:name="Error de Integración" doc:id="a044cca9-cff5-47e0-a41f-0905cef5c06c" name="errorIntegracion" />
+						</when>
+						<otherwise>
+							<flow-ref doc:name="Process General" doc:id="5ceb86bf-b4d0-450a-8766-20adf9f3ba16" name="processGeneral" />
+						</otherwise>
+					</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="processBogota" doc:id="72dc05f6-608c-4dc2-8695-8a8d7d2a3b0e" >
+		<choice doc:name="Response starts with '0'?" doc:id="93deee88-8225-4da5-a464-daf1052a87d9">
+			<when expression="#[vars.normalizedAddress[0] == '0']">
+				<ee:transform doc:name="Format Output" doc:id="bad1e906-a94a-4bcd-a1d3-8bb7c7cc9695">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/json
+---
+{
+    "NormalizedAddressResponse": {
+            "NormalizedAddress": if (vars.hasPOS != null) substring(vars.normalizedAddress,47,sizeOf(vars.normalizedAddress)) ++ vars.hasPOS else substring(vars.normalizedAddress,47,sizeOf(vars.normalizedAddress)),
+            "CUNU": if (vars.hasPOS != null) vars.normalizedAddress ++ vars.hasPOS else vars.normalizedAddress     
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<choice doc:name="Contains Error" doc:id="b6026718-3bac-4ed6-b1aa-040f3ab0a49a" >
+					<when expression='#[contains(vars.normalizedAddress,"ERROR EN VIA PRINCIPAL") or contains(vars.normalizedAddress,"1 ERROR EN NIVEL UNO DE PH")]'>
+						<flow-ref doc:name="Error de Integración" doc:id="499bb4f9-4c5e-4260-8ba9-ca0053dc7d77" name="errorIntegracion" />
+					</when>
+					<otherwise >
+						<flow-ref doc:name="Dirección no Existente" doc:id="478e250f-d11b-4ea3-ba0e-f5acb524caf2" name="direccionNoExistente"/>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="processGeneral" doc:id="078fcb21-965e-431c-8b78-9e8af060f430" >
+		<choice doc:name="Response starts with '0'?" doc:id="825baf0f-f677-4b40-ae3c-f92d36b758aa" >
+			<when expression="#[vars.normalizedAddress[0] == '0']" >
+				<ee:transform doc:name="Format Output" doc:id="c0e2a880-06ea-47a1-9bdb-0fcdfe8470f2" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/json
+---
+{
+    "NormalizedAddressResponse": {
+            "NormalizedAddress": if (vars.hasPOS != null) substring(vars.normalizedAddress,47,sizeOf(vars.normalizedAddress)) ++ vars.hasPOS else substring(vars.normalizedAddress,47,sizeOf(vars.normalizedAddress)),
+            "CUNU": if (vars.hasPOS != null) vars.normalizedAddress ++ vars.hasPOS else vars.normalizedAddress           
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Check ValidateReponse " doc:id="cc74ad5d-7e4b-412c-81f1-058312430930" name="checkValidateResponse-normalizeAddress"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="checkValidateResponse-normalizeAddress" doc:id="26bb2e3f-ec71-4ab0-a62b-97a044fa6d31" >
+		<set-variable value="#[p('normalize.validateResponse')]" doc:name="validateResponse" doc:id="9b2562f3-559f-4451-a618-f72dc1e7a98f" variableName="validateResponse"/>
+		<choice doc:name="validateResponse == 'false'?" doc:id="e1c5e752-4db9-416a-a8ba-910a6672fafa" >
+			<when expression="#[vars.validateResponse == 'false']" >
+				<flow-ref doc:name="Dirección no existente" doc:id="f501a2b0-5e91-4242-a875-5b8aec63afeb" name="direccionNoExistente" />
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Check ValidateCodes" doc:id="dfb0a443-dee2-4887-a27e-6a13657838d2" name="checkValidateCodes-normalizeAddress" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="checkValidateCodes-normalizeAddress" doc:id="976ae4b1-2817-4baf-8972-7752e3ab53c7" >
+		<set-variable value="#[p('normalize.validateCodes')]" doc:name="validateCodes" doc:id="efb0a96f-80aa-4993-bbce-4ba69467a4b2" variableName="validateCodes" />
+		<choice doc:name="validateCodes == 'false'?" doc:id="03905413-6c4a-4475-a7c2-ed5b2f114bf5" >
+			<when expression="#[vars.validateCodes == 'false']" >
+				<ee:transform doc:name="Format Output" doc:id="a942e01a-343e-4481-81ba-2441c13cb2b4" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "NormalizedAddressResponse": {
+    "NormalizedAddress": vars.address
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Check reponse ERROR EN VIA PRINCIPAL" doc:id="5a780d03-1ebb-40f6-ab4d-3eb603fb72ee" name="checkResponse-normalizeAddress" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="checkResponse-normalizeAddress" doc:id="298bf2b5-347e-4472-87f1-b894640cec09" >
+		<choice doc:name="Response contains 'ERROR EN VIA PRINCIPAL'?" doc:id="c4d812af-ca8b-41db-9ecd-8e09ddc47db4" >
+			<when expression="#[vars.normalizedAddress contains('ERROR EN VIA PRINCIPAL')]">
+				<ee:transform doc:name="Format Output" doc:id="eff528ac-c7b6-4e93-b505-240bb19d127e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "NormalizedAddressResponse": {
+    "NormalizedAddress": vars.address
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Dirección no existente" doc:id="4979f310-5741-4495-818d-a119c2a9f615" name="direccionNoExistente" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="direccionNoExistente" doc:id="d12415a5-9799-4e3a-9864-fc78fdfb33b6" >
+		<ee:transform doc:name="Format Output" doc:id="089aec41-71d4-43ce-9d0b-611f33a91847" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "message": "Dirección no existente",
+    "messageCode": "NORMADDERR02"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="500" doc:name="500" doc:id="eee963af-c601-46b9-8cf5-a96dbf7d4424" variableName="httpStatus"/>
+	</sub-flow>
+	<sub-flow name="errorIntegracion" doc:id="7f38e9bd-7a2a-45d8-9bbc-f976443b1a9c" >
+		<ee:transform doc:name="Format Output" doc:id="7f5567fb-bafc-465b-86be-710ae281a433" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "message": "Error de integración",
+    "messageCode": "NORMADDERR03"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="500" doc:name="500" doc:id="34a39db7-72dc-4dfe-89c5-53022278ad22" variableName="httpStatus" />
+	</sub-flow>
+	<sub-flow name="direccionNoNormalizable" doc:id="ced3010a-ad59-4820-a09a-11b3830dc0ee" >
+		<ee:transform doc:name="Format Output" doc:id="9e1132ff-59bc-441e-878d-40613faacad7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "message": "Dirección marcada como no Normalizable",
+    "messageCode": "NORMADDERR02"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="500" doc:name="500" doc:id="3192bca0-dbb8-4408-b618-514888e80dc4" variableName="httpStatus" />
+	</sub-flow>
+	<sub-flow name="checkMunicipioCodesSub_Flow" doc:id="f8d0cf04-0f2d-49c7-bc63-fd7303395181" >
+		<flow-ref doc:name="Go to client" doc:id="34a4615d-3421-4f78-930b-764c1ffcb018" name="normalize-api-services-client-getSpecialMunicipios" target="specialMunicipios"/>
+		<choice doc:name="Choice" doc:id="334b87c6-f532-44a2-b0e1-15d96ad43ea9" >
+			<when expression="#[vars.specialMunicipios[0].Valores.Codigo contains vars.municipio]">
+				<ee:transform doc:name="Invert cardinal points" doc:id="8bd5faad-2e48-42cd-a28c-500e1cd302b4" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import replace from dw::util::Values
+import countMatches from dw::core::Strings
+
+var in = payload.inputs.inputSet.ZA
+fun transformAddress(str) = do {
+    var splitted = str splitBy "SUR"
+    ---
+    if (countMatches(str, "SUR") > 0 and sizeOf(splitted) == 1) splitted[0] replace "ESTE" with "SUR" ++ "ESTE"
+else splitted map ($ replace "ESTE" with "SUR") joinBy "ESTE"
+}
+---
+{
+	inputs: {
+		inputSet: {
+			ZA: transformAddress(in)
+		}
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to Client" doc:id="94b3e94e-2ac6-449d-aacd-e41f50677ba1" name="normalize-api-services-client-normalizeAddressGeneral" />
+				<ee:transform doc:name="Invert cardinal points response" doc:id="5b413234-64a9-46ef-8ddf-92dcf16df25b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import replace from dw::util::Values
+import countMatches from dw::core::Strings
+
+var in = payload.XSALIDA_GENERAL[0]
+fun transformAddress(str) = do {
+    var splitted = str splitBy "SUR"
+    ---
+    if (countMatches(str, "SUR") > 0 and sizeOf(splitted) == 1) splitted[0] replace "ESTE" with "SUR" ++ "ESTE"
+else splitted map ($ replace "ESTE" with "SUR") joinBy "ESTE"
+}
+---
+{
+	XSALIDA_GENERAL:[transformAddress(in)]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Go to Client" doc:id="9c39552f-79a2-4d79-bd5a-57ebc0f724a4" name="normalize-api-services-client-normalizeAddressGeneral" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
