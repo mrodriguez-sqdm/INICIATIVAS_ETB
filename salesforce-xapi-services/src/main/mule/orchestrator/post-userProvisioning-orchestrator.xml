@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-userProvisioning-orchestratorSub_Flow" doc:id="59018c2d-cb30-4638-ae66-001c9a0453f5" >
+		<ee:transform doc:name="Prepare output" doc:id="16e19712-b490-462c-a06e-528a179e8809" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+createOrderByValueRequest: {
+    orderValue: {
+        apiClientId: payload.channel,
+        orderKey: {
+            applicationDN: "System/$(p('asap-sapi.environment'))/ApplicationType/ServiceActivation/Application/1-0;7-2;ASAP/Comp/",
+            'type': "javax.oss.order.CreateOrderValue",
+            primaryKey: "MS-" ++ payload.identifier
+        },
+        requestedCompletionDate: payload.provisioningDate,
+        services: {
+            item: {
+                serviceKey: {
+                    applicationContext: {
+                        factoryClass: "",
+                        url: "",
+                        systemProperties: ""
+                    },
+                    applicationDN: "System/$(p('asap-sapi.environment'))/ApplicationType/ServiceActivation/Application/1-0;7-2;ASAP/Comp/",
+                    'type': payload.serviceCommand,
+                    primaryKey: payload.serviceCommand
+                },
+                asdlRoute: "ROUTE_TO_NEP",
+                serviceValues: {
+                    serviceValue : payload.services[0].item.serviceValues map (item, value) -> {
+                    name: item.name,
+                    value: item.value,
+                    'type': "OPTIONAL_SCALAR"
+                }
+                },
+                
+            }
+        },
+        origin: payload.channel,
+        rollbackState: "rollback_required",
+        processType: "IMMEDIATE",
+        srqAction: "ADD",
+        command: payload.action
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="fe1557f5-5a78-4147-bbce-f685d1ab6256" name="asap-clientSub_Flow"/>
+	</sub-flow>
+</mule>

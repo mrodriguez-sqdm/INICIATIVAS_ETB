@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation=" http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="salesforce-xapi-services-main">
+        <http:listener path="/salesforce/*" config-ref="salesforce-xapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <try doc:name="Try" doc:id="f0b8906e-261d-443c-97bf-de65451fd0ac">
+			<flow-ref doc:name="Call initial Logger" doc:id="54d0df19-f9a8-42b9-b6ed-eff9f415afee" name="initial-loggin-Sub_Flow" />
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="1a613b1d-6e78-40b4-b113-559b7af6dbb3">
+					<logger level="INFO" doc:name="Logger" doc:id="734a9b4b-1da8-4d00-95e1-b9b482e20233" message="#[error]" category="error_loggin" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+        <apikit:router config-ref="salesforce-xapi-services-config" />
+        <try doc:name="Try" doc:id="6f2104a4-c492-4d5e-94c6-3b9b9f0c989e">
+				<async doc:name="Async" doc:id="9d0e4206-3a2c-4f30-8c69-f56f5f34df5c">
+					<flow-ref doc:name="Call logger" doc:id="13f95c8c-73e5-482b-895f-87e5f23d4fbe" name="loggin-client-call" />
+				</async>
+				<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e8ad9ffb-a8d0-4b2e-98f9-5010b6bb88fe">
+						<logger level="INFO" doc:name="Logger" doc:id="94b5131a-51c1-4296-938f-a62947327462" message="#[error]" category="error_loggin" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		<error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="salesforce-xapi-services-console">
+        <http:listener path="/console/*" config-ref="salesforce-xapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="salesforce-xapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="patch:\operations\v1\incident\(incidence_id):application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="fe7f7bcf-b0a8-4ee2-8306-575bceabe052" name="patch-incidentStatus-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\productOrder:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="44f4e483-ef1e-4d10-a809-d396bb6c77d3" name="post-productOrder-handlerFlow" />
+    </flow>
+    <flow name="post:\operations\v1\scoring:application\json:salesforce-xapi-services-config" doc:id="f6f6408a-0f11-47a8-80de-41547aebb82d">
+        <flow-ref doc:name="Go to handler" doc:id="184b3933-6afe-4ad3-81eb-d98f171845f8" name="post-scoring-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\provisioning:application\json:salesforce-xapi-services-config" doc:id="c1d36491-b759-4062-9cf5-3d87a8521338">
+        <flow-ref doc:name="Go to Handler" doc:id="24309761-fc34-405c-9d13-fcda4545c5bf" name="post-provisioning-handler" />
+    </flow>
+    <flow name="post:\operations\v1\provisioning\user:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="5f5d498f-7347-47d3-831e-98bb04e322c7" name="post-userProvisioning-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\viability:application\json:salesforce-xapi-services-config" doc:id="1b602237-e7ad-4494-985f-477a07da30db">
+        <flow-ref doc:name="Go to Handler" doc:id="f2e478e3-12a1-44fb-a5a4-276f45e3d7b8" name="post-viability-handler" />
+    </flow>
+    <flow name="post:\billing\v1\billing_accounts:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="ce80d823-f29e-4c40-8571-bd90fbf8dee4" name="post-billingAccounts-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\billing\v1\billings\(connection-number)\details:salesforce-xapi-services-config" doc:id="85e7175a-48fb-4939-bf06-124b58269f2f">
+        <flow-ref doc:name="Go To Handler" doc:id="63163988-152d-4a0d-8e29-6414021f8712" name="get-connectionNumber-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\incident\enterprise:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="ef62a95b-eaba-4032-bbc4-f1b5a41167ff" name="post-incident-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\enterprise\request:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="2cb80937-fb8d-4dc0-8eef-a7c7fc0465a8" name="post-createEnterpriseRequestNote-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\fulfillment\v1\incident\(incidence_id)\tasks:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="945017b5-0bf8-43b1-801f-a86eca372355" name="get-consultTaskArray-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\incident\note:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="a50378c2-0db9-4652-92fd-e6f30eafca79" name="post-createIncidentNote-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\incident\(incidence_id)\tasks:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="a4cdacef-52db-4499-9670-0f4921bad9d1" name="post-createNewTask-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\billing\v1\provisioning\services:application\json:salesforce-xapi-services-config" doc:id="e99af40a-2872-445e-9a4d-aea759aa374b">
+        <flow-ref doc:name="Go to Handler" doc:id="49bdbeb9-5600-43b8-9496-ff86b823ac52" name="post-invokeServiceProvisioning-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\availabilityQueryOrder:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="3a517018-5e35-4c44-a28c-81f97366f403" name="post-availabilityQueryOrder-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\request\note:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="725ef33c-9b0c-4255-b44a-4a68263b92c5" name="post-createRequestNote-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\remedy\schedule:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="c20eab4c-0f61-44d1-8da9-187b3bd2de46" name="post-createScheduleRemedy-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\billing\v1\numberAndPrice:application\json:salesforce-xapi-services-config" doc:id="0fe07ff4-fe72-4f34-a508-fc03540dd7c6">
+        <flow-ref doc:name="Go to Handler" doc:id="a35b7ca5-2218-43a4-a2d0-8a18df5626ca" name="patch-numberAndPrice-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\billing\v1\billingAdjustment:application\json:salesforce-xapi-services-config" doc:id="1e151bca-3358-4f67-96e2-a39f51d2b247">
+        <flow-ref doc:name="Go to Handler" doc:id="4687434a-5620-4988-9136-183c9fb31854" name="post-billingAdjustment-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\negativeRecord:application\json:salesforce-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="f58a6756-080e-4efd-b48f-ae0b548021b8" name="post-negativeRecord-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\billing\v1\billing_accounts:application\json:salesforce-xapi-services-config">
+		<flow-ref doc:name="patch-billingAccount-handlerSub_Flow" doc:id="771800a5-6459-4ae4-bc48-887c3e749861" name="patch-billingAccount-handlerSub_Flow"/>
+    </flow>
+	<flow name="post:\operations\v1\fraudQuery:application\json:salesforce-xapi-services-config" doc:id="020f37e3-eb13-41ce-a967-b741f691e9c5" >
+		<flow-ref doc:name="Go to Handler" doc:id="5d868013-34b0-4a28-8d97-fc0a6d0e2672" name="post-fraudQuery-handler" />
+	</flow>
+    <flow name="post:\billing\v1\transferServices:application\json:salesforce-xapi-services-config" doc:id="65454618-d490-44bc-a4b9-1fc42def78a6" >
+		<flow-ref doc:name="Go to Handler" doc:id="b141650e-664a-40f5-9e1a-1d3b4f2ecaa4" name="post-transferServices-handlerSub_Flow"/>
+    </flow>
+    <flow name="post:\fulfillment\v1\tramits\newQuery:application\json:salesforce-xapi-services-config">
+		<flow-ref doc:name="Flow Reference" doc:id="f4a9ae0c-bfcd-4a6b-84f0-4ce75b96daba" name="get-tramits-handlerSub_Flow"/>
+	</flow>
+    <flow name="post:\v1\provisioningLTECorp:application\json:salesforce-xapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="48498661-1c62-4f88-8733-b310264aa73c" name="post-provisioningLTECorp-handlerSub_Flow"/>
+    </flow>
+	<flow name="post:\v1\serviceManagement:application\json:salesforce-xapi-services-config" doc:id="191ccad8-d46c-4040-8dd5-5473ef8fd67f" >
+		<flow-ref doc:name="Go to Handler" doc:id="4ff995f0-b843-4a5e-ad4f-ed5423fbdbee" name="post-serviceManagement-handlerSub_Flow"/>
+	</flow>
+	<flow name="post:\v1\delivery:application\json:salesforce-xapi-services-config" doc:id="232098ea-2731-4294-80df-ff0fa7d03548" >
+		<flow-ref doc:name="Go to Handler" doc:id="576d7822-58d9-46ff-b85f-699b8213df06" name="post-delivery-handlerSub_Flow"/>
+	</flow>
+	<flow name="get:\operations\v1\migrated\(connectionNumber):salesforce-xapi-services-config" doc:id="45a317b6-4a25-4a0f-a694-1eef6dcbab9e" >
+		<flow-ref doc:name="Go to Handler" doc:id="0957d6ae-d42c-4e2b-b9b4-21a8ca5bc67e" name="get-migrated-handlerSub_Flow" />
+	</flow>
+</mule>

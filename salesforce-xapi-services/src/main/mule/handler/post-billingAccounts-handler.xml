@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-billingAccounts-handlerSub_Flow" doc:id="71c81d84-9d84-4e4e-a43f-553ede50f61a" >
+		<ee:transform doc:name="Set initial variables" doc:id="b3cc05c2-01c0-4f35-a221-1220382818cd" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="name" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers.name]]></ee:set-variable>
+				<ee:set-variable variableName="map" ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="b9004096-c925-4d81-acea-df9fa621025f" >
+			<when expression='#[payload.ProcessData.ProcessingType == "Reenvio" and (payload.ProcessData.RVC == "1" or payload.ProcessData.RMCA == "1" or payload.ProcessData.MDM == "1") or (payload.ProcessData.ProcessingType == null or payload.ProcessData.ProcessingType == "")]'>
+				<flow-ref doc:name="Go to orchestrator" doc:id="872ed6bd-caaf-4d2d-8ae2-0fcced6c7cdd" name="post-billingAccounts-orchestratorSub_Flow" />
+			</when>
+			<otherwise >
+				<set-variable value="400" doc:name="Set httpStatus" doc:id="fe768afc-53be-4348-8b31-0bccc626dcbc" variableName="httpStatus"/>
+				<ee:transform doc:name="Error Output" doc:id="3905981c-03e1-4169-b241-a671d7f2b342" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 400,
+    "code": "BAD_REQUEST",
+    "message": {
+        "message": "Invalid ProcessData ERROR"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "salesforce-xapi-services-qa",
+            "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="post-invokeServiceProvisioning-handlerSub_Flow" doc:id="2854c810-1c59-41dd-abf8-d4cd97bc4e00" >
+		<ee:transform doc:name="Check payload validations" doc:id="fda15d8e-df57-45f0-995f-d9f3881f879e" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="validations" ><![CDATA[%dw 2.0
+output application/json
+import every from dw::core::Arrays
+var servicePart = payload.wsInvokeServiceProvisioningIN.services.service_particulars
+---
+flatten(servicePart map ((item, index) -> if (item.service?) item.service map ((i, in) -> (i.service_type_name? and i.service_type_id?) 
+or (i.service_id? and i.finder?) 
+or (if (i.feature?) i.feature map ((f) -> 
+(f.feature_id? and f.finder?) 
+or (f.feature_type_name? and f.feature_type_id?) 
+or (if (f.parameter?) (f.parameter map ((p) ->
+p.parameter_type_id? and p.parameter_type_name?)) every $ else false) 
+or (if (f.feature_rate_plan?) (f.feature_rate_plan map ((frp) ->
+frp.rate_plan_name? and frp.rate_plan_id?)) every $ else false)
+or (if (f.sub_curcy_rates_data?) (f.sub_curcy_rates_data map ((s) -> 
+(s.sub_curcy_exch_rate_finder.from_curcy_cd? and s.sub_curcy_exch_rate_finder.from_curcy_nm?)
+or (s.sub_curcy_exch_rate_finder.to_curcy_cd? and s.sub_curcy_exch_rate_finder.to_curcy_nm?)
+or (s.from_curcy_cd? and s.from_curcy_nm?)
+or (s.to_curcy_cd? and s.to_curcy_nm?))) every $ else false)) every $ else false)
+or (if (i.connection?) i.connection map ((c) -> 
+(c.service_connection_id? and c.finder?)
+or (c.connection_type_id? and c.connection_type_name?)
+or (c.connection_number_type_name? and c.connection_number_type_id?)) every $ else false)) else false)) every $]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="f249a1b7-5816-46ca-b13b-f71bf82b303d" >
+			<when expression="#[vars.validations]">
+				<set-variable value="#[400]" doc:name="Http status" doc:id="52032220-f8be-41c7-8bf7-848ea1154275" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform Message" doc:id="adf74338-ae23-4f77-8d21-142cc764ed3f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD_REQUEST",
+  "message": {
+    "message": "Check for uniqueness in request body"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": "salesforce-xapi-services",
+      "message": "org.mule.runtime.api.exception.DefaultMuleException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to Orchestrator" doc:id="c2c88e45-db79-4c8b-9ada-963ee63d06ca" name="post-invokeServiceProvisioning-orchestratorSub_Flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

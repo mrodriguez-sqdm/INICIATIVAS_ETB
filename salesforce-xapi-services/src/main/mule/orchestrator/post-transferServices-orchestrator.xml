@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-transferServices-orchestratorSub_Flow" doc:id="261ad9b8-a56e-4e84-9544-08c4e370e660" >
+		<choice doc:name="Validate Reenvio" doc:id="8fe5b4de-c6ba-498b-a51b-4d35b0109cf0" >
+			<when expression='#[vars.inputPayload.ProcessData.ProcessingType == "Reenvio"]'>
+				<flow-ref doc:name="Go to reenvio" doc:id="a7196a88-5c25-48cf-84bb-2e6d300e20fa" name="post-transferServices-reenvio"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to default" doc:id="20e28ff7-454b-40b6-a230-4e6702bf43a4" name="post-transferServices-default"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-transferServices-reenvio" doc:id="4650dfce-ded5-48e3-a148-0cadb88a3c91" >
+		<choice doc:name="Process Revchain" doc:id="e9af807b-5803-4c0b-a5fd-1a43c4e683d9" >
+			<when expression='#[vars.inputPayload.ProcessData.RVC == "1"]'>
+				<ee:transform doc:name="Prepare input" doc:id="b1451f60-4a84-46d5-8d58-136412cb5f8a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var actualDate = now() as Date
+---
+{
+  "wsInvokeServiceProvisioningIN": {
+    "services": {
+      "service_particulars": [
+        {
+          "subscriber_id": vars.inputPayload.TransferServicesSystemsBody.SubscriberId,
+          "service": [
+            {
+              "action": "transfer", //property
+              "finder": {
+                "external_service_id": vars.inputPayload.TransferServicesSystemsBody.ExtServiceId, 
+                "active_date": {
+                  "month": actualDate.month as String, 
+                  "day": actualDate.day as String,
+                  "year": actualDate.year as String
+                }
+              },
+              "service_transfer": {
+                "transfer_type": "0", //property
+                "transfer_to_subscriber": vars.inputPayload.TransferServicesSystemsBody.SubscriberIdNew,
+                "transfer_date": {
+                  "month": actualDate.month as String, 
+                  "day": actualDate.day as String,
+                  "year": actualDate.year as String
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to Revchain" doc:id="a6927a5b-06f4-4d92-a1cd-991881de5d1d" name="revchain-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Prepare revchain output" doc:id="738c040f-38e7-49c2-bc0f-e87c9a1ef2cc" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="revchainOutput" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+      "TransferServiceRVCResponse": {
+      	  "Code": "0",
+      	  "Description": "Success",
+          "response": {
+              "operation": payload.InvokeServiceProvisioningOutput.BodyResponse.response.operation,
+              "system": "Mulesoft",
+              "result": payload.InvokeServiceProvisioningOutput.BodyResponse.response.result,
+              "faults": [
+              	{
+                  "subscriber_id": vars.inputPayload.TransferServicesSystemsBody.SubscriberId,
+                  "fault_detail": {
+                      "error_description": "success",
+                      "error_code": "0"
+                  }
+              	}
+              ]
+          }
+      }
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="#[null]" doc:name="Revchain not processed" doc:id="499c7141-8137-48b3-8e35-dc8fb7cc4bea" variableName="revchainOutput"/>
+			</otherwise>
+		</choice>
+		<choice doc:name="Process MDM" doc:id="0af47e2c-2c28-4dad-812c-965e23502d9f" >
+			<when expression='#[vars.inputPayload.ProcessData.MDM == "1"]'>
+				<ee:transform doc:name="Prepare input" doc:id="c5f1a785-9a1a-413f-a4ba-beadfbfcd5ca">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "servicio": vars.inputPayload.TransferServicesSystemsBody.ExtServiceId,
+  "cuentaFacturacionOrigen": vars.inputPayload.TransferServicesSystemsBody.SubscriberId,
+  "cuentaFacturacionDestino": vars.inputPayload.TransferServicesSystemsBody.SubscriberIdNew,
+  "nroDocClienteOrigen": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentNumber,
+  "nroDocClienteDestino": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentNumberNew,
+  "tipoDocumentoClienteOrigen": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentType,
+  "tipoDocumentoClienteDestino": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentTypeNew
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<try doc:name="Try" doc:id="b85bac5f-dba8-4490-823a-b50145ab9320" >
+					<flow-ref doc:name="Go to MDM" doc:id="a89f90fd-cd53-47a9-832a-7ad90db8972e" name="post-trasladoServiciosCuentaClienteyFacturacion-client" />
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="5d3dad7a-38ea-42f9-9841-7cc852b443b9" >
+							<ee:transform doc:name="Set error" doc:id="66f42065-de8c-4648-a9a5-8225ce59dc45" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "codigo": "-1",
+    "descripcion": "Error"
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<ee:transform doc:name="Prepare mdm output" doc:id="27314d69-0635-48f1-ab0e-6416dd42e40e" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="mdmOutput" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="#[null]" doc:name="MDM not processed" doc:id="ec35c6d5-20b9-4618-80be-84ad09e36abf" variableName="mdmOutput" />
+			</otherwise>
+		</choice>
+		<choice doc:name="Process JSC" doc:id="9ad7d184-288d-4670-bc96-94e074ccc796" >
+			<when expression='#[vars.inputPayload.ProcessData.OCS == "1"]' >
+				<ee:transform doc:name="Prepare input" doc:id="880173be-eca5-46b9-90eb-c991f0acd1b7" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "documentType": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentTypeNew,
+  "documentNumber": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentNumberNew,
+  "billingAccountNumber": vars.inputPayload.TransferServicesSystemsBody.SubscriberIdNew,
+  "PAM": vars.inputPayload.TransferServicesSystemsBody.NewCycle as String,
+  "integrationId": vars.inputPayload.TransferServicesSystemsBody.ExtServiceId,
+  "msisdn": vars.inputPayload.TransferServicesSystemsBody.SubscriberNumber
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<ee:transform doc:name="Prepare jsc output" doc:id="8bc638a8-7297-4dbb-b687-84c5f941cd79">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="jscOutput"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<try doc:name="Try" doc:id="600756a5-a887-4b62-ba1c-0eab97231c7c" >
+					<flow-ref doc:name="Go to JSC" doc:id="4ff45b94-e160-4312-b9fe-2c78e175f285" name="cambioSuscriptorLTECorp-clientSub_Flow" />
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="243aced5-0a2a-48bd-8d8f-5aa052033941" >
+							<logger level="INFO" doc:name="Logger" doc:id="b39ca62f-76bf-4d7a-a2d2-29228c4953d4" message="#[error]" category="catch_jsc_change" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise >
+				<set-variable value="#[null]" doc:name="JSC not processed" doc:id="935945e5-6396-4243-be5c-cbcd58cf57ee" variableName="jscOutput" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Prepare output" doc:id="0ce7fba3-578a-4174-a0a1-1daae451b832">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if ((vars.revchainOutput == null) and (vars.mdmOutput == null) and (vars.jscOutput == null))
+{
+	"ResponseData": {
+	  "TransferServiceRVCResponse": {
+            "Code": "-1",
+            "Description": "Nada que ejecutar"
+        },
+        "TransferServiceMDMResponse": {
+            "codigo": "-1",
+            "descripcion": "Nada que ejecutar"
+        },
+        "TransferServiceJSCResponse": {
+            "code": "-1",
+            "description": "Nada que ejecutar"
+        }
+    }
+}
+else
+{
+    "ResponseData": (vars.revchainOutput default {}) ++ 
+    (if(vars.mdmOutput != null) {
+        "TransferServiceMDMResponse": vars.mdmOutput
+    } else {}) ++ 
+    (if(vars.jscOutput != null) {
+        "TransferServiceJSCResponse": vars.jscOutput default {}
+    } else {})
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-transferServices-default" doc:id="864bf0cf-b84e-4035-8364-9467bbb905d4" >
+		<ee:transform doc:name="Prepare input" doc:id="205b9da0-d146-4f7f-ab56-4fe650aca40f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var actualDate = now() as Date
+---
+{
+  "wsInvokeServiceProvisioningIN": {
+    "services": {
+      "service_particulars": [
+        {
+          "subscriber_id": vars.inputPayload.TransferServicesSystemsBody.SubscriberId,
+          "service": [
+            {
+              "action": "transfer", //property
+              "finder": {
+                "external_service_id": vars.inputPayload.TransferServicesSystemsBody.ExtServiceId, 
+                "active_date": {
+                  "month": actualDate.month as String, 
+                  "day": actualDate.day as String,
+                  "year": actualDate.year as String
+                }
+              },
+              "service_transfer": {
+                "transfer_type": "0", //property
+                "transfer_to_subscriber": vars.inputPayload.TransferServicesSystemsBody.SubscriberIdNew,
+                "transfer_date": {
+                  "month": actualDate.month as String, 
+                  "day": actualDate.day as String,
+                  "year": actualDate.year as String
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Revchain" doc:id="70dd66b3-f4e3-415e-8d87-9960f9317aa0" name="revchain-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Prepare revchain output" doc:id="97c1aac4-0a4c-4184-83b3-85d15252c6a3" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="revchainOutput" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+      "TransferServiceRVCResponse": {
+      	  "Code": "0",
+      	  "Description": "Success",
+          "response": {
+              "operation": payload.InvokeServiceProvisioningOutput.BodyResponse.response.operation,
+              "system": "Mulesoft",
+              "result": payload.InvokeServiceProvisioningOutput.BodyResponse.response.result,
+              "faults": [
+              	{
+                  "subscriber_id": vars.inputPayload.TransferServicesSystemsBody.SubscriberId,
+                  "fault_detail": {
+                      "error_description": "success",
+                      "error_code": "0"
+                  }
+              	}
+              ]
+          }
+      }
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="8dab475e-c73c-44af-8cf5-8ff9bd5df3c7" >
+			<when expression='#[vars.revchainOutput.TransferServiceRVCResponse.Code == "0"]'>
+				<ee:transform doc:name="Prepare input MDM" doc:id="e7625d69-8a52-4ff7-905d-3598c1e42b92" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "servicio": vars.inputPayload.TransferServicesSystemsBody.ExtServiceId,
+  "cuentaFacturacionOrigen": vars.inputPayload.TransferServicesSystemsBody.SubscriberId,
+  "cuentaFacturacionDestino": vars.inputPayload.TransferServicesSystemsBody.SubscriberIdNew,
+  "nroDocClienteOrigen": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentNumber,
+  "nroDocClienteDestino": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentNumberNew,
+  "tipoDocumentoClienteOrigen": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentType,
+  "tipoDocumentoClienteDestino": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentTypeNew
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to MDM" doc:id="4e83d63b-b560-4014-ba66-4a6a9582c47f" name="post-trasladoServiciosCuentaClienteyFacturacion-client" />
+				<ee:transform doc:name="Prepare mdm output" doc:id="f5c76987-864b-4d97-8bb2-20ea56f0e955" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="mdmOutput" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="d8d8141d-6e11-486c-9a3f-9688e62b0ef4" >
+					<when expression='#[vars.inputPayload.TransferServicesSystemsBody.IsLTEService == "Y"]'>
+						<try doc:name="Try" doc:id="cc420df3-1013-4780-a26b-c0fa03373004" >
+							<ee:transform doc:name="Prepare input JSC" doc:id="b145b79d-eac4-4dd5-a2b7-b641540efdc2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "documentType": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentTypeNew,
+  "documentNumber": vars.inputPayload.TransferServicesSystemsBody.ClientDocumentNumberNew,
+  "billingAccountNumber": vars.inputPayload.TransferServicesSystemsBody.SubscriberIdNew,
+  "PAM": vars.inputPayload.TransferServicesSystemsBody.NewCycle as String,
+  "integrationId": vars.inputPayload.TransferServicesSystemsBody.ExtServiceId,
+  "msisdn": vars.inputPayload.TransferServicesSystemsBody.SubscriberNumber
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+							<ee:transform doc:name="Prepare jsc output" doc:id="9b9a1cb9-cad3-4279-8e19-ac7186e2487b">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="jscOutput"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+							<flow-ref doc:name="Go to JSC" doc:id="3cb2a652-845b-409a-b8c1-e3bfbfa11b8b" name="cambioSuscriptorLTECorp-clientSub_Flow" />
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="408544e0-0972-4e38-a1c1-931b2107101f" >
+									<logger level="INFO" doc:name="Logger" doc:id="1b84a6fe-5fcb-47a1-a12f-5b04ba813f4e" message="#[error]" category="catch_jsc_change"/>
+								</on-error-continue>
+							</error-handler>
+						</try>
+					</when>
+					<otherwise >
+						<set-variable value="#[null]" doc:name="JSC not processed" doc:id="15bc1bfa-f11b-4da8-8c87-d77256c6971f" variableName="jscOutput" />
+					</otherwise>
+				</choice>
+			</when>
+		</choice>
+		<ee:transform doc:name="Prepare output" doc:id="aa2503cf-31c8-4a0c-825f-e1d137bbfc1a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "ResponseData": (vars.revchainOutput default {}) ++ 
+    ({
+        "TransferServiceMDMResponse": vars.mdmOutput default {}
+    }) ++ 
+    (if(vars.jscOutput != null) {
+        "TransferServiceJSCResponse": vars.jscOutput default {}
+    } else {})
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

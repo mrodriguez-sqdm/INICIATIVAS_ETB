@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-migrated-orchestratorSub_Flow" doc:id="b3f55e0a-c13a-4e64-97e3-59fce069b64b" >
+		<flow-ref doc:name="Go to mongo client" doc:id="85aa0cc5-26de-46e8-a9d8-1383d0f2856f" name="get-active-service-client"/>
+		<ee:transform doc:name="Map Out" doc:id="b0726762-315b-4ac9-990e-136f63785cdf" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var activeSerice = (payload filter upper($.Estado) != p("global.inactivo"))[0]
+---
+if(!isEmpty(activeSerice))
+	do{
+		var characteristic = (activeSerice.Caracteristica_Servicio filter $.Caracteristica == p("global.migrado"))[0].Valor
+		---
+		if (!isEmpty(characteristic))
+		{
+			code: "OK",
+			description: "Successful",
+			characteristic: characteristic
+		}else
+		{
+			code: "OK",
+			description: "Successful",
+			characteristic: "true"
+		}
+	}
+else
+{
+	"status": 404,
+	"code": "FAIL",
+	"messageServer": "Record not found in MDM_SERVICIO_ACTIVO",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value='#[if(payload.code == "OK") 200 else 404]' doc:name="httpStatus" doc:id="509138c2-c767-47c1-a45d-1140171e537d" variableName="httpStatus"/>
+	</sub-flow>
+</mule>
