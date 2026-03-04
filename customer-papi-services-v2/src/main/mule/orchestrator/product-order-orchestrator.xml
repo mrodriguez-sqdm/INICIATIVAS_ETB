@@ -274,6 +274,447 @@ output application/json
 		</choice>
 		
 	</sub-flow>
+	<sub-flow name="product-order-update-orchestratorSub_Flow" doc:id="f13e1c46-63b4-4525-b757-5bda95027bd6" >
+		<ee:transform doc:name="Set Varaibles Headers - RequestOrder" doc:id="90696d6d-59cc-4bb0-87e8-23a7c2c1f1d6" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="requestOrder" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Set Request Get Order" doc:id="b6033c2c-76d7-4f8b-ae23-d20367f847b7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var collection = if(payload.category == "LTE") "MDM_ORDEN" else "MDM_CD_ORDEN"
+
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: {
+		  "query": {
+		    "aggregate": collection,
+		    "pipeline": [
+		      {
+		        // Envolvemos el resultado en un $match para que Mongo filtre
+		        "\$match": {
+		        	"Numero_Orden" : vars.requestOrder.orderNumber
+		        }
+		      }
+		    ],
+		    "cursor": {}
+		  }
+		},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="487758a1-27b7-44a4-b820-b8df4831587f" name="generic-sapi-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="07c22657-db99-4836-a896-da836b41bbd3" >
+			<when expression="#[!isEmpty(payload.result)]">
+				<ee:transform doc:name="Respuesta Error" doc:id="09fe55e4-d77c-4580-af06-364e42f0b4ca" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var collection = "MDM_REGLAS_ORDEN"
+
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: {
+		  "query": {
+		    "aggregate": collection,
+		    "pipeline": [
+		      {
+		        // Envolvemos el resultado en un $match para que Mongo filtre
+		        "\$match": {
+		        	"Numero_Orden" : vars.requestOrder.orderNumber
+		        }
+		      }
+		    ],
+		    "cursor": {}
+		  }
+		},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="4e7eee20-e91e-46d6-b709-48c9c49d8b73" name="generic-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="f426b673-8773-43b5-a950-1fa17ae166e5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var reglas = payload.result[0].Reglas_Aplicadas
+
+---
+reglas filter ((regla) -> 
+    regla.esValido == false 
+)]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Validacion de reglas" doc:id="dc12adaa-c0af-4ec7-8546-183bfb0ddb3b" name="product-order-validate-rules-orchestratorSub_Flow" />
+				<choice doc:name="Choice" doc:id="66b18a3d-df4b-4c0b-82ef-19efc0bb3e68" >
+					<when expression="#[(vars.reglasAcumuladas map ((regla) -&gt; (regla.esValido == false and regla.obligatoria == true))) contains true]">
+						<ee:transform doc:name="Respuesta Error" doc:id="359b772c-3e9b-4c8f-a44c-7b84425d05d6" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "500",
+	messageResponse: "Error Updated Order",
+	order: {
+		rulesApplied: vars.reglasAcumuladas map (regla) -> {
+			idRule: regla.idRegla,
+	        isValid: regla.esValido,
+	        mandatory: regla.obligatoria,
+	        detailedEvaluation: regla.evaluacionDetallada map (detalle) -> {
+	            compared: detalle.comparacion,
+	            description: detalle.descripcion,
+	            mandatory: detalle.obligatoria,
+	            result: detalle.resultado
+	        },
+	        
+	        responseRule: {
+	            code: regla.respuestaRegla.codigo,
+	            message: regla.respuestaRegla.mensaje
+	        }
+	    }
+	}
+	
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables />
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Transform Message" doc:id="943e1b9e-38b7-497f-b323-27363cc04ae6" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "200",
+	messageResponse: "Order Update Success",
+	order: {}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Respuesta Error" doc:id="90282bb2-866e-4822-bbde-7e0a1d6b435c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "200",
+	messageResponse: "Order not found",
+	order: {}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="product-order-get-orchestratorSub_Flow" doc:id="754816aa-e8f6-4a9c-b2ec-80b1c7114b3e" >
+		<ee:transform doc:name="Set Variables" doc:id="11d24d32-082c-4175-a8cd-4583d93ab863" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="parameters" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams]]></ee:set-variable>
+				<ee:set-variable variableName="approvals" ><![CDATA[%dw 2.0
+output application/java
+---
+readUrl("classpath://approvals.json", "application/json")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="21c53501-89d0-4818-aa90-e49cd96ab67c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="c4873f23-066d-4b8c-92ff-2222cae72764" >
+			<when expression='#[isEmpty(keysOf(payload.filtros default {}) map ($ as String) -- (vars.approvals.parametro default []))]'>
+				<ee:transform doc:name="Transform Message" doc:id="18a9de5b-975a-4f17-87ce-f0145661eab6">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// 1. Diccionario
+var configMap = (vars.approvals default []) reduce (item, acc = {}) -> 
+    acc ++ { (item.parametro): item }
+
+// 2. Filtros Validados
+var filtrosValidos = (payload.filtros default {} mapObject (v, k) -> {
+    (k): {
+        valor: v,
+        config: configMap[k as String]
+    }
+}) filterObject ($.config != null)
+
+// 3. Agrupación
+var filtrosAgrupados = filtrosValidos groupBy ($.config.contenedor)
+
+// 4. Construcción del objeto Match corregida
+var matchLogic = (
+    (if(!isEmpty(vars.parameters.ORDER_NUMBER))
+        {"Numero_Orden": vars.parameters.ORDER_NUMBER} else {}
+    )
+    ++
+    (if (filtrosAgrupados.root != null) 
+        filtrosAgrupados.root mapObject (v, k) -> {
+            (v.config.valor): if (v.config.tipoDato == "number") v.valor as Number
+                             else if (v.config.usaRegex == true) { "\$regex": v.valor, "\$options": "i" }
+                             else v.valor
+        } 
+    else {})
+    ++ 
+    ((filtrosAgrupados -- ["root"] mapObject (filtros, nombreContenedor) -> {
+        (nombreContenedor): {
+            "\$all": filtros pluck (v) -> {
+                "\$elemMatch": {
+                    "parametro": v.config.valor,
+                    "valor": if (v.config.tipoDato == "number") v.valor as Number
+                             else if (v.config.usaRegex == true) { "\$regex": v.valor, "\$options": "i" }
+                             else v.valor
+                }
+            }
+        }
+    }) default {}) // Asegura que si no hay bundles, devuelva objeto vacío y no null
+)
+
+---
+{
+    "query": {
+        "aggregate": "MDM_CD_ORDEN",
+        "pipeline": [
+            {
+                "\$match": matchLogic
+            },
+            {
+                "\$skip": (vars.parameters.OFFSET default 0) as Number
+            },
+            {
+                "\$limit": (vars.parameters.LIMIT default 10) as Number
+            }
+        ],
+        "cursor": {}
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="dd1c9125-b10a-46b7-b89d-4587997d16ff" message="#[payload]"/>
+				<ee:transform doc:name="Set Request Get Order" doc:id="15fd5fa1-9927-4050-a432-2368b1ed7a84" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: payload,
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="a81011df-fb0d-45e5-9c73-dfdcf9eff277" name="generic-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="da495e7d-c14b-4c39-bdba-cdbcd8cce3e2" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// --- Funciones de utilidad ---
+var cliente = payload.result[0].Cliente_Tramite
+var ordenServicio = payload.result[0].Orden_Servicio
+var direccionPrincipal = (cliente.Direcciones filter ($.Seleccionada == true))[0]
+var agendamiento = payload.result[0].Agendamiento
+
+---
+{
+    code: "200",
+    messageResponse: "Orden Encontrada exitosamente",
+    order: {
+        id: payload.result[0]."_id"."\$oid",
+        createdAt: payload.result[0].Fecha_Creacion."\$date",
+        updatedAt: payload.result[0].Fecha_Modificacion."\$date",
+        updatedBy: payload.result[0].Usuario_Modificacion,
+        createdBy: payload.result[0].Usuario_Creacion,
+        extractorUpdate: payload.result[0].Actualizacion_Extractor,
+        orderNumber: payload.result[0].Numero_Orden,
+        channel: payload.result[0].Canal,
+        description: payload.result[0].Estado_Orden_Comercial.Descripcion,
+        priority: payload.result[0].Estado_Orden_Comercial.Descripcion, // Mapeado según ejemplo destino
+        phase: payload.result[0].Fase,
+        through: {
+            throughType: payload.result[0].Tramite.Tipo_Tramite,
+            throughSubtype: payload.result[0].Tramite.Subtipo_Tramite default "",
+            throughDate: payload.result[0].Tramite.Fecha_Tramite."\$date",
+            reconnectionDate: "",
+            suspensionDate: "",
+            executionDate: payload.result[0].Tramite.Fecha_Tramite."\$date",
+            keepConnectionNumber: false,
+            permanenceClause: true,
+            permanenceClauseValue: 0,
+            cancellationReason: "",
+            cancellationDate: ""
+        },
+        orderService: {
+            id: ordenServicio.Id_Orden_Servicio,
+            orderDate: ordenServicio.Fecha_Orden_Servicio."\$date",
+            // Mapeo dinámico de servicios
+            services: ordenServicio.Servicios map (svc) -> {
+                serviceId: svc.Id_Servicio,
+                name: svc.Nombre,
+                action: svc.Accion,
+                productType: svc.Tipo_Producto,
+                isBundle: if (svc.Nombre == "BUNDLE") true else false,
+                attributes: svc.Atributos map (attr) -> {
+                    name: attr.Nombre,
+                    value: attr.Valor
+                }
+            }
+        },
+        customer: {
+            firstName: cliente.Nombres,
+            middleName: "",
+            firstLastName: cliente.Primer_Apellido,
+            secondLastName: cliente.Segundo_Apellido,
+            fullName: trim((cliente.Nombres default "") ++ " " ++ (cliente.Primer_Apellido default "") ++ " " ++ (cliente.Segundo_Apellido default "")),
+            documentType: cliente.Tipo_Documento,
+            documentNumber: cliente.Numero_Documento,
+            email: cliente.Email,
+            mobile: cliente.Telefono_Movil,
+            segment: cliente.Segmento
+        },
+        address: {
+            addressId: 0, // No presente en origen, se inicializa
+            fullAddress: direccionPrincipal.Direccion_Normalizada,
+            city: direccionPrincipal.Municipio,
+            department: direccionPrincipal.Departamento,
+            stratum: direccionPrincipal.Cobertura.Estrato as String,
+            technology: direccionPrincipal.Cobertura.Tecnologia
+        },
+        scheduling: {
+            appointmentDate: agendamiento.Fecha_Agenda."\$date",
+            appointmentSlot: agendamiento.Franja_Agenda,
+            workType: "F.O. (HSI/VOIP)", // Valor estático según ejemplo destino
+            duration: "130",
+            hasAppointment: if (!isEmpty(agendamiento.Fecha_Agenda)) true else false,
+            activityId: agendamiento.IdActividad
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			
+</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="924b86c4-2f1b-400a-b9dd-a3f52e9c78c1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var llavesFiltro = keysOf(payload.filtros default {}) map ($ as String)
+var listaAprobados = vars.approvals.parametro default []
+var faltantes = llavesFiltro -- listaAprobados
+---
+{
+    "codeResponse": "200",
+    "responseMessage": "Existen filtros no homologados",
+    "invalid_filters": faltantes
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
 	<sub-flow name="product-order-validate-rules-orchestratorSub_Flow" doc:id="2e2a5501-2313-41e1-8af2-f5cd6b25df57" >
 		<ee:transform doc:name="Inicializacion de Variables" doc:id="5457211f-9c75-4d18-b252-76b4db2f18e0" >
 			<ee:message >
