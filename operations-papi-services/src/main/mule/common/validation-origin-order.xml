@@ -36,6 +36,22 @@ var keyObjectStore =
     normalizeOrigin ++ "_" ++ baseKey
 ---
 keyObjectStore]]></ee:set-variable>
+				<ee:set-variable variableName="orderNumberValidation" ><![CDATA[%dw 2.0
+output application/json
+
+var ordNmbr =
+    if (!isEmpty(attributes.uriParams.idServiceAccount default ""))
+        attributes.uriParams.idServiceAccount
+    else if (!isEmpty(attributes.uriParams.orderNumber default ""))
+        attributes.uriParams.orderNumber
+    else if (!isEmpty(payload.orderNumber default ""))
+        payload.orderNumber
+    else if (!isEmpty(payload.idServiceAccount default ""))
+        payload.idServiceAccount
+    else
+        ""
+---
+ordNmbr]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
 		<flow-ref doc:name="Contains Result Key Value" doc:id="90d5325e-5b0a-4ae7-9352-9c5e0a83dd44" name="get-key-order-number-Sub-Flow" target="resultOS" />
@@ -51,9 +67,12 @@ keyObjectStore]]></ee:set-variable>
 					<ee:variables >
 						<ee:set-variable variableName="filterResultDB" ><![CDATA[%dw 2.0
 output application/json
-var mayorista = vars.resultDB.Servicio_Tramite.Caracteristica_Servicio filter ($.Caracteristica == "MAYORISTA")
+
+var firstResult = vars.resultDB[0] default {}
+
+var mayorista = firstResult.Servicio_Tramite.Caracteristica_Servicio filter ($.Caracteristica == "MAYORISTA")
 ---
-((mayorista[0].Valor default "") ++ "_" ++ (vars.resultDB.Numero_Orden default "")) == (vars.result default "")
+((mayorista[0].Valor default "") ++ "_" ++ (firstResult.Numero_Orden default "")) == (vars.result default "")
 ]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
@@ -62,7 +81,7 @@ var mayorista = vars.resultDB.Servicio_Tramite.Caracteristica_Servicio filter ($
 				<logger level="INFO" doc:name="Logger" doc:id="eaae9621-226e-4f58-a832-a71af269bb34" message="The Data Base contains a record for the request origin and order." />
 			</when>
 			<otherwise>
-				<raise-error doc:name="Raise error" doc:id="e17b0e86-771a-4150-bb43-a515c5a79a35" type="MDM:INVALID_DATA" description="Error trying to validate origin or order information."/>
+						<raise-error doc:name="Raise error" doc:id="e17b0e86-771a-4150-bb43-a515c5a79a35" type="MDM:INVALID_DATA" description="Error trying to validate origin or order information."/>
 			</otherwise>
 		</choice>
 			</otherwise>
