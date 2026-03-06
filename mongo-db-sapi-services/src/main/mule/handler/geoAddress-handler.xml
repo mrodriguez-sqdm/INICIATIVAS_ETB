@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-geoAddress-handlerSub_Flow" doc:id="8ab35915-f369-4a31-a644-eeef5e161d22" >
+		<set-variable value="#[%dw 2.0&#10;output application/java&#10;var qs = attributes.queryParams&#10;---&#10;if (qs.limit == null or not (qs.limit?))&#10;  null&#10;else if (qs.limit as Number == 0)&#10;  0&#10;else&#10;  qs.limit as Number]" doc:name="Set limit" doc:id="limit-variable" variableName="queryLimit" />
+		<set-variable value="#[attributes.queryParams.address as String]" doc:name="Set address input" doc:id="set-address-input-var" variableName="addressInput" />
+		<set-variable value="ADDRESS_CARDINAL_EXPANSION" doc:name="Set cache key" doc:id="set-cache-key-var" variableName="osEntry" />
+		<ee:cache doc:name="Cache cardinal expansion parameters" doc:id="cache-cardinal-expansion" cachingStrategy-ref="Caching_Strategy">
+			<flow-ref doc:name="Get cardinal expansion parameters" doc:id="get-cardinal-expansion-params-ref" name="get-cardinalExpansion-parameters-clientSub_Flow" target="cardinalExpansionRules" />
+		</ee:cache>
+		<ee:transform doc:name="Query address with parameterized cardinal expansion" doc:id="b80ee232-e2aa-4bcf-8f67-606b2d5cfee2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var qs = attributes.queryParams
+var addressInput = vars.addressInput
+var expansionRules = vars.cardinalExpansionRules default []
+
+// Función PARAMETRIZADA para expandir puntos cardinales abreviados (S→SUR, N→NORTE, E→ESTE, O→OESTE)
+// Las reglas se obtienen dinámicamente desde MDM_CD_PARAMETRO
+// Esto permite que diraprox de Catastro (ej: "CL 69 S 11D 15 E") 
+// haga match con Direccion_Contingente en MongoDB (ej: "CL69SUR11D15ESTE")
+fun expandCardinalsDynamic(address: String, rules: Array) = 
+    if (sizeOf(rules) > 0)
+        // Aplicar cada regla secuencialmente según el orden definido en los parámetros
+        rules reduce ((rule, acc = address) -> 
+            acc replace rule.Pattern with rule.Replacement
+        )
+    else
+        // Fallback: si no hay parámetros, aplicar reglas por defecto (backwards compatibility)
+        address 
+            replace /\bS\s/ with "SUR "
+            replace /\sS\s/ with " SUR "
+            replace /\sS$/ with " SUR"
+            replace /\bN\s/ with "NORTE "
+            replace /\sN\s/ with " NORTE "
+            replace /\sN$/ with " NORTE"
+            replace /\bE\s/ with "ESTE "
+            replace /\sE\s/ with " ESTE "
+            replace /\sE$/ with " ESTE"
+            replace /\bO\s/ with "OESTE "
+            replace /\sO\s/ with " OESTE "
+            replace /\sO$/ with " OESTE"
+
+// Expandir cardinales usando las reglas parametrizadas, luego quitar espacios para crear el pattern de búsqueda
+var expandedAddress = expandCardinalsDynamic(addressInput, expansionRules)
+var addressPattern = ((expandedAddress splitBy " ") joinBy "")
+---
+{
+  Direccion_Contingente: {
+    '\$regex': "^" ++ addressPattern,
+    '\$options': "i"
+  },
+  Id_Municipio: qs.cityId as String
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to orchestrator" doc:id="de3eb84f-3dc4-4e81-9efe-183f68394eec" name="get-geoAddress-orchestratorSub_Flow" />
+	</sub-flow>
+	<sub-flow name="patch-geoAddress-handlerSub_Flow" doc:id="ab7b2050-78ec-4045-86b5-ba761ac08197" >
+		<flow-ref doc:name="Go to orchestrator" doc:id="f2d66684-35c2-4759-9e17-822f23b7f1d6" name="patch-geoAddress-orchestratorSub_Flow" />
+	</sub-flow>
+	<sub-flow name="post-geoAddress-handlerSub_Flow" doc:id="post-geo-address-handler-subflow" >
+		<flow-ref doc:name="Go to orchestrator" doc:id="post-geo-address-orchestrator-ref" name="post-geoAddress-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="get-geoAddressId-handlerSub_Flow" doc:id="get-geo-address-id-handler-subflow" >
+		<ee:transform doc:name="Transform URI param to query" doc:id="get-geo-address-id-transform-query">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Id_Address: attributes.uriParams.addressId
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to orchestrator" doc:id="get-geo-address-id-orchestrator-ref" name="get-geoAddressId-orchestratorSub_Flow"/>
+	</sub-flow>
+	<sub-flow name="delete-geoAddress-handlerSub_Flow" doc:id="delete-geo-address-handler-subflow" >
+		<flow-ref doc:name="Go to orchestrator" doc:id="delete-geo-address-orchestrator-ref" name="delete-geoAddress-orchestratorSub_Flow"/>
+	</sub-flow>
+</mule>
