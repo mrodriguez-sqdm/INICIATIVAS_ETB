@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-notifyPortability-orchestratorSub_Flow" doc:id="6bd55879-1be6-4993-876f-2a2c2ded1b70" >
+		<flow-ref doc:name="Get Token" doc:id="87d9bf54-ee98-4b13-a8cf-e8b9f75acbce" name="get-salesforce-token-clientSub_Flow" target="token_response" />
+		<ee:transform doc:name="Transform to text/xml" doc:id="a730cf73-6036-4ddc-8aa8-44a8027e0f1b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns lte http://soap.sforce.com/schemas/class/LTE_PortabilidadEntrante_ws
+fun appendNamespace(data, nsSelector) =
+  data match {
+    case is Array -> data map appendNamespace($, nsSelector)
+    case is Object -> data mapObject do {
+      var ns0 = nsSelector
+      ---
+      if (ns0 != null) ns0#"$($$)": appendNamespace($, nsSelector)
+      else ($$): appendNamespace($, nsSelector)
+    }
+    else -> data
+}
+---
+{
+soapenv#Envelope:{
+    soapenv#Header:{
+        lte#AllowFieldTruncationHeader:{
+            lte#allowFieldTruncation:true
+        },
+        lte#SessionHeader:{
+            lte#sessionId:vars.token_response.access_token default ""
+        }
+    },
+    soapenv#Body: appendNamespace(payload, lte)
+ }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call to Servicios Portability" doc:id="9ac6a873-81c0-4c31-ae43-5c3d2b29a549" name="portability-clientSub_Flow" />
+		<ee:transform doc:name="Prepare Output" doc:id="e34a56ce-5834-4736-b62e-c4ab9c25a95b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.Envelope.Body]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

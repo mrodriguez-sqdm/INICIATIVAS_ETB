@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-viability-orchestrator" doc:id="dccd95c8-272c-48d7-a6ae-533601e275f4" >
+		<set-variable value="#[payload.ordenOM]" doc:name="OrdenOM" doc:id="e40354fe-564f-437e-95e1-05d9d533c329" variableName="ordenOM" />
+		<flow-ref doc:name="Get Order" doc:id="17cc2534-0f9d-493c-900f-e9171d20a2e6" name="obtain-order" target="responseOrderById" />
+		<set-variable value="#[vars.responseOrderById.resultados[0].correlationId]" doc:name="correlationId" doc:id="5e925010-a108-4a42-82e3-0cd3126c6d3b" variableName="correlationId" />
+		<ee:transform doc:name="Set body request to salesforce" doc:id="b2600988-861f-4c7f-8abf-663f513b8857">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import util::GlobalFunctions as global
+---
+{
+  "orderOM": payload.ordenOM,
+  ("opportunityId": payload.opportunityId) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("ActualizarUrlsRecursos")),
+  ("tipoSolicitud": if (upper(payload.tipoSolicitud) == "VIABILIDAD") (payload.tipodeViabilidad) else payload.tipoSolicitud) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("ActualizarUrlsRecursos")),
+  "listaViabilidad": [
+    {
+      ("viabilidad": payload.identificador) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("ActualizarUrlsRecursos")),
+      ("estadoGestor": payload.estadoGestor) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud")),	
+      "estadoViabilidad": "",
+      ("faseGestor": payload.faseSolicitud) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+      ("grupoAsignacion": payload.grupoAsignacion) if (upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+      ("fechaFinalEstado": global::formatDate(payload.fechaProcesamiento) default null) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("ActualizarUrlsRecursos")),
+      ("ingeniero": payload.responsable) if (upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+      ("correoIngeniero": payload.correoIngeniero) if (upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+      ("fechaAsignacionResponsable": now() >> "America/Bogota") if (upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+      ("respuestadeviabilidad": payload.estadoSolicitud) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+      ("respuestaGestor": payload.respuestaGestor) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+      ("tipodeViabilidad": payload.tipodeViabilidad) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("ActualizarUrlsRecursos")),
+      ("archivos": payload.urlsRecursos map {
+      	"nombre": $.key,
+      	"URL": $.value
+      }) if (upper(payload.proceso) == upper("ActualizarUrlsRecursos"))
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="resp_via_sf"><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "opportunityId": if (payload.proceso == "actualizarEstadoSolicitud" or payload.proceso == "actualizarGrupoPropietario") (payload.opportunityId) else "",
+  "tipoSolicitud": if (payload.proceso == "actualizarEstadoSolicitud" or payload.proceso == "actualizarGrupoPropietario") (if (payload.tipoSolicitud == "VIABILIDAD") (payload.tipodeViabilidad) else payload.tipoSolicitud) else "",
+  "listaViabilidad": [
+    {
+      "viabilidad": if (payload.proceso == "actualizarEstadoSolicitud" or payload.proceso == "actualizarGrupoPropietario") payload.identificador else "",
+      "estadoGestor": if (payload.proceso == "actualizarEstadoSolicitud") payload.estadoGestor else "",	
+      "estadoViabilidad": "",
+      "faseGestor": if (payload.proceso == "actualizarEstadoSolicitud") payload.faseSolicitud else "",
+      "fechaFinalEstado": if (payload.proceso == "actualizarEstadoSolicitud" or payload.proceso == "actualizarGrupoPropietario") payload.fechaProcesamiento else "",
+      "ingeniero": if (payload.proceso == "actualizarGrupoPropietario") payload.responsable else "",
+      "respuestadeviabilidad": if (payload.proceso == "actualizarEstadoSolicitud")payload.estadoSolicitud else "",
+      "respuestaGestor": if (payload.proceso == "actualizarEstadoSolicitud")payload.respuestaGestor else "",
+      "tipodeViabilidad": if (payload.proceso == "actualizarEstadoSolicitud" or payload.proceso == "actualizarGrupoPropietario") payload.tipodeViabilidad else ""
+    }
+  ]
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="5cbcdd3c-4bef-4b91-ab97-1c896bea6475" name="viability-clientSub_Flow" />
+		<logger level="INFO" doc:name="Logger" doc:id="6bc54cab-79f4-49b7-84d2-88af7661994f" message="#[payload]" />
+	</sub-flow>
+</mule>
