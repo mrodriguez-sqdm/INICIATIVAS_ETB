@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="operations-papi-services-main">
+        <http:listener path="/operations/*" config-ref="operations-papi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call capture log vars" doc:id="b3e194df-d770-41f8-a799-3e7d7dd5c31b" name="processAndSystem-logginSub_Flow" />
+        <apikit:router config-ref="operations-papi-services-config" />
+        <error-handler ref="error-handlerError_Handler" />
+    </flow>
+    <flow name="operations-papi-services-console">
+        <http:listener path="/console/*" config-ref="operations-papi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="operations-papi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\cuestionario:application\json:operations-papi-services-config" doc:id="d274ec3f-fdff-45d9-bd18-b8827629d2b9">
+        <flow-ref doc:name="Go to handler" doc:id="202fe49c-2876-43fb-9d88-b25b1af2d978" name="post-cuestionario-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\portabilitySP:application\json:operations-papi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="2cfcd06a-44c8-425a-8447-94022a98d660" name="post-portability-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\productOrder:application\json:operations-papi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="00f3b69f-146a-4349-b5d8-73f8a9e2253d" name="post-productOrder-handlerFlow" />
+    </flow>
+    <flow name="patch:\v1\processId:application\json:operations-papi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="baae497e-7893-4a9f-95e4-b71c66ff6cd0" name="patch-processId-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\portabilityPP:application\json:operations-papi-services-config" doc:id="bdf76bc9-3cfd-4f37-89d9-242ea1200040">
+        <flow-ref doc:name="Go to hanlder" doc:id="c9eb126f-d06b-484e-8c90-105706629477" name="post-portabilityPP-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\portabilityRSPD:application\json:operations-papi-services-config">
+        <flow-ref doc:name="Flow Reference" doc:id="bc7dc750-5a1c-44e9-887d-d06eb12d37f0" name="post-portabilityRSPD-handler" />
+    </flow>
+    <flow name="post:\v1\order:application\json:operations-papi-services-config" doc:id="7c6119ce-aebe-4cb7-b2de-d8fdf814fc6a">
+        <flow-ref doc:name="Go to Handler" doc:id="d749571c-a2c7-484e-b1d2-82e597855c70" name="post-order-handlerFlow" />
+    </flow>
+    <flow name="post:\v1\viability:application\json:operations-papi-services-config" doc:id="53061610-a9f5-4c5e-a0d0-0d1f8502caa9">
+        <choice doc:name="Source == salesforce-xapi-services?" doc:id="c5c29f04-8683-4b6b-bdcb-0adc78dc1782">
+            <when expression="#[attributes.headers.source == 'salesforce-xapi-services']">
+                <choice doc:name="Choice" doc:id="da4ad3d1-0c77-4078-b6d7-45803bfc7cfe">
+                    <when expression="#[&quot;TRUE&quot;==&quot;TRUE&quot;]">
+                        <ee:transform doc:name="Transform Message" doc:id="940f257f-a66c-4855-bdd4-b40c8dd37d95">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+"PROCESO VIABILIDAD DESDE SF DESHABILITADO TEMPORALMENTE"]]></ee:set-payload>
+                            </ee:message>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <flow-ref doc:name="Go to Handler (SF) - DESAHHIBILITADO TEMPORALMENTE" doc:id="defda4a3-9dd4-4651-b191-e0c6fa182e9a" name="post-productOrderState-salesforce-handler" />
+                    </otherwise>
+                </choice>
+            </when>
+            <otherwise>
+                <flow-ref doc:name="Go to Handler" doc:id="36ee03d1-85c2-461f-ad88-e2312282e057" name="post-viability-handlerFlow" />
+            </otherwise>
+        </choice>
+    </flow>
+    <flow name="post:\v1\viability\notification:application\json:operations-papi-services-config" doc:id="4f5514ed-b7be-4aad-b6e1-7c73a600ddd6">
+        <flow-ref doc:name="Go to Handler" doc:id="39ceacc1-4fdd-4434-8be0-f2f0569a0bb6" name="post-viability-notification-handlerFlow" />
+    </flow>
+    <flow name="post:\v1\provisioning\notification:application\json:operations-papi-services-config" doc:id="df10a1d6-0003-414d-b6a0-7677efb5ea18">
+        <flow-ref doc:name="Go to Handler" doc:id="34d3674c-b4f5-4af1-8533-b155bf8c6a29" name="post-provisioning-notification-handlerFlow" />
+    </flow>
+    <flow name="post:\v1\provisioning:application\json:operations-papi-services-config" doc:id="475c139f-8c58-460e-be8b-19bec02f86e2">
+        <choice doc:name="Source == salesforce-xapi-services?" doc:id="bdaf0fbc-646e-4f06-b651-2141c9152a65">
+            <when expression="#[attributes.headers.source == 'salesforce-xapi-services']">
+                <flow-ref doc:name="Go to Handler" doc:id="ea6c4212-a137-4a14-ba6a-f76a7f6fd749" name="post-productOrderState-salesforce-handler" />
+            </when>
+            <when expression="#[attributes.headers.source == 'gestor-xapi-services']">
+                <flow-ref doc:name="Go to Handler" doc:id="ef987942-49a4-4fa0-9f29-c293f822ff04" name="post-provisioning-handlerFlow" />
+            </when>
+            <otherwise>
+                <ee:transform doc:name="Not valid header source" doc:id="593ea3c7-ff99-4bcc-a67b-e93e55787098">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Error: "Not valid header.source - options: gestor-xapi-services and salesforce-xapi-services"
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+                <logger level="INFO" doc:name="Log headers" doc:id="fc8d11a6-e740-49da-aaca-25d1e34882a7" message="#[&quot;header.source: &quot; ++ attributes.headers.source]" />
+            </otherwise>
+        </choice>
+    </flow>
+    <flow name="post:\v1\interaction\coverage:application\json:operations-papi-services-config" doc:id="54973de6-9373-4d0d-bd38-560a9cd39f5e">
+        <flow-ref doc:name="get_loggerVariables" doc:id="485b21cf-7ab8-46d8-b0c1-1bf1ce024b04" name="get_loggerVariables" />
+        <flow-ref doc:name="post-interactionCoverage-handlerSub_Flow" doc:id="93a9ae0b-403b-41d8-b2d8-4f5941bb6ad1" name="post-interactionCoverage-handlerSub_Flow" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="68f0fd98-eb6a-4a65-8d4b-01c9fd505f24" name="loggerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\availability\(orderNumber):application\json:operations-papi-services-config">
+        <flow-ref doc:name="get_loggerVariables" doc:id="22031286-55f1-48b2-ae3c-f7819a54731b" name="get_loggerVariables" />
+        <flow-ref doc:name="post-availability-order-handler" doc:id="88fbaa9c-4a06-4bc4-85ad-f036e608de47" name="post-availability-order-handler" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="969244c3-d5ef-4f6d-bbbb-790e501c942d" name="loggerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\inventory\(idServiceAccount):operations-papi-services-config">
+        <flow-ref doc:name="get-inventory-handler" doc:id="2ce06b26-018b-41dd-8398-12098bb38d11" name="get-inventory-handler" />
+    </flow>
+    <flow name="post:\v1\coverages\details:application\json:operations-papi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="d9637e18-7654-4561-9ec5-f9267bf8e2cf" name="post-getCoverage-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\borrowing-capacities:application\json:operations-papi-services-config" doc:id="157b6c5d-a548-45fe-8957-964c5db4882f">
+        <flow-ref doc:name="Go to Handler" doc:id="56983e5e-046d-49c0-8af8-a1290b688752" name="post-consultNegQuota-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\incident:application\json:operations-papi-services-config">
+        <flow-ref doc:name="get_loggerVariables" doc:id="6e1ea58d-8380-482a-9529-3a02eeced78e" name="get_loggerVariables" />
+        <flow-ref doc:name="post-incident-handlerSub_Flow" doc:id="38bc1ba0-8159-4154-adb9-85bbff1b3d0a" name="post-incident-handlerSub_Flow" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="cc709c42-e6f3-4dc7-a960-44ea430a8660" name="loggerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\delivery\manageReconnect:application\json:operations-papi-services-config">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  UpdateOrderResponse: {
+    OrderID: "a094y00000Y4W2ZAAV",
+    Status: "COMPLETE"
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+    <flow name="post:\v1\cancelOrder:application\json:operations-papi-services-config">
+        <flow-ref doc:name="get_loggerVariables" doc:id="72be8235-b8c5-47c6-a7af-d32f29453886" name="get_loggerVariables" />
+        <flow-ref doc:name="post-cancel-order-handler" doc:id="7b51e6f9-c067-4f8f-b0c6-faf32efd038d" name="post-cancel-order-handler" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="e491a14c-c997-4ede-9df7-6bfee78de8c1" name="loggerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\provisioning\confirm:application\json:operations-papi-services-config" doc:id="a7649d5a-dc96-4dc6-b18d-713b235eaa70">
+        <flow-ref doc:name="get_loggerVariables" doc:id="aa0db127-d3ac-47e2-9e0b-ded9c3650989" name="get_loggerVariables" />
+        <flow-ref doc:name="post-confirmProvisioning-handler" doc:id="fbc78d0f-4354-432e-a2d4-8042cc12be9a" name="post-confirmProvisioning-handlerSub_Flow" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="449c7521-3366-45f7-8f6a-01df9c6caa53" name="loggerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\interaction\cancelService:application\json:operations-papi-services-config">
+        <flow-ref doc:name="get_loggerVariables" doc:id="d262825e-626c-4475-8b2d-1bad58e7650f" name="get_loggerVariables" />
+        <flow-ref doc:name="post-interactionCancelService-handlerSub_Flow" doc:id="1bf703d0-fd40-4ece-b5b3-f4b0867ca3f1" name="post-interactionCancelService-handlerSub_Flow" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="21d4501a-c870-4ff1-80c2-c4663850d45a" name="loggerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\interaction\changeSpeed:application\json:operations-papi-services-config">
+        <flow-ref doc:name="get_loggerVariables" doc:id="270853e3-3ba8-4ac9-9b6b-4b6eece3c7d5" name="get_loggerVariables" />
+        <flow-ref doc:name="post-interactionChangeSpeed-handlerSub_Flow" doc:id="a13b74ba-92ce-41ce-844e-41c3855cb8b1" name="post-interactionChangeSpeed-handlerSub_Flow" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="1287992e-d2da-47ba-88b0-990aee91431a" name="loggerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\provisionings:application\json:operations-papi-services-config">
+        <flow-ref doc:name="get_loggerVariables" doc:id="b91335b7-e397-4955-afee-aa9289ea9cd4" name="get_loggerVariables" />
+        <flow-ref doc:name="post-provisionings-handler" doc:id="c664c755-86b7-4c09-89fe-53111131030d" name="post-provisionings-handler" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="1e132a5b-4e8b-4bfe-a0af-0ad79033bfe8" name="loggerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\incident\(ticketNumber):operations-papi-services-config" doc:id="800c98f4-4e99-4cd6-a074-2453c8e759b7">
+        <flow-ref doc:name="get_loggerVariables" doc:id="fb65f50f-933b-4c5a-a47c-151b4a487f33" name="get_loggerVariables" />
+        <flow-ref doc:name="Flow Reference" doc:id="1db2afee-c70a-4459-bf9a-bfa94aebe09c" name="get-incidentTicketNumber-handler" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="bc817fac-376a-4265-857e-8f869100fad8" name="loggerSub_Flow" />
+    </flow>
+    <flow name="post:\sendNotification\(campania):application\json:operations-papi-services-config">
+        <flow-ref doc:name="post-sendNotification-handlerSub_Flow" doc:id="47bcb576-3a36-4742-8fe2-b56a6f7a0595" name="post-sendNotification-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\order\(numOrden):application\json:operations-papi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="bf6813ed-9e55-4909-88a3-e875d2357563" name="patch-orders-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\subscription\replacement:application\json:operations-papi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="bad56532-de61-4fed-9983-df2901090c2f" name="post-subscription-replacement-handlerSub_Flow"/>
+    </flow>
+    <flow name="post:\v1\interaction\changeONT:application\json:operations-papi-services-config">
+        <flow-ref doc:name="get_loggerVariables" doc:id="c0e58a64-d679-4c0b-990b-3fb5ed02b3ca" name="get_loggerVariables" />
+        <flow-ref doc:name="Go to Handler" doc:id="897e8a69-8e06-4f6b-8312-acb1c392ca38" name="post-interactionChangeONT-handlerSub_Flow" />
+        <flow-ref doc:name="loggerSub_Flow" doc:id="e76e3eb6-564d-4c2a-afa8-0bfb8e88dfda" name="loggerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\omnicanalidad\interaction:operations-papi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="bae81d39-fe5b-4d4b-a181-6fadbb59fb27" name="get-omnicanalidadInteraction-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\omnicanalidad\interaction:application\json:operations-papi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="f8668cb9-1b1d-45b7-9f74-4995bbd173c8" name="post-omnicanalidadInteraction-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\omnicanalidad\interaction:operations-papi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="bb5c2b5a-0a92-4488-9f27-50658644ee23" name="patch-omnicanalidadInteraction-handlerSub_Flow"/>
+    </flow>
+	<flow name="post:\v1\esim\solicitarQResim:application\json:operations-papi-services-config" doc:id="68fd1a5f-18b7-435e-96e0-285dbde05904" >
+		<flow-ref doc:name="Flow Reference" doc:id="95ebf9aa-85bb-43a7-b954-46ee5406e996" name="post-solicitarQResim-handlerSub_Flow"/>
+	</flow>
+
+</mule>

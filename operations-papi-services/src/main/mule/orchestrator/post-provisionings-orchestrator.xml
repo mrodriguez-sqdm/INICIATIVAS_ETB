@@ -1,0 +1,579 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-provisionings-orchestrator" doc:id="06f394b0-de90-4cc4-976e-a4fbae9b299e">
+		<flow-ref doc:name="getOrderByOrderNumber" doc:id="583c3686-e98b-4f7b-99e4-9470a081c57d" name="getOrderByOrderNumber" />
+		<choice doc:name="Choice" doc:id="6db31f67-e632-4dff-8a63-ac7ae5ac6f13">
+					<when expression='#[%dw 2.0 output application/json --- vars.orderData[0].Orden_Activacion.Estado_Orden.Codigo == "40" and vars.inputPayload.transactType == "Commit"]'>
+						<ee:transform doc:name="Set success response" doc:id="cda7aa5a-baeb-4fe9-9840-ebe7567d6a5c">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": vars.orderData[0]."Estado_Orden_Comercial"."Codigo",
+  "orderNumber": vars.orderData[0]."Numero_Orden",
+  "description": vars.orderData[0]."Estado_Orden_Comercial"."Descripcion",
+  "serviceAccount": vars.orderData[0]."Servicio_Tramite"."Id_Cuenta_Servicio",
+  "activationDate": vars.orderData[0]."Estado_Orden_Comercial"."Fecha"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables />
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="set order variables" doc:id="eff0dd83-748d-40ee-b08e-21ce5ace51e3">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="estadoOrden"><![CDATA[%dw 2.0
+output application/json
+---
+vars.orderData[0].'Estado_Orden_Comercial'.Codigo]]></ee:set-variable>
+						<ee:set-variable variableName="servicioRed"><![CDATA[%dw 2.0
+output application/json
+---
+vars.orderData[0]."Orden_Activacion".Servicios filter ((item, index) -> item.Nombre == "ACCESO DE RED")]]></ee:set-variable>
+						<ee:set-variable variableName="servicioRedHijo"><![CDATA[%dw 2.0
+output application/json
+---
+flatten((vars.orderData[0].'Orden_Activacion'.Servicios filter ((s, index) -> s.Nombre == "ACCESO DE RED")).'Servicios_Hijos') filter ((sh, index) -> sh.Nombre == "ONT/DSL") default []]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+						<flow-ref doc:name="Go to analyze retries" doc:id="73480b39-35c0-483b-a8cd-c01015798250" name="Analyze-for-retry" />
+					</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="Analyze-for-retry" doc:id="fbcf9381-edec-4391-8867-2ce9297c254b" >
+		<choice doc:name="Choice" doc:id="5b600c23-f478-4cc4-81aa-bd3fb8d265fe" >
+			<when expression="#[isEmpty(vars.orderData[0].Caracteristica_Orden filter ($.Caracteristica == 'ESTADO_PROCESAR_ORDEN'))]">
+				<flow-ref doc:name="Go to normal flow" doc:id="fa669a18-4087-4625-b280-3675d7ead080" name="patch-order-transactionType"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to retry manager" doc:id="8af2cbf4-6c50-4a6b-9427-55a952f0b470" name="retryFlow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="patch-order-transactionType" doc:id="22306994-50dd-4850-b2a7-dd1bed301572">
+		<choice doc:name="Choice" doc:id="89912038-3340-482f-816c-ff70a19c66ee">
+			<when expression='#[vars.estadoOrden == "O90" and sizeOf(vars.servicioRed) &gt; 0 and sizeOf(vars.servicioRedHijo) &gt; 0]'>
+				<set-variable value="#[false]" doc:name="Set var for error provisioning" doc:id="9105fcd7-e18e-4b35-8ecc-527b8b54991a" variableName="errorProvisioning" />
+				<flow-ref doc:name="Get-statusDescription" doc:id="fb9ed748-b808-48c2-8ab1-929f3ca57ed0" name="Get-statusDescription" />
+				<flow-ref doc:name="get-ontype-from-parameters" doc:id="61ccb9e2-5d29-4b13-a62d-2222c2026c79" name="get-ontype-from-parameters" />
+			</when>
+			<when expression='#[vars.estadoOrden == "O95" and lower(vars.inputPayload.transactType) == "commit"]'>
+				<set-variable value="#[true]" doc:name="Set var for error provisioning" doc:id="df1ee14b-14ab-499c-befe-3faac88e45f4" variableName="errorProvisioning" />
+				<flow-ref doc:name="get-ontype-from-parameters" doc:id="d137a838-580d-434a-b784-1bcd20d5d469" name="get-ontype-from-parameters" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="set error Response" doc:id="a42541f4-3ab6-4ec5-9d91-86649c20b01f">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": "El estado de orden no es el correcto"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/json
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-ontype-from-parameters" doc:id="484691e2-3556-4d07-aa6a-555f1ab2d22d">
+		<ee:transform doc:name="set typeParameter" doc:id="335a981f-8ae5-48f9-8f63-b7550ec630a1">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="typeParameter"><![CDATA[%dw 2.0
+output application/java
+---
+p('typeParameter.provisionings')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<flow-ref doc:name="Get ModeloONT" doc:id="a4713bbe-7b46-400c-9f29-90fa44b84283" name="getTypeParameter" />
+		<ee:transform doc:name="Get ontType" doc:id="1d19077d-e34c-456e-bea6-36e2bf8dad98">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="ontType"><![CDATA[%dw 2.0
+output application/java
+---
+(payload[0].Valores filter ($.Codigo == vars.inputPayload.ontType)).Nombre[0]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<choice doc:name="Choice" doc:id="630a7fdf-9352-412a-816f-4f6e1909c35e">
+					<when expression="#[isEmpty(vars.ontType)]">
+						<ee:transform doc:name="set error Response" doc:id="dbe4bc50-64f4-4692-8b57-ea307eb5f23a">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": "Modelo ONT no se encuentra homologado, por favor validar"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<flow-ref doc:name="patch-orderByNumber" doc:id="69dd5c83-30e9-41d5-8aa8-18e047f5b02a" name="patch-orderByNumber" />
+					</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="Get-statusDescription" doc:id="a1e39a0f-a761-4bf7-a3e1-18364a277246" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="2103a60c-1402-436a-b300-bf5691ce66d1">
+					<route>
+						<ee:transform doc:name="set status request servicio_activacion" doc:id="a4b3fe19-a2fb-4614-a267-bbd0f3bcf125">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var statusCode = p('mongo-sapi-services.orders.rollbackProcess')
+---
+{
+	status: [statusCode]
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="orderType"><![CDATA[%dw 2.0
+output application/java
+---
+p('interaction-params.serviceTypeActivacion')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+						<flow-ref doc:name="mongo-sapi-post-statusDescription" doc:id="ea9d8b00-90bf-4023-a33c-8dfe2d0c3f76" name="mongo-sapi-post-statusDescription" />
+					</route>
+					<route>
+						<ee:transform doc:name="set status request orden_activacion" doc:id="dee8e3ba-a3cd-4306-abe4-7c13bf6d21a3">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var statusCode = p('mongo-sapi-services.orders.activationProcess')
+---
+{
+	status: [statusCode]
+}
+]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="orderType"><![CDATA[%dw 2.0
+output application/java
+---
+p('interaction-params.orderTypeActivacion')]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="mongo-sapi-post-statusDescription" doc:id="3ea5e64f-2b94-4023-96c2-9c8504e8f922" name="mongo-sapi-post-statusDescription" />
+					</route>
+				</scatter-gather>
+		<ee:transform doc:name="Transform Message" doc:id="049f6306-de77-405a-ac97-c61007a10a0b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload pluck (    
+        "$$" : $.payload
+)]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<ee:transform doc:name="get vars statusDescription" doc:id="07d25eb4-ffdf-498f-900f-69c18d238e76" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="statusDescription" ><![CDATA[%dw 2.0
+output application/java
+---
+payload[0 to (sizeOf(payload) as Number - 1)] map {
+    status : $."$$".response[0].status,
+    description: $."$$".response[0].description
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="patch-orderByNumber" doc:id="f902605d-08bb-4f05-95ff-4b9596749e06" >
+		<ee:transform doc:name="set orderStatus" doc:id="72f4edcc-9bb9-46fa-ba4e-9c5d1fabe6c5">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="orderStatus"><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+var serviceIndex = indexOf(vars.orderData[0].'Orden_Activacion'.Servicios.Nombre, "ACCESO DE RED")
+var childServiceIdx = indexOf(vars.orderData[0].'Orden_Activacion'.Servicios[serviceIndex].Servicios_Hijos.Nombre, "ONT/DSL")
+---
+{
+	"serial": vars.inputPayload.serial default "",
+	"transactionType": lower(vars.inputPayload.transactType),
+    "ontType": vars.ontType,
+    "serviceIndex": serviceIndex,
+    "childServiceIndex": childServiceIdx,
+    "codeService": p('mongo-sapi-services.orders.rollbackProcess'),
+    "descriptionService": (vars.statusDescription filter $.status == p('mongo-sapi-services.orders.rollbackProcess')).description[0],
+    "codeOrder": p('mongo-sapi-services.orders.activationProcess'),
+    "descriptionOrder": (vars.statusDescription filter $.status == p('mongo-sapi-services.orders.activationProcess')).description[0],
+    "errorProvisioning": vars.errorProvisioning,
+    ("serialOld": vars.inputPayload.serialOld) if (!isBlank(vars.inputPayload.serialOld)),
+    ("ontTypeOld": vars.inputPayload.ontTypeOld) if (!isBlank(vars.inputPayload.ontTypeOld))
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<flow-ref doc:name="patchOrderByOrderNumber" doc:id="7bb53a74-a1d2-4ecd-9ded-baabd95b6812" name="patchOrderByOrderNumber" />
+		<choice doc:name="Choice" doc:id="2f0d77b7-af65-49a7-b757-09f70680d832">
+					<when expression='#[vars.httpStatus == 500]'>
+						<ee:transform doc:name="set error Response" doc:id="7b25fff5-986f-43c5-b5c3-1aa85e05bc27">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": payload.response.result.description
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+					</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<flow-ref doc:name="orquestadorService-process-order-provisioning" doc:id="601e65d8-2123-46b5-bb38-08d4fbc2444f" name="orquestadorService-process-order-provisioning" />
+					</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="orquestadorService-process-order-provisioning" doc:id="6e41995c-5662-4ca8-a28e-0133429e68dc" >
+		<choice doc:name="Restaurar?" doc:id="d8337ac7-1676-4e7e-b178-2882b11431c7" >
+			<when expression="#[vars.errorProvisioning]">
+				<ee:transform doc:name="set orchestrator request" doc:id="b8a04224-1449-4626-973d-5e3b0ee3e726" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="orquestatorRequest" ><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://tempuri.org/
+ns ns01 http://www.etb.com.co/orquestador
+ns ns02 http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Solicitudes
+---
+{
+	ns0#RestaurarProcesoOrden: {
+		ns0#solicitudOrden: {
+			ns01#Encabezado: {
+				ns01#Sistema: {
+					ns01#IdCorrelacion: vars.orderNumber,
+					ns01#Nombre: p('orquestador.tecnologia'),
+					ns01#Servidor: p('orquestador.servidor')
+				}
+			},
+			ns02#DatosSolicitud: {
+				ns01#NumeroOrden: vars.orderNumber,
+                ns01#Proceso: true,
+                ns01#EjecutarProceso: true,
+                ns01#IdServicio: vars.orderData[0].Orden_Activacion.Servicios.Id_Servicio,
+                ns01#ContinuarServicio: false,
+				ns01#Orquestar: true
+			}
+		}
+	}
+}]]></ee:set-variable>
+						<ee:set-variable variableName="orquestadorOperation" ><![CDATA[%dw 2.0
+output application/java
+---
+p('orquestador.operation.restaurarOrden')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Restore Order" doc:id="c4b64f8a-0982-4c10-88ba-b2c32040a9f8" name="post-availability-order-client" />
+				<set-variable value="#[payload.RestaurarProcesoOrdenResponse]" doc:name="Set RestoreOrderResponse" doc:id="8e795a20-eef0-4036-8485-ae4db9d114df" variableName="orquestadorProvisioningResponse"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="set orchestrator request" doc:id="f7948692-6793-4a4a-8896-218073676e76">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="orquestatorRequest"><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://tempuri.org/
+ns ns01 http://www.etb.com.co/orquestador
+---
+{
+	ns0#ProcesarOrden: {
+		ns0#solicitudOrden: {
+			ns01#Encabezado: {
+				ns01#Propiedades: {
+					ns01#Propiedad: {
+						ns01#Nombre: "",
+						ns01#Valor: ""
+					}
+				},
+				ns01#Sistema: {
+					ns01#IdCorrelacion: vars.orderNumber,
+					ns01#Nombre: p('orquestador.tecnologia'),
+					ns01#Servidor: p('orquestador.servidor')
+				}
+			},
+			ns01#DatosSolicitud: {
+				ns01#EstadoOrden: vars.estadoOrden,
+				ns01#NumeroOrden: vars.orderNumber,
+				ns01#Tramite: vars.orderData[0].Tramite.'Tipo_Tramite', //vars.tipoTramite,
+				ns01#UsuarioEvento: ""
+			}
+		}
+	}
+}]]></ee:set-variable>
+						<ee:set-variable variableName="orquestadorOperation" ><![CDATA[%dw 2.0
+output application/java
+---
+p('orquestador.operation.procesarOrden')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="Process Order" doc:id="0fe78531-9355-4afe-be48-54b3413225a0" name="post-provisioning-order-client" />
+				<set-variable value="#[payload.ProcesarOrdenResponse]" doc:name="Set ProcessOrderResponse" doc:id="9c8d254d-5643-4787-b590-3ac14c0d9699" variableName="orquestadorProvisioningResponse" />
+			</otherwise>
+		</choice>
+		<choice doc:name="Error aprovisionamiento?" doc:id="6e7bcf69-6c7f-4383-9b32-612d86a4cc31">
+					<when expression="#[vars.orquestadorProvisioningResponse.Resultado.Estado.Codigo == 'O95']">
+						<flow-ref doc:name="getOrderByOrderNumber" doc:id="394339ae-f39c-426e-b102-f1cf211734fa" name="getOrderByOrderNumber" />
+						<ee:transform doc:name="set response" doc:id="dfdcf244-52cf-4bbe-b875-61e5744e6953">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var statusEncabezado = vars.orquestadorProvisioningResponse.Resultado.Encabezado.Servicio.Estado
+var detalleEncabezado = vars.orquestadorProvisioningResponse.Resultado.Encabezado.Servicio.DetalleEstado
+var status = vars.orquestadorProvisioningResponse.Resultado.Estado.Codigo default ""
+var detalle = vars.orquestadorProvisioningResponse.Resultado.Estado.Descripcion default ""
+var fechaActivacion = vars.orquestadorProvisioningResponse.Resultado.Estado.Fecha default ""
+---
+if(statusEncabezado == "OK")
+{
+  "status": status,
+  "orderNumber": vars.orderNumber,
+  "description": if (vars.orderData[0].Orden_Activacion.Estado_Orden.Codigo == '35') vars.orderData[0].Orden_Activacion.Comandos_Ejecutados[-1].primaryKey else detalle,
+  "serviceAccount": vars.orderData[0]."Servicio_Tramite"."Id_Cuenta_Servicio", //vars.serviceAccount,
+  "activationDate": fechaActivacion
+}
+else
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": detalleEncabezado
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/json
+var status = vars.orquestadorProvisioningResponse.Resultado.Encabezado.Servicio.Estado
+---
+if(status == "OK") 201 else 500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="set response" doc:id="e992ae0f-12e8-4972-90b7-fed190455d2e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var statusEncabezado = vars.orquestadorProvisioningResponse.Resultado.Encabezado.Servicio.Estado
+var detalleEncabezado = vars.orquestadorProvisioningResponse.Resultado.Encabezado.Servicio.DetalleEstado
+var status = vars.orquestadorProvisioningResponse.Resultado.Estado.Codigo default ""
+var detalle = vars.orquestadorProvisioningResponse.Resultado.Estado.Descripcion default ""
+var fechaActivacion = vars.orquestadorProvisioningResponse.Resultado.Estado.Fecha default ""
+---
+if(statusEncabezado == "OK")
+{
+  "status": status,
+  "orderNumber": vars.orderNumber,
+  "description": detalle,
+  "serviceAccount": vars.orderData[0]."Servicio_Tramite"."Id_Cuenta_Servicio", //vars.serviceAccount,
+  "activationDate": fechaActivacion
+}
+else
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": detalleEncabezado
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/json
+var status = vars.orquestadorProvisioningResponse.Resultado.Encabezado.Servicio.Estado
+---
+if(status == "OK") 201 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+					</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="checkStates" doc:id="8ab37d60-99b9-41c6-9c5a-f9c4ae937ff2" >
+		<ee:transform doc:name="Capture order states" doc:id="ddfd21e0-07a8-43a7-bfaa-6c1aae015dfa" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="ordenComercial" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.orderData[0].Estado_Orden_Comercial.Codigo]]></ee:set-variable>
+				<ee:set-variable variableName="ordenActivacion" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.orderData[0].Orden_Activacion.Estado_Orden.Codigo]]></ee:set-variable>
+				<ee:set-variable variableName="ordenServicio" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.orderData[0].Orden_Servicio.Estado_Orden.Codigo]]></ee:set-variable>
+				<ee:set-variable variableName="servicioAcceso" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.orderData[0].Orden_Activacion.Servicios filter ($.Nombre == "ACCESO DE RED"))[0].Estado_Servicio.Codigo]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Check states" doc:id="48a5dee5-88ec-4509-85d4-0fdff547b90a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if ((vars.ordenComercial == 'O90') and (vars.ordenServicio == '160') and (vars.ordenActivacion == '30') and (vars.servicioAcceso == '40')) 'unchanged' else 'changed']]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<choice doc:name="Choice" doc:id="53ec64b6-4e32-49dc-8381-b32b77f1830c" >
+					<when expression="#[payload == &quot;changed&quot; and vars.servicioAcceso == '50' and vars.ordenActivacion != '30']">
+						<ee:transform doc:name="Prepare output" doc:id="d22b66cc-77ca-427f-b18c-10b10989ce53" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": vars.ordenComercial,
+  "orderNumber": vars.orderNumber,
+  "description": vars.orderData[0].Estado_Orden_Comercial.Descripcion,
+  "serviceAccount": vars.orderData[0]."Servicio_Tramite"."Id_Cuenta_Servicio", //vars.serviceAccount,
+  "activationDate": (now() >> "America/Bogota") as String {format : p('format-date')}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<when expression="#[payload == &quot;changed&quot; and vars.ordenComercial == 'O95' and vars.ordenActivacion == '35']">
+						<ee:transform doc:name="Prepare output" doc:id="3951d3e6-9da0-4ab2-a499-f0e009cfb912" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": vars.ordenComercial,
+  "orderNumber": vars.orderNumber,
+  "description": vars.orderData[0].Orden_Activacion.Comandos_Ejecutados[-1].primaryKey,
+  "serviceAccount": vars.orderData[0]."Servicio_Tramite"."Id_Cuenta_Servicio", //vars.serviceAccount,
+  "activationDate": (now() >> "America/Bogota") as String {format : p('format-date')}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<set-variable value="504" doc:name="Set Variable" doc:id="fadd9c6e-34f6-4c67-b0d3-4280600e5dd1" variableName="httpStatus"/>
+						<raise-error doc:name="Raise error" doc:id="fc064eec-c59e-46bc-b185-4a0602e26d34" type="RETRIES:CONNECTION_ERROR" description="Timed out after several retries" />
+					</otherwise>
+				</choice>
+		<async doc:name="Async" doc:id="e490b920-ca1d-442c-98df-b89de169ece4" >
+			<ee:transform doc:name="orderStatus Remove characteristic" doc:id="4a6ae1ac-7466-4613-85c8-55b172ca36f5">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="orderStatus"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "updateStateCharateristic": "remove",
+    "characteristics": vars.orderData[0].Caracteristica_Orden
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			<flow-ref doc:name="Go to update order" doc:id="c08fb341-ded8-46f2-a2d1-430934549917" name="patchOrderByOrderNumber" target="patchOrderResponse"/>
+		</async>
+	</sub-flow>
+	<sub-flow name="retryFlow" doc:id="e717e9aa-39f9-429d-ae7f-ce1240b13a3e" >
+		<try doc:name="Try" doc:id="80ebe896-ef86-488b-a799-1119cce361f7">
+				<flow-ref doc:name="Check states" doc:id="e7dfc495-e500-48e6-8ec9-86dd39652771" name="checkStates" />
+			<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c9d8ee4d-1f07-48e6-9f47-540fa036659d" type="RETRIES:CONNECTION_ERROR">
+						<ee:transform doc:name="First validation" doc:id="d7ac64e2-ece4-43f9-ba40-f7b8f867193f">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import wait from dw::Runtime
+---
+"First round of checking states" wait 10000]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		<choice doc:name="Choice" doc:id="7f58d546-2d33-4808-860d-66b0841fb5ab" >
+			<when expression='payload == "First round of checking states"'>
+				<until-successful maxRetries="3" doc:name="Until Successful" doc:id="347d588f-969a-4324-92ee-faa429b9fa26" millisBetweenRetries="10000">
+					<flow-ref doc:name="getOrderByOrderNumber" doc:id="84b4e7b6-9f4a-4f97-83c1-4160eeee90cb" name="getOrderByOrderNumber" />
+					<flow-ref doc:name="Check states" doc:id="9db1fb56-d782-4e04-a127-522224e96663" name="checkStates" />
+				</until-successful>
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd">
+	<sub-flow name="post-omnicanalidadInteraction-orchestratorSub_Flow" doc:id="bb3d405b-4a9d-4a96-8ba3-6286c599f9bc" >
+		<try doc:name="Try" doc:id="1eff8271-ece0-4645-b383-bc3cc52e2255">
+			<scatter-gather doc:name="Scatter-Gather" doc:id="f4d7d5b5-ce0e-4c7e-aefb-c69bab2b93f5">
+			<route>
+				<ee:transform doc:name="Request Register interaction" doc:id="66168521-fadb-432e-9d58-e45da26857c8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Id_Iteracion" : vars.inputPayload.ID,
+	"Fecha_Hora" : now() >> "America/Bogota"
+} ++
+vars.inputPayload - "Plantilla" - "Valores_Plantilla" - "ID"]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Register interaction" doc:id="34b28385-1ce3-4339-99dc-f49c81aa3cfc" name="post-omnicanalidadInteraction-clientSub_Flow" />
+			</route>
+			<route>
+				<ee:transform doc:name="Request register log" doc:id="cc5f19e8-30c6-4cd8-922e-6818d826fcf8">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	FechaHoraRegistro: now() >> "America/Bogota",
+	Fecha_Hora : now() >> "America/Bogota",
+	Id_Iteracion: vars.inputPayload.ID
+} ++
+vars.inputPayload -'ID']]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Register log" doc:id="becec008-727d-48a6-83ec-540a28032f0c" name="post-interactionLogs-clientSub_Flow" />
+			</route>
+		</scatter-gather>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="e7c70181-d685-4c9c-aa5a-d96bf03b09fc">
+					<async doc:name="Async" doc:id="6a13c027-cc56-475e-8129-8c596ba9554f">
+						<set-variable value="#[vars.inputPayload.ID]" doc:name="Set idIteracion" doc:id="09813da2-787d-427a-bb6e-fc42741e6a67" variableName="idIteracion" />
+						<flow-ref doc:name="Remove interactions" doc:id="25d2b1a2-21a1-4421-873d-6125ffaba626" name="delete-omnicanalidadInteraction-clientSub_Flow" />
+					</async>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice" doc:id="2dfea4b6-2744-4d17-a882-0c5a92482b72" >
+			<when expression='#[payload."0".payload.codigo == "OK"]'>
+				<ee:transform doc:name="Request Send Notification" doc:id="9c4ac45b-bc69-43e9-b7f3-b5a8ec778a79">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="campania"><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputPayload.Plantilla]]></ee:set-variable>
+						<ee:set-variable variableName="inputPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "tipoDocumento": vars.inputPayload.Tipo_Documento,
+  "numeroDocumento": vars.inputPayload.Numero_Documento,
+  "numeroCelular":vars.inputPayload.Numero_Whatsapp,
+  "nombres": vars.inputPayload.Nombre_Cliente,
+  "apellidos": vars.inputPayload.Apellido_Cliente,
+  "listaTemplate": vars.inputPayload.Valores_Plantilla map ({
+    "textField": $
+	})
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="Send Notification HSM" doc:id="5eec2bf4-5a08-47eb-9547-243a5548404b" name="post-sendNotification-orchestratorSub_Flow" />
+				<choice doc:name="Choice" doc:id="5d01faf7-d7a5-40f4-8290-d5819dc64022" >
+					<when expression='#[payload.codigo == "200"]'>
+						<ee:transform doc:name="Response" doc:id="90cd5f62-3b52-41c7-89db-b1d807461ca1" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "OK",
+	descripcion: "Proceso exitoso"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Response error" doc:id="8a27962c-6805-4b5e-b056-58bbb474ed21" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "ERROR",
+	descripcion: "No se pudo enviar la notificación"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<async doc:name="Async" doc:id="7a6d4dbb-90aa-45cf-a228-6842c1d536a6" >
+							<set-variable value="#[vars.inputPayload.ID]" doc:name="Set idIteracion" doc:id="487daf4c-e133-47da-9c02-dda330b704db" variableName="idIteracion"/>
+							<flow-ref doc:name="Remove interactions" doc:id="6f847413-8203-49b9-8199-ab96ef5adbc0" name="delete-omnicanalidadInteraction-clientSub_Flow"/>
+						</async>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Response error" doc:id="5e8e1c38-774d-46a6-8178-503afc3d800f">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "ERROR",
+	descripcion: "No se pudo registrar la interaccion"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<async doc:name="Async" doc:id="057b3482-aa13-4d06-a28c-ec2d64d677cd">
+					<set-variable value="#[vars.inputPayload.ID]" doc:name="Set idIteracion" doc:id="7fb3c152-f401-4648-b363-65715dc8b586" variableName="idIteracion" />
+					<flow-ref doc:name="Remove interactions" doc:id="007f2cbf-f326-497d-a1b1-3ea3d52e35f2" name="delete-omnicanalidadInteraction-clientSub_Flow" />
+				</async>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-solicitarQResim-orchestratorSub_Flow" doc:id="10f0f572-8a6d-452c-b167-090082473531" >
+		<set-variable value="#[payload.NumeroOrden]" doc:name="Numero_Orden" doc:id="22ee1cb8-0613-4249-a23a-2796b1eabc3c" variableName="Numero_Orden"/>
+		<set-variable value="#[payload.ICCID]" doc:name="ICCID" doc:id="a4affbc9-9359-4940-84a8-ec3f54bb1399" variableName="ICCID"/>
+		<set-variable value="#[payload.enviarCorreo]" doc:name="enviarCorreo" doc:id="c9361d63-9045-4cb7-b38a-2913f52b15a4" variableName="enviarCorreo"/>
+		<flow-ref doc:name="Flow Reference" doc:id="f9e3e6cf-40c1-4bbf-b748-0af1a03f9224" name="get-QResim-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="e4bf22c7-dd84-42b3-9913-7cdf01e1f34a" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="prefix" ><![CDATA[p('azure-sapi-services.esim.prefix') default "" as String]]></ee:set-variable>
+				<ee:set-variable variableName="extension_document" ><![CDATA[p('azure-sapi-services.esim.extension_document') default "" as String]]></ee:set-variable>
+				<ee:set-variable variableName="Nombre_Documento" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.prefix default "" as String) ++ (vars.ICCID default "" as String) ++ (vars.extension_document default "" as String)]]></ee:set-variable>
+				<ee:set-variable variableName="mdm_activacion_esim" ><![CDATA[payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="bd4498a4-c5cf-4e20-90e5-22edb327ac2b" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="Nombre_Documento" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.prefix default "" as String) ++ (vars.ICCID default "" as String) ++ (vars.extension_document default "" as String)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+<!-- 		<flow-ref doc:name="Flow Reference Mongo" doc:id="9ee266ed-7346-43c2-8fcd-0611b66e6a10" name="get-QResim-clientSub_Flow"/> -->
+		<choice doc:name="Choice" doc:id="1e5a8b78-2f8d-4993-92bc-eb9c2f813a06" >
+			<when expression="#[!isEmpty(payload)]">
+				<flow-ref doc:name="Flow Reference Azure" doc:id="641ec1db-16c0-48f0-96d2-37ba1f5aa53e" name="get-esim-QRCode-clientSub_Flow" />
+				 <choice doc:name="Enviar Correo?" doc:id="184af0c2-71b8-4619-ad0b-27849ca56263">
+        <when expression="#[vars.enviarCorreo == true]">
+            <logger level="INFO" doc:name="Logger1" doc:id="406ba0fc-b86d-4ad5-a228-309ea7383db4" message='#[vars.mdm_activacion_esim.ParametrosResponsys[0][?($.Parametro == "EMAIL_ADDRESS_")][0].Valor default ""]' />
+						<ee:transform doc:name="Transform Message" doc:id="64a6e2a7-4ae5-464e-abaa-ebedf8f4e4be">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "canalDifusion": "PortalFija", 
+   "tipoNotificacion": "Exp_Envio_eSIM", 
+   "nombreObjeto": "Automaticas6", 
+   "nombreLista": "Automaticas6", 
+   "atributos": [
+       {
+           "nombre": "EMAIL_ADDRESS_",
+           "valor": vars.mdm_activacion_esim.ParametrosResponsys[0][?($.Parametro == "EMAIL_ADDRESS_")][0].Valor default ""
+       },
+       {
+           "nombre": "URL_BOLETA_DIGITAL",
+           "valor": p('azure-sapi-services.esim.blobEndpoint') ++ vars.ICCID ++ ".png"
+       }
+   ]
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<logger level="INFO" doc:name="Logger" doc:id="4655c12c-432c-4a96-bad8-93421b7c6f18" message="#[payload]"/>
+						<flow-ref doc:name="Enviar Correo Responsys" doc:id="9054a471-1b91-44ba-9b85-230c6f37e072" name="oracle-sapi-client-responsysEnviogeneral-Sub_Flow"/>
+        <choice doc:name="Correo enviado OK?">
+                <when expression="#[(payload.code default -1) == 0]">
+                <ee:transform doc:name="Transform Message - Update Mongo">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    Numero_Orden: vars.Numero_Orden,
+    ICCID: vars.ICCID,
+    EnvioResponsys: true
+}]]></ee:set-payload>
+                        </ee:message>
+                    </ee:transform>
+                    <!-- Actualizar en Mongo -->
+                    <flow-ref doc:name="Actualizar EnvioResponsys" name="patch-qresim-markEmailed-clientSub_Flow" doc:id="ef83e76f-e071-48dc-b616-9c32a412b16f"/>
+                </when>
+                <otherwise>
+                    <logger level="ERROR" 
+                            message="No se pudo enviar correo. Respuesta: #[payload]"/>
+                </otherwise>
+            </choice>
+            
+        </when>
+        <otherwise>
+            <logger level="INFO" 
+                    message="Variable enviarCorreo es false, no se envía correo."/>
+        </otherwise>
+    </choice>
+</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="af5f20d4-2bee-4706-b72c-941f1074c00d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "Sin reserva"
+    },
+    "messageServer": "Sin reserva",
+    "cause": [
+        {
+            "origin": "mongo-db-sapi-services",
+            "message": "Not Data"
+        }
+    ]
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

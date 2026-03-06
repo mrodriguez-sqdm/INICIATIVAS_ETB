@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-getCoverage-orchestratorSub_Flow" doc:id="26180e16-257d-44d2-af22-ee9881ec5ad8" >
+		<flow-ref doc:name="Call to smallWorld-sapi" doc:id="302084e5-b7a9-4381-8b4e-25b2583dcaac" name="getCoverage-initial_call_Sub_Flow"/>
+		<choice doc:name="GeoReference is OK?" doc:id="431c2c16-d38e-49ed-b97f-e895785074d4" >
+			<when expression='#[vars.response1.outputMessage."WSGeorreferenciarCR-RS".GisRespuestaProceso.CodigoRespuesta != null and vars.response1.outputMessage."WSGeorreferenciarCR-RS".GisRespuestaProceso.CodigoRespuesta == "OK"]'>
+				<choice doc:name="GeoReference Enable is OK and Contains DistanceType" doc:id="ac5978bd-cb83-4ba9-bc61-9e3cabadc5e9" >
+					<when expression="#[p('smallworld-sapi.properties.georeferencingEnabled')&#10;and !isBlank(vars.response1.outputMessage.&quot;WSGeorreferenciarCR-RS&quot;.TipoDistancia)&#10;and  contains(p('smallworld-sapi.properties.distanceType'),vars.response1.outputMessage.&quot;WSGeorreferenciarCR-RS&quot;.TipoDistancia)]">
+						<flow-ref doc:name="Call to common-sapi" doc:id="bb9ff3c5-d46a-435a-9b9c-fa2bc34c0dea" name="getCoverage-common-sapiSub_Flow"/>
+					</when>
+				</choice>
+				<flow-ref doc:name="Call to sisext-sapi" doc:id="d43be9d1-3499-4553-be69-30489b457be7" name="getCoverage-sisext-sapi-firstSub_Flow" />
+				<ee:transform doc:name="update Tipo response3" doc:id="b5164162-8db4-4570-8a2f-72b13bc714ac">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="response3" ><![CDATA[%dw 2.0
+output application/json
+import * from dw::util::Values
+---
+vars.response3 update ["wsGetFactibilidadServicios-RS",
+		                "Tecnologias",
+		                "Tecnologia",
+		                "Tipo"]
+        		with if($ == "FIBRA") "FTTH" else $
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Servicios Factibilidad is OK ?" doc:id="d1355ae0-bb18-4c47-849d-85e72a5ca381">
+			<when expression='#[vars.response3."wsGetFactibilidadServicios-RS".GisRespuestaProceso.CodigoRespuesta == "OK"]'>
+				<choice doc:name="TransactionType Contains PRCH or CEST ?" doc:id="37b2c7c9-180b-418d-b414-ad0291793a14">
+					<when expression='#[contains("|PRCH|CEST|","|"++ vars.initialPayload.getCoverageOpInput.wsRequestHeader.property.TransactionType ++ "|")]'>
+						<flow-ref doc:name="Go to Response 200" doc:id="fce8daeb-d7cd-4794-81f3-e14f1cf2188f" name="response200_Sub_Flow1" />
+					</when>
+					<otherwise>
+						<choice doc:name="Tecnologia == FTTH | FTTC ?" doc:id="7873d70f-397a-4c05-b429-64003426479a">
+									<when expression='#[isEmpty(vars.response3."wsGetFactibilidadServicios-RS".Tecnologias.Tecnologia.Tipo filter (upper($) == "FTTH" or upper($) == "FTTC"))]'>
+										<ee:transform doc:name="Funtional Error Response" doc:id="c71e9070-9582-4f3e-9809-342c46a0da4d" >
+											<ee:message >
+												<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "getCoverageOPOutput": {
+    "wsResponseHeader2": {
+      "system": {
+        "name": "Mulesoft",  
+        "correlationID": vars.correlationId, 
+        "processingServer": "Mulesoft" 
+      },
+      "service": {
+        "status": "FAIL", 
+        "responseDate": now(), 
+        "statusDetail": {
+          "errorCode": "COVERR02",
+          "errorMessage": "Dirección sin cobertura FTTC|FTTH"  
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+										<set-variable value="400" doc:name="Set Status to 400 Bad Request" doc:id="f8d5670d-f4d8-4a99-a7e5-22c40f0240b9" variableName="httpStatus" />
+									</when>
+									<otherwise>
+										<flow-ref doc:name="Call to sisext-sapi" doc:id="4d3a0ce5-32ab-4907-9344-0e6e24aa3015" name="getCoverage-sisext-sapi-secondSub_Flow" />
+										<choice doc:name="Feasibility is OK?" doc:id="a02ec107-7b59-4671-ade1-250e2c6e9875">
+							<when expression="#[payload.feasibilityResponse.outputMessage.'M6ConsultarBloquearRecursos-RS'.DetalleRespuesta.Resultado != null and payload.feasibilityResponse.outputMessage.'M6ConsultarBloquearRecursos-RS'.DetalleRespuesta.Resultado == &quot;OK&quot;]">
+								<choice doc:name="Is No Factible and Technology FTTH?" doc:id="3e0bf754-e028-4839-8db8-6c76b0320695">
+									<when expression="#[(upper(payload.feasibilityResponse.outputMessage.'M6ConsultarBloquearRecursos-RS'.RespuestaFactibilidad.Factible) == &quot;NO FACTIBLE&quot;) and (vars.response3.&quot;wsGetFactibilidadServicios-RS&quot;.Tecnologias.Tecnologia.Tipo contains &quot;FTTH&quot;)]">
+														<ee:transform doc:name="Funtional Error Response" doc:id="fd1ee311-41f6-4703-bf82-5d5e262782d0">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "getCoverageOPOutput": {
+    "wsResponseHeader2": {
+      "system": {
+        "name": "Mulesoft",  
+        "correlationID": vars.correlationId, 
+        "processingServer": "Mulesoft" 
+      },
+      "service": {
+        "status": "FAIL", 
+        "responseDate": now(), 
+        "statusDetail": {
+          "errorCode": if(payload.feasibilityResponse.outputMessage.'M6ConsultarBloquearRecursos-RS'.RespuestaFactibilidad.Factible == "NO FACTIBLE") "COVERR03" else "COVERR06",
+          "errorMessage": payload.feasibilityResponse.outputMessage.'M6ConsultarBloquearRecursos-RS'.RespuestaFactibilidad.Motivo
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+														<set-variable value="400" doc:name="Set Status to 400 Bad Request" doc:id="26189ec9-c477-42aa-bfb6-d57f8673f4a0" variableName="httpStatus" />
+									</when>
+													<otherwise>
+														<flow-ref doc:name="Go to Response 200" doc:id="d5bb57aa-7693-456d-98af-31bea5ba758d" name="response200_Sub_Flow1" />
+									</otherwise>
+								</choice>
+							</when>
+							<otherwise>
+								<ee:transform doc:name="Funtional Error Response" doc:id="e4dc63c1-50b8-4bb8-b11f-208aefbf6986">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "getCoverageOPOutput": {
+    "wsResponseHeader2": {
+      "system": {
+        "name": "Mulesoft", 
+        "correlationID": vars.correlationId, 
+        "processingServer": "Mulesoft" 
+      },
+      "service": {
+        "status": "FAIL", 
+        "responseDate": now(),
+        "statusDetail": {
+          "errorCode": "COVERR05",
+          "errorMessage": "Error de integración."
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+										<set-variable value="400" doc:name="Set Status to 400 Bad Request" doc:id="0ca2a00a-c5fb-49cc-8348-5547561a930b" variableName="httpStatus" />
+							</otherwise>
+						</choice>
+									</otherwise>
+								</choice>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Funtional Error Response" doc:id="84c39aa3-21e7-4120-9e91-060bb4fdba78">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "getCoverageOPOutput": {
+    "wsResponseHeader2": {
+      "system": {
+        "name": "Mulesoft",  
+        "correlationID": vars.correlationId, 
+        "processingServer": "Mulesoft" 
+      },
+      "service": {
+        "status": "FAIL", 
+        "responseDate": now(), 
+        "statusDetail": {
+          "errorCode": "COVERR02",
+          "errorMessage": "Dirección sin cobertura"  
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+						<set-variable value="400" doc:name="Set Status to 400 Bad Request" doc:id="536b7f92-6043-4446-88c7-27c374e6b3df" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Funtional Error Response" doc:id="25d907eb-f1b9-4cb1-966e-3538305d454b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "getCoverageOPOutput": {
+    "wsResponseHeader2": {
+      "system": {
+        "name": "Mulesoft",
+        "correlationID": vars.correlationId, 
+        "processingServer": "Mulesoft"
+      },
+      "service": {
+        "status": "FAIL", 
+        "responseDate": now(), 
+        "statusDetail": {
+          "errorCode": "COVERR01",
+          "errorMessage": "Dirección no encontrada en la geo-referenciación."
+        }
+      }
+    }
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Status to 400 Bad Request" doc:id="0d9d1fbe-6f52-4971-8f05-2f7633a748bc" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="response200_Sub_Flow1" doc:id="bb0b9fd7-d12a-44e8-82e6-e31edb6573e1" >
+		<ee:transform doc:name="Response 200" doc:id="32f2d274-4f44-438b-a6fd-678c92434289" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "getCoverageOPOutput": {
+    "wsResponseHeader2": {
+      "system": {
+        "name": "Mulesoft", 
+        "correlationID": vars.correlationId, 
+        "processingServer": "Mulesoft",
+        },
+      "service": {
+        "status": "PASS", 
+        "responseDate": vars.dateTime
+      }
+    },
+    "getCoverageResponse": {
+      "address":[
+        {
+          "geoState": vars.response1.outputMessage."WSGeorreferenciarCR-RS".EstadoGeo as String, 
+          "addressCode": vars.response1.outputMessage."WSGeorreferenciarCR-RS".CodigoDireccion as String,
+          "latitude": vars.response1.outputMessage."WSGeorreferenciarCR-RS".Latitud as String, 
+          "length": vars.response1.outputMessage."WSGeorreferenciarCR-RS".Longitud as String, 
+          "stratum": vars.response1.outputMessage."WSGeorreferenciarCR-RS".Estrato as Number, 
+          "lotCode": vars.response1.outputMessage."WSGeorreferenciarCR-RS".CodigoLote as String, 
+          "destiny": vars.response1.outputMessage."WSGeorreferenciarCR-RS".Destino as String, 
+          "chip": vars.response1.outputMessage."WSGeorreferenciarCR-RS".Chip as String, 
+          "district": vars.response1.outputMessage."WSGeorreferenciarCR-RS".Barrio as String,
+          "location": vars.response1.outputMessage."WSGeorreferenciarCR-RS".Localidad default "",  
+          "distanceType": vars.response1.outputMessage."WSGeorreferenciarCR-RS".TipoDistancia, 
+          "distanceType2": if(vars.valorHomologacion != null) vars.valorHomologacion else "" as String
+        }
+      ],
+      "coverage":[
+        {
+          "technology": 
+          vars.response3."wsGetFactibilidadServicios-RS".Tecnologias.Tecnologia map (obj,ind) ->{
+            "type": obj.Tipo,
+            "coverageType": obj.TipoCobertura, 
+            "coverage": obj.Cobertura,
+            "coverageName": obj.NombreCobertura,
+            "areaType": obj.TipoArea,
+            "area": obj.Area
+            	
+            }
+        }
+      ]
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="724dfbaa-5ce3-42c4-b00f-adbab7040e89" message="#[payload]"/>
+	</sub-flow>
+</mule>
