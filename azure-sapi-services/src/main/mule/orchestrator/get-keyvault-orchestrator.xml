@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="get-keyvault-orchestratorSub_Flow" doc:id="4bd93bb9-18f6-49aa-988d-18dfa543b30c" >
+		<choice doc:name="Choice" doc:id="907135be-6a84-4ddc-9f9d-e270d341c5db">
+			<when expression='#[upper(vars.key) == "CLEAR"]'>
+				<os:clear doc:name="Clear" doc:id="3421937e-c6bc-46d0-b3c5-2260fe44f0c8" objectStore="keyVault_Object_store" />
+				<ee:transform doc:name="Map Out" doc:id="f637ee89-a83f-497b-9fb5-ff5534481d72">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "CLEARED"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<os:contains doc:name="Checks for key" doc:id="574c5b71-c902-4a46-86bd-bd08a956d358" key="#[vars.key]" objectStore="keyVault_Object_store" />
+				<choice doc:name="Choice" doc:id="3a5de4fb-fcd4-4f5b-ae57-2952ae2ffcae">
+			<when expression="#[payload == false]">
+				<flow-ref doc:name="Go to Client" doc:id="3a6835e6-256b-43de-b8b6-8eb93d6856a7" name="get-keyvault-clientSub_Flow" />
+				<os:store doc:name="New address" doc:id="315d9262-953b-4745-872c-57845800a819" key="#[vars.key]" objectStore="keyVault_Object_store">
+				</os:store>
+				<ee:transform doc:name="Map Out" doc:id="0ad64bdd-b677-43eb-a632-b185537de46a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "OK",
+    "secret": payload.value
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise>
+				<os:retrieve doc:name="Retrieve" doc:id="01674b83-c2ad-4b40-887a-4e1cdd6c02ad" key="#[vars.key]" objectStore="keyVault_Object_store" />
+				<ee:transform doc:name="Map Out" doc:id="2189b164-2890-43c3-9a05-d894a72f68a1">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "OK",
+    "secret": payload.value
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
