@@ -239,294 +239,6 @@ securitySchemes:
                 body:
                   application/json:
                     example: !include /examples/response/post-fix-processOrder.json
-
-/productOrderV2:
-  description: |
-    TMF622 Product Order Management API - State-Driven Orchestration
-
-    NUEVO MODELO DE ORQUESTACIÓN BASADO EN ESTADOS:
-    Los endpoints bajo /tmf implementan el estándar TMF622 con orquestación state-driven.
-    Los estados enviados determinan automáticamente qué procesos ejecutar en el Process Layer.
-
-    DIFERENCIAS CON /productOrder LEGACY:
-    - /productOrder: Modelo simple, no TMF622, para compatibilidad con integraciones existentes
-    - /productOrderV2: Modelo TMF622 completo con orquestación state-driven
-    
-  post:
-    is:
-      - tibcoHeaders
-    securedBy: [etb_oauth_2_0]
-    displayName: Create TMF622 Product Order (State-Driven)
-    description: |
-      Crea una orden de producto usando TMF622 con ORQUESTACIÓN BASADA EN ESTADOS.
-
-      IMPORTANTE - CAMBIO DE PARADIGMA:
-      Este endpoint NO ejecuta acciones específicas - en su lugar, los ESTADOS enviados
-      en orderState determinan automáticamente qué procesos ejecutar:
-
-      FLUJO DE ORQUESTACIÓN:
-      1. Experience API recibe la orden con estados en orderState
-      2. Experience API valida y enriquece los datos
-      3. Experience API invoca Process API con estados
-      4. Process API interpreta estados y ejecuta procesos correspondientes automáticamente
-      5. Process API retorna estados resultantes
-      6. Experience API retorna orden completa con información de orquestación
-
-      EJEMPLOS DE ESTADOS → PROCESOS:
-      - commercialState: I50 → validateCustomer (TMF629, TMF717)
-      - commercialState: I60 → scoreCustomer (TMF696, centrales de riesgo)
-      - commercialState: I70 → processPlanSelection (TMF620, TMF671)
-      - serviceState: 010 → validateAvailability (TMF641)
-      - serviceState: 040 → queryAppointmentSlots (TMF626)
-      - serviceState: 070 → triggerBackendOrchestration (OrquestadorFija/LTE)
-
-      CATEGORÍAS SOPORTADAS:
-      - FIXED_SERVICE: Servicios fijos (FTTH, COBRE) → MongoDB MDM_CD_ORDEN
-      - MOBILE_SERVICE: Servicios móviles (LTE) → MongoDB MDM_ORDEN + MDM_ORDEN_SERVICIO
-      - FIXED_MOBILE: Convergente (fijo + móvil)
-      - DTH: Televisión satelital
-      - VALUE_ADDED: Servicios de valor agregado (SVA)
-
-      PERSISTENCIA:
-      Todas las órdenes se persisten en MongoDB MDM según categoría y estado.
-    queryParameters:
-      ORIGIN:
-        type: string
-        example: "WEB"
-        description: Parameter that allows the origin of the request to be identified
-        required: false
-    body:
-      application/json:
-        type: !include /datatypes/tmf622/request/ProductOrderCreate.raml
-        description: |
-          TMF622 Product Order con estados que determinan la orquestación.
-
-          CRÍTICO: El campo orderState determina qué procesos ejecutar.
-    responses:
-      200:
-        body:
-          application/json:
-            type: !include /datatypes/tmf622/response/ProductOrderResponse.raml   
-            description: |
-              Orden creada con estados resultantes e información de orquestación ejecutada.
-      400:
-        body:
-          application/json:
-            type: !include /datatypes/response/error.raml
-            example: !include /examples/response/error-400.json
-      401:
-        body:
-          application/json:
-            type: !include /datatypes/response/error.raml
-            example: !include /examples/response/error-401.json
-      422:
-        body:
-          application/json:
-            type: !include /datatypes/response/error.raml
-            description: |
-              Unprocessable Entity - Transición de estados inválida.
-
-              Este error ocurre cuando:
-              - Se intenta saltar estados requeridos
-              - La transición de estados no es válida según reglas de negocio
-              - Estados inconsistentes entre commercialState y serviceState
-            example: !include /examples/response/error-422.json
-              
-      500:
-        body:
-          application/json:
-            type: !include /datatypes/response/error.raml
-            example: !include /examples/response/error-500.json
-
-  /{orderId}:
-    get:
-      is:
-        - tibcoHeaders
-      securedBy: [etb_oauth_2_0]
-      displayName: Get TMF622 Product Order by ID
-      description: |
-        Consulta una orden específica por su orderId (ej: PO-000123).
-
-        BÚSQUEDA UNIFICADA FIJA/MÓVIL:
-        Busca automáticamente en las colecciones según el orderId o CATEGORY:
-        - FIXED_SERVICE: MDM_CD_ORDEN (formato MDM-FIBRA-XXXXXXXXX)
-        - MOBILE_SERVICE: MDM_ORDEN + MDM_ORDEN_SERVICIO (formato MDM_MOV-XXXXXX)
-
-        Si CATEGORY no se especifica, busca en todas las colecciones.
-
-        FILTROS DE VALIDACIÓN:
-        Los parámetros STATE, COMMERCIAL_STATE y SERVICE_STATE validan que la orden
-        encontrada coincida con los criterios. Si no coincide, retorna 404.
-
-        Retorna la orden completa con:
-        - Estados actuales (commercialState, serviceState)
-        - Historial de transiciones de estado
-        - Información de procesos ejecutados
-        - Datos de orquestación
-      queryParameters:
-        ORIGIN:
-          type: string
-          example: "WEB"
-          description: Parameter that allows the origin of the request to be identified
-          required: false
-        STATE:
-          type: string
-          required: false
-          enum: [acknowledged, inProgress, pending, held, completed, failed, cancelled, rejected, partial]
-          example: "inProgress"
-          description: |
-            Filter by TMF622 standard order state.
-        CATEGORY:
-          type: string
-          required: false
-          enum: [FIXED_SERVICE, MOBILE_SERVICE, FIXED_MOBILE, DTH, VALUE_ADDED]
-          example: "FIXED_SERVICE"
-          description: |
-            Hint for collection search optimization:
-            - FIXED_SERVICE: MDM_CD_ORDEN
-            - MOBILE_SERVICE: MDM_ORDEN + MDM_ORDEN_SERVICIO
-            If not provided, searches all collections.
-        COMMERCIAL_STATE:
-          type: string
-          required: false
-          enum: [I10, I30, I40, I50, I60, I61, I62, I70, "005", I90, C10, R10]
-          example: "I70"
-          description: Filter by commercial state (ETB-specific)
-        SERVICE_STATE:
-          type: string
-          required: false
-          enum: ["000", "010", "020", "030", "035", "040", "050", "055", "060", "061", "070", "100"]
-          example: "050"
-          description: Filter by service/provisioning state (ETB-specific)
-        FIELDS:
-          type: string
-          required: false
-          example: "orderId,state,orderState,category,relatedParty"
-          description: |
-            Comma-separated list of fields to return (partial response TMF620).
-      responses:
-        200:
-          body:
-            application/json:
-              type: !include /datatypes/tmf622/response/ProductOrderResponse.raml
-        400:
-          body:
-            application/json:
-              type: !include /datatypes/response/error.raml
-              example: !include /examples/response/error-400.json
-        401:
-          body:
-            application/json:
-              type: !include /datatypes/response/error.raml
-              example: !include /examples/response/error-401.json
-        404:
-          body:
-            application/json:
-              type: !include /datatypes/response/error.raml
-              example: !include /examples/response/error-404.json
-        500:
-          body:
-            application/json:
-              type: !include /datatypes/response/error.raml
-              example: !include /examples/response/error-500.json
-
-    patch:
-      is:
-        - tibcoHeaders
-      securedBy: [etb_oauth_2_0]
-      displayName: Update TMF622 Product Order (State-Driven)
-      description: |
-        Actualiza una orden existente con nuevos estados (state-driven orchestration).
-
-        IMPORTANTE: Al igual que POST, los nuevos estados en orderState determinan
-        automáticamente qué procesos ejecutar para avanzar la orden.
-
-        CASOS DE USO:
-        - Avanzar orden al siguiente estado comercial (ej: I50 → I60 → I70)
-        - Cambiar estado de servicio (ej: 010 → 040 → 070)
-        - Actualizar datos de la orden (relatedParty, productOrderItem)
-        - Registrar notas y comentarios
-
-        VALIDACIONES:
-        - Se valida que la transición de estados sea válida
-        - No se permiten saltos de estados no autorizados
-        - Estados terminales (C10, R10, I90+100) no pueden cambiar
-      queryParameters:
-        ORIGIN:
-          type: string
-          example: "WEB"
-          description: Parameter that allows the origin of the request to be identified
-          required: false
-      body:
-        application/json:
-          type: object
-          description: |
-            Actualización parcial de la orden.
-            Solo se actualizan los campos enviados.
-          properties:
-            orderState:
-              type: object
-              required: false
-              properties:
-                commercialState:
-                  type: string
-                  required: false
-                  enum: [ I10, I30, I40, I50, I60, I61, I62, I70, "O05", "O10", "O35", "O60", "O70", C10, R10 ]
-                serviceState:
-                  type: string
-                  required: false
-                  enum: [ "000", "010", "020", "030", "035", "040", "050", "055", "060", "061", "070", "100" ]
-                activationState:
-                  type: string
-                  required: false
-                  enum: [ EN_PROCESO, APROBADA, RECHAZADA, EN_EVALUACION ]
-            description:
-              type: string
-              required: false
-            priority:
-              type: string
-              required: false
-            relatedParty:
-              type: array
-              required: false
-            productOrderItem:
-              type: array
-              required: false
-            note:
-              type: array
-              required: false
-      responses:
-        200:
-          body:
-            application/json:
-              type: !include /datatypes/tmf622/response/ProductOrderResponse.raml
-        400:
-          body:
-            application/json:
-              type: !include /datatypes/response/error.raml
-              example: !include /examples/response/error-400.json
-        401:
-          body:
-            application/json:
-              type: !include /datatypes/response/error.raml
-              example: !include /examples/response/error-401.json
-        404:
-          body:
-            application/json:
-              type: !include /datatypes/response/error.raml
-              example: !include /examples/response/error-404.json
-        422:
-          body:
-            application/json:
-              type: !include /datatypes/response/error.raml
-              example: !include /examples/response/error-422.json
-        500:
-          body:
-            application/json:
-              type: !include /datatypes/response/error.raml
-              example: !include /examples/response/error-500.json
-
-
 /customer:
   get:
     is: 
@@ -588,206 +300,448 @@ securitySchemes:
             body:
               application/json:
                 type: !include /datatypes/response/error.raml
-                example: !include /examples/response/error-500.json
-                
-                
+                example: !include /examples/response/error-500.json      
 /payment:
-  /{paymentMethod}:
-    uriParameters:
-      paymentMethod:
+  post:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+
+    displayName: Create Payment Transaction
+    description: |
+      Creates a new payment transaction for the specified payment method.
+      This endpoint initiates the payment process and returns transaction details including payment URL and reference.
+
+    queryParameters:
+      ORIGIN:
         type: string
-        required: true
-        description: "Payment platform or gateway identifier. Specifies the payment provider to be used for the transaction (e.g., PSE, Wompi, PayU)."
-        example: "pse"
-    /banks:
-      get:
-        is:
-          - tibcoHeaders
-        securedBy: [etb_oauth_2_0]
-        displayName: Get Payment Banks
-        description: |
-          Retrieves the list of available banks for the specified payment method.
-          This endpoint is essential for providing users with bank options when initiating payment transactions.
-        queryParameters:
-          ORIGIN:
-            type: string
-            example: "WHATSAPP"
-            description: Parameter that allows the origin of the request to be identified
-        responses:
-          200:
-            body:
-              application/json:
-                description: List of available banks for the payment method
-                example: !include examples/response/get-banks.json
-          400:
-            body:
-              application/json:
-                type: !include /datatypes/response/error.raml
-                example: !include /examples/response/error-400.json
-          401:
-            body:
-              application/json:
-                type: !include /datatypes/response/error.raml
-                example: !include /examples/response/error-401.json
-          404:
-            body:
-              application/json:
-                type: !include /datatypes/response/error.raml
-                example: !include /examples/response/error-404.json
-          500:
-            body:
-              application/json:
-                type: !include /datatypes/response/error.raml
-                example: !include /examples/response/error-500.json
-    /payment:
-      post:
-        is:
-          - tibcoHeaders
-        securedBy: [etb_oauth_2_0]
-        displayName: Create Payment Transaction
-        description: |
-          Creates a new payment transaction for the specified payment method.
-          This endpoint initiates the payment process and returns transaction details including payment URL and reference.
-        queryParameters:
-          ORIGIN:
-            type: string
-            example: "WHATSAPP"
-            description: Parameter that allows the origin of the request to be identified
+        example: "WHATSAPP"
+        description: Parameter that allows the origin of the request to be identified
+
+    body:
+      application/json:
+        description: Payment transaction request payload
+        type: !include /datatypes/request/post-transaction.raml
+        examples:
+          Payu: !include examples/request/post-transaction-payu.json
+          WompiTansaction: !include examples/request/post-transaction-wompiTansaction.json
+          WompiCheckoutWeb: !include examples/request/post-transaction-wompiCheckoutWeb.json
+          PSE: !include examples/request/post-transaction-pse.json
+          Mongo: !include examples/request/post-transaction-mongo.json
+
+    responses:
+      200:
         body:
           application/json:
-            description: Payment transaction request payload
-            type: !include /datatypes/request/post-transaction.raml
-            examples: 
-              Payu: !include examples/request/post-transaction-payu.json
-              WompiTansaction: !include examples/request/post-transaction-wompiTansaction.json
-              WompiCheckoutWeb:  !include examples/request/post-transaction-wompiCheckoutWeb.json
-              PSE: !include examples/request/post-transaction-pse.json
-              Mongo: !include examples/request/post-transaction-mongo.json
-        responses:
-          200:
-            body:
-              application/json:
-                type: !include /datatypes/response/post-transaction.raml
-                examples: 
-                  Payu: !include examples/response/post-transaction-payu.json
-                  WompiTansaction: !include examples/response/post-transaction-wompiTansaction.json
-                  WompiCheckoutWeb:  !include examples/response/post-transaction-wompiCheckoutWeb.json
-                  PSE: !include examples/response/post-transaction-pse.json
-                  Mongo: !include examples/response/post-transaction-mongo.json
-          400:
-            body:
-              application/json:
-                type: !include /datatypes/response/error.raml
-                example: !include /examples/response/error-400.json
-          401:
-            body:
-              application/json:
-                type: !include /datatypes/response/error.raml
-                example: !include /examples/response/error-401.json
-          500:
-            body:
-              application/json:
-                type: !include /datatypes/response/error.raml
-                example: !include /examples/response/error-500.json
-      /{paymentId}:
-        uriParameters:
-          paymentId:
-            type: string
-            required: true
-            description: "Unique identifier of the payment transaction"
-            example: "TXN-123456789"
-        get:
-          is:
-            - tibcoHeaders
-          securedBy: [etb_oauth_2_0]
-          displayName: Get Transaction By ID
-          description: |
-            Retrieves detailed information about a specific payment transaction using its unique identifier.
-            This endpoint allows tracking the status and details of previously created payment transactions.
-          queryParameters:
-            ORIGIN:
-              type: string
-              example: "WHATSAPP"
-              description: Parameter that allows the origin of the request to be identified
-            PAYMENT_FLOW:
-              type: string
-              example: "API"
-              required: false
-              description: Parameter that allows the origin of the request to be identified
-          responses:
-            200:
-              body:
-                application/json:
-                  type: !include /datatypes/response/get-transaction.raml
-                  examples: 
-                    Payu: !include examples/response/get-transaction-payu.json
-                    WompiTansaction: !include examples/response/get-transaction-wompiTansaction.json
-                    WompiCheckoutWeb:  !include examples/response/get-transaction-wompiCheckoutWeb.json
-                    PSE: !include examples/response/get-transaction-pse.json
-                    Mongo: !include examples/response/get-transaction-mongo.json
-            400:
-              body:
-                application/json:
-                  type: !include /datatypes/response/error.raml
-                  example: !include /examples/response/error-400.json
-            401:
-              body:
-                application/json:
-                  type: !include /datatypes/response/error.raml
-                  example: !include /examples/response/error-401.json
-            404:
-              body:
-                application/json:
-                  type: !include /datatypes/response/error.raml
-                  example: !include /examples/response/error-404.json
-            500:
-              body:
-                application/json:
-                  type: !include /datatypes/response/error.raml
-                  example: !include /examples/response/error-500.json
-        patch:
-          is:
-            - tibcoHeaders
-          securedBy: [etb_oauth_2_0]
-          displayName: Update Payment Transaction
-          description: |
-            Updates an existing payment transaction. This endpoint can be used to modify transaction status,
-            add additional information, or update payment details after initial creation.
-          queryParameters:
-            ORIGIN:
-              type: string
-              example: "WHATSAPP"
-              description: Parameter that allows the origin of the request to be identified
+            type: !include /datatypes/response/post-transaction.raml
+            examples:
+              Payu: !include examples/response/post-transaction-payu.json
+              WompiTansaction: !include examples/response/post-transaction-wompiTansaction.json
+              WompiCheckoutWeb: !include examples/response/post-transaction-wompiCheckoutWeb.json
+              PSE: !include examples/response/post-transaction-pse.json
+              Mongo: !include examples/response/post-transaction-mongo.json
+      400:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-401.json
+      500:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-500.json
+
+  patch:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+
+    displayName: Update Payment Transaction
+    description: |
+      Updates an existing payment transaction. This endpoint can be used to modify transaction status,
+      add additional information, or update payment details after initial creation.
+
+    queryParameters:
+      ORIGIN:
+        type: string
+        example: "WHATSAPP"
+        description: Parameter that allows the origin of the request to be identified
+
+    body:
+      application/json:
+        type: !include /datatypes/request/patch-transaction.raml
+
+    responses:
+      200:
+        body:
+          application/json:
+            type: !include /datatypes/response/patch-transaction.raml
+            examples:
+              WompiTansaction: !include examples/response/patch-transaction-wompiTansaction.json
+              WompiCheckoutWeb: !include examples/response/patch-transaction-wompiCheckoutWeb.json
+              PSE: !include examples/response/patch-transaction-pse.json
+              Mongo: !include examples/response/patch-transaction-mongo.json
+      400:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-401.json
+      404:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-404.json
+      500:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-500.json
+
+  /{paymentId}:
+    uriParameters:
+      paymentId:
+        type: string
+        required: true
+        description: "Unique identifier of the payment transaction"
+        example: "TXN-123456789"
+
+    get:
+      is:
+        - tibcoHeaders
+      securedBy: [etb_oauth_2_0]
+
+      displayName: Get Transaction By ID
+      description: |
+        Retrieves detailed information about a specific payment transaction using its unique identifier.
+        This endpoint allows tracking the status and details of previously created payment transactions.
+
+      queryParameters:
+        ORIGIN:
+          type: string
+          example: "WHATSAPP"
+          description: Parameter that allows the origin of the request to be identified
+
+        PAYMENT_FLOW:
+          type: string
+          enum: [API, CHECKOUT]
+          example: "API"
+          required: false
+          description: Parameter that allows the origin of the request to be identified
+        
+        GATEWAY_PAYMENT:
+          type: string
+          enum: [PSE, WOMPI, PAYU, ETB]
+          example: "PSE"
+          required: false
+          description: Parameter that allows the origin of the request to be identified
+
+      responses:
+        200:
           body:
             application/json:
-              type: !include /datatypes/request/patch-transaction.raml
-          responses:
-            200:
-              body:
-                application/json:
-                  type: !include /datatypes/response/patch-transaction.raml
-                  examples: 
-                    WompiTansaction: !include examples/response/patch-transaction-wompiTansaction.json
-                    WompiCheckoutWeb:  !include examples/response/patch-transaction-wompiCheckoutWeb.json
-                    PSE: !include examples/response/patch-transaction-pse.json
-                    Mongo: !include examples/response/patch-transaction-mongo.json
-            400:
-              body:
-                application/json:
-                  type: !include /datatypes/response/error.raml
-                  example: !include /examples/response/error-400.json
-            401:
-              body:
-                application/json:
-                  type: !include /datatypes/response/error.raml
-                  example: !include /examples/response/error-401.json
-            404:
-              body:
-                application/json:
-                  type: !include /datatypes/response/error.raml
-                  example: !include /examples/response/error-404.json
-            500:
-              body:
-                application/json:
-                  type: !include /datatypes/response/error.raml
-                  example: !include /examples/response/error-500.json
+              type: !include /datatypes/response/get-transaction.raml
+              examples:
+                Payu: !include examples/response/get-transaction-payu.json
+                WompiTansaction: !include examples/response/get-transaction-wompiTansaction.json
+                WompiCheckoutWeb: !include examples/response/get-transaction-wompiCheckoutWeb.json
+                PSE: !include examples/response/get-transaction-pse.json
+                Mongo: !include examples/response/get-transaction-mongo.json
+        400:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-400.json
+        401:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-401.json
+        404:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-404.json
+        500:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-500.json
+  /banks:
+    get:
+      is:
+        - tibcoHeaders
+      securedBy: [etb_oauth_2_0]
+      displayName: Get Payment Banks
+      description: |
+        Retrieves the list of available banks for the specified payment method.
+        This endpoint is essential for providing users with bank options when initiating payment transactions.
+      queryParameters:
+        ORIGIN:
+          type: string
+          example: "WHATSAPP"
+          description: Parameter that allows the origin of the request to be identified
+
+        GATEWAY_PAYMENT:
+          type: string
+          enum: [PSE, WOMPI, PAYU, ETB]
+          example: "PSE"
+          required: false
+          description: Parameter that allows the origin of the request to be identified
+      responses:
+        200:
+          body:
+            application/json:
+              description: List of available banks for the payment method
+              example: !include examples/response/get-banks.json
+        400:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-400.json
+        401:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-401.json
+        404:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-404.json
+        500:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-500.json
+/paymentMocks:
+  post:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+
+    displayName: Create Payment Transaction
+    description: |
+      Creates a new payment transaction for the specified payment method.
+      This endpoint initiates the payment process and returns transaction details including payment URL and reference.
+
+    queryParameters:
+      ORIGIN:
+        type: string
+        example: "WHATSAPP"
+        description: Parameter that allows the origin of the request to be identified
+
+    body:
+      application/json:
+        description: Payment transaction request payload
+        type: !include /datatypes/request/post-transaction.raml
+        examples:
+          Payu: !include examples/request/post-transaction-payu.json
+          WompiTansaction: !include examples/request/post-transaction-wompiTansaction.json
+          WompiCheckoutWeb: !include examples/request/post-transaction-wompiCheckoutWeb.json
+          PSE: !include examples/request/post-transaction-pse.json
+          Mongo: !include examples/request/post-transaction-mongo.json
+
+    responses:
+      200:
+        body:
+          application/json:
+            type: !include /datatypes/response/post-transaction.raml
+            examples:
+              Payu: !include examples/response/post-transaction-payu.json
+              WompiTansaction: !include examples/response/post-transaction-wompiTansaction.json
+              WompiCheckoutWeb: !include examples/response/post-transaction-wompiCheckoutWeb.json
+              PSE: !include examples/response/post-transaction-pse.json
+              Mongo: !include examples/response/post-transaction-mongo.json
+      400:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-401.json
+      500:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-500.json
+
+  patch:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+
+    displayName: Update Payment Transaction
+    description: |
+      Updates an existing payment transaction. This endpoint can be used to modify transaction status,
+      add additional information, or update payment details after initial creation.
+
+    queryParameters:
+      ORIGIN:
+        type: string
+        example: "WHATSAPP"
+        description: Parameter that allows the origin of the request to be identified
+
+    body:
+      application/json:
+        type: !include /datatypes/request/patch-transaction.raml
+
+    responses:
+      200:
+        body:
+          application/json:
+            type: !include /datatypes/response/patch-transaction.raml
+            examples:
+              WompiTansaction: !include examples/response/patch-transaction-wompiTansaction.json
+              WompiCheckoutWeb: !include examples/response/patch-transaction-wompiCheckoutWeb.json
+              PSE: !include examples/response/patch-transaction-pse.json
+              Mongo: !include examples/response/patch-transaction-mongo.json
+      400:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-401.json
+      404:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-404.json
+      500:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include /examples/response/error-500.json
+
+  /{paymentId}:
+    uriParameters:
+      paymentId:
+        type: string
+        required: true
+        description: "Unique identifier of the payment transaction"
+        example: "TXN-123456789"
+
+    get:
+      is:
+        - tibcoHeaders
+      securedBy: [etb_oauth_2_0]
+
+      displayName: Get Transaction By ID
+      description: |
+        Retrieves detailed information about a specific payment transaction using its unique identifier.
+        This endpoint allows tracking the status and details of previously created payment transactions.
+
+      queryParameters:
+        ORIGIN:
+          type: string
+          example: "WHATSAPP"
+          description: Parameter that allows the origin of the request to be identified
+
+        PAYMENT_FLOW:
+          type: string
+          enum: [API, CHECKOUT]
+          example: "API"
+          required: false
+          description: Parameter that allows the origin of the request to be identified
+        
+        GATEWAY_PAYMENT:
+          type: string
+          enum: [PSE, WOMPI, PAYU, ETB]
+          example: "PSE"
+          required: false
+          description: Parameter that allows the origin of the request to be identified
+
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/response/get-transaction.raml
+              examples:
+                Payu: !include examples/response/get-transaction-payu.json
+                WompiTansaction: !include examples/response/get-transaction-wompiTansaction.json
+                WompiCheckoutWeb: !include examples/response/get-transaction-wompiCheckoutWeb.json
+                PSE: !include examples/response/get-transaction-pse.json
+                Mongo: !include examples/response/get-transaction-mongo.json
+        400:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-400.json
+        401:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-401.json
+        404:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-404.json
+        500:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-500.json
+  /banks:
+    get:
+      is:
+        - tibcoHeaders
+      securedBy: [etb_oauth_2_0]
+      displayName: Get Payment Banks
+      description: |
+        Retrieves the list of available banks for the specified payment method.
+        This endpoint is essential for providing users with bank options when initiating payment transactions.
+      queryParameters:
+        ORIGIN:
+          type: string
+          example: "WHATSAPP"
+          description: Parameter that allows the origin of the request to be identified
+
+        GATEWAY_PAYMENT:
+          type: string
+          enum: [PSE, WOMPI, PAYU, ETB]
+          example: "PSE"
+          required: false
+          description: Parameter that allows the origin of the request to be identified
+      responses:
+        200:
+          body:
+            application/json:
+              description: List of available banks for the payment method
+              example: !include examples/response/get-banks.json
+        400:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-400.json
+        401:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-401.json
+        404:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-404.json
+        500:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/response/error-500.json
