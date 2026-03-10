@@ -1,6 +1,6 @@
 %dw 2.0
 output application/json
-var paymentMethod = attributes.uriParams.paymentMethod
+var paymentMethod = lower(payload.gateway.gatewayName default "")
 ---
 {
 	"host": p(paymentMethod ++ '-sapi.host'),

@@ -1,68 +1,126 @@
 %dw 2.0
 output application/json skipNullOn = "everywhere"
+
+var refs = payload.references default []
+
+var fechaHora =
+    now() as String {format: "yyyyMMddHHmmss"}
+
+var referenceCode =
+    if (sizeOf(refs) > 1)
+        "MDM_PAGO_" ++ payload.customer.documentNumber ++ "_" ++ fechaHora
+    else
+        "MDM_PAGO_" ++ refs[0].reference ++ "_" ++ fechaHora
+
+var totalAmount =
+    sum(refs.totalAmount)
+
+var iva =
+    sum(
+        refs
+        flatMap ($.taxes filter ($."type" == "IVA"))
+        map $.value
+    )
+
+var baseGravable =
+    sum(
+        refs
+        flatMap ($.taxes filter ($."type" == "BASE_GRAVABLE"))
+        map $.value
+    )
+
+var firstRef = refs[0]
+
+var payment = firstRef.paymentMethod
 ---
 {
-	// ===== ORDER =====
-	order: {
-		accountId: Mule::p("payu-sapi.fields.accountId"),
-		referenceCode: payload.reference,
-		description: payload.description,
-		language: payload.language,
-		notifyUrl: payload.notifyUrl,
-		additionalValues: (payload.taxes default []) map ((item) -> {
-			(if ( item.code == "CONSUMO" ) "TX_TAX_RETURN_BASE": {
-				value: item.value,
-				currency: payload.currency
-			}
-            else"TX_TAX": {
-				value: item.value,
-				currency: payload.currency
-			})
-		}) ++ [{
-			"TX_VALUE": {
-				"value": sum(payload.taxes.value),
-				"currency": payload.currency
-			}
-		}] reduce ((item, acc = {
-		}) -> item ++ acc),
-		buyer: {
-			merchantBuyerId: payload.customer.document.number,
-			fullName: payload.customer.firstname ++ " " ++ payload.customer.lastname,
-			emailAddress: payload.customer.email,
-			contactPhone: payload.customer.phone,
-			dniNumber: payload.customer.document.number,
-			shippingAddress: payload.customer.address ++ {
-				phone: payload.customer.phone
-			}
-		},
-		shippingAddress: payload.customer.address ++ {
-			phone: payload.customer.phone
-		}
-	},
-	// ===== PAYER =====
-	payer: {
-		merchantPayerId: payload.customer.document.number,
-		fullName: payload.customer.firstname ++ " " ++ payload.customer.lastname,
-		emailAddress: payload.customer.email,
-		contactPhone: payload.customer.phone,
-		dniNumber: payload.customer.document.number,
-		billingAddress: payload.customer.address ++ {
-			phone: payload.customer.phone
-		}
-	},
-	// ===== PAYMENT DATA =====
-	creditCard: {
-		number: payload.paymentMethod.number,
-		securityCode: payload.paymentMethod.securityCode,
-		expirationDate: payload.paymentMethod.expirationDate,
-		name: payload.paymentMethod.name
-	},
-	extraParameters: payload.extraParameters,
-	paymentMethod: payload.paymentMethod.code,
-	paymentCountry: payload.paymentCountry,
-	deviceSessionId: payload.deviceSessionId,
-	ipAddress: payload.ipAddress,
-	cookie: payload.cookie,
-	userAgent: payload.userAgent,
-	threeDomainSecure: payload.threeDomainSecure
+  order: {
+    accountId: Mule::p("payu-sapi.fields.accountId"),
+    referenceCode: referenceCode,
+    description: firstRef.description,
+    language: "es",
+    notifyUrl: payment.link.notifyUrl,
+
+    additionalValues: {
+      TX_VALUE: {
+        value: totalAmount, 
+        currency: firstRef.currency
+      },
+      TX_TAX: {
+        value: iva,
+        currency: firstRef.currency
+      },
+      TX_TAX_RETURN_BASE: {
+        value: baseGravable,
+        currency: firstRef.currency
+      }
+    },
+
+    buyer: {
+      merchantBuyerId: "1",
+      fullName: payload.customer.fullName,
+      emailAddress: payload.customer.email,
+      contactPhone: payload.customer.phoneNumber,
+      dniNumber: payload.customer.documentNumber,
+
+      shippingAddress: {
+        street1: payload.customer.billingAddress.addressLine1,
+        street2: payload.customer.billingAddress.addressLine2,
+        city: payload.customer.billingAddress.city,
+        state: payload.customer.billingAddress.state,
+        country: payload.customer.billingAddress.country,
+        postalCode: payload.customer.billingAddress.postalCode,
+        phone: payload.customer.phoneNumber
+      }
+    },
+
+    shippingAddress: {
+      street1: payload.customer.billingAddress.addressLine1,
+      street2: payload.customer.billingAddress.addressLine2,
+      city: payload.customer.billingAddress.city,
+      state: payload.customer.billingAddress.state,
+      country: payload.customer.billingAddress.country,
+      postalCode: payload.customer.billingAddress.postalCode,
+      phone: payload.customer.phoneNumber
+    }
+  },
+
+  payer: {
+    merchantPayerId: "1",
+    fullName: payload.customer.fullName,
+    emailAddress: payload.customer.email,
+    contactPhone: payload.customer.phoneNumber,
+    dniNumber: payload.customer.documentNumber,
+
+    billingAddress: {
+      street1: payload.customer.billingAddress.addressLine1,
+      street2: payload.customer.billingAddress.addressLine2,
+      city: payload.customer.billingAddress.city,
+      state: payload.customer.billingAddress.state,
+      country: payload.customer.billingAddress.country,
+      postalCode: payload.customer.billingAddress.postalCode,
+      phone: payload.customer.phoneNumber
+    }
+  },
+
+  creditCard: {
+    number: payment.card.cardData.cardNumber,
+    securityCode: payment.card.cardData.cvc,
+    expirationDate:
+        "20" ++ payment.card.cardData.expYear ++ "/" ++ payment.card.cardData.expMonth,
+    name: payment.card.cardData.cardHolder
+  },
+
+  extraParameters: {
+    INSTALLMENTS_NUMBER: payment.card.installments
+  },
+
+  "type": "AUTHORIZATION_AND_CAPTURE",
+  paymentMethod: payment.card.cardBrand,
+  paymentCountry: payload.customer.billingAddress.country,
+
+  deviceSessionId: payload.origin.deviceSessionId,
+  ipAddress: payload.origin.ipAddress,
+  cookie: payload.origin.cookie,
+  userAgent: payload.origin.userAgent
 }
