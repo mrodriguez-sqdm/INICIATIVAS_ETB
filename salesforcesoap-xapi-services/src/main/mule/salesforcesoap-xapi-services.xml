@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<mule xmlns:xml-module="http://www.mulesoft.org/schema/mule/xml-module"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:apikit-soap="http://www.mulesoft.org/schema/mule/apikit-soap"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/apikit-soap http://www.mulesoft.org/schema/mule/apikit-soap/current/mule-apikit-soap.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+http://www.mulesoft.org/schema/mule/xml-module http://www.mulesoft.org/schema/mule/xml-module/current/mule-xml-module.xsd">
+	<http:listener-config
+		name="api-httpListenerConfig">
+		<http:listener-connection
+			host="${http.private.host}" port="${http.private.port}">
+		</http:listener-connection>
+	</http:listener-config>
+	<apikit-soap:config name="soapkit-config"
+		port="BillingCorporateEndPoint" service="BillingCorporate"
+		wsdlLocation="CreateSystemsAccountsIntf.wsdl" soapVersion="SOAP_12" />
+	<flow name="api-main">
+		<http:listener config-ref="api-httpListenerConfig"
+			path="${api.listener.basepath}">
+			<http:response
+				statusCode="#[attributes.additionalTransportData.statusCode default 200]">
+				<http:headers><![CDATA[#[attributes.protocolHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response
+				statusCode="#[attributes.additionalTransportData.statusCode default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[attributes.protocolHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<apikit-soap:router config-ref="soapkit-config">
+			<apikit-soap:attributes><![CDATA[#[%dw 2.0
+              output application/java
+              ---
+              {
+                  headers: attributes.headers,
+                  method: attributes.method,
+                  queryString: attributes.queryString
+            }]]]></apikit-soap:attributes>
+		</apikit-soap:router>
+		<error-handler>
+			<on-error-propagate enableNotifications="true"
+				logException="true" doc:name="On Error Propagate"
+				doc:id="442aea6f-0ca2-498d-b508-c553207dbdff"
+				type="APIKIT-SOAP:FAULT">
+				<ee:transform doc:name="set error response"
+					doc:id="c357880d-cfdc-4211-b4cb-f414d0440546">
+					<ee:message>
+						<ee:set-payload
+							resource="dwScripts/SoapErrorHandler/setFaultError.dwl" />
+					</ee:message>
+				</ee:transform>
+			</on-error-propagate>
+			<on-error-propagate enableNotifications="true"
+				logException="true" doc:name="On Error Propagate"
+				doc:id="eeaf87be-da6b-48bf-bca1-3839cb3304ad"
+				type="APIKIT-SOAP:ROUTER">
+				<ee:transform doc:name="set error response"
+					doc:id="bdf29f0e-f2ae-4362-906a-643ab6b9bf3b">
+					<ee:message>
+						<ee:set-payload
+							resource="dwScripts/SoapErrorHandler/setRouterError.dwl" />
+					</ee:message>
+				</ee:transform>
+			</on-error-propagate>
+			<on-error-propagate enableNotifications="true"
+				logException="true" doc:name="On Error Propagate"
+				doc:id="a094a57a-3c16-4f53-904c-7d4812baaea0"
+				type="SOAP:BLANK_STRING">
+				<ee:transform doc:name="set error response"
+					doc:id="de0386fb-0711-46e8-b2d2-68e51c816c46">
+					<ee:message>
+						<ee:set-payload
+							resource="dwScripts/SoapErrorHandler/setValidationError.dwl" />
+					</ee:message>
+					<ee:variables>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+			<on-error-propagate enableNotifications="true"
+				logException="true" doc:name="On Error Propagate"
+				doc:id="6d4092f7-110f-4def-9576-83b3a9ec810d" type="ANY">
+				<ee:transform doc:name="set error response"
+					doc:id="5efb5c85-2f9a-42ac-8831-5910dacd4d4e">
+					<ee:message>
+						<ee:set-payload
+							resource="dwScripts/SoapErrorHandler/setServerError.dwl" />
+					</ee:message>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="GetHierarchyAccountData:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [GetHierarchyAccountData:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="UpdateRMCAAccountData:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [UpdateRMCAAccountData:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="SetPlanLDSFD:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [SetPlanLDSFD:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="GetInvoiceFormat:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [GetInvoiceFormat:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="UpdateInvoiceData:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [UpdateInvoiceData:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="SetTaxPlanGrouping:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [SetTaxPlanGrouping:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="CreateSystemsAccounts:\soapkit-config">
+		<flow-ref
+			doc:name="soap-create-system-accounts-orchestrator-sub-flow"
+			doc:id="27a121b2-9980-45b3-9e60-fb426af7a3c2"
+			name="soap-create-system-accounts-orchestrator-sub-flow" />
+	</flow>
+	<flow name="CreateIncident:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [CreateIncident:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="GetTaxPlan:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [GetTaxPlan:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="CreateRMCAAccount:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [CreateRMCAAccount:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="GetAccountCycle:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [GetAccountCycle:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="SetInvoiceParameters:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [SetInvoiceParameters:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="TransferServicesSystems:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [TransferServicesSystems:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="UpdateAccountDataSystems:\soapkit-config">
+		<ee:transform>
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns soap http://schemas.xmlsoap.org/soap/envelope
+---
+{
+    body: {
+        soap#Fault: {
+            faultcode: "soap:Server",
+            faultstring: "Operation [UpdateAccountDataSystems:\soapkit-config] not implemented"
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
