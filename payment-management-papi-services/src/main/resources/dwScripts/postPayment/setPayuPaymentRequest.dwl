@@ -31,7 +31,7 @@ var baseGravable =
 
 var firstRef = refs[0]
 
-var payment = firstRef.paymentMethod
+var payment = payload.paymentMethod
 ---
 {
   order: {

@@ -1,13 +1,26 @@
 %dw 2.0
 output application/json
-var paymentMethod = lower(payload.gateway.gatewayName default "")
+
+var gateway = lower(payload.gateway.gatewayName default "")
+var flow = lower(payload.gateway.paymentFlow default "")
+
+// clave para host/port/basepath
+var gatewayKey = gateway ++ "-sapi"
+
+// clave para method/path
+var flowKey =
+    if (gateway == "wompi")
+        gateway ++ "-" ++ flow ++ "-sapi"
+    else
+        gateway ++ "-sapi"
+
 ---
 {
-	"host": p(paymentMethod ++ '-sapi.host'),
-	"port": p(paymentMethod ++ '-sapi.port'),
-	"basepath": p(paymentMethod ++ '-sapi.basepath'),
-	"method": p(paymentMethod ++ '-sapi.postPayment.method'),
-	"path": p(paymentMethod ++ '-sapi.postPayment.path'),
+	"host": p(gatewayKey ++ ".host"),
+	"port": p(gatewayKey ++ ".port"),
+	"basepath": p(gatewayKey ++ ".basepath"),
+	"method": p(flowKey ++ ".postPayment.method"),
+	"path": p(flowKey ++ ".postPayment.path"),
 	"headers": {
 		"client_id": p('secure::app.credentials.clientId'),
 		"client_secret": p('secure::app.credentials.clientSecret'),
