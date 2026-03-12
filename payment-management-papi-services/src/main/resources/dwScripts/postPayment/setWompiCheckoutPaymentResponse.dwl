@@ -3,6 +3,11 @@ output application/json
 
 var setWompiCheckoutPaymentResponse = vars.sapiResponse.data
 
+var taxMap = {
+    VAT: "IVA",
+    CONSUMPTION: "CONSUMO"
+}
+
 ---
 {
   code: "200",
@@ -15,8 +20,10 @@ var setWompiCheckoutPaymentResponse = vars.sapiResponse.data
     description: setWompiCheckoutPaymentResponse.description,
     singleUse: setWompiCheckoutPaymentResponse.singleUse,
     collectShipping: setWompiCheckoutPaymentResponse.collectShipping,
+    collectCustomerLegalId: setWompiCheckoutPaymentResponse.collectCustomerLegalId,
     currency: setWompiCheckoutPaymentResponse.currency,
     amount: (setWompiCheckoutPaymentResponse.amountInCents default 0) / 100,
+    amountInCents: setWompiCheckoutPaymentResponse.amountInCents,
     sku: setWompiCheckoutPaymentResponse.sku default null,
     expiresAt: setWompiCheckoutPaymentResponse.expiresAt default null,
     redirectUrl: setWompiCheckoutPaymentResponse.redirectUrl,
@@ -24,6 +31,21 @@ var setWompiCheckoutPaymentResponse = vars.sapiResponse.data
     active: setWompiCheckoutPaymentResponse.active,
     createdAt: setWompiCheckoutPaymentResponse.createdAt,
     updatedAt: setWompiCheckoutPaymentResponse.updatedAt,
-    merchantPublicKey: setWompiCheckoutPaymentResponse.merchantPublicKey
+    defaultLanguage: setWompiCheckoutPaymentResponse.defaultLanguage,
+    merchantPublicKey: setWompiCheckoutPaymentResponse.merchantPublicKey,
+
+    customerData: {
+      customerReferences:
+        setWompiCheckoutPaymentResponse.customerData.customerReferences map (item) -> {
+          label: item.label,
+          isRequired: item.isRequired
+        }
+    },
+
+    taxes:
+      setWompiCheckoutPaymentResponse.taxes map (tax) -> {
+        "type": taxMap[tax."type"] default tax."type",
+        amountInCents: tax.amountInCents
+      }
   }
 }

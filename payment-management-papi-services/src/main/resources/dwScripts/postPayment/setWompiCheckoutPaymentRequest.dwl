@@ -31,7 +31,7 @@ var firstRef = refs[0]
 
 ---
 {
-    name: firstRef.reference,
+    name: firstRef.description,
     description: firstRef.description,
 
     single_use: link.singleUse default true,

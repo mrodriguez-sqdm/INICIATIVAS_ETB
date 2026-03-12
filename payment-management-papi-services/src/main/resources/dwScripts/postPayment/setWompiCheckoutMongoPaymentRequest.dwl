@@ -58,7 +58,7 @@ var firstDetailRef = (vars.payloadOri.references default [])[0]
 
 	concepto: gateway.description default "",
 
-	entidad_bancaria: vars.payloadOri.paymentMethod.bank default "",
+	entidad_bancaria: vars.payloadOri.paymentMethod.bank default "ENTIDAD BANCARIA",
 
 	estado_transaccion: "PENDIENTE",
 

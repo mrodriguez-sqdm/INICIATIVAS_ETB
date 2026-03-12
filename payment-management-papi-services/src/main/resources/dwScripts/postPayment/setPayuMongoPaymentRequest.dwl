@@ -5,6 +5,11 @@ var firstDetailRef = (vars.payloadOri.references default [])[0]
 var gatewayOrder = vars.requestGateway.order default {}
 var gatewayAdditionalValues = gatewayOrder.additionalValues default {}
 
+var taxMap = {
+	"TX_TAX": "IVA",
+	"TX_TAX_RETURN_BASE": "BASE_GRAVABLE"
+}
+
 ---
 {
 	id_transaccion: vars.payloadOri.transactionId,
@@ -22,22 +27,28 @@ var gatewayAdditionalValues = gatewayOrder.additionalValues default {}
 		descripcion: gatewayOrder.description default "",
 		moneda: gatewayAdditionalValues.TX_VALUE.currency default "",
 		valor_pagar: (gatewayAdditionalValues.TX_VALUE.value default 0) as String,
-		impuestos: [
-			{
-				tipo: "IVA",
-				valor: (gatewayAdditionalValues.TX_TAX.value default 0) as String
-			}
-		],
+
+		impuestos:
+			(gatewayAdditionalValues default {})
+				pluck ((v, k) ->
+					if (taxMap[k]?)
+						{
+							tipo: taxMap[k],
+							valor: (v.value default 0) as String
+						}
+					else null
+				)
+				filter ($ != null),
+
 		detalle_referencias:
 			(vars.payloadOri.references default [])
 			map (r) -> {
-				referencia: r.invoiceNumber default r.reference default "",
+				referencia: r.reference default "",
 				descripcion: r.description default "",
 				moneda: r.currency default "",
 				valor_pagar: (r.totalAmount default 0) as String,
 				impuestos:
 					(r.taxes default [])
-					filter ((t) -> (t."type" default "") != "BASE_GRAVABLE")
 					map (t) -> {
 						tipo: t."type" default "",
 						valor: (t.value default 0) as String

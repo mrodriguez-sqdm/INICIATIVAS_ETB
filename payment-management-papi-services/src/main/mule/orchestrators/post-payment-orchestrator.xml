@@ -8,6 +8,11 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="post-payment-orchestrator-sub-flow"
 		doc:id="6fd28a28-94b3-447d-b610-9ad00414215c">
+		<choice doc:name="Choice" doc:id="b54e97b0-dc19-4ed7-b8aa-933d7bc978b0" >
+			<when expression='#[lower(payload.gateway.gatewayName default "") == "wompi" and lower(payload.gateway.paymentFlow default "") == "api"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="791ae1b4-2e71-48b1-a471-42bdf97f4bf5" name="post-payment-WompiTokens-orchestratorSub_Flow" target="responseWompiTokens"/>
+			</when>
+		</choice>
 		<ee:transform doc:name="set payment request variables"
 			doc:id="720f2415-4c10-4e26-826d-05763f790c61">
 			<ee:message>
@@ -60,5 +65,35 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 			</ee:variables>
 		</ee:transform>
 		<ee:dynamic-evaluate doc:name="dynamic evaluate response" doc:id="1015d425-3b29-4a07-abe2-9047b424e45a" expression="#[vars.responsePath]" />
+	</sub-flow>
+	<sub-flow name="post-payment-WompiTokens-orchestratorSub_Flow" doc:id="38c35385-5390-4d14-8fda-1951db709f57" >
+		<ee:transform doc:name="set payments request variables Wompi tokens cards" doc:id="420cec7d-cee4-45de-b6dd-0dc2b6d3941a">
+			<ee:message>
+				<ee:set-payload resource="dwScripts/postPayment/setWompiPaymentsTokenCardsRequest.dwl" />
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable resource="dwScripts/postPayment/setWompiPaymentsTokenCardsRequestHttpRequest.dwl" variableName="httpRequest" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="529a75d8-994b-40b6-94ef-de457c668fd1" name="sapi-http-client-sub-flow" target="responseWompiTokensCards" />
+		<ee:transform doc:name="set payments request variables Wompi acceptanceTokens" doc:id="34a10c24-eae0-458b-ac7f-5cdd6741c970" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable resource="dwScripts/postPayment/setWompiPaymentsAcceptanceTokensRequestHttpRequest.dwl" variableName="httpRequest" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="47fcd350-0a13-4e83-9319-f841730b6212" name="sapi-http-client-sub-flow" target="responseWompiAcceptanceTokens" />
+		<ee:transform doc:name="Transform Message" doc:id="aa3f7422-bf05-4d22-94c8-07789a528e26" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	tokenCards: vars.responseWompiTokensCards.data.id,
+	acceptanceTokens: vars.responseWompiAcceptanceTokens.data.presignedAcceptance.acceptanceToken
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 	</sub-flow>
 </mule>
