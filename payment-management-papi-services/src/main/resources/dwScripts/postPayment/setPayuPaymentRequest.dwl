@@ -37,7 +37,7 @@ var payment = payload.paymentMethod
   order: {
     accountId: Mule::p("payu-sapi.fields.accountId"),
     referenceCode: referenceCode,
-    description: firstRef.description,
+    description: (refs map $.description) joinBy ", ",
     language: "es",
     notifyUrl: payment.link.notifyUrl,
 

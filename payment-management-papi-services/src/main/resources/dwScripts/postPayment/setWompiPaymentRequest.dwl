@@ -1,12 +1,16 @@
 %dw 2.0
 output application/json
 
-var firstReference = (payload.references default [])[0]
+var refs = payload.references default []
+var firstReference = refs[0] default {}
 var card = payload.paymentMethod.card default {}
+
+var totalAmount =
+    sum(refs.totalAmount default [])
 
 ---
 {
-  amount_in_cents: (firstReference.totalAmount default 0) * 100,
+  amount_in_cents: (totalAmount default 0) * 100,
   currency: firstReference.currency default "COP",
   customer_email: payload.customer.email default "",
   

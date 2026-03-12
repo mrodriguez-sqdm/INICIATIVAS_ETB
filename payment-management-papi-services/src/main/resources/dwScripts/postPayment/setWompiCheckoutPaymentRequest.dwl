@@ -32,7 +32,7 @@ var firstRef = refs[0]
 ---
 {
     name: firstRef.description,
-    description: firstRef.description,
+    description: (refs map $.description) joinBy ", ",
 
     single_use: link.singleUse default true,
     collect_shipping: link.collectShipping default false,
