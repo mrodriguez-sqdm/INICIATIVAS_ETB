@@ -68,7 +68,7 @@ var taxMap = {
 
 	entidad_bancaria: vars.payloadOri.paymentMethod.bank default "ENTIDAD BANCARIA",
 
-	estado_transaccion: vars.sapiResponse.data.state default "PENDIENTE",
+	estado_transaccion: vars.sapiResponse.data.state default "CREATED",
 
 	fecha_registro:
 		(vars.sapiResponse.data.operationDate default 0)

@@ -1,34 +1,57 @@
 %dw 2.0
 import * from dw::core::Periods
 output application/json
+var refs = payload.references default []
+var totalAmount = sum(refs map $.totalAmount)
+var ivaValue = sum(refs flatMap ($.taxes default []) filter ($."type" == "IVA") map $.value)
+var paymentDescription = (refs map $.description) joinBy ", "
+var fechaHora =
+    now() as String {format: "yyyyMMddHHmmss"}
+var documentTypeMap = {
+	CC: "CedulaDeCiudadania",
+	TI: "TarjetaDeIdentidad",
+	RC: "RegistroCivilDeNacimiento",
+	CE: "CedulaDeExtranjeria",
+	TE: "TarjetaDeExtranjeria",
+	PAS: "Pasaporte",
+	DIE: "DocumentoDeIdentificacionExtranjero",
+	NIT: "NIT"
+}
+var identificationType = documentTypeMap[payload.customer.documentType]
+var referenceCode =
+    if (sizeOf(refs) > 1)
+        "MDM_PAGO_" ++ payload.customer.documentNumber ++ "_" ++ fechaHora
+    else
+        "MDM_PAGO_" ++ refs[0].reference ++ "_" ++ fechaHora
+var userType =
+	if (payload.customer.documentType == "NIT") "company"
+	else "person"
 ---
 {
-	"financialInstitutionCode": vars.payloadOri.bank.code default "1007",
+	"financialInstitutionCode": payload.paymentMethod.pse.financialInstitutionCode,
 	"entityCode": Mule::p('pse-sapi.fields.entityCode'),
-	"serviceCode": Mule::p('pse-sapi.fields.serviceCode'),
-	"transactionValue": vars.payloadOri.amount,
-	"vatValue": (vars.payloadOri.taxes filter $.item == Mule::p('pse-sapi.fields.iva'))[0].value default 0,
-	"ticketId": vars.payloadOri.invoiceNumber as Number,
-	"entityurl": vars.payloadOri.extraParameters.entityurl,
-	"userType": vars.payloadOri.customer.document.userType default Mule::p('pse-sapi.fields.userType'),
-	"soliciteDate": now() as String {
-		format: "yyyy-MM-dd'T'HH:mm:ss.SSS"
-	},
-	"paymentDescription": vars.payloadOri.description,
-	"referenceNumber1": vars.payloadOri.reference,
-	"referenceNumber2": vars.payloadOri.reference2,
-	"referenceNumber3": vars.payloadOri.reference3,
-	"identificationType": vars.payloadOri.customer.document."type",
-	"identificationNumber": vars.payloadOri.customer.document."number",
-	"fullName": vars.payloadOri.customer.firstname ++ " " ++ vars.payloadOri.customer.lastname,
-	"cellphoneNumber": vars.payloadOri.customer.phone,
-	"address": vars.payloadOri.customer.address.street1 ++ " " ++ vars.payloadOri.customer.address.street2,
-	"email": vars.payloadOri.customer.email,
+	"serviceCode": payload.paymentMethod.pse.serviceCode default Mule::p('pse-sapi.fields.serviceCode'),
+	"transactionValue": totalAmount,
+	"vatValue": ivaValue default 0,
+	"ticketId": payload.invoiceNumber,
+	"entityurl": payload.paymentMethod.link.redirectUrl,
+	"userType": userType,
+	"soliciteDate": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS"},
+	"paymentDescription": paymentDescription,
+	"referenceNumber1": referenceCode,
+	"referenceNumber2": "",
+	"referenceNumber3": "",
+	"identificationType": identificationType,
+	"identificationNumber": payload.customer.documentNumber,
+	"fullName": payload.customer.fullName,
+	"cellphoneNumber": payload.customer.phoneNumber as Number,
+	"address": payload.customer.billingAddress.addressLine1 ++ " " ++ (payload.customer.billingAddress.addressLine2 default ""),
+	"email": payload.customer.email,
 	"beneficiaryEntityIdentificationType": Mule::p('pse-sapi.fields.beneficiaryEntityIdentificationType'),
 	"beneficiaryEntityIdentification": Mule::p('pse-sapi.fields.beneficiaryEntityIdentification'),
 	"beneficiaryEntityName": Mule::p('pse-sapi.fields.beneficiaryEntityName'),
 	"beneficiaryEntityCIIUCategory": Mule::p('pse-sapi.fields.beneficiaryEntityCIIUCategory'),
-	"beneficiaryIdentificationType": vars.payloadOri.beneficiary.document."type",
-	"beneficiaryIdentification": vars.payloadOri.beneficiary.document."number",
-	"indicator4per1000": vars.payloadOri.extraParameters.indicator4per1000 default 0
+	"beneficiaryIdentificationType": identificationType,
+	"beneficiaryIdentification": payload.customer.documentNumber,
+	"indicator4per1000": Mule::p('pse-sapi.fields.indicator4per1000') as Number
 }

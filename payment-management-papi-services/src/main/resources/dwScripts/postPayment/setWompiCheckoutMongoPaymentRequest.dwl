@@ -60,7 +60,7 @@ var firstDetailRef = (vars.payloadOri.references default [])[0]
 
 	entidad_bancaria: vars.payloadOri.paymentMethod.bank default "ENTIDAD BANCARIA",
 
-	estado_transaccion: "PENDIENTE",
+	estado_transaccion: "CREATED",
 
 	fecha_registro: vars.sapiResponse.data.createdAt default "",
 

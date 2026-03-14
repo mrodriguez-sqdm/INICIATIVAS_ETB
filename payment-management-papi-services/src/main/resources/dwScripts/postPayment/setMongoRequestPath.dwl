@@ -10,9 +10,6 @@ method match {
 	case "pse" ->
 		readUrl('classpath://dwScripts/postPayment/setPseMongoPaymentRequest.dwl', 'text/plain')
 
-	case "etb" ->
-		readUrl('classpath://dwScripts/postPayment/setEtbMongoPaymentRequest.dwl', 'text/plain')
-
 	case "wompi" ->
 		flow match {
 			case "api" ->

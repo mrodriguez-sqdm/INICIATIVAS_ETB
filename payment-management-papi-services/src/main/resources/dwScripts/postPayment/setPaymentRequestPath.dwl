@@ -10,9 +10,6 @@ gateway match {
 	case "pse" ->
 		readUrl('classpath://dwScripts/postPayment/setPsePaymentRequest.dwl', 'text/plain')
 		
-	case "etb" ->
-		readUrl('classpath://dwScripts/postPayment/setEtbPaymentRequest.dwl', 'text/plain')
-		
 	case "wompi" ->
 		flow match {
 			case "api" ->

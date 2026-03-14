@@ -6,6 +6,16 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-payment-ValidateRequiresGateway-orchestratorSub_Flow" doc:id="eb6b2928-fc97-42c6-be5c-73722ed0ea8d" >
+		<choice doc:name="Choice" doc:id="dd125f20-6dab-43a2-8eaa-f83e96cf85e5" >
+			<when expression='lower(payload.gateway.requiresGateway default "") == "false"'>
+				<flow-ref doc:name="Flow Reference" doc:id="8451d59a-5f74-40b5-af36-caccca9ae16f" name="post-payment-mongo-orchestratorSub_Flow" />
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Flow Reference" doc:id="201eb64f-1c90-4e18-878a-f692f8511e87" name="post-payment-orchestrator-sub-flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
 	<sub-flow name="post-payment-orchestrator-sub-flow"
 		doc:id="6fd28a28-94b3-447d-b610-9ad00414215c">
 		<choice doc:name="Choice" doc:id="b54e97b0-dc19-4ed7-b8aa-933d7bc978b0">
@@ -13,26 +23,20 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 				<flow-ref doc:name="Flow Reference" doc:id="791ae1b4-2e71-48b1-a471-42bdf97f4bf5" name="post-payment-WompiTokens-orchestratorSub_Flow" target="responseWompiTokens" />
 			</when>
 		</choice>
-		<ee:transform doc:name="set payment request variables"
-			doc:id="720f2415-4c10-4e26-826d-05763f790c61">
+		<ee:transform doc:name="set payment request variables" doc:id="720f2415-4c10-4e26-826d-05763f790c61">
 			<ee:message>
 			</ee:message>
 			<ee:variables>
-				<ee:set-variable
-					resource="dwScripts/postPayment/setPaymentHttpRequest.dwl"
-					variableName="httpRequest" />
-				<ee:set-variable
-					resource="dwScripts/postPayment/setPaymentRequestPath.dwl"
-					variableName="requestpath" />
-				<ee:set-variable
-					resource="dwScripts/postPayment/setPaymentMethod.dwl"
-					variableName="paymentMethod" />
-				<ee:set-variable
-					resource="dwScripts/postPayment/setPayloadOri.dwl"
-					variableName="payloadOri" />
+				<ee:set-variable resource="dwScripts/postPayment/setPaymentHttpRequest.dwl" variableName="httpRequest" />
+				<ee:set-variable resource="dwScripts/postPayment/setPaymentRequestPath.dwl" variableName="requestpath" />
+				<ee:set-variable resource="dwScripts/postPayment/setPaymentMethod.dwl" variableName="paymentMethod" />
+				<ee:set-variable resource="dwScripts/postPayment/setPayloadOri.dwl" variableName="payloadOri" />
 				<ee:set-variable resource="dwScripts/postPayment/setPaymentFlow.dwl" variableName="paymentFlow" />
 			</ee:variables>
 		</ee:transform>
+		<async doc:name="Async" doc:id="f5f21ae2-498b-4416-8142-58b597088837">
+			<flow-ref doc:name="Flow Reference" doc:id="dd5794a4-b7f4-412d-8959-130b472786b3" name="post-payment-createAudit-orchestratorSub_Flow" />
+		</async>
 		<ee:dynamic-evaluate
 			doc:name="dynamic evaluate payment request"
 			doc:id="2b0e8a8b-2bbd-4963-a0c1-e848b713a0ef"
@@ -46,6 +50,9 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 				<logger level="INFO" doc:name="response code" doc:id="5978a27b-ab1d-42aa-a6d8-840bd447d935" message='#[vars.sapiResponse.data.responseCode ++ " - not valid, transaction will not be registered"]' />
 			</when>
 			<otherwise>
+				<async doc:name="Async" doc:id="e8dfdb9b-aef0-4346-8986-e94f8716bb9e">
+					<flow-ref doc:name="Flow Reference" doc:id="2a38ff50-3d71-440f-b89b-f12529b98f40" name="post-payment-createAudit-orchestratorSub_Flow" />
+		</async>
 				<ee:transform doc:name="set mongo request variables" doc:id="70a1117c-67a2-4f2b-b284-bcf1cad9bb9e">
 			<ee:variables>
 				<ee:set-variable resource="dwScripts/postPayment/setMongoRequestPath.dwl" variableName="requestPath" />
@@ -92,6 +99,103 @@ output application/json
 {
 	tokenCards: vars.responseWompiTokensCards.data.id,
 	acceptanceTokens: vars.responseWompiAcceptanceTokens.data.presignedAcceptance.acceptanceToken
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-payment-createAudit-orchestratorSub_Flow" doc:id="383b9c73-7d94-4240-8e79-d03e6a019a01" >
+		<ee:transform doc:name="Transform Message" doc:id="165818fe-66cc-4782-b430-58ccda572963">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="httpRequest"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"host": p('mongo-sapi.host'),
+	"port": p('mongo-sapi.port'),
+	"basepath": p('mongo-sapi.basepath'),
+	"method": p('mongo-sapi.postPaymentAudit.method'),
+	"path": p('mongo-sapi.postPaymentAudit.path'),
+	"headers": {
+		"client_id": p('secure::app.credentials.clientId'),
+		"client_secret": p('secure::app.credentials.clientSecret'),
+		"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+		"name": attributes.headers.name,
+		"systemId": attributes.headers.systemId,
+		"source": attributes.headers.source
+	}
+}]]></ee:set-variable>
+				<ee:set-variable resource="dwScripts/postPayment/setMongoRequestPath.dwl" variableName="requestpath" />
+				</ee:variables>
+			</ee:transform>
+		<ee:dynamic-evaluate doc:name="dynamic evaluate mongo request" doc:id="2be43a93-8083-42cf-bf38-de023bb0ec96" expression="#[vars.requestPath]" />
+		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="f33c11c5-e129-4081-a1b7-4bec47450df6" name="sapi-http-client-sub-flow" target="sapiResponse" />
+	</sub-flow>
+	<sub-flow name="post-payment-mongo-orchestratorSub_Flow" doc:id="43d8c6eb-c2cb-4ab5-8ee0-9cdeb627997e" >
+		<async doc:name="Async" doc:id="29dc3d1b-fa8b-475b-8469-86c9b32808c8">
+			<ee:transform doc:name="set mongo request variables" doc:id="4e5d7c45-0210-4ec3-a876-668c82d474aa" >
+				<ee:message >
+					<ee:set-payload resource="dwScripts/postPayment/setMongoPaymentRequest.dwl" />
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="httpRequest" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"host": p('mongo-sapi.host'),
+	"port": p('mongo-sapi.port'),
+	"basepath": p('mongo-sapi.basepath'),
+	"method": p('mongo-sapi.postPaymentAudit.method'),
+	"path": p('mongo-sapi.postPaymentAudit.path'),
+	"headers": {
+		"client_id": p('secure::app.credentials.clientId'),
+		"client_secret": p('secure::app.credentials.clientSecret'),
+		"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+		"name": attributes.headers.name,
+		"systemId": attributes.headers.systemId,
+		"source": attributes.headers.source
+	}
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="1d6aad01-8313-4a0d-8be7-59c96a9999ed" name="sapi-http-client-sub-flow" target="sapiResponse" />
+		</async>
+		<ee:transform doc:name="set mongo request variables" doc:id="eaacac63-c25e-4228-86b2-3f3519aea311" >
+			<ee:message >
+				<ee:set-payload resource="dwScripts/postPayment/setMongoPaymentRequest.dwl" />
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpRequest" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"host": p('mongo-sapi.host'),
+	"port": p('mongo-sapi.port'),
+	"basepath": p('mongo-sapi.basepath'),
+	"method": p('mongo-sapi.postPayment.method'),
+	"path": p('mongo-sapi.postPayment.path'),
+	"headers": {
+		"client_id": p('secure::app.credentials.clientId'),
+		"client_secret": p('secure::app.credentials.clientSecret'),
+		"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+		"name": attributes.headers.name,
+		"systemId": attributes.headers.systemId,
+		"source": attributes.headers.source
+	}
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="c5d484f1-e284-4f70-99f4-d6d5fc0a88b9" name="sapi-http-client-sub-flow" target="sapiResponse" />
+		<ee:transform doc:name="Transform Message" doc:id="d4fead00-ac22-42ad-9607-87139a09f624" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: "200",
+  message: "Services retrieved successfully",
+  result: payload
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>

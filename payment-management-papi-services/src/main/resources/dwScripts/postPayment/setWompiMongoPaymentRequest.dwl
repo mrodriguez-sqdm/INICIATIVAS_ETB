@@ -61,7 +61,7 @@ var descripcionConcatenada =
 
 	entidad_bancaria: vars.payloadOri.paymentMethod.bank default "ENTIDAD BANCARIA",
 
-	estado_transaccion: sapi.status default "PENDIENTE",
+	estado_transaccion: sapi.status default "CREATED",
 
 	fecha_registro: sapi.createdAt default "",
 
