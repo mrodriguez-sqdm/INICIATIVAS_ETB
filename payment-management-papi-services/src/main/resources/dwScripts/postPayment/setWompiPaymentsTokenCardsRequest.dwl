@@ -1,7 +1,7 @@
 %dw 2.0
 output application/json
 
-var cardData = vars.payloadOri.paymentMethod.card.cardData default {}
+var cardData = payload.paymentMethod.card.cardData default {}
 
 ---
 {
