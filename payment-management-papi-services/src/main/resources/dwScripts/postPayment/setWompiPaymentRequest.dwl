@@ -4,6 +4,13 @@ output application/json
 var refs = payload.references default []
 var firstReference = refs[0] default {}
 var card = payload.paymentMethod.card default {}
+var fechaHora =
+    now() as String {format: "yyyyMMddHHmmss"}
+var referenceCode =
+    if (sizeOf(refs) > 1)
+        "MDM_PAGO_" ++ payload.customer.documentNumber ++ "_" ++ fechaHora
+    else
+        "MDM_PAGO_" ++ refs[0].reference ++ "_" ++ fechaHora
 
 var totalAmount =
     sum(refs.totalAmount default [])
@@ -22,7 +29,7 @@ var totalAmount =
 
   payment_method_type: payload.paymentMethod."type" default "",
   redirect_url: payload.paymentMethod.link.redirectUrl default "",
-  reference: firstReference.reference default "",
+  reference: referenceCode,
   expiration_time: 
     (payload.paymentMethod.link.expirationDate as DateTime)
         as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},

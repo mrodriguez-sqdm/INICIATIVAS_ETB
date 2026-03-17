@@ -2,7 +2,13 @@
 output application/json
 ---
 {
-	"status": "200",
-	"message": "operacion exitosa",
-	"data": payload.data
+  code: "200",
+  message: "Services retrieved successfully",
+  "result": {
+		cus: payload.data.id,
+		gatewayAttributes: {
+            gateway: "WOMPI",
+            gatewayType: "API"
+        }
+	} ++ payload.data
 }

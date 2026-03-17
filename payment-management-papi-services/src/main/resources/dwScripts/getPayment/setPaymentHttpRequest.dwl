@@ -1,18 +1,39 @@
 %dw 2.0
 output application/json
-var paymentId = vars.paymentMethod match {
-    case "payu" -> { "id": vars.paymentId }
-    case "wompi" -> { "payment_link_id": vars.paymentId}
-    case "pse" ->  { "id": vars.paymentId }
-    else -> ""
-}
+
+var method = vars.paymentMethod default ""
+var flow   = vars.paymentFlow default ""
+
+// key para host/port/basepath
+var gatewayKey = method ++ "-sapi"
+
+// key para method/path
+var flowKey =
+    if (method == "wompi")
+        method ++ "-" ++ flow ++ "-sapi"
+    else
+        method ++ "-sapi"
+
+var paymentId =
+    method match {
+        case "payu" -> { id: vars.paymentId }
+        case "pse" -> { id: vars.paymentId }
+        case "wompi" ->
+            flow match {
+                case "api" -> { transaction_id: vars.paymentId }
+                case "checkout" -> { payment_link_id: vars.paymentId }
+                else -> {}
+            }
+        else -> {}
+    }
+
 ---
 {
-	"host": p(vars.paymentMethod ++ '-sapi.host'),
-	"port": p(vars.paymentMethod ++ '-sapi.port'),
-	"basepath": p(vars.paymentMethod ++ '-sapi.basepath'),
-	"method": p(vars.paymentMethod ++ '-sapi.getPayment.method'),
-	"path": p(vars.paymentMethod ++ '-sapi.getPayment.path'),
+	"host": p(gatewayKey ++ '.host'),
+	"port": p(gatewayKey ++ '.port'),
+	"basepath": p(gatewayKey ++ '.basepath'),
+	"method": p(flowKey ++ '.getPayment.method'),
+	"path": p(flowKey ++ '.getPayment.path'),
 	"headers": {
 		"client_id": p('secure::app.credentials.clientId'),
 		"client_secret": p('secure::app.credentials.clientSecret'),

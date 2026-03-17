@@ -1,4 +1,4 @@
 %dw 2.0
 output application/json
 ---
-attributes.uriParams.paymentMethod
+(lower(attributes.queryParams.GATEWAY_PAYMENT default ""))

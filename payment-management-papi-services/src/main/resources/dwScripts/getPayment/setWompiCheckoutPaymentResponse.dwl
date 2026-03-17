@@ -5,10 +5,10 @@ output application/json
   code: "200",
   message: "Services retrieved successfully",
   "result": {
-		cus: payload.trazabilityCode,
+		cus: payload.data.id,
 		gatewayAttributes: {
-            gateway: "PSE",
-            gatewayType: "API"
+            gateway: "WOMPI",
+            gatewayType: "CHECKOUT"
         }
-	} ++ payload
+	} ++ payload.data
 }
