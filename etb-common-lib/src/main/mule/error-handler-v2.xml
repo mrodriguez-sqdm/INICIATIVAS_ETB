@@ -111,8 +111,7 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
         <set-variable variableName="httpStatus" value="504" />
 		<flow-ref name="build-common-error"/>
     </sub-flow>
-
-    <sub-flow name="build-error-response-500">
+	<sub-flow name="build-error-response-500">
         <set-variable variableName="httpStatus" value="500" />
 		<flow-ref name="build-common-error"/>
     </sub-flow>
@@ -127,38 +126,43 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
             <ee:message>
                 <ee:set-payload><![CDATA[%dw 2.0
 output application/json
-fun getError(errorPayload, cause) = 
-	errorPayload match {
-	case is Object ->  [{
-		origin: if ( errorPayload.cause[0].origin? ) errorPayload.cause[0].origin else p("app.name"),
-		message: if ( errorPayload.cause[0].message? ) errorPayload.cause[0].message else cause
-	}]
-	case is String -> [{
-		origin: p("app.name"),
-		message: errorPayload
-	}]
-	case is Null -> [{
-		origin: p("app.name"),
-		message: cause
-	}]
-	else -> [{
-		origin: p("app.name"),
-		message: "Unexpected Error: Please contact support."
-	}]
-}
-fun getErrorMessage(errorMessage, message) = 
-	errorMessage match {
-		case is Object -> errorMessage
-		else -> message
+var currentApi = p("app.name")
+fun getError(errorPayload, defaultCause, appName) = do {
+	var origin = {
+		"origin": appName
 	}
-
+	var currentCause = if ( errorPayload is Object ) errorPayload.cause else []
+	var errorCause = errorPayload match {
+		case is Object ->  [origin ++ {
+			"message": defaultCause
+		}]
+	case is String -> [origin ++ {
+			message: errorPayload
+		}]
+	case is Null -> [origin ++ {
+			message: defaultCause
+		}]
+	else -> [origin ++ {
+			message: "Unexpected Error: Please contact support."
+		}]
+	}
+	---
+	currentCause ++ errorCause
+}
+fun getErrorMessage(errorMessage, defaultMessage, appName) = 
+	errorMessage match {
+	case is Object -> errorMessage.message
+		case is String -> appName ++ ": " ++ errorMessage
+		case is Null -> appName ++ ": " ++ defaultMessage
+		else -> "Unexpected Error: Please contact support."
+}
 ---
 {
 	status: vars.httpStatus,
 	code: error.errorType.namespace ++ ":" ++ error.errorType.identifier,
-	message: getErrorMessage(error.errorMessage.payload.message, (p("app.name") ++ ": " ++ error.description default "Unexpected Error")),
+	message: getErrorMessage(error.errorMessage.payload, (error.description default "Unexpected Error"), currentApi),
 	messageServer: error.failingComponent default "Unexpected Error",
-	cause: getError(error.errorMessage.payload, error.cause.message)
+	cause: getError(error.errorMessage.payload, error.cause.message, currentApi)
 }]]></ee:set-payload>
             </ee:message>
         </ee:transform>
