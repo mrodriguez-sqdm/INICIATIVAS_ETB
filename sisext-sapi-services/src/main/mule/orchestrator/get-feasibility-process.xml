@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="sisext-processFlow" doc:id="f58f99cf-4e12-4d5b-ac93-dde6e6a96492" >
+		<ee:transform doc:name="Get mayorista" doc:id="c08ad5ab-4fdd-40f8-af19-64f9ad0288e9" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="mayorista" ><![CDATA[%dw 2.0
+output application/java
+---
+if (!isEmpty(attributes.queryParams.mayorista)) attributes.queryParams.mayorista else "ETB"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<parse-template doc:name="Parse XML" doc:id="cea93eac-7e98-4878-a10f-39bcd84de7aa" location="soap\schemas\templates\feasibility-request.xml"/>
+		<flow-ref doc:name="Go to Client" doc:id="a1d38cda-3ad5-43e1-87f1-6282af1a57d2" name="sisext-clientFlow"/>
+		<ee:transform doc:name="XML to JSON" doc:id="d9ba6c61-572c-46c2-bdfe-a3b8b7e0ded2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+var result = payload.Envelope.Body."M6ConsultarBloquearRecursos-RS".DetalleRespuesta.Resultado 
+---
+if(result == "OK")
+{
+	feasibilityResponse: {
+		outputMessage: payload.Envelope.Body
+		}
+} else 
+{
+	feasibilityResponse: {
+		outputMessage: {
+      "M6ConsultarBloquearRecursos-RS": {
+        "FechaSolicitud": payload.Envelope.Body."M6ConsultarBloquearRecursos-RS".FechaSolicitud,
+        "ModoConsulta": payload.Envelope.Body."M6ConsultarBloquearRecursos-RS".ModoConsulta,
+        "CodigoUnicoDireccion": payload.Envelope.Body."M6ConsultarBloquearRecursos-RS".CodigoUnicoDireccion,
+        "DetalleRespuesta": {
+          "FechaRespuesta": payload.Envelope.Body."M6ConsultarBloquearRecursos-RS".DetalleRespuesta.FechaRespuesta,
+          "Resultado": "FAIL",
+          "CodigoErrorResultado": "GTFEASERR01",
+          "DescripcionErrorResultado": payload.Envelope.Body."M6ConsultarBloquearRecursos-RS".DetalleRespuesta.DescripcionErrorResultado
+        },
+        "Accesos": payload.Envelope.Body."M6ConsultarBloquearRecursos-RS".Accesos,
+        "Notas": payload.Envelope.Body."M6ConsultarBloquearRecursos-RS".Notas,
+        "Atributos": payload.Envelope.Body."M6ConsultarBloquearRecursos-RS".Atributos
+            }
+        
+        }
+	}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

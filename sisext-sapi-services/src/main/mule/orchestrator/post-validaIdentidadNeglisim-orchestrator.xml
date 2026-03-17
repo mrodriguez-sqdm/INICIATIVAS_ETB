@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-validaIdentidadNeglisim-orchestrator" doc:id="af4bc436-183a-4ad8-abdd-6388e44334fd" >
+		<parse-template doc:name="Parse Template Xml" doc:id="ee02ac0e-f23c-4d30-9d7c-4c1bc0734b57" location="soap\schemas\templates\soap-validaIdentidadNeglisim-request.xml"/>
+		<flow-ref doc:name="post-validaIdentidadNeglisim-client" doc:id="bf61edae-5b9b-4196-93a5-9d28b8857f39" name="post-validaIdentidadNeglisim-client"/>
+		<async doc:name="Async" doc:id="559502a4-9109-4498-9777-d7dd5c59ab9c">
+			<flow-ref doc:name="registerLog" doc:id="ff68a3de-f0dc-4f5c-981c-3613f9109582" name="registerLog" />
+		</async>
+		<ee:transform doc:name="ResponseToJson" doc:id="ae9e0b58-a816-4adb-8d5e-0db64aec8714" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{status: "PASS",
+identificationValidationResponse: payload.Envelope.Body.ValidarIdentificacionResponse 
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="registerLog" doc:id="9953594b-df2a-41ab-903b-7cbe9b36cbd0" >
+		<ee:transform doc:name="Log Body" doc:id="890446fa-ce92-4c1e-9a94-31ed0c7d7d81">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var inputBody = vars.inputBody.wsIdentificationValidationNegRequest.identificationValidation.validationObject
+var errorMsg = error.muleMessage.typedValue
+---
+{
+    Identificador_Peticion: correlationId,
+    Tipo_Documento: inputBody.identificationType default "", 
+    Numero_Identificacion: inputBody.identification as Number default null,
+    Numero_Conexion: "",
+    Tipo_Transaccion: "Registro Log LISIM",
+    Fecha_Inicio: now(), 
+    Fecha_Fin: now(),
+    Estado_Transaccion: "",
+    Sistema_Origen: "MULESOFT",
+    Atributos: [
+      {
+        name: "FECHA_CONSULTA",
+        value: now() as DateTime{format: "dd/MM/yyyy"}
+      },
+      {
+        name: "HORA_CONSULTA",
+        value: now() as DateTime{format: "HH:mm"}
+      },
+      {
+        name: "TIPO_IDENTIFICACION",
+        value: inputBody.identificationType default ""
+      },
+      {
+        name: "NUMERO_IDENTIFICACION",
+        value: inputBody.identification default ""
+      },
+      {
+        name: "APELLIDO",
+        value: inputBody.apellido default ""
+      },
+      {
+        name: "NOMBRE",
+        value: inputBody.nombre default ""
+      },
+      {
+        name: "TRAMITE",
+        value: inputBody.tramite default ""
+      },
+      {
+        name: "TIPO_CONSULTA",
+        value: ""
+      },
+      {
+        name: "USUARIO",
+        value: inputBody.usuario default ""
+      },
+      {
+        name: "CANAL",
+        value: inputBody.canal default ""
+      },
+      {
+        name: "PROVEEDOR",
+        value: inputBody.proveedor default ""
+      },
+      {
+        name: "CIUDAD",
+        value: inputBody.ciudad default ""
+      },
+      {
+        name: "DEPARTAMENTO",
+        value: inputBody.departamento default ""
+      },
+      {
+        name: "ESTADO_ETB",
+        value: if (vars.flagNegativeLog == true) "ERROR" else "CONSULTA EXITOSA"
+      },
+      {
+        name: "SISTEMA_ORIGEN",
+        value: inputBody.sistemaOrigen default ""
+      },
+      {
+        name: "MENSAJE",
+        value:  if (vars.flagNegativeLog == true and errorMsg != null) write(errorMsg, "application/xml") default "" else write(payload, "application/xml"),
+      },
+      {
+        name: "NIVEL_RIESGO",
+        value:  ""
+      },
+      {
+        name: "SCORE",
+        value: ""
+      },
+      {
+        name: "ID",
+        value: correlationId,
+      },
+      {
+        name: "MODELO",
+        value: inputBody.modelo default ""
+      },
+      {
+        name: "PORTAL",
+        value: inputBody.portal default ""
+      },
+      {
+        name: "NUMERO_CONTACTO",
+        value: inputBody.numeroContacto default ""
+      },
+      {
+        name: "TIPO",
+        value: inputBody.tipo default ""
+      },
+      {
+        name: "ESTRATO",
+        value: inputBody.estrato default ""
+      }
+      ]
+  }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<flow-ref doc:name="registerLog-client" doc:id="c6283bff-14d2-4e32-8ad1-c870a25f5cb7" name="registerLog-client" />
+	</sub-flow>
+</mule>
