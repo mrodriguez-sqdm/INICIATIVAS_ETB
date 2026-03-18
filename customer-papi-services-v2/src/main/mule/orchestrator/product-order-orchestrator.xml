@@ -9,8 +9,7 @@ http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/htt
 	<sub-flow name="product-order-create-orchestratorSub_Flow" doc:id="427d5021-21b6-4808-9363-450eb0e2fc39" >
 		<set-variable value="#[attributes.headers]" doc:name="Set Variable headers" doc:id="f794dea2-bd6e-49e5-a232-c38d3432facf" variableName="headers"/>
 		<set-variable value="#[payload]" doc:name="Save Body Request Order" doc:id="521638ea-c45f-43b0-9197-80d567093f04" variableName="RequestOrder"/>
-		<flow-ref doc:name="Get Rules Mongo" doc:id="2a46b538-fa32-4ba4-ac24-d1f023b4c965" name="get-reglas-orden-mdm-cachingSub_Flow"/>
-		<logger level="INFO" doc:name="Logger" doc:id="59b4cbdd-f114-432a-a7ee-1d76f6287966" message="#[payload]"/>
+		<flow-ref doc:name="Flow Reference" doc:id="ac8370f9-83ed-4bb1-a992-1e41eb2c0e2c" name="get-reglas-orden-mdm-cachingSub_Flow"/>
 		<ee:transform doc:name="Filter Rules" doc:id="72f1321d-9898-4d5a-89c6-3a03369317cb" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
@@ -85,14 +84,35 @@ output application/json
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
-{ 
-"query" :{
- findAndModify: "MDM_CD_CONSECUTIVO",
- query: { Serie: "SecuenciaOrden"
-  },
-  update: { "\$inc": { Secuencia: 1 } },
-  new: true
-}
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+		"query" :{
+ 			findAndModify: "MDM_CD_CONSECUTIVO",
+ 			query: { Serie: "SecuenciaOrden"
+  			},
+  		update: { "\$inc": { Secuencia: 1 } },
+  		new: true
+		}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
 }
  ]]></ee:set-payload>
 					</ee:message>
@@ -107,7 +127,7 @@ output application/json
 p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
-				<flow-ref doc:name="Get Consecutive" doc:id="501c888d-54a2-44eb-a2a3-e1a1f1ac82ca" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="resultadoConsecutivo"/>
+				<flow-ref doc:name="Get Consecutive" doc:id="501c888d-54a2-44eb-a2a3-e1a1f1ac82ca" name="generic-sapi-clientSub_Flow" target="resultadoConsecutivo"/>
 				<scatter-gather doc:name="Scatter-Gather" doc:id="f83dafd0-59b5-43bf-83ef-9615f29aeb95" >
 					<route >
 						<ee:transform doc:name="Set Body Create Order" doc:id="9b9d81c8-5378-427c-a08a-20a71f3dba7c">
@@ -160,7 +180,13 @@ fun calcularEstadoComercial(reglas) = do {
 }
 
 ---
-{ 
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
   "query" : {
     "insert": "MDM_CD_ORDEN",
     "documents": [
@@ -201,6 +227,21 @@ fun calcularEstadoComercial(reglas) = do {
       }
     ]
   }
+},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
 }]]></ee:set-payload>
 					</ee:message>
 					<ee:variables>
@@ -210,31 +251,51 @@ output application/json
 vars.resultadoConsecutivo.result.value.Prefijo default "" ++ (vars.resultadoConsecutivo.result.value.Secuencia as String)]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
-						<flow-ref doc:name="InsertOrder" doc:id="4e44b7c5-a077-40b5-bdf5-dddcc54d43ec" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+						<flow-ref doc:name="InsertOrder" doc:id="4e44b7c5-a077-40b5-bdf5-dddcc54d43ec" name="generic-sapi-clientSub_Flow" />
 					</route>
 					<route >
 						<ee:transform doc:name="Transform Message" doc:id="71ee1de7-cdbb-489e-9694-5eacbda60b35" >
 							<ee:message >
 								<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
-
 var orderNum = (vars.resultadoConsecutivo.result.value.Prefijo default "") ++ (vars.resultadoConsecutivo.result.value.Secuencia as String default "")
 
 ---
-{ 
-  "query" : {
-    "insert": "MDM_REGLAS_ORDEN",
-    "documents": [
-      {
-        "Numero_Orden": orderNum as String,
-        "Reglas_Aplicadas": vars.reglasAcumuladas
-       }
-      ]
- }
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+	  "query" : {
+	    "insert": "MDM_REGLAS_ORDEN",
+	    "documents": [
+	      {
+	        "Numero_Orden": orderNum as String,
+	        "Reglas_Aplicadas": vars.reglasAcumuladas
+	       }
+	      ]
+	 }
+    },
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
 }]]></ee:set-payload>
 							</ee:message>
 						</ee:transform>
-						<flow-ref doc:name="Insert Reglas ejecutadas" doc:id="2ff8bbcd-c4b4-4bd6-9339-db7105347d54" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+						<flow-ref doc:name="Insert Reglas ejecutadas" doc:id="2ff8bbcd-c4b4-4bd6-9339-db7105347d54" name="generic-sapi-clientSub_Flow" />
 					</route>
 				</scatter-gather>
 				<ee:transform doc:name="Transform Message" doc:id="bbc03bd9-0ff0-46c0-9495-68990edc0b33">
@@ -338,9 +399,11 @@ var collection = if(payload.category == "LTE") "MDM_ORDEN" else "MDM_CD_ORDEN"
 		<flow-ref doc:name="Flow Reference" doc:id="487758a1-27b7-44a4-b820-b8df4831587f" name="generic-sapi-clientSub_Flow" />
 		<choice doc:name="Choice" doc:id="07c22657-db99-4836-a896-da836b41bbd3" >
 			<when expression="#[!isEmpty(payload.result)]">
-				<ee:transform doc:name="Respuesta Error" doc:id="09fe55e4-d77c-4580-af06-364e42f0b4ca" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
+				<scatter-gather doc:name="Scatter-Gather" doc:id="66acb978-b61d-48ba-8e1d-450d12404f50" >
+					<route >
+						<ee:transform doc:name="Body get MDM_REGLAS_ORDEN" doc:id="09fe55e4-d77c-4580-af06-364e42f0b4ca">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
 var collection = "MDM_REGLAS_ORDEN"
@@ -384,10 +447,10 @@ var collection = "MDM_REGLAS_ORDEN"
 					</ee:message>
 					<ee:variables />
 				</ee:transform>
-				<flow-ref doc:name="Flow Reference" doc:id="4e7eee20-e91e-46d6-b709-48c9c49d8b73" name="generic-sapi-clientSub_Flow" />
-				<ee:transform doc:name="Transform Message" doc:id="f426b673-8773-43b5-a950-1fa17ae166e5" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
+						<flow-ref doc:name="Flow Reference" doc:id="4e7eee20-e91e-46d6-b709-48c9c49d8b73" name="generic-sapi-clientSub_Flow" />
+						<ee:transform doc:name="Transform Message" doc:id="f426b673-8773-43b5-a950-1fa17ae166e5">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
 var reglas = payload.result[0].Reglas_Aplicadas
@@ -398,12 +461,51 @@ reglas filter ((regla) ->
 )]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
-				<flow-ref doc:name="Validacion de reglas" doc:id="dc12adaa-c0af-4ec7-8546-183bfb0ddb3b" name="product-order-validate-rules-orchestratorSub_Flow" />
-				<choice doc:name="Choice" doc:id="66b18a3d-df4b-4c0b-82ef-19efc0bb3e68" >
+					</route>
+					<route >
+						<flow-ref doc:name="Flow Reference" doc:id="15dad42e-d85e-4ba9-b770-6713fae3575d" name="get-reglas-orden-mdm-cachingSub_Flow" />
+					</route>
+				</scatter-gather>
+			  <ee:transform doc:name="Relacion Data Reglas" doc:id="8ed6c145-6afe-4fd1-b325-87bfd1704a55">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// 1. Extraemos las listas de reglas de ambas posiciones del payload
+var resultados = payload."0".payload default []
+var definiciones = payload."1".payload default []
+
+// 2. Realizamos el cruce (Join) entre resultados (0) y definiciones (1)
+var consolidado = resultados map (item0) -> {
+    // Buscamos en el catálogo (objeto 1) la regla que coincida con el ID del resultado (objeto 0)
+    (definiciones filter ($.idRegla == item0.idRegla) map (item1) -> {
+        // --- Datos provenientes de la definición (Posición 1) ---
+        idRegla: item1.idRegla,
+        nombre: item1.nombre,
+        descripcion: item1.descripcion,
+        habilitada: item1.habilitada,
+        obligatoria: item1.obligatoria,
+        aplicaA: item1.aplicaA,
+        accion: item1.accion,
+        siFalla: item1.siFalla,
+        siSeCumple: item1.siSeCumple,
+        estadoOrdenComercial: item1.estadoOrdenComercial
+    })
+}
+
+---
+// 3. Aplanamos el resultado para que quede un solo array de objetos
+flatten(consolidado)]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="7d018697-0636-4b83-a4e7-bcecc1475917">
+					<when expression="#[!isEmpty(payload)]">
+						<flow-ref doc:name="Validacion de reglas" doc:id="dc12adaa-c0af-4ec7-8546-183bfb0ddb3b" name="product-order-validate-rules-orchestratorSub_Flow" />
+						<choice doc:name="Choice" doc:id="66b18a3d-df4b-4c0b-82ef-19efc0bb3e68">
 					<when expression="#[(vars.reglasAcumuladas map ((regla) -&gt; (regla.esValido == false and regla.obligatoria == true))) contains true]">
-						<ee:transform doc:name="Respuesta Error" doc:id="359b772c-3e9b-4c8f-a44c-7b84425d05d6" >
-							<ee:message >
-								<ee:set-payload ><![CDATA[%dw 2.0
+						<ee:transform doc:name="Respuesta Error" doc:id="359b772c-3e9b-4c8f-a44c-7b84425d05d6">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -433,15 +535,31 @@ output application/json
 							<ee:variables />
 						</ee:transform>
 					</when>
+					<otherwise>
+						<ee:transform doc:name="Transform Message" doc:id="943e1b9e-38b7-497f-b323-27363cc04ae6">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "200",
+	messageResponse: "Order Update Success",
+	order: {}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+					</when>
 					<otherwise >
-						<ee:transform doc:name="Transform Message" doc:id="943e1b9e-38b7-497f-b323-27363cc04ae6" >
+						<ee:transform doc:name="Transform Message" doc:id="3ec70664-7818-4001-b1e4-e9a9364d286f" >
 							<ee:message >
 								<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 {
 	code: "200",
-	messageResponse: "Order Update Success",
+	messageResponse: "Order Update Success, not aplied rules",
 	order: {}
 }]]></ee:set-payload>
 							</ee:message>
@@ -611,84 +729,392 @@ output application/json
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
-// --- Funciones de utilidad ---
-var cliente = payload.result[0].Cliente_Tramite
-var ordenServicio = payload.result[0].Orden_Servicio
-var direccionPrincipal = (cliente.Direcciones filter ($.Seleccionada == true))[0]
-var agendamiento = payload.result[0].Agendamiento
+// Función para mapear estados (Commercial Status / Order Status)
+fun mapStatus(status) = if (isEmpty(status)) null else {
+    code: status.Codigo,
+    description: status.Descripcion,
+    date: status.Fecha,
+    retries: status.Reintentos,
+    exceptionCode: status.CodigoExcepcion,
+    exception: status.Excepcion
+}
 
+// Función para mapear coberturas
+fun mapCoverage(cov) = if (isEmpty(cov)) null else {
+    coverageType: cov.Tipo_Cobertura,
+    lotCode: cov.Codigo_Lote,
+    locality: cov.Localidad,
+    stratum: cov.Estrato,
+    latitude: cov.Latitud,
+    longitude: cov.Longitud,
+    gisAddress: cov.Direccion_GIS,
+    coverageName: cov.NombreCobertura,
+    olt: cov.Olt,
+    owner: cov.Propietario,
+    purpose: cov.Proposito,
+    technology: cov.Tecnologia,
+    zone: cov.Zona,
+    distanceType: cov.TipoDistancia,
+    distanceType2: cov.TipoDistancia2,
+    district: cov.Distrito,
+    molecule: cov.Molecula,
+    viable: cov.Viable,
+    usageCode: cov.CodigoUso
+}
 ---
 {
     code: "200",
-    messageResponse: "Orden Encontrada exitosamente",
+    messageResponse: "Orden consultada exitosamente",
     order: {
         id: payload.result[0]."_id"."\$oid",
-        createdAt: payload.result[0].Fecha_Creacion."\$date",
-        updatedAt: payload.result[0].Fecha_Modificacion."\$date",
+        createdAt: payload.result[0].Fecha_Creacion,
+        updatedAt: payload.result[0].Fecha_Modificacion,
         updatedBy: payload.result[0].Usuario_Modificacion,
         createdBy: payload.result[0].Usuario_Creacion,
         extractorUpdate: payload.result[0].Actualizacion_Extractor,
         orderNumber: payload.result[0].Numero_Orden,
         channel: payload.result[0].Canal,
-        description: payload.result[0].Estado_Orden_Comercial.Descripcion,
-        priority: payload.result[0].Estado_Orden_Comercial.Descripcion, // Mapeado según ejemplo destino
         phase: payload.result[0].Fase,
-        through: {
+        commercialOrderStatus: mapStatus(payload.result[0].Estado_Orden_Comercial),
+        through: if (isEmpty(payload.result[0].Tramite)) null else {
             throughType: payload.result[0].Tramite.Tipo_Tramite,
-            throughSubtype: payload.result[0].Tramite.Subtipo_Tramite default "",
-            throughDate: payload.result[0].Tramite.Fecha_Tramite."\$date",
-            reconnectionDate: "",
-            suspensionDate: "",
-            executionDate: payload.result[0].Tramite.Fecha_Tramite."\$date",
-            keepConnectionNumber: false,
-            permanenceClause: true,
-            permanenceClauseValue: 0,
-            cancellationReason: "",
-            cancellationDate: ""
+            throughSubtype: payload.result[0].Tramite.Subtipo_Tramite,
+            throughDate: payload.result[0].Tramite.Fecha_Tramite,
+            reconnectionDate: payload.result[0].Tramite.Fecha_Reconexion,
+            suspensionDate: payload.result[0].Tramite.Fecha_Suspension,
+            executionDate: payload.result[0].Tramite.Fecha_Ejecucion,
+            keepConnectionNumber: payload.result[0].Tramite.Conservar_Numero_Conexion,
+            permanenceClause: payload.result[0].Tramite.Clausula_Permanencia,
+            permanenceClauseValue: payload.result[0].Tramite.Valor_Clausula_Permanencia,
+            cancellationReason: payload.result[0].Tramite.Causal_Cancelacion,
+            cancellationSubreason: payload.result[0].Tramite.Subcausal_Cancelacion,
+            cancellationDescription: payload.result[0].Tramite.Descripcion_Cancelacion,
+            orderReasons: payload.result[0].Tramite.MotivosOrden
         },
-        orderService: {
-            id: ordenServicio.Id_Orden_Servicio,
-            orderDate: ordenServicio.Fecha_Orden_Servicio."\$date",
-            // Mapeo dinámico de servicios
-            services: ordenServicio.Servicios map (svc) -> {
+        serviceType: payload.result[0].Tipo_Servicio default "",
+        cun: payload.result[0].CUN,
+        previousCustomer: payload.result[0].Cliente_Anterior default "",
+        customer: if (isEmpty(payload.result[0].Cliente_Tramite)) null else {
+            id: { oid: payload.result[0].Cliente_Tramite."_id"."\$oid" },
+            createdAt: payload.result[0].Cliente_Tramite.Fecha_Creacion,
+            updatedAt: payload.result[0].Cliente_Tramite.Fecha_Modificacion,
+            updatedBy: payload.result[0].Cliente_Tramite.Usuario_Modificacion,
+            createdBy: payload.result[0].Cliente_Tramite.Usuario_Creacion,
+            extractorUpdate: payload.result[0].Cliente_Tramite.Actualizacion_Extractor,
+            customerAccountId: payload.result[0].Cliente_Tramite.Id_Cuenta_Cliente,
+            documentType: payload.result[0].Cliente_Tramite.Tipo_Documento,
+            documentNumber: payload.result[0].Cliente_Tramite.Numero_Documento,
+            firstNames: payload.result[0].Cliente_Tramite.Nombres,
+            companyShortName: payload.result[0].Cliente_Tramite.Nombre_Corto_Empresa,
+            firstLastName: payload.result[0].Cliente_Tramite.Primer_Apellido,
+            secondLastName: payload.result[0].Cliente_Tramite.Segundo_Apellido,
+            expeditionDate: payload.result[0].Cliente_Tramite.Fecha_Expedicion,
+            identityValidationDate: payload.result[0].Cliente_Tramite.Fecha_Validacion,
+            authorizesPersonalDataHandling: payload.result[0].Cliente_Tramite.Autoriza_Manejo_Datos_Personales,
+            authorizesCreditBureauConsultation: payload.result[0].Cliente_Tramite.Autoriza_Consulta_Centrales,
+            uen: payload.result[0].Cliente_Tramite.UEN,
+            uenSegment: payload.result[0].Cliente_Tramite.Segmento_UEN,
+            segment: payload.result[0].Cliente_Tramite.Segmento,
+            fixedScoring: {
+                scoringValue: payload.result[0].Cliente_Tramite.Scoring_Fija.Valor_Scoring,
+                scoringDate: payload.result[0].Cliente_Tramite.Scoring_Fija.Fecha_Scoring,
+                scoringClassification: payload.result[0].Cliente_Tramite.Scoring_Fija.Clasificacion_Scoring,
+                scoringType: payload.result[0].Cliente_Tramite.Scoring_Fija.Tipo_Scoring,
+                originSystem: payload.result[0].Cliente_Tramite.Scoring_Fija.Sistema_Origen
+            },
+            landlinePhone: payload.result[0].Cliente_Tramite.Telefono_Fijo default "",
+            extension: payload.result[0].Cliente_Tramite.Extension default "",
+            mobilePhone: payload.result[0].Cliente_Tramite.Telefono_Movil,
+            mobilePhone2: payload.result[0].Cliente_Tramite.Telefono_Movil2 default "",
+            email: payload.result[0].Cliente_Tramite.Email,
+            contacts: payload.result[0].Cliente_Tramite.Contactos map (contact) -> {
+                id: { oid: contact."_id"."\$oid" },
+                documentType: contact.Tipo_Documento,
+                documentNumber: contact.Numero_Documento,
+                firstNames: contact.Nombres,
+                firstLastName: contact.Primer_Apellido,
+                secondLastName: contact.Segundo_Apellido,
+                landlinePhone: contact.Telefono_Fijo default "",
+                landlinePhone2: contact.Telefono_Fijo2 default "",
+                mobilePhone: contact.Telefono_Movil,
+                mobilePhone2: contact.Telefono_Movil2 default "",
+                email: contact.Email,
+                department: contact.Departamento,
+                city: contact.Ciudad,
+                daneCode: contact.Codigo_Dane default "",
+                address: contact.Direccion,
+                locality: contact.Localidad,
+                selected: contact.Seleccionado default false,
+                authorized: contact.Autorizado default true,
+                status: contact.Estado default false,
+                "delete": contact.Eliminar default false,
+                contactAttachments: contact.Adjuntos_Contacto default "",
+                expeditionDate: contact.Fecha_Expedicion default "",
+                birthdayDate: contact.Fecha_Nacimiento default "",
+                phoneValidationDate: contact.Fecha_Validacion_Telefono default "",
+                emailValidationDate: contact.Fecha_Validacion_Email default "",
+                extractorUpdate: contact.Actualizacion_Extractor default ""
+            },
+            addresses: payload.result[0].Cliente_Tramite.Direcciones map (addr) -> {
+                addressId: addr.Id_Direccion,
+                normalizedAddress: addr.Direccion_Normalizada,
+                addressType: addr.Tipo_Direccion,
+                addressCode: addr.Codigo_Direccion default "",
+                departmentCode: addr.Codigo_Departamento,
+                municipalityCode: addr.Codigo_Municipio,
+                countryCode: addr.Codigo_Pais,
+                addressName: addr.Nombre_Direccion default "",
+                department: addr.Departamento,
+                municipality: addr.Municipio,
+                status: addr.Estado,
+                selected: addr.Seleccionado default false,
+                coverage: mapCoverage(addr.Cobertura),
+                availableCoverages: addr.CoberturasDisponibles map (c) -> mapCoverage(c),
+                usageCode: addr.CodigoUso
+            },
+            billingAccounts: payload.result[0].Cliente_Tramite.Cuentas_Facturacion default "",
+            serviceAccounts: payload.result[0].Cliente_Tramite.Cuentas_Servicio default "",
+            customerAttachments: payload.result[0].Cliente_Tramite.Adjuntos_Cliente default [],
+            originSystem: {
+                originSystemId: payload.result[0].Cliente_Tramite.Sistema_Origen.Id_Sistema_Origen,
+                originSystemName: payload.result[0].Cliente_Tramite.Sistema_Origen.Nombre_Sistema_Origen
+            },
+            status: payload.result[0].Cliente_Tramite.Estado,
+            carouselReason: payload.result[0].Cliente_Tramite.Causal_Carrusel default "",
+            carouselSubReason: payload.result[0].Cliente_Tramite.Subcausal_Carrusel default "",
+            atdp: {
+                habeasData: payload.result[0].Cliente_Tramite.ATDP.HABEAS_DATA,
+                date: payload.result[0].Cliente_Tramite.ATDP.FECHA,
+                user: payload.result[0].Cliente_Tramite.ATDP.USUARIO,
+                channel: payload.result[0].Cliente_Tramite.ATDP.CANAL,
+                associatedPqr: payload.result[0].Cliente_Tramite.ATDP.PQR_ASOCIADA
+            },
+            address: payload.result[0].Cliente_Tramite.Direccion default "",
+            coverage: payload.result[0].Cliente_Tramite.Cobertura default "",
+            department: payload.result[0].Cliente_Tramite.Departamento,
+            city: payload.result[0].Cliente_Tramite.Ciudad,
+            communicationsConsent: payload.result[0].Cliente_Tramite.Consentimiento_Comunicaciones default "",
+            emailAddress: payload.result[0].Cliente_Tramite.Direccion_Email default payload.result[0].Cliente_Tramite.Email
+        },
+        previousService: payload.result[0].Servicio_Anterior default "",
+        service: if (isEmpty(payload.result[0].Servicio_Tramite)) null else {
+            id: { oid: payload.result[0].Servicio_Tramite."_id"."\$oid" },
+            createdAt: payload.result[0].Servicio_Tramite.Fecha_Creacion,
+            updatedAt: payload.result[0].Servicio_Tramite.Fecha_Modificacion,
+            updatedBy: payload.result[0].Servicio_Tramite.Usuario_Modificacion,
+            createdBy: payload.result[0].Servicio_Tramite.Usuario_Creacion,
+            extractorUpdate: payload.result[0].Servicio_Tramite.Actualizacion_Extractor,
+            serviceAccountId: payload.result[0].Servicio_Tramite.Id_Cuenta_Servicio,
+            bundle: {
+                id: { oid: payload.result[0].Servicio_Tramite.Bundle."_id"."\$oid" },
+                createdAt: payload.result[0].Servicio_Tramite.Bundle.Fecha_Creacion,
+                updatedAt: payload.result[0].Servicio_Tramite.Bundle.Fecha_Modificacion,
+                updatedBy: payload.result[0].Servicio_Tramite.Bundle.Usuario_Modificacion,
+                createdBy: payload.result[0].Servicio_Tramite.Bundle.Usuario_Creacion,
+                extractorUpdate: payload.result[0].Servicio_Tramite.Bundle.Actualizacion_Extractor,
+                configCode: payload.result[0].Servicio_Tramite.Bundle.Codigo_Configuracion default "",
+                groupingNumber: payload.result[0].Servicio_Tramite.Bundle.Numero_Agrupacion,
+                productType: payload.result[0].Servicio_Tramite.Bundle.Tipo_Producto,
+                serviceType: payload.result[0].Servicio_Tramite.Bundle.Tipo_Servicio,
+                serviceSubtype: payload.result[0].Servicio_Tramite.Bundle.Subtipo_Servicio default "",
+                productSubtype: payload.result[0].Servicio_Tramite.Bundle.Subtipo_Producto default "",
+                sequence: payload.result[0].Servicio_Tramite.Bundle.Secuencia default 0,
+                dependency: payload.result[0].Servicio_Tramite.Bundle.Dependencia default 0,
+                classification: payload.result[0].Servicio_Tramite.Bundle.Clasificacion,
+                name: payload.result[0].Servicio_Tramite.Bundle.Nombre,
+                icon: payload.result[0].Servicio_Tramite.Bundle.Icono default "",
+                display: payload.result[0].Servicio_Tramite.Bundle.Visualizacion default "",
+                status: payload.result[0].Servicio_Tramite.Bundle.Estado,
+                minimumQuantity: payload.result[0].Servicio_Tramite.Bundle.Cantidad_Minima,
+                maximumQuantity: payload.result[0].Servicio_Tramite.Bundle.Cantidad_Maxima,
+                offerPrice: payload.result[0].Servicio_Tramite.Bundle.Precio_Oferta map (p) -> {
+                    salesChannel: p.Canal_Venta,
+                    priceExcludingTax: p.Precio_Sin_Iva,
+                    priceIncludingTax: p.Precio_Con_Iva,
+                    tax: p.Iva
+                },
+                offerProductFeatures: payload.result[0].Servicio_Tramite.Bundle.Caracteristicas_Producto_Oferta default [],
+                offerFilterGrouping: payload.result[0].Servicio_Tramite.Bundle.Agrupacion_Filtro_Oferta default "",
+                offerTechnicalSpecValue: payload.result[0].Servicio_Tramite.Bundle.Valor_Especificacion_Tecnica_Oferta default "",
+                serviceClassId: payload.result[0].Servicio_Tramite.Bundle.Id_Clase_Servicio default 0,
+                availability: payload.result[0].Servicio_Tramite.Bundle.Disponibilidad default false,
+                scheduling: payload.result[0].Servicio_Tramite.Bundle.Agendamiento default false,
+                provisioning: payload.result[0].Servicio_Tramite.Bundle.Aprovisionamiento default false,
+                billing: payload.result[0].Servicio_Tramite.Bundle.Facturacion default false,
+                action: payload.result[0].Servicio_Tramite.Bundle.Accion default "",
+                itemId: payload.result[0].Servicio_Tramite.Bundle.Id_Item default "",
+                parentItemId: payload.result[0].Servicio_Tramite.Bundle.Id_Item_Padre default "",
+                productTypeId: payload.result[0].Servicio_Tramite.Bundle.Id_Tipo_Producto default 0,
+                serviceTypeId: payload.result[0].Servicio_Tramite.Bundle.Id_Tipo_Servicio default 0,
+                serviceSubtypeId: payload.result[0].Servicio_Tramite.Bundle.Id_Subtipo_Servicio default 0,
+                productSubtypeId: payload.result[0].Servicio_Tramite.Bundle.Id_Subtipo_Producto default 0,
+                serviceId: payload.result[0].Servicio_Tramite.Bundle.Id_Servicio,
+                auxiliaryOptionalId: payload.result[0].Servicio_Tramite.Bundle.Id_Opcional_Auxiliar default "",
+                attributes: payload.result[0].Servicio_Tramite.Bundle.Atributos default [],
+                additionalType: payload.result[0].Servicio_Tramite.Bundle.Tipo_Adicional default "",
+                productParameters: payload.result[0].Servicio_Tramite.Bundle.Parametros_Producto default [],
+                selected: payload.result[0].Servicio_Tramite.Bundle.Seleccionado default false,
+                disabled: payload.result[0].Servicio_Tramite.Bundle.Deshabilitado default false,
+                discount: payload.result[0].Servicio_Tramite.Bundle.Descuento default 0,
+                finalPrice: payload.result[0].Servicio_Tramite.Bundle.Precio_Final default 0,
+                bundleParameters: payload.result[0].Servicio_Tramite.Bundle.Parametros_Bundle map (bp) -> {
+                    parameter: bp.Parametro,
+                    parameterType: bp.Tipo_Parametro,
+                    value: bp.Valor
+                },
+                primaries: payload.result[0].Servicio_Tramite.Bundle.Primarios map (pri) -> {
+                    id: { oid: pri."_id"."\$oid" },
+                    name: pri.Nombre,
+                    serviceId: pri.Id_Servicio,
+                    attributes: pri.Atributos map (attr) -> {
+                        name: attr.Nombre,
+                        value: attr.Valor,
+                        "type": attr.Tipo
+                    },
+                    secondaries: pri.Secundarios map (sec) -> {
+                        id: { oid: sec."_id"."\$oid" },
+                        name: sec.Nombre,
+                        serviceId: sec.Id_Servicio,
+                        attributes: sec.Atributos map (sAttr) -> {
+                            name: sAttr.Nombre,
+                            value: sAttr.Valor,
+                            "type": sAttr.Tipo
+                        }
+                    }
+                }
+            },
+            bundlePermanenceClause: payload.result[0].Servicio_Tramite.Clausula_Permanencia_Bundle default "",
+            optionals: payload.result[0].Servicio_Tramite.Opcionales default [],
+            promotions: payload.result[0].Servicio_Tramite.Promociones map (promo) -> {
+                id: promo."_id",
+                name: promo.Nombre,
+                description: promo.Descripcion,
+                "type": promo.Tipo,
+                startDate: promo.Fecha_Inicial,
+                action: promo.Accion,
+                products: promo.Productos default [],
+                optionals: promo.Opcionales default [],
+                discount: promo.Descuento default false,
+                origin: promo.Origen,
+                level: promo.Nivel,
+                groupingNumber: promo.Numero_Agrupacion,
+                features: promo.Caracteristicas map (f) -> {
+                    feature: f.Caracteristica,
+                    values: f.Valores
+                }
+            },
+            customer: payload.result[0].Servicio_Tramite.Cliente default "",
+            status: payload.result[0].Servicio_Tramite.Estado default "",
+            throughOrderId: payload.result[0].Servicio_Tramite.Id_Orden_Tramite default "",
+            billingAccountId: payload.result[0].Servicio_Tramite.Id_Cuenta_Facturacion default "0",
+            originSystem: payload.result[0].Servicio_Tramite.Sistema_Origen default "",
+            installationAddressId: payload.result[0].Servicio_Tramite.Id_Direccion_Instalacion,
+            activationDate: payload.result[0].Servicio_Tramite.Fecha_Activacion default "",
+            permanenceClause: payload.result[0].Servicio_Tramite.Clausula_Permanencia default "",
+            previousConnectionNumber: payload.result[0].Servicio_Tramite.Numero_Conexion_Anterior,
+            salesforceId: payload.result[0].Servicio_Tramite.Id_Salesforce default 0,
+            integrationId: payload.result[0].Servicio_Tramite.Integration."_id",
+            serviceFeature: payload.result[0].Servicio_Tramite.Caracteristica_Servicio default [],
+            attachments: payload.result[0].Servicio_Tramite.Adjuntos default [],
+            project: payload.result[0].Servicio_Tramite.Proyecto default "",
+            churnRisk: payload.result[0].Servicio_Tramite.Riesgo_Churn default "",
+            auxiliaryServices: payload.result[0].Servicio_Tramite.Servicios_Auxiliares default [],
+            isRecurringPayment: payload.result[0].Servicio_Tramite.Pago_Recurrente default false,
+            conditionedPromotions: payload.result[0].Servicio_Tramite.Promociones_Condicionadas default [],
+            discount: payload.result[0].Servicio_Tramite.Descuento default 0,
+            finalPrice: payload.result[0].Servicio_Tramite.Precio_Final default 0,
+            migratedTechnologyChange: payload.result[0].Servicio_Tramite.Cambio_Tecnologia_Migrado default false
+        },
+        serviceOrder: {
+            orderNumber: payload.result[0].Orden_Servicio.Numero_Orden,
+            orderStatus: mapStatus(payload.result[0].Orden_Servicio.Estado_Orden),
+            services: payload.result[0].Orden_Servicio.Servicios map (svc) -> {
+                itemId: svc.Id_Item,
                 serviceId: svc.Id_Servicio,
+                serviceClassId: svc.Id_Clase_Servicio,
                 name: svc.Nombre,
+                extended: svc.Extendido default false,
+                serviceClass: svc.Clase_Servicio,
                 action: svc.Accion,
-                productType: svc.Tipo_Producto,
-                isBundle: if (svc.Nombre == "BUNDLE") true else false,
-                attributes: svc.Atributos map (attr) -> {
-                    name: attr.Nombre,
-                    value: attr.Valor
+                availability: svc.Disponibilidad default false,
+                scheduling: svc.Agendamiento default false,
+                provisioning: svc.Aprovisionamiento default false,
+                childServices: svc.Servicios_Hijos default [],
+                attributes: svc.Atributos map (a) -> {
+                    name: a.Nombre,
+                    value: a.Valor,
+                    "type": a.Tipo,
+                    "class": a.Clase,
+                    isNew: a.Es_Nuevo default true,
+                    display: a.Visualizacion default 0
                 }
             }
         },
-        customer: {
-            firstName: cliente.Nombres,
-            middleName: "",
-            firstLastName: cliente.Primer_Apellido,
-            secondLastName: cliente.Segundo_Apellido,
-            fullName: trim((cliente.Nombres default "") ++ " " ++ (cliente.Primer_Apellido default "") ++ " " ++ (cliente.Segundo_Apellido default "")),
-            documentType: cliente.Tipo_Documento,
-            documentNumber: cliente.Numero_Documento,
-            email: cliente.Email,
-            mobile: cliente.Telefono_Movil,
-            segment: cliente.Segmento
-        },
-        address: {
-            addressId: 0, // No presente en origen, se inicializa
-            fullAddress: direccionPrincipal.Direccion_Normalizada,
-            city: direccionPrincipal.Municipio,
-            department: direccionPrincipal.Departamento,
-            stratum: direccionPrincipal.Cobertura.Estrato as String,
-            technology: direccionPrincipal.Cobertura.Tecnologia
-        },
         scheduling: {
-            appointmentDate: agendamiento.Fecha_Agenda."\$date",
-            appointmentSlot: agendamiento.Franja_Agenda,
-            workType: "F.O. (HSI/VOIP)", // Valor estático según ejemplo destino
-            duration: "130",
-            hasAppointment: if (!isEmpty(agendamiento.Fecha_Agenda)) true else false,
-            activityId: agendamiento.IdActividad
+            appointmentDate: payload.result[0].Agendamiento.Fecha_Agenda,
+            appointmentSlot: payload.result[0].Agendamiento.Franja_Agenda,
+            actionType: payload.result[0].Agendamiento.Tipo_Actuacion,
+            workSkill: payload.result[0].Agendamiento.WorkSkill default "",
+            duration: payload.result[0].Agendamiento.Duracion,
+            installerCode: payload.result[0].Agendamiento.CodigoInstalador default "",
+            isEnriched: payload.result[0].Agendamiento.EsEnriquecido default false,
+            hasSchedule: payload.result[0].Agendamiento.TieneAgenda default true,
+            activityId: payload.result[0].Agendamiento.IdActividad,
+            quotaList: payload.result[0].Agendamiento.ListaCuotas default []
+        },
+        activationOrder: payload.result[0].Orden_Activacion default "",
+        previousBillingAccount: payload.result[0].Cuenta_Facturacion_Anterior default "",
+        billingAccount: if (isEmpty(payload.result[0].Cuenta_Facturacion_Tramite)) null else {
+            id: { oid: "000000000000000000000000" }, // Ajustar si viene en el original
+            createdAt: payload.result[0].Cuenta_Facturacion_Tramite.Fecha_Creacion,
+            updatedAt: payload.result[0].Cuenta_Facturacion_Tramite.Fecha_Modificacion,
+            updatedBy: payload.result[0].Cuenta_Facturacion_Tramite.Usuario_Modificacion default "",
+            createdBy: payload.result[0].Cuenta_Facturacion_Tramite.Usuario_Creacion default "",
+            extractorUpdate: payload.result[0].Cuenta_Facturacion_Tramite.Actualizacion_Extractor default "",
+            billingAccountId: payload.result[0].Cuenta_Facturacion_Tramite.Id_Cuenta_Facturacion default "",
+            basicCustomer: payload.result[0].Cuenta_Facturacion_Tramite.Cliente_Basico default "",
+            status: payload.result[0].Cuenta_Facturacion_Tramite.Estado default "",
+            billingType: payload.result[0].Cuenta_Facturacion_Tramite.Tipo_Facturacion,
+            invoiceType: payload.result[0].Cuenta_Facturacion_Tramite.Tipo_Factura,
+            deliveryType: payload.result[0].Cuenta_Facturacion_Tramite.Tipo_Envio,
+            invoiceValue: payload.result[0].Cuenta_Facturacion_Tramite.Valor_Factura,
+            invoiceValueFormat: payload.result[0].Cuenta_Facturacion_Tramite.Valor_Factura_Formato default "",
+            billingEmail: payload.result[0].Cuenta_Facturacion_Tramite.Email_Facturacion,
+            billingCycle: payload.result[0].Cuenta_Facturacion_Tramite.Ciclo_Facturacion default "",
+            cutoffDay: payload.result[0].Cuenta_Facturacion_Tramite.Dia_Corte default 0,
+            isDelinquent: payload.result[0].Cuenta_Facturacion_Tramite.Mora default false,
+            billingAddressId: payload.result[0].Cuenta_Facturacion_Tramite.Id_Direccion_Facturacion default 0,
+            suspensionDate: payload.result[0].Cuenta_Facturacion_Tramite.Fecha_Suspension default "",
+            chargingCycle: payload.result[0].Cuenta_Facturacion_Tramite.Ciclo_Charging default 0,
+            chargingCycleCode: payload.result[0].Cuenta_Facturacion_Tramite.Codigo_Ciclo_Charging default 0,
+            serviceAccounts: payload.result[0].Cuenta_Facturacion_Tramite.Cuentas_Servicio default "",
+            billingCutoffDate: payload.result[0].Cuenta_Facturacion_Tramite.Fecha_Corte_Facturacion default ""
+        },
+        orderRequiresAvailability: payload.result[0].Orden_Requiere_Disponibilidad default true,
+        orderRequiresScheduling: payload.result[0].Orden_Requiere_Agendamiento default false,
+        totalOrderPrice: payload.result[0].Precio_Total_Orden,
+        customerAttachments: payload.result[0].Adjuntos_Cliente default "",
+        serviceAttachments: payload.result[0].Adjuntos_Servicio default "",
+        orderFeatures: payload.result[0].Caracteristica_Orden map (feat) -> {
+            feature: feat.Caracteristica,
+            value: feat.Valor
+        },
+        others: {
+            contractDelivery: payload.result[0].Otros.Entrega_Contrato default "Digital",
+            salesUser: payload.result[0].Otros.Usuario_Venta default "",
+            communicationMedium: payload.result[0].Otros.Medio_Comunicacion default ""
+        },
+        isInPerson: payload.result[0].Es_Presencial default false,
+        suggestedOffer: payload.result[0].Oferta_Sugerida default [],
+        reservation: payload.result[0].Reserva default "",
+        attachments: {
+            service: payload.result[0].Adjuntos.Servicio map (att) -> {
+                fileName: att.Nombre_Archivo,
+                path: att.Ruta,
+                description: att.Descripcion,
+                size: att.Tamano,
+                send: att.Enviar
+            }
         }
     }
 }]]></ee:set-payload>
