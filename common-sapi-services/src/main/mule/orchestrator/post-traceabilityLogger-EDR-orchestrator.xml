@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-traceabilityLogger-EDR-orchestratorSub_Flow" doc:id="c8094008-6c04-4162-83d0-58ba28c8bfed" >
+		<ee:transform doc:name="set file path and content" doc:id="bfd868ae-b321-4fc9-a093-7e849724e744" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="fileContent" ><![CDATA[%dw 2.0
+output application/dw
+
+var sep = Mule::p('traceabilityLogsEDR.separator') default ","
+
+var data =
+    if (payload is Array)
+        payload
+    else
+        [payload]
+
+---
+write(
+    data map (item) ->
+        item filterObject ((value, key) -> value != null),
+    "application/csv",
+    {
+        header: true,
+        separator: sep
+    }
+)
+]]></ee:set-variable>
+				<ee:set-variable variableName="filePath" ><![CDATA[%dw 2.0
+output application/json
+---
+p('traceabilityLogsEDR.path') ++ 
+p('traceabilityLogsEDR.file') ]]></ee:set-variable>
+				<ee:set-variable variableName="fileAction" ><![CDATA[%dw 2.0
+output application/java
+---
+"APPEND"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="post-logs-client" doc:id="3e7af047-343a-4c42-8a9d-18c4639a7991" name="post-logs-client" />
+	</sub-flow>
+</mule>

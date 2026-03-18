@@ -132,6 +132,36 @@ output text/plain
 
 	
 </sub-flow>
+	<sub-flow name="post-traceabilityLogs-edr-client" doc:id="bc5ce104-6fb7-4b96-a7f1-7928a6a0f4e6">
+		<try doc:name="Try" doc:id="a7b82f37-650f-44d5-9caa-805f5bc61ca1">
+			<sftp:write doc:name="Write File" doc:id="d95e8b71-f78c-44bc-a5aa-52cb06b6ebca" config-ref="SFTP_Config_TraceabilityLogs" path="#[vars.filePath]" lock="true" mode="#[vars.fileAction]">
+				<sftp:content><![CDATA[#[vars.fileContent]]]></sftp:content>
+			</sftp:write>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="8f99f2a8-c44d-4f4b-a87a-34bb145627ac" type="SFTP:ILLEGAL_PATH">
+					<ee:transform doc:name="Change fileAction" doc:id="85b977ed-dafc-4111-84a2-5e62a541ea3b">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="fileAction"><![CDATA[%dw 2.0
+output application/java
+---
+"CREATE_NEW"]]></ee:set-variable>
+							<ee:set-variable variableName="fileContent"><![CDATA[%dw 2.0
+output text/plain
+---
+((p('traceabilityLogs.fileHeader') splitBy ",") joinBy p('traceabilityLogs.separator')) ++ "\n" ++ vars.fileContent]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<sftp:write doc:name="Write File" doc:id="546ae442-f8d9-4d2b-aef0-d66f912ed177" config-ref="SFTP_Config_TraceabilityLogs" path="#[vars.filePath]" lock="true" mode="#[vars.fileAction]">
+						<sftp:content><![CDATA[#[vars.fileContent]]]></sftp:content>
+					</sftp:write>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue1" doc:id="ad56124f-01c0-42d7-9a1a-d6db2a2e7505" type="SFTP:FILE_LOCK">
+					<flow-ref doc:name="Go to retry JMS" doc:id="58dcf71e-b6c7-446f-a26f-f94e6ff20b93" name="publish-to-JMS" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
 	<sub-flow name="get-portabilityDocuments-client" doc:id="0eb5973a-896d-48d1-b18d-7d28534f932b" >
 		<async doc:name="Async" doc:id="060ee1a5-5440-4212-be1c-4b6a2a16f7c1">
 			<flow-ref doc:name="Call logger" doc:id="f2ac8ca4-8655-429b-8a76-eeefc36badf3" name="loggin-client-call" />
