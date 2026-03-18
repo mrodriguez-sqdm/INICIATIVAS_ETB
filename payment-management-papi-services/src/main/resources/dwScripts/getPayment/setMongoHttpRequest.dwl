@@ -16,9 +16,6 @@ output application/json
 		"source": attributes.headers.source
 	},
 	"uriParams": {
-		"platform": vars.paymentMethod
-	},
-	"queryParams": {
-		"transactionId": vars.paymentId
+		"transaccionId": vars.paymentId
 	}
 }

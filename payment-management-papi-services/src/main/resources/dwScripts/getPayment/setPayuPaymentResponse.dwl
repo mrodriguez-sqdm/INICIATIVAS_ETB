@@ -5,7 +5,7 @@ output application/json
   code: "200",
   message: "Services retrieved successfully",
   "result": {
-		cus: payload.data.transactionId,
+		cus: vars.paymentId,
 		gatewayAttributes: {
             gateway: "PAYU",
             gatewayType: "API"
