@@ -1,7 +1,13 @@
 %dw 2.0
 output application/json
 
-var gateway = (lower(payload.gateway default ""))
+var gateway = if (payload.gateway != null and payload.gateway != "") 
+				lower(payload.gateway)
+			  else if (payload.event? and payload.data.transaction?)
+				"wompiWebhook"
+			  else if (payload.properties? and payload.transactionId?)
+				"payuWebhook"
+			  else ""
 
 ---
 gateway match {
@@ -11,6 +17,12 @@ gateway match {
 
 	case "etb" ->
 		readUrl('classpath://dwScripts/patchPayment/setPatchMongoRequest.dwl', 'text/plain')
+	
+	case "wompiWebhook" ->
+		readUrl('classpath://dwScripts/patchPayment/setPatchWompiWebhookRequest.dwl', 'text/plain')
+	
+	case "payuWebhook" ->
+		readUrl('classpath://dwScripts/patchPayment/setPatchPayuWebhookRequest.dwl', 'text/plain')
 
 	else -> ""
 }

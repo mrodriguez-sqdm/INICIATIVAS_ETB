@@ -1,16 +1,27 @@
 %dw 2.0
 output application/json
 
-var method = (lower(payload.gateway default ""))
+var method = if (payload.gateway != null and payload.gateway != "") 
+				lower(payload.gateway)
+			  else if (payload.event? and payload.data.transaction?)
+				"wompiWebhook"
+			  else if (payload.properties? and payload.transactionId?)
+				"payuWebhook"
+			  else ""
 
 // normalización del nombre del sistema
 var systemKey =
-    if (method == "etb") "mongo"
+    if (method == "etb" or method == "wompiWebhook" or method == "payuWebhook") "mongo"
     else method
 
 var configKey = systemKey ++ "-sapi"
 
-var paymentId = { id: attributes.uriParams.paymentId }
+var paymentId = if (method == "wompiWebhook")
+					{id: payload.data.transaction.id}
+				else if (method == "payuWebhook")
+					{id: payload.transactionId}
+				else
+					{ id: attributes.uriParams.paymentId }
 
 ---
 {
