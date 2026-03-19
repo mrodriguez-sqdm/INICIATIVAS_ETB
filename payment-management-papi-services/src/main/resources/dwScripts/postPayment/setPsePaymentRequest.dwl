@@ -51,7 +51,7 @@ var userType =
 	"beneficiaryEntityIdentification": Mule::p('pse-sapi.fields.beneficiaryEntityIdentification'),
 	"beneficiaryEntityName": Mule::p('pse-sapi.fields.beneficiaryEntityName'),
 	"beneficiaryEntityCIIUCategory": Mule::p('pse-sapi.fields.beneficiaryEntityCIIUCategory'),
-	"beneficiaryIdentificationType": identificationType,
-	"beneficiaryIdentification": payload.customer.documentNumber,
+	"beneficiaryIdentificationType": Mule::p('pse-sapi.fields.beneficiaryEntityIdentificationType'),
+	"beneficiaryIdentification": Mule::p('pse-sapi.fields.beneficiaryEntityIdentification'),
 	"indicator4per1000": Mule::p('pse-sapi.fields.indicator4per1000') as Number
 }

@@ -10,6 +10,7 @@ var pseResponse = vars.sapiResponse
   result: {
     gateway: "PSE",
     returnCode: pseResponse.returnCode default "",
+    errorDetails: pseResponse.errorDetails default "",
     traceabilityCode: pseResponse.trazabilityCode default "",
     redirectUrl: pseResponse.pseURL default "",
     transactionCycle: pseResponse.transactionCycle default 0
