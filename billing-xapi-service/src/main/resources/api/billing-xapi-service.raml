@@ -1,0 +1,137 @@
+#%RAML 1.0
+title: billing-xapi-service
+version: v1
+baseUri: https://billing-xapi-service-{env}.us-e2.cloudhub.io/{version}
+protocols:
+  - HTTPS
+
+description: |
+  # Billing Experience API
+  Handles the Sale and Plan Change processes for ETB Colombia billing integration with ZSmart.
+
+annotationTypes:
+  operationId: string
+
+traits:
+  tibcoHeaders: !include exchange_module/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.6/tibcorequestheaders.raml
+
+mediaType:
+  - application/json
+
+securitySchemes:
+  etb_oauth_2_0: !include exchange_module/35a39a92-efa9-49b6-8f13-d66508fd2f35/etb-oauth-20/1.0.1/etb-oauth-20.raml
+
+/create-billing-sale:
+    post:
+      (operationId): create-BillingSale
+      is:
+        - tibcoHeaders
+      securedBy: [ etb_oauth_2_0 ]
+      displayName: Create Billing Sale
+      description: |
+        Initiates the Sale process. Creates customer, billing account and service in ZSmart.
+        Executes the sequence F2 (customer + account) → A1 (service) with Saga compensation pattern.
+        Idempotent — send X-Correlation-Id to avoid duplicate processing within 24h.
+      body:
+        application/json:
+          type: !include datatypes/request/sale.raml
+          example: !include examples/request/sale.json
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include datatypes/response/sale.raml
+              example: !include examples/response/sale-201.json
+        400:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-400.json
+        401:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-401.json
+        409:
+          body:
+            application/json:
+              type: !include datatypes/response/sale.raml
+              example: !include examples/response/sale-201.json
+        422:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-422-sale.json
+        503:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-503.json
+        504:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-504.json
+
+/modify-billing-plan-change:
+    patch:
+      (operationId): modify-BillingPlanChange
+      is:
+        - tibcoHeaders
+      securedBy: [ etb_oauth_2_0 ]
+      displayName: Modify Billing Plan Change
+      description: |
+        Initiates the Plan Change process. Modifies the active offer of a subscriber in ZSmart.
+        Executes a single C6 call (delete current offer + add new offer). No Saga pattern required.
+        Idempotent — send X-Correlation-Id to avoid duplicate processing within 24h.
+      body:
+        application/json:
+          type: !include datatypes/request/plan-change.raml
+          example: !include examples/request/plan-change.json
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/response/plan-change.raml
+              example: !include examples/response/plan-change-200.json
+        400:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-400.json
+        401:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-401.json
+        409:
+          body:
+            application/json:
+              type: !include datatypes/response/plan-change.raml
+              example: !include examples/response/plan-change-200.json
+        422:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-422-plan-change.json
+        503:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-503.json
+        504:
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+              example: !include examples/response/error-504.json
+
+/health:
+    get:
+      (operationId): get-Health
+      displayName: Get Health
+      description: Health check endpoint polled by the Load Balancer every 30s.
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include examples/response/health-200.json
