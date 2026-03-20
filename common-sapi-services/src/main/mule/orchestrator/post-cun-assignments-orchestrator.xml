@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd">
+	<sub-flow name="post-cun-assignments-orchestrator-sub-flow" doc:id="bd1db943-e523-4a66-83e9-feae5f7ff764" >
+		<ee:transform doc:name="set xml request" doc:id="20d794de-6e99-4af9-869f-3738359b9112" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+ns soap http://www.w3.org/2003/05/soap-envelope
+ns tem http://tempuri.org/
+output application/xml  writeDeclaredNamespaces = "All"
+---
+{
+	soap#Envelope: {
+		soap#Header: {
+		},
+		soap#Body: {
+			tem#AsignarCUN: {
+				tem#TipoPQR: payload.pqrType,
+				tem#FechaPQR: payload.pqrDate,
+				tem#Sistema: payload.system,
+				tem#NumOrden: payload.orderNumber,
+				tem#TipoIdentificacion: payload.identificationType,
+				tem#Identificacion: payload.identification,
+				tem#NumConexion: payload.connectionNumber,
+				tem#Usuario: p('secure::cun.soap.user'),
+				tem#Contrasena: p('secure::cun.soap.pass')
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="cun-soap-client-sub-flow" doc:id="572ac639-89fe-4fa2-b9ef-e46c4c71c53e" name="cun-soap-client-sub-flow"/>
+		<choice doc:name="validate soap response" doc:id="bc050317-1899-4975-be58-98854effcd57" >
+			<when expression="#[isEmpty(payload.Envelope.Body.AsignarCUNResponse.AsignarCUNResult.CodError) and isEmpty(payload.Envelope.Body.AsignarCUNResponse.AsignarCUNResult.NomError)]">
+				<ee:transform doc:name="set json response" doc:id="022ffe1c-eaac-45f9-b203-c8846a91826d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var cunResponse = payload.Envelope.Body.AsignarCUNResponse.AsignarCUNResult
+---
+{
+	"code": "201",
+	"message": "CUN asignado correctamente",
+	"cun": {
+		"errorCode": cunResponse.CodError,
+		"errorName": cunResponse.NomError,
+		"cunNumber": cunResponse.NumCun,
+		"cunDate": cunResponse.FechaCun,
+		"pqrType": cunResponse.TipoPQR,
+		"pqrDate": cunResponse.FechaPQR,
+		"system": cunResponse.Sistema,
+		"orderNumber": cunResponse.NumOrden,
+		"identificationType": cunResponse.TipoIdentificacion,
+		"identification": cunResponse.Identificacion,
+		"connectionNumber": cunResponse.NumConexion
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="POST_CUN_ASSIGNMENT:RESULT_ERROR" doc:id="6ce77fc1-40d0-472b-ab4f-b379f5c0537b" type="POST_CUN_ASSIGNMENT:RESULT_ERROR" description='#[payload.Envelope.Body.AsignarCUNResponse.AsignarCUNResult.CodError ++ ": " ++ payload.Envelope.Body.AsignarCUNResponse.AsignarCUNResult.NomError]'/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
