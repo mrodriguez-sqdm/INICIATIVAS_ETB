@@ -10,11 +10,11 @@ var method = if (vars.payloadRequest.gateway != null and vars.payloadRequest.gat
 			  else ""
 
 var paymentId = if (method == "wompiWebhook")
-					{id: vars.payloadRequest.data.transaction.id}
+					vars.payloadRequest.data.transaction.id
 				else if (method == "payuWebhook")
-					{id: vars.payloadRequest.transactionId}
+					vars.payloadRequest.transactionId
 				else
-					{ id: attributes.uriParams.paymentId }
+					vars.uriParamsRequest.paymentId
 ---
 {
 	"host": p('mongo-sapi.host'),
@@ -25,10 +25,12 @@ var paymentId = if (method == "wompiWebhook")
 	"headers": {
 		"client_id": p('secure::app.credentials.clientId'),
 		"client_secret": p('secure::app.credentials.clientSecret'),
-		"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
-		"name": attributes.headers.name,
-		"systemId": attributes.headers.systemId,
-		"source": attributes.headers.source
+		"X-CORRELATION-ID": vars.headersRequest.'x-correlation-id',
+		"name": vars.headersRequest.name,
+		"systemId": vars.headersRequest.systemId,
+		"source": vars.headersRequest.source
 	},
-	"uriParams": paymentId
+		"uriParams": {
+			"transaccionId": paymentId
+	}
 }
