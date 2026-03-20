@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-recargar-orchestratorSub_Flow" doc:id="452f3ae8-96b6-4f78-aefc-c2b7c3e3267c" >
+		<choice doc:name="Charge money or plan?" doc:id="e9c42563-790d-4ede-86dc-846e36de0e9e" >
+			<when expression="#[p('global-vars.refill') == vars.inputBody.methodCall.methodName]">
+				<ee:transform doc:name="Map body to charge money" doc:id="33ec3d78-9531-4a50-823f-5c9dd93c6c2e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  amount: vars.inputBody.methodCall.member.transactionAmount as Number,
+  msisdn: vars.inputBody.methodCall.member.subscriberNumber,
+  gestor: vars.inputBody.methodCall.member.originHostName
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to client" doc:id="6e2264a4-eea0-4ff3-a3b9-48c5e5249e65" name="post-recargar-clientSub_Flow" />
+			</when>
+			<otherwise >
+				<set-variable value="#[vars.inputBody.methodCall.member.subscriberNumber]" doc:name="nroConexion" doc:id="e0f7988d-b0f7-47d9-8f5c-82edf5657737" variableName="nroConexion"/>
+				<ee:transform doc:name="Map body to charge plan" doc:id="30bdef77-9492-42dc-abbf-439dc16e9f09">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var integrationId = (vars.activeService filter upper($.Estado) != p("global-vars.inactivo"))[0].Integration_Id
+---
+{
+  "msisdn": vars.nroConexion,
+  "gestor": vars.inputBody.methodCall.member.originHostName,
+  "svas": [
+  	{
+  		"action": vars.inputBody.methodCall.member.action,
+  		"packageId": vars.inputBody.methodCall.member.refillProfileID
+  	}
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Go to client adicion sva" doc:id="849ce292-4f4a-4094-8677-e180f6c2cd8b" name="post-sva-recarga-clientSub_Flow" />
+				<ee:transform doc:name="Map Out" doc:id="38b20fd4-5aa2-4e0e-8f58-f820abed4935" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	id: payload.idRecarga,
+	status: "Successful"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

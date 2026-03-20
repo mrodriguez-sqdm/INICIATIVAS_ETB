@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-cesion-orchestratorSub_Flow" doc:id="9f48f2f3-684e-4c2b-a884-9b1f310b738e" >
+		<ee:transform doc:name="Set original payload" doc:id="e68981c5-800e-456f-b31c-a3b11c8b9e18" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="originalPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try" doc:id="71f92932-ef8a-40c6-8eaf-6ee473eb51e2" >
+			<set-variable value="#[vars.originalPayload.externalID_Destino]" doc:name="Set externalID" doc:id="50465bce-7856-4981-ad54-a917456a71fd" variableName="externalID_destino"/>
+			<flow-ref doc:name="Go to get subscriber" doc:id="0c4152a9-3c31-4644-8877-ce7cd63663b4" name="get-subscriber-client" />
+			<set-variable value="#[payload.content[0].id]" doc:name="Set subscriber_id" doc:id="c4da4c38-dd63-4d5f-99b3-00270c1425f6" variableName="subscriber_id"/>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="419aea1d-3387-4b83-a8ab-8cfdf953817f" />
+			</error-handler>
+		</try>
+		<choice doc:name="Found Subscriber" doc:id="edfc9466-d044-4918-af77-0f8ea091d465" >
+			<when expression="#[isEmpty(vars.subscriber_id)]">
+				<ee:transform doc:name="Set variables for subscriber consult" doc:id="63d8734c-8aa0-4be5-809e-b5aa6867d3c9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"externalID": vars.originalPayload.externalID_Destino,
+	"subscriberType": "EXTERNAL",
+	"document":{
+		"documentType": "EXTERNAL",
+		"fiscalID":  vars.originalPayload.externalID_Destino
+	}
+	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Go to create subscriber" doc:id="47e4568a-fdd2-4d54-85ae-a835c0056ef0" name="post-subscriber-client" />
+				<set-variable value="#[payload.id]" doc:name="Set subscriber_id" doc:id="f9d1d2ce-8171-452b-8e3a-5f64a4b6e16d" variableName="subscriber_id"/>
+			</when>
+		</choice>
+		<set-variable value="#[vars.originalPayload.msisdn]" doc:name="Set msisdn" doc:id="afda2a88-f554-412e-ae50-548c8121ceb6" variableName="msisdn"/>
+		<flow-ref doc:name="Go to get subscription by msisdn" doc:id="f102d724-7ab5-4e93-8ee0-3dfe5da01782" name="get-subscription-client-by-msisdn" />
+		<set-variable value="#[payload.content[0].id]" doc:name="Set subscription_id" doc:id="8c3952b8-77f5-4346-9732-499ac611a025" variableName="subscription_id"/>
+		<try doc:name="Try" doc:id="d9e887f0-d879-459a-b063-ae2f3c46f636" >
+			<ee:transform doc:name="Set payload for new subscription owner" doc:id="24067e61-f13d-4965-8130-3536d982be76">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"keepCounters": true,
+	"pkglDList": true
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<flow-ref doc:name="Go to change subscription owner" doc:id="d7002f78-3863-4b28-bfdb-0ed3221ffcb7" name="post-assignSubscriptionToSubscriber-client" />
+			<set-variable value="#[vars.originalPayload.externalID_Origen]" doc:name="Set externalID" doc:id="05d8da69-2111-4fb4-a979-770cc3c10e5b" variableName="externalID" />
+			<flow-ref doc:name="Go get billing subscription" doc:id="305e622b-63d9-4657-9010-2712f26d6d4e" name="get-billingSubscription-client" />
+			<ee:transform doc:name="Set payload for billing subscription update" doc:id="51ddaaf0-0d75-4ab2-a981-a6f58763914a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"externalID": vars.originalPayload.externalID_Destino
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="billingId"><![CDATA[payload.content[0].id]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			<flow-ref doc:name="Go update billing subscription" doc:id="39bc20a3-0b00-478c-8e4d-1638b9f279fa" name="patch-billingSubscription-client" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="f899b9e9-6a79-4929-9b4a-00541219f4ff" />
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
