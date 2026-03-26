@@ -1,0 +1,1941 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-customer360-orchestratorSub_Flow"
+		doc:id="a79971ea-be2d-4c17-8d99-9ea38ef412ea">
+		<ee:transform doc:name="Transform Message"
+			doc:id="1f2b61b2-c5af-4d22-93a5-c3702de0b3a6">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="queryParameters" ><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams mapObject ((value, key) -> {(lower(key)): value})]]></ee:set-variable>
+				<ee:set-variable variableName="flowsToExecute" ><![CDATA[%dw 2.0
+output application/json
+var fieldsMap = {
+	customer: Mule::p('customer360.fields.customer'),
+	products: Mule::p('customer360.fields.products'),
+	notifications: Mule::p('customer360.fields.notifications'),
+	interactions: Mule::p('customer360.fields.interactions'),
+	pqrs: Mule::p('customer360.fields.pqrs'),
+	billings: Mule::p('customer360.fields.billings'),
+	withholdings: Mule::p('customer360.fields.withholdings'),
+	promotions: Mule::p('customer360.fields.promotions'),
+	services: Mule::p('customer360.fields.services'),
+	orders: Mule::p('customer360.fields.orders'),
+	scheduling: Mule::p('customer360.fields.scheduling')
+}
+var queryParams = attributes.queryParams mapObject ((value, key) -> {
+	(lower(key)): value
+})
+var raw = queryParams.fields
+var validateAll = if ( raw contains "all" ) Mule::p('customer360.fields.all') else raw
+var listFields = validateAll splitBy ";"
+var getNameSubFlows = fieldsMap filterObject ((value, key) -> (listFields map lower($)) contains lower(key))
+---
+getNameSubFlows]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<parallel-foreach doc:name="Parallel For Each"
+			doc:id="a1677b7c-c538-4255-8fe5-7f7257975689"
+			collection="#[vars.flowsToExecute pluck $]">
+			<ee:transform doc:name="Transform Message"
+				doc:id="f90c304f-04be-4799-a4a7-eb676f41f0b4">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="subflowName"><![CDATA[payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="Flow Reference" doc:id="328a8bdf-b3cd-414c-bffc-8e3264d5bf91" name="#[vars.subflowname]" />
+		</parallel-foreach>
+		<ee:transform doc:name="Transform Message" doc:id="38643726-599e-476c-b2a2-9f68940d20e6">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+var normalized = flatten(payload.*payload)
+var keyMap = {
+	Customer: "customerInfo",
+	Products: "productsInfo",
+	Notifications: "notificationsInfo",
+	Interactions: "interactionsInfo",
+	PQRS: "pqrsInfo",
+	Billings: "billingsInfo",
+	WithHoldings: "withHoldingsInfo",
+	Promotions: "promotionsInfo",
+	Services: "servicesInfo",
+	Orders: "ordersInfo",
+	Scheduling: "schedulingInfo"
+}
+var data = normalized map ((item) -> keyMap filterObject ((newKey, oldKey) -> item[oldKey]?) mapObject ((newKey, oldKey) -> {
+	(newKey): item[oldKey]
+})) reduce ((item, acc = {
+}) -> acc ++ item) default {
+}
+output application/json
+---
+{
+	status: if ( isEmpty(data) ) 404 else 200,
+	code: if ( isEmpty(data) ) "NOT_FOUND" else "OK",
+	message: {
+		message: if ( isEmpty(data) ) "There is no information available for this query." else "Successful Transaction."
+	}
+} ++ data
+
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+var normalized = flatten(payload.*payload)
+var keyMap = {
+	Customer: "customerInfo",
+	Products: "productsInfo",
+	Notifications: "notificationsInfo",
+	Interactions: "interactionsInfo",
+	PQRS: "pqrsInfo",
+	Billings: "billingsInfo",
+	WithHoldings: "withHoldingsInfo",
+	Promotions: "promotionsInfo",
+	Services: "servicesInfo",
+	Orders: "ordersInfo",
+	Scheduling: "schedulingInfo"
+}
+var data =
+    normalized map ((item) -> keyMap
+                filterObject ((newKey, oldKey) -> item[oldKey]?) mapObject ((newKey, oldKey) -> 
+                    {
+	(newKey): item[oldKey]
+}
+                )
+)
+        reduce ((item, acc = {}) -> acc ++ item)
+        default {}
+---
+if (isEmpty(data)) 404 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-customer-info-subflow"
+		doc:id="ad2918a8-6ae2-4e60-af84-c97ce0d7390f">
+		<ee:transform doc:name="Transform Message"
+			doc:id="b017c3fa-92a8-46d7-bc5b-6343d505fea4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_CLIENTE",
+    "filter": {
+      "Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Numero_Identificacion": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="4d2a1956-b87d-4d87-a024-8202824a1046"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="735d91a4-42fb-45fe-818d-9dc5408804c9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+    [{
+	Customer: data map (cust) -> {
+		id: if ( cust."_id" is Object ) cust."_id"."\$oid" default "" else cust."_id" default "",
+		documentType: cust.Tipo_Documento,
+		customerType: cust.Tipo_Cliente,
+		identificationNumber: cust.Numero_Identificacion,
+		name: cust.Nombre_Cliente,
+		status: cust.Estado,
+		segment: cust.Segmento,
+		segmentUEN: cust.Segmento_UEN,
+		uen: cust.UEN,
+		customerValue: cust.Cliente_Valor,
+		phone: cust.Telefono_Fijo,
+		mobile: cust.Telefono_Movil,
+		mobile2: cust.Telefono_Movil2,
+		email: cust.Correo_Electronico,
+		address: cust.Direccion,
+		coverage: cust.Cobertura,
+		country: cust.Pais,
+		department: cust.Departamento,
+		city: cust.Ciudad,
+		neighborhood: cust.Barrio,
+		locality: cust.Localidad,
+		stratum: cust.Estrato,
+		createdBy: cust.Usuario_Creador,
+		modifiedBy: cust.Usuario_Modificador,
+		documentIssueDate: cust.Fecha_Expedicion_Documento,
+		birthDate: cust.Fecha_Nacimiento,
+		gender: cust.Genero,
+		ageRange: cust.Rango_Edad,
+		maritalStatus: cust.Estado_Civil,
+		documentCity: cust.Ciudad_Exp_Documento,
+		documentDepartment: cust.Depto_Exp_Documento,
+		updateDate: cust.Fecha_Actualizacion."\$date" default cust.Fecha_Actualizacion,
+		names: cust.Nombres,
+		lastName: cust.Primer_Apellido,
+		secondLastName: cust.Segundo_Apellido,
+		creationDate: cust.Fecha_Creacion,
+		billingAccountId: cust.Cuenta_Facturacion_Id,
+		serviceAccountId: cust.Cuenta_Servicio_Id,
+		shortCompanyName: cust.Nombre_Corto_Empresa,
+		sourceSystems: cust.Sistema_Origen map (s) -> {
+			id: s.Id_Sistema_Origen,
+			name: s.Sistema_Origen
+		} default [],
+		contacts: cust.Contacto map (c) -> {
+			id: if ( c."_id" is Object ) c."_id"."\$oid" default ""
+            else 
+            c."_id" default "",
+			documentNumber: c.Numero_Documento,
+			name: c.Nombre_Contacto,
+			phone: c.Telefono_Contacto,
+			mobile: c.Movil_Contacto,
+			email: c.Email_Contacto,
+			documentType: c.Tipo_Documento,
+			firstName: c.Nombre_Individual,
+			lastName: c.Primer_Apellido,
+			secondLastName: c.Segundo_Apellido,
+			authorized: c.Autorizado,
+			status: c.Estado,
+			updateDate: c.Fecha_Modificacion,
+			mobileUpdateDate: c.Fecha_Modificacion_Movil,
+			habeasData: {
+				enabled: c.ATDP.HABEAS_DATA,
+				date: c.ATDP.FECHA,
+				user: c.ATDP.USUARIO,
+				channel: c.ATDP.CANAL
+			}
+		} default [],
+		addresses: cust.Direcciones map (d) -> {
+			id: d.Id_Direccion,
+			"type": d.Tipo_Direccion,
+			address: d.Direccion_Normalizada,
+			city: d.Municipio,
+			department: d.Departamento,
+			status: d.Estado,
+			coverage: {
+				technology: d.Cobertura.Tecnologia,
+				zone: d.Cobertura.Zona,
+				latitude: d.Cobertura.Latitud,
+				longitude: d.Cobertura.Longitud
+			}
+		} default [],
+		characteristics: cust.Caracteristica_Cliente map (c) -> {
+			name: c.Caracteristica,
+			value: c.Valor
+		} default [],
+		validation: {
+			allowValidation: cust.ValidaCodigoLISIM.PermiteValidacionCodigo,
+			emailValidation: cust.ValidaCodigoLISIM.ValidacionClienteMail,
+			retries: cust.ValidaCodigoLISIM.CantidadReintentos
+		},
+		communications: {
+			channel: cust.EnvioComunicaciones.MedioComunicacion,
+			contact1: cust.EnvioComunicaciones.DatoComunicacion1,
+			contact2: cust.EnvioComunicaciones.DatoComunicacion2
+		},
+		collections: {
+			contacts: cust.Comunicaciones_Cobranza.Registro_Contacto map (r) -> {
+				channel: r.Canal,
+				value: r.Valor,
+				authorized: r.Autorizado
+			} default [],
+			schedule: cust.Comunicaciones_Cobranza.Horario,
+			createdAt: cust.Comunicaciones_Cobranza.Fecha_Registro."\$date",
+			updatedAt: cust.Comunicaciones_Cobranza.Fecha_Modificacion."\$date"
+		}
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-products-info-subflow"
+		doc:id="6de8b0aa-23ca-4a95-926a-26cf4ac1ee52">
+		<scatter-gather doc:name="Scatter-Gather"
+			doc:id="14482329-51e0-4b61-b162-5a3fff9deb9c">
+			<route>
+				<ee:transform doc:name="Transform Message"
+					doc:id="80a1c0e2-f4c1-46e7-9463-38ab8d54d4b8">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_CD_SERVICIO",
+    "filter": {
+      "Cliente.Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Cliente.Numero_Documento": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable
+							resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+						<ee:set-variable
+							resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+					doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+					doc:id="d10ca5ac-f961-4081-9ddb-16c7ab48d92a"
+					name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message"
+					doc:id="98d9106d-5c76-4e7e-8835-6bb8dd53057d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	FixedProducts: data map (prod) -> {
+		serviceAccountId: prod.Id_Cuenta_Servicio,
+		bundle: {
+			id: if ( prod.Bundle."_id" is Object ) prod.Bundle."_id"."\$oid" default "" else prod.Bundle."_id" default "",
+			configurationCode: prod.Bundle.Codigo_Configuracion,
+			groupingNumber: prod.Bundle.Numero_Agrupacion,
+			productType: prod.Bundle.Tipo_Producto,
+			serviceType: prod.Bundle.Tipo_Servicio,
+			serviceSubtype: prod.Bundle.Subtipo_Servicio,
+			productSubtype: prod.Bundle.Subtipo_Producto,
+			sequence: prod.Bundle.Secuencia,
+			dependency: prod.Bundle.Dependencia,
+			classification: prod.Bundle.Clasificacion,
+			name: prod.Bundle.Nombre,
+			status: prod.Bundle.Estado,
+			minQuantity: prod.Bundle.Cantidad_Minima,
+			maxQuantity: prod.Bundle.Cantidad_Maxima,
+			serviceId: prod.Bundle.Id_Servicio,
+			offerPrice: prod.Bundle.Precio_Oferta map (p) -> {
+				salesChannel: p.Canal_Venta,
+				priceWithoutTax: p.Precio_Sin_Iva,
+				priceWithTax: p.Precio_Con_Iva,
+				tax: p.Iva
+			},
+			bundleParameters: prod.Bundle.Parametros_bundle map (pb) -> {
+				parameter: pb.Parametro,
+				parameterType: pb.Tipo_Parametro,
+				value: pb.Valor
+			}
+		},
+		optionalProducts: prod.Opcionales map (op) -> {
+			id: if ( op."_id" is Object ) op."_id"."\$oid" default "" else op."_id" default "",
+			configurationCode: op.Codigo_Configuracion,
+			groupingNumber: op.Numero_Agrupacion,
+			productType: op.Tipo_Producto,
+			serviceType: op.Tipo_Servicio,
+			serviceSubtype: op.Subtipo_Servicio,
+			productSubtype: op.Subtipo_Producto,
+			sequence: op.Secuencia,
+			dependency: op.Dependencia,
+			classification: op.Clasificacion,
+			name: op.Nombre,
+			status: op.Estado,
+			minQuantity: op.Cantidad_Minima,
+			maxQuantity: op.Cantidad_Maxima,
+			serviceId: op.Id_Servicio,
+			offerPrice: op.Precio_Oferta map (p) -> {
+				salesChannel: p.Canal_Venta,
+				priceWithoutTax: p.Precio_Sin_Iva,
+				priceWithTax: p.Precio_Con_Iva,
+				tax: p.Iva
+			},
+			attributes: op.Atributos map (a) -> {
+				name: a.Nombre,
+				value: a.Valor,
+				"type": a.Tipo
+			},
+			productParameters: op.Parametros_Producto map (pp) -> {
+				parameter: pp.Parametro,
+				parameterType: pp.TipoParametro,
+				value: pp.Valor
+			}
+		},
+		promotions: prod.Promociones,
+		auxiliaryServices: prod.Servicios_Auxiliares,
+		activationDate: prod.Fecha_Activacion."\$date",
+		isRecurringPayment: prod.Is_Pago_Recurrente,
+		conditionalPromotions: prod.Promociones_Condicionadas,
+		churnRisk: prod.Riesgo_Churn
+	}
+}]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="accountInfo"><![CDATA[%dw 2.0
+output application/json
+---
+[
+	"Account": "info"
+]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</route>
+			<route>
+				<ee:transform doc:name="Transform Message"
+					doc:id="9d3ab700-9d2f-4d7c-927a-7b1e62ef4049">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_SERVICIO_ACTIVO",
+    "filter": {
+      "Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Numero_Identificacion": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable
+							resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+						<ee:set-variable
+							resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+					doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+					doc:id="80381132-c402-4e5e-832a-65e172ce5d02"
+					name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message"
+					doc:id="e7809a78-f94c-4494-8705-514ab4fb124c">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	MobileProducts: data map (prod) -> {
+		id: if ( prod."_id" is Object ) prod."_id"."\$oid" default "" else prod."_id" default "",
+		documentType: prod.Tipo_Documento,
+		identificationNumber: prod.Numero_Identificacion,
+		billingAccount: prod.Cuenta_Facturacion,
+		technology: prod.Tecnologia,
+		createdBy: prod.Usuario_Creador,
+		modifiedBy: prod.Usuario_Modificador,
+		installationAddress: prod.Direccion_Instalacion,
+		department: prod.Departamento,
+		city: prod.Ciudad,
+		neighborhood: prod.Barrio,
+		locality: prod.Localidad,
+		stratum: prod.Estrato,
+		country: prod.Pais,
+		relatedOrderId: prod.Id_Orden_Relacionada,
+		parentAssetId: prod.Id_Activo_Padre,
+		bundled: prod.Empaquetado,
+		productType: prod.Tipo_Producto,
+		productServiceCode: prod.Codigo_Producto_Servicio,
+		serviceCode: prod.Codigo_Servicio,
+		product: prod.Producto,
+		service: prod.Servicio,
+		offerPlan: prod.Oferta_Plan,
+		offerValue: prod.Valor_Oferta,
+		connectionNumber: prod.Numero_Conexion,
+		serviceDuration: prod.Duracion_Servicio,
+		billableFlag: prod.Flag_Facturable,
+		integrationId: prod.Integration_Id,
+		characterizationId: prod.Id_Caracterizacion_Prom,
+		creationDate: prod.Fecha_Creacion,
+		updateDate: prod.Fecha_Actualizacion."\$date",
+		activationDate: prod.Fecha_Activacion."\$date",
+		inactivationDate: prod.Fecha_Inactivacion,
+		serviceMode: prod.Modalidad_Servicio,
+		convergenceFlag: prod.Flag_Convergencia,
+		previousNumber: prod.Numero_Anterior,
+		permanenceClause: prod.Clausula_Permanencia,
+		sourceSystemAssetId: prod.Id_Activo_Sistema_Origen,
+		rootAssetId: prod.Id_Activo_Raiz,
+		sourceServiceAccountId: prod.Id_Cuenta_Servicio_Origen,
+		sourceSystem: prod.Sistema_Origen,
+		route: prod.Ruta,
+		serviceCharacteristics: prod.Caracteristica_Servicio map (c) -> {
+			characteristic: c.Caracteristica,
+			value: c.Valor
+		},
+		serviceStatus: prod.Estado_Servicio,
+		servicePromotions: prod.Promociones_Servicio,
+		serviceDiscount: prod.Descuento_Servicio,
+		status: prod.Estado,
+		paymentStatus: prod.Estado_Pago,
+		fraudStatus: prod.Estado_Fraude,
+		lossStatus: prod.Estado_Perdida,
+		theftStatus: prod.Estado_Robo,
+		theftLossStatus: prod.Estado_Robo_Perdida,
+		voluntaryStatus: prod.Estado_Voluntaria
+	}
+}]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="accountInfo"><![CDATA[%dw 2.0
+output application/json
+---
+[
+	"Account": "info"
+]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Transform Message"
+			doc:id="a1e034a9-b431-4ada-8bec-58eea6b4c9ed">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var merged =
+    payload pluck ((value, key) ->
+        if ( value.payload is Array and !isEmpty(value.payload) ) value.payload[0]
+        else
+            {
+}
+    ) reduce ((item, acc = {
+}) -> acc ++ item)
+var fixed = merged.FixedProducts default []
+var mobile = merged.MobileProducts default []
+---
+if ( isEmpty(fixed) and isEmpty(mobile) ) []
+else
+{
+	Products: [{
+	} ++ (if ( !isEmpty(fixed) ) {
+		FixedProducts: fixed
+	} else {
+	}) ++ (if ( !isEmpty(mobile) ) {
+		MobileProducts: mobile
+	} else {
+	})]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus" ><![CDATA[200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-notifications-info-subflow"
+		doc:id="a04c3885-4777-4592-b909-e589c5cfde28">
+		<ee:transform doc:name="Transform Message"
+			doc:id="7c85a32a-5d2b-44a3-877c-f7a31a3ec73f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "LOG_NOTIFICACIONES",
+    "filter": {
+      "Tipo_Documento_Cliente": vars.queryParameters.customer_id_type,
+      "Numero_Documento": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="25fdef39-1749-4a53-9ade-6536d55cbea2"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="5ccc32dd-465c-49d8-8086-4cf3657f60ab">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	Notifications: data map (noti) -> {
+		id: if ( noti."_id" is Object ) noti."_id"."\$oid" default "" else noti."_id" default "",
+		sourceSystem: noti.Sistema_Origen,
+		"type": noti.Tipo,
+		customerDocumentType: noti.Tipo_Documento_Cliente,
+		documentNumber: noti.Numero_Documento,
+		orderNumber: noti.Numero_Orden,
+		sentDate: noti.Fecha_Envio."\$date",
+		lastRetryDate: noti.Fecha_Ultimo_Reintento."\$date",
+		readDate: noti.Fecha_Leido."\$date",
+		recipient: noti.Destinatario,
+		sender: noti.Remitente,
+		body: noti.Cuerpo,
+		isRead: noti.Leido,
+		retries: noti.Reintentos,
+		subject: noti.asunto,
+		documents: noti.Documentos map (d) -> {
+			fileName: d.Nombre_Archivo,
+			path: d.Ruta,
+			description: d.Descripcion,
+			size: d.Tamano
+		},
+		acceptsAttachments: noti.aceptaAdjuntos
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="directionInfo"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Direction:"Direction"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-interactions-info-subflow"
+		doc:id="864c0b18-6e41-4b0c-8eaf-2927e8257c33">
+		<ee:transform doc:name="Transform Message"
+			doc:id="5b5ae59c-9ece-4c45-a571-533935605a63">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_INTERACCIONES",
+    "filter": {
+      "Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Numero_Identificacion": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="43d6e0f0-1e3e-4c2d-b7ef-8e0c56b5dc88"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="37b2c0d6-dea1-44fd-a3d0-6de574eb4e28">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	Interactions: data map (inte) -> {
+		id: if ( inte."_id" is Object ) inte."_id"."\$oid" default "" else inte."_id" default "",
+		interactionDate: inte.Fecha_Interaccion."\$date",
+		documentType: inte.Tipo_Documento,
+		identificationNumber: inte.Numero_Identificacion,
+		interactionType: inte.Tipo_Interaccion,
+		interactionSubType: inte.SubTipo_Interaccion,
+		agent: inte.Agente,
+		channel: inte.Canal,
+		observation: inte.Observacion,
+		isRecurrent: inte.Reincidente,
+		customerName: inte.Nombre_Cliente,
+		agentName: inte.Nombre_Agente
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="directionInfo"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Direction:"Direction"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-pqrs-info-subflow"
+		doc:id="4cfb3558-38ba-40a8-b83f-ad245c07d9b7">
+		<ee:transform doc:name="Transform Message"
+			doc:id="ec9b0c6b-8ceb-45bc-971f-9b03ae6d9e8f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "PQR_PQR",
+    "filter": {
+      "tipo_documento": vars.queryParameters.customer_id_type,
+      "numero_identificacion": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="8c033504-1f9b-4696-bbbd-9014bc73fa2b"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="745273c6-9af8-49cd-96e3-87b6e120d3c1">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	PQRS: data map (pqrs) -> {
+		id: if ( pqrs."_id" is Object ) pqrs."_id"."\$oid" default "" else pqrs."_id" default "",
+		extractorUpdateDate: pqrs.actualizacion_extractor,
+		pqrRowId: pqrs.row_id_pqr,
+		pqrNumber: pqrs.numero_pqr,
+		documentType: pqrs.tipo_documento,
+		identificationNumber: pqrs.numero_identificacion,
+		contactDocumentType: pqrs.contacto_tipo_documento,
+		contactDocumentNumber: pqrs.contacto_numero_documento,
+		serviceId: pqrs.id_servicio,
+		connectionNumber: pqrs.numero_conexion,
+		serviceAccount: pqrs.cuenta_servicio,
+		billingAccount: pqrs.cuenta_facturacion,
+		product: pqrs.producto,
+		orderNumber: pqrs.numnumero_pedido,
+		claimType: pqrs.tipo_pqr,
+		claimClass: pqrs.clase_pqr,
+		claimReason: pqrs.motivo_pqr,
+		claimCause: pqrs.causal_pqr,
+		symptom: pqrs.sintoma_pqr,
+		claimedValue: pqrs.valor_reclamado,
+		adjustedValue: pqrs.valor_ajustado,
+		creationDate: pqrs.fecha_creacion."\$date",
+		radicationDate: pqrs.fecha_radicacion."\$date",
+		solutionDate: pqrs.fecha_solucion."\$date",
+		solution: pqrs.solucion,
+		status: pqrs.estado_pqr,
+		closureType: pqrs.Tipo_cierre,
+		notificationChannel: pqrs.medio_notificacion_pqr,
+		receptionChannel: pqrs.medio_recepcion,
+		description: pqrs.descripcion_pqr,
+		response: pqrs.respuesta_pqr,
+		externalRadication: pqrs.radicado_externo,
+		appealFlag: pqrs.flag_recurso_apelacion,
+		governmentTransferFlag: pqrs.flag_traslado_gobierno,
+		reopeningFlag: pqrs.flag_reapertura,
+		createdBy: pqrs.usuario_creador,
+		assignedTo: pqrs.usuario_asignado,
+		customerName: pqrs.nombre_cliente,
+		contactName: pqrs.nombre_contacto,
+		receptionMedium: pqrs.canal_recepcion,
+		extensions: pqrs.pqr_extensiones map (e) -> {
+			extensionDays: e.dias_extension,
+			extensionStartDate: e.fecha_incio_extension,
+			extensionEndDate: e.fecha_fin_extension
+		},
+		activities: pqrs.pqr_actividades_pqr map (a) -> {
+			extractorUpdateDate: a.actualizacion_extractor,
+			activityRowId: a.row_id_actividad,
+			activityName: a.nombre_actividad,
+			activityStatus: a.estado_actividad,
+			comments: a.comentarios,
+			description: a.descripcion,
+			management: a.gestion,
+			managementDescription: a.descripcion_gestion,
+			activityGroup: a.grupo_actividad,
+			assignedTo: a.usuario_asignado,
+			createdBy: a.usuario_creador_actividad,
+			startDate: a.fecha_inicio_actividad."\$date",
+			currentStatusDate: a.fecha_estado_actual."\$date",
+			dueDate: a.fecha_vencimiento_actividad."\$date",
+			finalDate: a.final,
+			priority: a.prioridad,
+			disconnectionDate: a.fecha_desconexion,
+			reconnectionDate: a.fecha_reconexion,
+			duration: a.duracion,
+			account: a.cuenta,
+			notification: a.notificacion,
+			semaphore: a.semaforo,
+			businessDays: a.dias_habiles,
+			attachments: a.actividades_adjuntas
+		},
+		attachments: pqrs.pqr_archivos_adjuntos map (f) -> {
+			fileName: f.archivo_adjunto
+		},
+		version: pqrs.version_pqr,
+		notificationFlag: pqrs.flag_notificacion,
+		youngFailureFlag: pqrs.flag_fallaJoven,
+		failureType: pqrs.tipo_falla
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="directionInfo"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Direction:"Direction"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-billings-info-subflow"
+		doc:id="e1f5894d-e2c5-4c49-a5e1-4d5a3628d093">
+		<ee:transform doc:name="Transform Message"
+			doc:id="2394d66b-5cbf-438b-ab39-198bd67866ee">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_CUENTA_FACTURACION",
+    "filter": {
+      "Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Numero_Identificacion": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="5725160b-dc55-4233-b620-9ef37a26c312"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="8a53e2da-15bf-4fd5-853d-9126375581f0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	Billings: data map (bill) -> {
+		id: if ( bill."_id" is Object ) bill."_id"."\$oid" default "" else bill."_id" default "",
+		documentType: bill.Tipo_Documento,
+		identificationNumber: bill.Numero_Identificacion,
+		billingAccount: bill.Cuenta_Facturacion,
+		parentBillingAccount: bill.Cuenta_Padre_Facturacion,
+		paymentType: bill.Tipo_Pago,
+		status: bill.Estado,
+		market: bill.Mercado,
+		frequency: bill.Frecuencia,
+		createdBy: bill.Usuario_Creador,
+		modifiedBy: bill.Usuario_Modificador,
+		email: bill.Correo_Electronico,
+		address: bill.Direccion,
+		country: bill.Pais,
+		department: bill.Departamento,
+		city: bill.Ciudad,
+		neighborhood: bill.Barrio,
+		locality: bill.Localidad,
+		stratum: bill.Estrato,
+		billingCycle: bill.Ciclo_Facturacion,
+		delinquencyLevel: bill.Altura_Mora,
+		invoiceType: bill.Tipo_Factura,
+		invoiceSupport: bill.Soporte_Factura,
+		invoiceDeliveryType: bill.Tipo_Entrega_Factura,
+		chargingCycle: bill.Ciclo_Charging,
+		chargingCycleCode: bill.Codigo_Ciclo_Charging,
+		billingCutoffDate: bill.Fecha_Corte_Facturacion,
+		taxes: bill.Impuestos,
+		mdmModified: bill.Modificado_MDM,
+		relatedOrderId: bill.Id_Orden_Relacionada
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="directionInfo"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Direction:"Direction"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-withholdings-info-subflow"
+		doc:id="12dcffe2-f7bc-4697-96ed-f1a3e6046ba9">
+		<ee:transform doc:name="Transform Message"
+			doc:id="963db566-061a-4de3-aec9-98c62c673cdb">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "CD_RETENCION",
+    "filter": {
+      "Cliente_Retencion.Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Cliente_Retencion.Numero_Documento": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="6ef67c56-383a-412b-ae6e-1928dc234293"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="30100c74-e179-4817-9775-9813538c7ebc">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	WithHoldings: data map (wiho) -> {
+		id: if ( wiho."_id" is Object ) wiho."_id"."\$oid" default "" else wiho."_id" default "",
+		creationDate: wiho.Fecha_Creacion."\$date",
+		modificationDate: wiho.Fecha_Modificacion."\$date",
+		modificationUser: wiho.Usuario_Modificacion,
+		creationUser: wiho.Usuario_Creacion,
+		extractorUpdate: wiho.Actualizacion_Extractor,
+		retentionNumber: wiho.Numero_Retencion,
+		retentionStatus: {
+			code: wiho.Estado_Retencion.Codigo,
+			description: wiho.Estado_Retencion.Descripcion,
+			creationDate: wiho.Estado_Retencion.Fecha_Creacion."\$date",
+			observations: wiho.Estado_Retencion.Observaciones,
+			updateDate: wiho.Estado_Retencion.Fecha_Actualizacion."\$date",
+			user: wiho.Estado_Retencion.Usuario
+		},
+		retentionClient: {
+			documentType: wiho.Cliente_Retencion.Tipo_Documento,
+			documentNumber: wiho.Cliente_Retencion.Numero_Documento,
+			names: wiho.Cliente_Retencion.Nombres,
+			mobilePhone: wiho.Cliente_Retencion.Telefono_Movil,
+			fixedPhone: wiho.Cliente_Retencion.Telefono_Fijo,
+			email: wiho.Cliente_Retencion.Email,
+			uen: wiho.Cliente_Retencion.UEN,
+			department: wiho.Cliente_Retencion.Departamento,
+			city: wiho.Cliente_Retencion.Ciudad,
+			address: wiho.Cliente_Retencion.Direccion,
+			segmentUEN: wiho.Cliente_Retencion.SegmentoUEN,
+			addresses: wiho.Cliente_Retencion.Direcciones map (dir) -> {
+				addressId: dir.Id_Direccion,
+				addressType: dir.Tipo_Direccion,
+				normalizedAddress: dir.Direccion_Normalizada,
+				addressCode: dir.Codigo_Direccion,
+				departmentCode: dir.Codigo_Departamento,
+				municipalityCode: dir.Codigo_Municipio,
+				countryCode: dir.Codigo_Pais,
+				daneCode: dir.Codigo_DANE,
+				addressName: dir.Nombre_Direccion,
+				status: dir.Estado,
+				department: dir.Departamento,
+				municipality: dir.Municipio,
+				selected: dir.Seleccionada,
+				useCode: dir.CodigoUso,
+				coverage: {
+					lotCode: dir.Cobertura.Codigo_Lote,
+					district: dir.Cobertura.Distrito,
+					locality: dir.Cobertura.Localidad,
+					stratum: dir.Cobertura.Estrato,
+					latitude: dir.Cobertura.Latitud,
+					longitude: dir.Cobertura.Longitud,
+					gisAddress: dir.Cobertura.Direccion_GIS,
+					molecule: dir.Cobertura.Molecula,
+					olt: dir.Cobertura.Olt,
+					owner: dir.Cobertura.Propietario,
+					purpose: dir.Cobertura.Proposito,
+					technology: dir.Cobertura.Tecnologia,
+					zone: dir.Cobertura.Zona,
+					coverageType: dir.Cobertura.Tipo_Cobertura,
+					coverageName: dir.Cobertura.NombreCobertura,
+					distanceType: dir.Cobertura.TipoDistancia
+				}
+			}
+		},
+		retentionService: {
+			serviceAccountId: wiho.Servicio_Retencion.Id_Cuenta_Servicio,
+			connectionNumber: wiho.Servicio_Retencion.Numero_Conexion,
+			billingAccount: wiho.Servicio_Retencion.Cuenta_Facturacion,
+			serviceType: wiho.Servicio_Retencion.Tipo_Servicio,
+			uen: wiho.Servicio_Retencion.UEN,
+			status: wiho.Servicio_Retencion.Estado,
+			technology: wiho.Servicio_Retencion.Tecnologia,
+			startDate: wiho.Servicio_Retencion.Fecha_Inicio_Servicio."\$date",
+			installationAddress: wiho.Servicio_Retencion.Direccion_Instalacion,
+			currentRate: wiho.Servicio_Retencion.Tarifa_Actual,
+			churnScore: wiho.Servicio_Retencion.Calificacion_CHURN,
+			promotions: wiho.Servicio_Retencion.Promociones map (promo) -> {
+				name: promo.Nombre,
+				description: promo.Descripcion,
+				startDate: promo.FechaInicial,
+				endDate: promo.FechaFinal,
+				date: promo.Fecha,
+				id: promo."_id",
+				benefitId: promo.IdBeneficio,
+				status: promo.Estado,
+				agreementCode: promo.CodigoConvenio,
+				attachments: promo.Adjuntos,
+				groupNumber: promo.Numero_Agrupacion,
+				promotionTypeId: promo.ID_Tipo_Promocion
+			},
+			states: wiho.Servicio_Retencion.Estados map (st) -> {
+				"type": st.Tipo,
+				description: st.Descripcion,
+				date: st.Fecha."\$date",
+				reconnectionDate: st.FechaReconexion."\$date"
+			}
+		},
+		retention: {
+			reason: wiho.Retencion.Motivo,
+			reasonDescription: wiho.Retencion.Motivo_Descripcion,
+			subreason: wiho.Retencion.Submotivo,
+			subreasonDescription: wiho.Retencion.SubMotivo_Descripcion,
+			steps: wiho.Retencion.Pasos map (step) -> {
+				stepId: step.ID_Paso,
+				sequence: step.Secuencia,
+				"type": step.Tipo,
+				name: step.Nombre,
+				description: step.Descripcion,
+				state: {
+					code: step.Estado.Codigo,
+					description: step.Estado.Descripcion,
+					stepDate: step.Estado.Fecha_Paso."\$date",
+					actionDate: step.Estado.Fecha_Accion."\$date",
+					observations: step.Estado.Observaciones,
+					user: step.Estado.Usuario
+				},
+				actions: step.Acciones map (act) -> {
+					action: act.Accion,
+					levels: act.Niveles,
+					classification: act.Clasificacion
+				},
+				levels: step.Niveles
+			},
+			characteristics: wiho.Retencion.Caracteristicas_Retencion map (car) -> {
+				key: car.Llave,
+				value: car.Valor
+			}
+		},
+		level: wiho.Nivel,
+		assignment: {
+			assignedUser: wiho.Asignacion.Usuario_Asignado,
+			assignments: wiho.Asignacion.Asignaciones map (asig) -> {
+				user: asig.Usuario,
+				date: asig.Fecha."\$date",
+				level: asig.Nivel
+			}
+		}
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="directionInfo"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Direction:"Direction"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-promotions-info-subflow"
+		doc:id="68d8d2c2-c604-4049-b45e-452f2e3e4406">
+		<ee:transform doc:name="Transform Message"
+			doc:id="de886b9d-3dc2-440f-80ca-682d50241d03">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "PROM_ALTA_PROMOCION",
+    "filter": {
+      "Tipo_Identificacion": vars.queryParameters.customer_id_type,
+      "Numero_Identificacion": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="2f573a80-66c6-4595-9012-8edfed53f5fb"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="489a9346-fe65-4a93-afae-cc37f244097b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	Promotions: data map (prom) -> {
+		id: if ( prom."_id" is Object ) prom."_id"."\$oid" default "" else prom."_id" default "",
+		promotionId: prom.ID_Promocion,
+		orderId: prom.ID_Orden,
+		identificationType: prom.Tipo_Identificacion,
+		identificationNumber: prom.Numero_Identificacion,
+		registrationDate: prom.Fecha_Registro."\$date",
+		activationDate: prom.Fecha_Activacion."\$date",
+		status: prom.Estado,
+		integrationId: prom.Integration_Id,
+		employeeCode: prom.Codigo_Empleado,
+		cancellationOrderId: prom.ID_Orden_Cancelacion,
+		cancellationDate: prom.Fecha_Cancelacion,
+		serviceId: prom.ID_Servicio,
+		modificationDate: prom.Fecha_Modificacion."\$date"
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="directionInfo"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Direction:"Direction"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-services-info-subflow"
+		doc:id="a30a1380-3129-424d-8c5c-bcd9b3101ee1">
+		<scatter-gather doc:name="Scatter-Gather"
+			doc:id="7cb6ef6f-aa33-40e5-a3b2-c8ddc210a266">
+			<route>
+				<ee:transform doc:name="Transform Message"
+					doc:id="8db7d7fd-dd56-4530-83a3-b863bf770c84">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_CD_SERVICIO",
+    "filter": {
+      "Cliente.Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Cliente.Numero_Documento": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable
+							resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+						<ee:set-variable
+							resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+					doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+					doc:id="68a924b7-0090-43bc-94b4-02fb1cc44a7f"
+					name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="c633c7b4-5547-495c-8adc-9b04f22c8b15">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	FixedServices: data map (prod) -> {
+		serviceAccountId: prod.Id_Cuenta_Servicio,
+		bundle: {
+			id: if ( prod.Bundle."_id" is Object ) prod.Bundle."_id"."\$oid" default "" else prod.Bundle."_id" default "",
+			configurationCode: prod.Bundle.Codigo_Configuracion,
+			groupingNumber: prod.Bundle.Numero_Agrupacion,
+			productType: prod.Bundle.Tipo_Producto,
+			serviceType: prod.Bundle.Tipo_Servicio,
+			serviceSubtype: prod.Bundle.Subtipo_Servicio,
+			productSubtype: prod.Bundle.Subtipo_Producto,
+			sequence: prod.Bundle.Secuencia,
+			dependency: prod.Bundle.Dependencia,
+			classification: prod.Bundle.Clasificacion,
+			name: prod.Bundle.Nombre,
+			status: prod.Bundle.Estado,
+			minQuantity: prod.Bundle.Cantidad_Minima,
+			maxQuantity: prod.Bundle.Cantidad_Maxima,
+			serviceId: prod.Bundle.Id_Servicio,
+			offerPrice: prod.Bundle.Precio_Oferta map (p) -> {
+				salesChannel: p.Canal_Venta,
+				priceWithoutTax: p.Precio_Sin_Iva,
+				priceWithTax: p.Precio_Con_Iva,
+				tax: p.Iva
+			},
+			bundleParameters: prod.Bundle.Parametros_bundle map (pb) -> {
+				parameter: pb.Parametro,
+				parameterType: pb.Tipo_Parametro,
+				value: pb.Valor
+			}
+		},
+		optionalProducts: prod.Opcionales map (op) -> {
+			id: if ( op."_id" is Object ) op."_id"."\$oid" default "" else op."_id" default "",
+			configurationCode: op.Codigo_Configuracion,
+			groupingNumber: op.Numero_Agrupacion,
+			productType: op.Tipo_Producto,
+			serviceType: op.Tipo_Servicio,
+			serviceSubtype: op.Subtipo_Servicio,
+			productSubtype: op.Subtipo_Producto,
+			sequence: op.Secuencia,
+			dependency: op.Dependencia,
+			classification: op.Clasificacion,
+			name: op.Nombre,
+			status: op.Estado,
+			minQuantity: op.Cantidad_Minima,
+			maxQuantity: op.Cantidad_Maxima,
+			serviceId: op.Id_Servicio,
+			offerPrice: op.Precio_Oferta map (p) -> {
+				salesChannel: p.Canal_Venta,
+				priceWithoutTax: p.Precio_Sin_Iva,
+				priceWithTax: p.Precio_Con_Iva,
+				tax: p.Iva
+			},
+			attributes: op.Atributos map (a) -> {
+				name: a.Nombre,
+				value: a.Valor,
+				"type": a.Tipo
+			},
+			productParameters: op.Parametros_Producto map (pp) -> {
+				parameter: pp.Parametro,
+				parameterType: pp.TipoParametro,
+				value: pp.Valor
+			}
+		},
+		promotions: prod.Promociones,
+		auxiliaryServices: prod.Servicios_Auxiliares,
+		activationDate: prod.Fecha_Activacion."\$date",
+		isRecurringPayment: prod.Is_Pago_Recurrente,
+		conditionalPromotions: prod.Promociones_Condicionadas,
+		churnRisk: prod.Riesgo_Churn
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="accountInfo"><![CDATA[%dw 2.0
+output application/json
+---
+[
+	"Account": "info"
+]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</route>
+			<route>
+				<ee:transform doc:name="Transform Message"
+					doc:id="a78e9738-2332-4feb-9070-9afd52eeb712">
+					<ee:message>
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_SERVICIO_ACTIVO",
+    "filter": {
+      "Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Numero_Identificacion": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable
+							resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+						<ee:set-variable
+							resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+					doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+					doc:id="023ff011-3898-4047-a99c-4a8d9fc36fc6"
+					name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="8767aa35-8a8d-4018-bf63-03dff4703d8f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	MobileServices: data map (prod) -> {
+		id: if ( prod."_id" is Object ) prod."_id"."\$oid" default "" else prod."_id" default "",
+		documentType: prod.Tipo_Documento,
+		identificationNumber: prod.Numero_Identificacion,
+		billingAccount: prod.Cuenta_Facturacion,
+		technology: prod.Tecnologia,
+		createdBy: prod.Usuario_Creador,
+		modifiedBy: prod.Usuario_Modificador,
+		installationAddress: prod.Direccion_Instalacion,
+		department: prod.Departamento,
+		city: prod.Ciudad,
+		neighborhood: prod.Barrio,
+		locality: prod.Localidad,
+		stratum: prod.Estrato,
+		country: prod.Pais,
+		relatedOrderId: prod.Id_Orden_Relacionada,
+		parentAssetId: prod.Id_Activo_Padre,
+		bundled: prod.Empaquetado,
+		productType: prod.Tipo_Producto,
+		productServiceCode: prod.Codigo_Producto_Servicio,
+		serviceCode: prod.Codigo_Servicio,
+		product: prod.Producto,
+		service: prod.Servicio,
+		offerPlan: prod.Oferta_Plan,
+		offerValue: prod.Valor_Oferta,
+		connectionNumber: prod.Numero_Conexion,
+		serviceDuration: prod.Duracion_Servicio,
+		billableFlag: prod.Flag_Facturable,
+		integrationId: prod.Integration_Id,
+		characterizationId: prod.Id_Caracterizacion_Prom,
+		creationDate: prod.Fecha_Creacion,
+		updateDate: prod.Fecha_Actualizacion."\$date",
+		activationDate: prod.Fecha_Activacion."\$date",
+		inactivationDate: prod.Fecha_Inactivacion,
+		serviceMode: prod.Modalidad_Servicio,
+		convergenceFlag: prod.Flag_Convergencia,
+		previousNumber: prod.Numero_Anterior,
+		permanenceClause: prod.Clausula_Permanencia,
+		sourceSystemAssetId: prod.Id_Activo_Sistema_Origen,
+		rootAssetId: prod.Id_Activo_Raiz,
+		sourceServiceAccountId: prod.Id_Cuenta_Servicio_Origen,
+		sourceSystem: prod.Sistema_Origen,
+		route: prod.Ruta,
+		serviceCharacteristics: prod.Caracteristica_Servicio map (c) -> {
+			characteristic: c.Caracteristica,
+			value: c.Valor
+		},
+		serviceStatus: prod.Estado_Servicio,
+		servicePromotions: prod.Promociones_Servicio,
+		serviceDiscount: prod.Descuento_Servicio,
+		status: prod.Estado,
+		paymentStatus: prod.Estado_Pago,
+		fraudStatus: prod.Estado_Fraude,
+		lossStatus: prod.Estado_Perdida,
+		theftStatus: prod.Estado_Robo,
+		theftLossStatus: prod.Estado_Robo_Perdida,
+		voluntaryStatus: prod.Estado_Voluntaria
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="accountInfo"><![CDATA[%dw 2.0
+output application/json
+---
+[
+	"Account": "info"
+]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Transform Message"
+			doc:id="abd3ac79-b60f-4c55-bcd8-a02fb1fe8b72">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var merged =
+    payload pluck ((value, key) ->
+        if ( value.payload is Array and !isEmpty(value.payload) ) value.payload[0]
+        else
+            {
+}
+    ) reduce ((item, acc = {
+}) -> acc ++ item)
+var fixed = merged.FixedServices default []
+var mobile = merged.MobileServices default []
+---
+if ( isEmpty(fixed) and isEmpty(mobile) ) []
+else
+{
+	Services: [{
+	} ++ (if ( !isEmpty(fixed) ) {
+		FixedServices: fixed
+	} else {
+	}) ++ (if ( !isEmpty(mobile) ) {
+		MobileServices: mobile
+	} else {
+	})]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="accountInfo"><![CDATA[%dw 2.0
+output application/json
+---
+[
+	"Account": "info"
+]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-orders-info-subflow"
+		doc:id="4a9d45b9-a6ff-4e84-9c93-a3a74ac6100f">
+		<ee:transform doc:name="Transform Message"
+			doc:id="e50d6db6-9fe1-4ecf-8016-c5f9c181e2f9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_CD_ORDEN_COMPLETADA",
+    "filter": {
+      "Cliente_Tramite.Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Cliente_Tramite.Numero_Documento": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="12eb6685-44c0-451d-a047-ba895496d936"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="2f74af36-3317-4e32-b1f7-4a4ffe2e5854">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	Orders: data map (orde) -> {
+		id: if ( orde."_id" is Object ) orde."_id"."\$oid" default "" else orde."_id" default "",
+		createdDate: orde.Fecha_Creacion."\$date",
+		updatedDate: orde.Fecha_Modificacion."\$date",
+		createdBy: orde.Usuario_Creacion,
+		updatedBy: orde.Usuario_Modificacion,
+		extractorUpdate: orde.Actualizacion_Extractor,
+		orderNumber: orde.Numero_Orden,
+		channel: orde.Canal,
+		phase: orde.Fase,
+		commercialOrderStatus: {
+			code: orde.Estado_Orden_Comercial.Codigo,
+			description: orde.Estado_Orden_Comercial.Descripcion,
+			date: orde.Estado_Orden_Comercial.Fecha."\$date",
+			exceptionCode: orde.Estado_Orden_Comercial.CodigoExcepcion,
+			exception: orde.Estado_Orden_Comercial.Excepcion,
+			retries: orde.Estado_Orden_Comercial.Reintentos
+		},
+		procedure: {
+			"type": orde.Tramite.Tipo_Tramite,
+			subtype: orde.Tramite.Subtipo_Tramite,
+			procedureDate: orde.Tramite.Fecha_Tramite."\$date",
+			executionDate: orde.Tramite.Fecha_Ejecucion."\$date",
+			reconnectionDate: orde.Tramite.Fecha_Reconexion,
+			suspensionDate: orde.Tramite.Fecha_Suspension,
+			keepConnectionNumber: orde.Tramite.Conservar_Numero_Conexion,
+			permanenceClause: orde.Tramite.Clausula_Permanencia,
+			permanenceValue: orde.Tramite.Valor_Clausula_Permanencia,
+			cancelReason: orde.Tramite.Causal_Cancelacion,
+			cancelSubreason: orde.Tramite.Subcausal_Cancelacion,
+			cancelDescription: orde.Tramite.Descripcion_Cancelacion
+		},
+		serviceType: orde.Tipo_Servicio,
+		cun: orde.CUN,
+		previousCustomer: {
+			id: if ( orde.Cliente_Anterior."_id" is Object ) orde.Cliente_Anterior."_id"."\$oid" default "" else orde.Cliente_Anterior."_id" default "",
+			documentType: orde.Cliente_Anterior.Tipo_Documento,
+			documentNumber: orde.Cliente_Anterior.Numero_Documento,
+			firstName: orde.Cliente_Anterior.Nombres,
+			lastName: orde.Cliente_Anterior.Primer_Apellido,
+			secondLastName: orde.Cliente_Anterior.Segundo_Apellido,
+			phone: orde.Cliente_Anterior.Telefono_Fijo,
+			mobile: orde.Cliente_Anterior.Telefono_Movil,
+			email: orde.Cliente_Anterior.Email
+		},
+		procedureCustomer: {
+			id: if ( orde.Cliente_Tramite."_id" is Object ) orde.Cliente_Tramite."_id"."\$oid" default "" else orde.Cliente_Tramite."_id" default "",
+			documentType: orde.Cliente_Tramite.Tipo_Documento,
+			documentNumber: orde.Cliente_Tramite.Numero_Documento,
+			firstName: orde.Cliente_Tramite.Nombres,
+			lastName: orde.Cliente_Tramite.Primer_Apellido,
+			secondLastName: orde.Cliente_Tramite.Segundo_Apellido,
+			expeditionDate: orde.Cliente_Tramite.Fecha_Expedicion."\$date",
+			validationDate: orde.Cliente_Tramite.Fecha_Validacion_Identidad."\$date",
+			dataAuthorization: orde.Cliente_Tramite.Autoriza_Manejo_Datos_Personales,
+			creditAuthorization: orde.Cliente_Tramite.Autoriza_Consulta_Centrales,
+			phone: orde.Cliente_Tramite.Telefono_Fijo,
+			mobile: orde.Cliente_Tramite.Telefono_Movil,
+			email: orde.Cliente_Tramite.Email,
+			contacts: orde.Cliente_Tramite.Contactos map (c) -> {
+				documentType: c.Tipo_Documento,
+				documentNumber: c.Numero_Documento,
+				firstName: c.Nombres,
+				lastName: c.Primer_Apellido,
+				secondLastName: c.Segundo_Apellido,
+				phone: c.Telefono_Fijo,
+				mobile: c.Telefono_Movil,
+				email: c.Email
+			}
+		},
+		serviceProcedure: {
+			accountId: orde.Servicio_Tramite.Id_Cuenta_Servicio,
+			bundle: {
+				name: orde.Servicio_Tramite.Bundle.Nombre,
+				"type": orde.Servicio_Tramite.Bundle.Tipo_Producto,
+				serviceType: orde.Servicio_Tramite.Bundle.Tipo_Servicio
+			},
+			optionalProducts: orde.Servicio_Tramite.Opcionales map (op) -> {
+				name: op.Nombre,
+				productType: op.Tipo_Producto,
+				serviceType: op.Tipo_Servicio
+			},
+			promotions: orde.Servicio_Tramite.Promociones,
+			recurringPayment: orde.Servicio_Tramite.Is_Pago_Recurrente
+		},
+		serviceOrder: {
+			orderNumber: orde.Orden_Servicio.Numero_Orden,
+			orderStatus: {
+				code: orde.Orden_Servicio.Estado_Orden.Codigo,
+				description: orde.Orden_Servicio.Estado_Orden.Descripcion,
+				date: orde.Orden_Servicio.Estado_Orden.Fecha."\$date"
+			}
+		},
+		scheduling: {
+			enriched: orde.Agendamiento.Enriquecida,
+			agenda: orde.Agendamiento.Agenda
+		},
+		billingAccountProcedure: {
+			accountId: orde.Cuenta_Facturacion_Tramite.Id_Cuenta_Facturacion,
+			email: orde.Cuenta_Facturacion_Tramite.Email_Facturacion,
+			billingType: orde.Cuenta_Facturacion_Tramite.Tipo_Facturacion,
+			invoiceType: orde.Cuenta_Facturacion_Tramite.Tipo_Factura
+		},
+		requiresAvailability: orde.Orden_Requiere_Disponibilidad,
+		requiresScheduling: orde.Orden_Requiere_Agendamiento,
+		totalPrice: orde.Precio_Total_Orden,
+		orderCharacteristics: orde.Caracteristica_Orden map (c) -> {
+			name: c.Caracteristica,
+			value: c.Valor
+		},
+		others: {
+			contractDelivery: orde.Otros.Envio_Contrato,
+			salesUser: orde.Otros.Usuario_Venta,
+			communicationChannel: orde.Otros.Medio_Comunicacion
+		},
+		isOnSite: orde.Presencial,
+		suggestedOffer: orde.OfertaSugerida
+	}
+}]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="directionInfo"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Direction:"Direction"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-scheduling-info-subflow"
+		doc:id="3e63f02b-080c-4b3f-867f-89e7d56915ed">
+		<scatter-gather doc:name="Scatter-Gather"
+			doc:id="c796c157-01fa-4160-a019-be62ff5c0479">
+			<route>
+				<ee:transform doc:name="Transform Message"
+					doc:id="479bbf58-5d14-4456-9d84-e790f4058a7b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_CD_ORDEN",
+    "filter": {
+      "Cliente_Tramite.Tipo_Documento": vars.queryParameters.customer_id_type,
+      "Cliente_Tramite.Numero_Identificacion": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable
+							resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+						<ee:set-variable
+							resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+					doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+					doc:id="26a92e54-7082-4073-880c-262fcd7121f6"
+					name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message"
+					doc:id="c661a6b1-4e9a-4454-97cd-ee7179dbd260">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	Schedulings: data map (sche) -> {
+        id: if ( sche."_id" is Object ) sche."_id"."\$oid" default "" else sche."_id" default "",
+        scheduling: {
+            scheduleDate: sche.Agendamiento.Fecha_Agenda."\$date",
+            scheduleSlot: sche.Agendamiento.Franja_Agenda,
+            actionType: sche.Agendamiento.Tipo_Actuacion,
+            workSkill: sche.Agendamiento.Habilidad_Trabajo,
+            duration: sche.Agendamiento.Duracion,
+            enriched: sche.Agendamiento.Enriquecida,
+            agenda: sche.Agendamiento.Agenda,
+            activityId: sche.Agendamiento.IdActividad,
+            installments: sche.Agendamiento.ListaCuotas,
+            installerCode: sche.Agendamiento.Codigo_Instalador,
+            installerName: sche.Agendamiento.Nombre_Instalador
+        }
+    }
+}]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="accountInfo"><![CDATA[%dw 2.0
+output application/json
+---
+[
+	"Account": "info"
+]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</route>
+			<route>
+				<ee:transform doc:name="Transform Message"
+					doc:id="daba9749-e16b-4a83-baa9-be8b781c4a58">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "PQR_AGENDA",
+    "filter": {
+      "customer_document_type": vars.queryParameters.customer_id_type,
+      "customer_document_number": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable
+							resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+						<ee:set-variable
+							resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+					doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+					doc:id="d4bfe16f-98d0-46a3-b55e-70147d72d639"
+					name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message"
+					doc:id="2b1bdac8-a3ce-4add-a5cc-e73057007f8b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	PQRsSchedulings: data map (pqrSche) -> {
+		id: if ( pqrSche."_id" is Object ) pqrSche."_id"."\$oid" default "" else pqrSche."_id" default "",
+		createdBy: pqrSche.usuario_creo,
+		creationDate: pqrSche.fecha_creacion."\$date"."\$numberLong",
+		scheduleStartDate: pqrSche.fecha_inicio_agenda."\$date",
+		scheduleEndDate: pqrSche.fecha_fin_agenda."\$date",
+		scheduleStatus: pqrSche.estado_agenda,
+		cun: pqrSche.cun,
+		serviceType: pqrSche.service_type,
+		orderType: pqrSche.order_type,
+		technology: pqrSche.technology,
+		duration: pqrSche.duration,
+		address: pqrSche.address,
+		connectionNumber: pqrSche.connection_number,
+		technicianDocumentType: pqrSche.technician_document_type,
+		technicianDocumentNumber: pqrSche.technician_document_number,
+		zone: pqrSche.zone,
+		timeSlot: pqrSche.timeslot,
+		skill: pqrSche.skill,
+		queryDate: pqrSche.query_date,
+		etaId: pqrSche.id_eta,
+		osmId: pqrSche.id_osm,
+		orderNumber: pqrSche.order_number,
+		originSystem: pqrSche.origin_system,
+		customerDocumentType: pqrSche.customer_document_type,
+		customerDocumentNumber: pqrSche.customer_document_number,
+		actionType: pqrSche.action_type
+	}
+}]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="accountInfo"><![CDATA[%dw 2.0
+output application/json
+---
+[
+	"Account": "info"
+]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</route>
+			<route >
+				<ee:transform doc:name="Transform Message" doc:id="dbcce645-91d1-4d5e-a9fd-785f5215b868">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "PQR_AGENDA_TMR",
+    "filter": {
+      "customer_document_type": vars.queryParameters.customer_id_type,
+      "customer_document_number": vars.queryParameters.customer_id
+    },
+    "limit": (vars.queryParameters.limit default 10) as Number,
+    "skip": (vars.queryParameters.offset default 0) as Number
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+						<ee:set-variable resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="6c4e9d9b-0c94-4256-8d8e-024bd01dad22" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="a06b9ffa-b66a-4a55-b140-40375f94fae6">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var data =
+    if ( payload.result is Array ) payload.result
+    else if ( payload.result.cursor.firstBatch is Array ) payload.result.cursor.firstBatch
+    else []
+---
+if ( isEmpty(data) ) []
+else
+[{
+	PQRsSchedulingsTMR: data map (scheTMR) -> {
+		id: if ( scheTMR."_id" is Object ) scheTMR."_id"."\$oid" default "" else scheTMR."_id" default "",
+		createdBy: scheTMR.usuario_creo,
+		updateDate: scheTMR.fecha_actualizacion."\$date",
+		cun: scheTMR.cun,
+		serviceType: scheTMR.service_type,
+		orderType: scheTMR.order_type,
+		technology: scheTMR.technology,
+		duration: scheTMR.duration,
+		address: scheTMR.address,
+		connectionNumber: scheTMR.connection_number,
+		technicianDocumentType: scheTMR.technician_document_type,
+		technicianDocumentNumber: scheTMR.technician_document_number,
+		zone: scheTMR.zone,
+		skill: scheTMR.skill,
+		orderNumber: scheTMR.order_number,
+		originSystem: scheTMR.origin_system,
+		customerDocumentType: scheTMR.customer_document_type,
+		customerDocumentNumber: scheTMR.customer_document_number,
+		actionType: scheTMR.action_type,
+		agendasTmr: scheTMR.agendas_tmr map (a) -> {
+			id: if ( a."_id" is Object ) a."_id"."\$oid" default "" else a."_id" default "",
+			creationDate: a.fecha_creacion."\$date",
+			createdBy: a.usuario_creador,
+			modifiedBy: a.usuario_modificador,
+			schedulingOpportunityDate: a.oportunidad_agenda."\$date",
+			scheduleStartDate: a.fecha_inicio_agenda."\$date",
+			scheduleEndDate: a.fecha_fin_agenda."\$date",
+			etaId: a.id_eta,
+			osmId: a.id_osm,
+			timeSlot: a.timeslot,
+			scheduleStatus: a.estado_agenda,
+			channel: a.canal,
+			rescheduleReason: a.motivo_reagendamiento,
+			requestedByCustomer: a.solicitado_cliente
+		}
+	}
+}]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="accountInfo"><![CDATA[%dw 2.0
+output application/json
+---
+[
+	"Account": "info"
+]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Transform Message"
+			doc:id="e1b9e1a1-62ed-4e3c-b290-7b38d2ebcfdd">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var merged =
+    payload pluck ((value, key) ->
+        if ( value.payload is Array and !isEmpty(value.payload) ) value.payload[0]
+        else
+            {
+}
+    ) reduce ((item, acc = {
+}) -> acc ++ item)
+var schedulings = merged.Schedulings default []
+var pqrs = merged.PQRsSchedulings default []
+var schedulingsTMR = merged.PQRsSchedulingsTMR default []
+---
+if ( isEmpty(schedulings) and isEmpty(pqrs) and isEmpty(schedulingsTMR)) []
+else
+{
+	Scheduling: [{
+	} ++ (if ( !isEmpty(schedulings) ) {
+		Schedulings: schedulings
+	} else {
+	}) ++ (if ( !isEmpty(pqrs) ) {
+		PQRsSchedulings: pqrs
+	} else {
+	}) ++ (if ( !isEmpty(schedulingsTMR) ) {
+		PQRsSchedulingsTMR: schedulingsTMR
+	} else{
+	})]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="accountInfo"><![CDATA[%dw 2.0
+output application/json
+---
+[
+	"Account": "info"
+]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>
