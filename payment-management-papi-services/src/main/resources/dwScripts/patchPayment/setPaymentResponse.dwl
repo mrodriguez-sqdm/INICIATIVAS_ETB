@@ -1,9 +1,7 @@
 %dw 2.0
 output application/json
-var isSuccess =
-    (payload.returnCode? and payload.returnCode == "SUCCESS") 
-    or 
-    (payload.response.result.code? and payload.response.result.code == "SUCCESS")
+
+var isSuccess = payload.code == "SUCCESS"
 
 var resultObj = {
     (cus: payload.trazabilityCode) if (payload.trazabilityCode? and payload.trazabilityCode != null),
@@ -12,12 +10,12 @@ var resultObj = {
 
 ---
 {
-  code: "200",
+  code: if (isSuccess) "200" else "500",
   message:
     if (isSuccess)
       "Transaction retrieved successfully"
     else
-      payload.returnCode,
+      (payload.message.message default payload.message),
   status:
     if (isSuccess)
       "SUCCESS"
