@@ -169,8 +169,8 @@ fun calcularEstadoComercial(reglas) = do {
     if (todasPasaron)
         // CASO 1: Éxito total -> Estado Maestro
         {
-            "Codigo": "O60",
-            "Descripcion": "orden lista para orquestar",
+            "Codigo": p("status-orchestrator.code"),
+            "Descripcion": p("status-orchestrator.description"),
             "Fecha": fechaActual
         }
     else
@@ -396,9 +396,9 @@ var collection = if(payload.category == "LTE") "MDM_ORDEN" else "MDM_CD_ORDEN"
 ]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="Flow Reference" doc:id="487758a1-27b7-44a4-b820-b8df4831587f" name="generic-sapi-clientSub_Flow" />
+		<flow-ref doc:name="Flow Reference" doc:id="487758a1-27b7-44a4-b820-b8df4831587f" name="generic-sapi-clientSub_Flow" target="orderData"/>
 		<choice doc:name="Choice" doc:id="07c22657-db99-4836-a896-da836b41bbd3" >
-			<when expression="#[!isEmpty(payload.result)]">
+			<when expression="#[!isEmpty(vars.orderData.result)]">
 				<scatter-gather doc:name="Scatter-Gather" doc:id="66acb978-b61d-48ba-8e1d-450d12404f50" >
 					<route >
 						<ee:transform doc:name="Body get MDM_REGLAS_ORDEN" doc:id="09fe55e4-d77c-4580-af06-364e42f0b4ca">
@@ -540,28 +540,357 @@ output application/json
 							<ee:message>
 								<ee:set-payload><![CDATA[%dw 2.0
 output application/json
+
+// ---  VARIABLES ---
+var inputData = vars.requestOrder default {}
+var orderNum = vars.requestOrder.orderNumber
+
+// ---  FUNCIONES ---
+fun findObject(nombreLlave) = 
+    (vars.resultadoSapi filter ($.llave == nombreLlave))[0].objeto default null
+
+fun toDate(d) = if (isEmpty(d)) null else { "\$date": d }
+
+fun calcularEstadoComercial(reglas, estadoActual) = do {
+    var estadosLimpios = (reglas map (item) -> {
+        "esValido": item.esValido default false,
+        "estadoOrdenComercial": item.estadoOrdenComercial
+    }) orderBy (item) -> item.estadoOrdenComercial.codigo
+    
+    var reglasExitosas = estadosLimpios filter (item) -> item.esValido == true
+    var todasPasaron = !isEmpty(estadosLimpios) and (sizeOf(reglasExitosas) == sizeOf(estadosLimpios))
+    var fechaActual = { "\$date": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"} }
+    ---
+    if (isEmpty(reglas)) 
+        estadoActual // Si no hay reglas, mantenemos el i10
+    else if (todasPasaron)
+        { 
+            "Codigo": p("status-orchestrator.code"), 
+            "Descripcion": p("status-orchestrator.description"), 
+            "Fecha": fechaActual 
+        }
+    else if (!isEmpty(reglasExitosas))
+        // Si algunas pasaron, tomamos la última exitosa (ej. i20)
+        (reglasExitosas[-1].estadoOrdenComercial ++ { "Fecha": fechaActual })
+    else 
+        estadoActual // Si hay reglas pero NINGUNA se cumplió, mantenemos el i10
+}
+
 ---
 {
-	code: "200",
-	messageResponse: "Order Update Success",
-	order: {}
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: { 
+        "query": {
+            "update": "MDM_CD_ORDEN",
+            "updates": [
+                {
+                    "q": { "Numero_Orden": orderNum },
+                    "u": {
+                        "\$set": {
+                            "Fecha_Modificacion": { "\$date": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"} },
+                            "Usuario_Modificacion": inputData.updatedBy,
+                            
+                            // --- ATRIBUTOS CONDICIONALES ---
+                            // Solo se mapean si no vienen vacíos en el inputData
+                            ("Actualizacion_Extractor": inputData.extractorUpdate) if (!isEmpty(inputData.extractorUpdate)),
+                            ("Canal": inputData.channel) if (!isEmpty(inputData.channel)),
+                            ("Fase": inputData.phase) if (!isEmpty(inputData.phase)),
+                            
+                            // Estado Comercial: solo si hay reglas para procesar
+                            ("Estado_Orden_Comercial": calcularEstadoComercial(vars.reglasAcumuladas,vars.orderData.result[0].Estado_Orden_Comercial)) if (!isEmpty(vars.reglasAcumuladas)),
+                            
+                            // Tramite: Mapeo interno condicional
+                            ("Tramite": {
+                                ("Tipo_Tramite": inputData.through.throughType) if (!isEmpty(inputData.through.throughType)),
+                                ("Subtipo_Tramite": inputData.through.throughSubtype) if (!isEmpty(inputData.through.throughSubtype)),
+                                ("Fecha_Tramite": toDate(inputData.through.throughDate)) if (!isEmpty(inputData.through.throughDate)),
+                                ("Causal_Cancelacion": inputData.through.cancellationReason) if (!isEmpty(inputData.through.cancellationReason))
+                                // ... puedes agregar más subcampos aquí siguiendo el mismo patrón
+                            }) if (!isEmpty(inputData.through)),
+                            
+                            ("CUN": inputData.cun) if (!isEmpty(inputData.cun)),
+                            
+                            // Objetos de MDM y Oferta: solo si la búsqueda retornó algo
+                            ("Cliente_Tramite": findObject("MDM_CLIENTE")) if (!isEmpty(findObject("MDM_CLIENTE"))),
+                            ("Servicio_Tramite": findObject("CMP_OFERTA_PRODUCTO")) if (!isEmpty(findObject("CMP_OFERTA_PRODUCTO")))
+                        }
+                    },
+                    "upsert": false,
+                    "multi": false
+                }
+            ]
+        }
+    },
+    headers: {
+        "client_secret": p('mongo-db-sapi.security.client-secret'),
+        "client_id": p('mongo-db-sapi.security.client-id'),
+        "name": vars.headers.name,
+        "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+        "source": vars.headers.source,
+        "systemId": vars.headers.systemId
+    }
 }]]></ee:set-payload>
 							</ee:message>
 						</ee:transform>
+								<flow-ref doc:name="Flow Reference" doc:id="fadbb4f4-8925-4ec9-b2c7-e4d39731281b" name="generic-sapi-clientSub_Flow" target="resultUpdateOrder"/>
+								<choice doc:name="Choice" doc:id="4eb9ac22-03ac-45bb-813f-93e026c83ba5">
+									<when expression="#[// Condición: Mongo reportó éxito Y no tenemos reglas que marcar como TRUE&#10;(vars.resultUpdateOrder.result.n &gt; 0) and (sizeOf(vars.reglasAcumuladas filter ($.esValido == true)) &lt; 0)]">
+										<ee:transform doc:name="Transform Message" doc:id="29265f7f-db7f-42ca-98dd-d41c6ed8cf95">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// Guardamos la respuesta de Mongo en una variable local para facilitar la lectura
+var mongoRes = vars.resultUpdateOrder.result default {}
+var orderNum = vars.requestOrder.orderNumber default ""
+
+---
+    if (mongoRes.n > 0 and mongoRes.nModified > 0)
+        {
+            code: "200",
+            messageResponse: "Order Update Success",
+            order: {
+                orderNumber: orderNum,
+                rulesApplied: vars.reglasAcumuladas filter ($.esValido == true)
+            }
+        }
+    else if (mongoRes.n > 0 and mongoRes.nModified == 0)
+        {
+            code: "200",
+            messageResponse: "Order Not Modified"
+        }
+    else // Caso donde n == 0
+        {
+            code: "200",
+            messageResponse: "Order Not Found"
+        }
+
+]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+									</when>
+									<when expression="#[// Condición: Mongo reportó éxito Y tenemos reglas que marcar como TRUE&#10;(vars.resultUpdateOrder.result.n &gt; 0) and (sizeOf(vars.reglasAcumuladas filter ($.esValido == true)) &gt; 0)]">
+										<ee:transform doc:name="Transform Message" doc:id="68a62e53-bf64-4a91-bcfd-5306766f3383">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// ---  VARIABLES ---
+// Filtramos los IDs o códigos de las reglas que fueron exitosas en esta ejecución
+var idsReglasExitosas = (vars.reglasAcumuladas filter ($.esValido == true)).idRegla default []
+var orderNum = vars.requestOrder.orderNumber
+
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: { 
+        "query": {
+            "update": "MDM_REGLAS_ORDEN", 
+            "updates": [
+                {
+                    // 1. FILTRO: Buscamos el documento por Numero_Orden
+                    "q": { "Numero_Orden": vars.requestOrder.orderNumber },
+                    
+                    // 2. ACTUALIZACIÓN: Usamos el identificador $[regla]
+                    "u": {
+                        "\$set": {
+                            "Reglas_Aplicadas.\$[regla].esValido": true
+                        }
+                    },
+                    "upsert": false,
+                    "multi": true,
+                    // 3. ARRAY FILTERS: Aquí definimos qué es "regla"
+                    "arrayFilters": [
+                        { "regla.idRegla": { "\$in": idsReglasExitosas } }
+                    ]
+                }
+            ]
+        }
+    },
+    headers: {
+        "client_secret": p('mongo-db-sapi.security.client-secret'),
+        "client_id": p('mongo-db-sapi.security.client-id'),
+        "name": vars.headers.name,
+        "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+        "source": vars.headers.source,
+        "systemId": vars.headers.systemId
+    }
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+										<flow-ref doc:name="Flow Reference" doc:id="6c6bb396-98f5-4a68-8bad-7e3f3d4cf920" name="generic-sapi-clientSub_Flow" target="resultUpdateRules" />
+										<ee:transform doc:name="Transform Message" doc:id="179daa0e-fc65-4b2d-81ba-17960a83ac43">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// Guardamos la respuesta de Mongo en una variable local para facilitar la lectura
+var mongoRes = vars.resultUpdateOrder.result default {}
+var orderNum = vars.requestOrder.orderNumber default ""
+
+---
+    if (mongoRes.n > 0 and mongoRes.nModified > 0)
+        {
+            code: "200",
+            messageResponse: "Order Update Success and rules modified",
+            order: {
+                orderNumber: orderNum,
+                rulesApplied: vars.reglasAcumuladas filter ($.esValido == true)
+            }
+        }
+    else if (mongoRes.n > 0 and mongoRes.nModified == 0)
+        {
+            code: "200",
+            messageResponse: "Order Not Modified"
+        }
+    else // Caso donde n == 0
+        {
+            code: "200",
+            messageResponse: "Order Not Found"
+        }
+
+]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+									
+</when>
+									<otherwise >
+										<ee:transform doc:name="Transform Message" doc:id="8ddd60d8-ed62-4eb4-8428-2ccfde7f6a6a" >
+											<ee:message >
+												<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var orderNum = vars.requestOrder.orderNumber default ""
+
+---
+    {
+        code: "500",
+        messageResponse: "Error Updated Order",
+        order: {
+            orderNumber: orderNum,
+            rulesApplied: vars.reglasAcumuladas
+        }
+    }]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									</otherwise>
+								</choice>
 					</otherwise>
 				</choice>
 					</when>
 					<otherwise >
+						<ee:transform doc:name="Update Order" doc:id="bd525e5a-f034-4f12-8668-657ac45605e3">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// ---  VARIABLES ---
+var inputData = vars.requestOrder default {}
+var orderNum = vars.requestOrder.orderNumber
+
+
+fun toDate(d) = if (isEmpty(d)) null else { "\$date": d }
+
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: { 
+        "query": {
+            "update": "MDM_CD_ORDEN",
+            "updates": [
+                {
+                    "q": { "Numero_Orden": orderNum },
+                    "u": {
+                        "\$set": {
+                            "Fecha_Modificacion": { "\$date": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"} },
+                            "Usuario_Modificacion": inputData.updatedBy,
+                            
+                            // --- ATRIBUTOS CONDICIONALES ---
+                            // Solo se mapean si no vienen vacíos en el inputData
+                            ("Actualizacion_Extractor": inputData.extractorUpdate) if (!isEmpty(inputData.extractorUpdate)),
+                            ("Canal": inputData.channel) if (!isEmpty(inputData.channel)),
+                            ("Fase": inputData.phase) if (!isEmpty(inputData.phase)),
+                            
+                           
+                            // Tramite: Mapeo interno condicional
+                            ("Tramite": {
+                                ("Tipo_Tramite": inputData.through.throughType) if (!isEmpty(inputData.through.throughType)),
+                                ("Subtipo_Tramite": inputData.through.throughSubtype) if (!isEmpty(inputData.through.throughSubtype)),
+                                ("Fecha_Tramite": toDate(inputData.through.throughDate)) if (!isEmpty(inputData.through.throughDate)),
+                                ("Causal_Cancelacion": inputData.through.cancellationReason) if (!isEmpty(inputData.through.cancellationReason))
+                                // ... puedes agregar más subcampos aquí siguiendo el mismo patrón
+                            }) if (!isEmpty(inputData.through)),
+                            
+                            ("CUN": inputData.cun) if (!isEmpty(inputData.cun))
+                            }
+                    },
+                    "upsert": false,
+                    "multi": false
+                }
+            ]
+        }
+    },
+    headers: {
+        "client_secret": p('mongo-db-sapi.security.client-secret'),
+        "client_id": p('mongo-db-sapi.security.client-id'),
+        "name": vars.headers.name,
+        "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+        "source": vars.headers.source,
+        "systemId": vars.headers.systemId
+    }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Flow Reference" doc:id="0b8f14ea-2c37-45d9-a84c-97575868ccd1" name="generic-sapi-clientSub_Flow"/>
 						<ee:transform doc:name="Transform Message" doc:id="3ec70664-7818-4001-b1e4-e9a9364d286f" >
 							<ee:message >
 								<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+
+// Guardamos la respuesta de Mongo en una variable local para facilitar la lectura
+var mongoRes = payload.result default {}
+var orderNum = vars.requestOrder.orderNumber default ""
+
 ---
-{
-	code: "200",
-	messageResponse: "Order Update Success, not aplied rules",
-	order: {}
-}]]></ee:set-payload>
+if (mongoRes.ok == 1) (
+    if (mongoRes.n > 0 and mongoRes.nModified > 0)
+        {
+            code: "200",
+            messageResponse: "Update Order Success",
+            order: {
+                orderNumber: orderNum
+            }
+        }
+    else if (mongoRes.n > 0 and mongoRes.nModified == 0)
+        {
+            code: "200",
+            messageResponse: "Order Not Modified"
+        }
+    else // Caso donde n == 0
+        {
+            code: "200",
+            messageResponse: "Order Not Found"
+        }
+)
+else // Caso donde ok != 1 (Fallo de sintaxis o error de base de datos)
+    {
+        code: "500",
+        messageResponse: "Error Updated Order",
+        order: {
+            orderNumber: orderNum
+        }
+    }]]></ee:set-payload>
 							</ee:message>
 						</ee:transform>
 					</otherwise>
@@ -764,8 +1093,12 @@ fun mapCoverage(cov) = if (isEmpty(cov)) null else {
 ---
 {
     code: "200",
-    messageResponse: "Orden consultada exitosamente",
-    order: {
+    messageResponse: if (!isEmpty(payload.result[0])) 
+                    "Orden consultada exitosamente" 
+                  else 
+                    "No se obtuvieron resultados con la orden o filtros enviados",
+    // Agregamos el condicional aquí:
+    (order: {
         id: payload.result[0]."_id"."\$oid",
         createdAt: payload.result[0].Fecha_Creacion,
         updatedAt: payload.result[0].Fecha_Modificacion,
@@ -1116,7 +1449,7 @@ fun mapCoverage(cov) = if (isEmpty(cov)) null else {
                 send: att.Enviar
             }
         }
-    }
+    }) if (!isEmpty(payload.result[0]))
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
