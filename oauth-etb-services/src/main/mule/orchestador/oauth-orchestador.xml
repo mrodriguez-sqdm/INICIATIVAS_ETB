@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:oauth2-provider="http://www.mulesoft.org/schema/mule/oauth2-provider"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/oauth2-provider http://www.mulesoft.org/schema/mule/oauth2-provider/current/mule-oauth2-provider.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="oauth-createClient-orchestadorSub_Flow" doc:id="0ebe3632-5411-468f-8225-e57a4a09a8c7" >
+		<choice doc:name="Choice" doc:id="060470ef-e762-4ec0-9b38-76d0754f26a0" >
+			<when expression="#[attributes.headers.'x-api-key' != null and attributes.headers.'x-api-key' == p('secure::security.adminApiKey')]">
+				<oauth2-provider:create-client doc:name="Create client" doc:id="7c1848f3-d832-44cf-a7c9-7a108f529051" config-ref="OAuth2_Provider_Config" clientId="#[payload.clientId]" type="CONFIDENTIAL" secret="#[payload.clientSecret]" clientName="#[payload.clientName]" authorizedGrantTypes='#[["CLIENT_CREDENTIALS"]]' />
+				<ee:transform doc:name="Transform Message" doc:id="5c2bd931-9bf1-4f8a-ac4f-780d93028dd2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": "201",
+  "message": "Client created successfully"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="778c060e-64b5-499c-ae07-f0546bc4fc81" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{"code":"401","message":"Unauthorized"}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="oauth-validate-orchestadorSub_Flow" doc:id="f0fa6cd5-58a6-48e0-b5fd-197ef75429e5" >
+		<oauth2-provider:validate-token doc:name="Validate token" doc:id="bce794d8-d2ac-46a1-9cef-0d9388fff14b" config-ref="OAuth2_Provider_Config" />
+		<ee:transform doc:name="Transform Message" doc:id="d458cc78-ba08-462d-8aea-0f0cdaf3aa6e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

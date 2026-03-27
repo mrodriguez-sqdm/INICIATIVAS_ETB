@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:oauth2-provider="http://www.mulesoft.org/schema/mule/oauth2-provider"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd 
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/oauth2-provider http://www.mulesoft.org/schema/mule/oauth2-provider/current/mule-oauth2-provider.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+	<os:object-store name="client_os" doc:name="Object store" doc:id="b9a2b934-f62d-4634-8e9e-3325c1ed3113" maxEntries="${objectstore.client.maxEntries}" entryTtl="${objectstore.client.entryTtl}" expirationInterval="${objectstore.client.expirationInterval}"/>
+	<os:object-store name="token_os" doc:name="Object store" doc:id="08fa6684-1d1e-40fd-b348-c70c99621f75" maxEntries="${objectstore.token.maxEntries}" entryTtl="${objectstore.token.entryTtl}" expirationInterval="${objectstore.token.expirationInterval}"/>
+	<oauth2-provider:config name="OAuth2_Provider_Config" doc:name="OAuth2 Provider Config" doc:id="7e191e46-c8a2-4034-9638-378ed09f0e29" listenerConfig="oauth-etb-services-httpListenerConfig" clientStore="client_os" supportedGrantTypes="${oauth.provider.grantTypes}" >
+		<oauth2-provider:client-validation-rate-limiter >
+			<oauth2-provider:period-rate-limiter duration="${oauth.provider.rateLimiter.duration}" maximumFailureCount="${oauth.provider.rateLimiter.maxFailures}" />
+		</oauth2-provider:client-validation-rate-limiter>
+		<oauth2-provider:token-config tokenStore="token_os" path="${oauth.provider.token.path}" tokenTtl="${oauth.provider.token.ttl}"/>
+	</oauth2-provider:config>
+	<http:listener-config name="oauth-etb-services-httpListenerConfig">
+        <http:listener-connection host="${http.listener.host}" port="${http.listener.port}" readTimeout="${http.listener.readTimeout}"/>
+    </http:listener-config>
+    <apikit:config name="oauth-etb-services-config" api="resource::35a39a92-efa9-49b6-8f13-d66508fd2f35:oauth-etb-services:2.0.1:raml:zip:oauth-etb-services.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+	<configuration-properties doc:name="Configuration properties" doc:id="3b1933a8-b979-43b0-adfb-7cb2eb1762c3" file="properties/${env}-properties.yaml" />
+	
+	<import doc:name="Import" doc:id="8e4ffda1-0861-4a3c-b193-ac95e3fcbe21" file="error-handler-v2.xml" />
+	<import doc:name="Import" doc:id="10057abe-84f6-42d3-bae0-cfda5b735906" file="etb-common-lib.xml" />
+	<import doc:name="Import" doc:id="789fbc09-29c6-42a4-9872-e9abf269f39d" file="loggin.xml" /> 
+	<import doc:name="Import" doc:id="301e2af9-165c-4d34-bad0-e5a1d28df9b7" file="audits-sapi-client.xml" />
+	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" doc:id="9c43d525-5786-434d-8251-4d11ea655630" file="secureProperties/${env}-secure-properties.yaml" key="${secure.key}" >
+		<secure-properties:encrypt algorithm="Blowfish" />
+	</secure-properties:config>
+	<api-gateway:autodiscovery apiId="${autodiscovery}" ignoreBasePath="true" doc:name="API Autodiscovery" doc:id="17f1437c-c67f-4c9e-b184-ce3bdf809bb5" flowRef="oauth-etb-services-main" />
+</mule>
