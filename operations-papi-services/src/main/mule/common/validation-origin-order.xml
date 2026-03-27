@@ -6,48 +6,102 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
 http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
 	<sub-flow name="validation-origin-orderSub_Flow" doc:id="2a6544fc-3dc7-4e31-b5e5-7b28188241de" >
+		<ee:transform doc:name="Transform Message" doc:id="fe15c0f4-0016-4486-9b85-d62585314162">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="17e5b082-1efd-4cfe-a3de-569318970a2a" >
+			<when expression="#[(!isEmpty(attributes.uriParams.idServiceAccount))]">
+				<ee:transform doc:name="Transform Message"
+			doc:id="5c8d1757-dceb-4964-816e-f9c334d93215">
+			<ee:message>
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_CD_ORDEN",
+    "filter": {
+      "Servicio_Tramite.Id_Cuenta_Servicio": attributes.uriParams.idServiceAccount
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-dynamic-querySub_Flow" doc:id="2d5ab305-bc63-4c93-87b3-69d2dde383e0" name="mongo-db-sapi-dynamic-querySub_Flow" target="getOrderNumberByidServiceAccount"/>
+			</when>
+			<when expression="#[(!isEmpty(attributes.uriParams.orderNumber))]">
+				<logger level="INFO" doc:name="Logger" doc:id="6316e733-0501-4796-9710-bb9be7255cc5" message='#["Entro por uriParam orderNumber"]' />
+			</when>
+			<otherwise >
+				<choice doc:name="Choice" doc:id="20f02194-48f9-4ba0-8c80-99444096a74e" >
+					<when expression="#[(!isEmpty(payload.idServiceAccount))]">
+						<ee:transform doc:name="Transform Message1" doc:id="30ed2505-1f5c-440b-8103-fda84b4ee064">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_CD_ORDEN",
+    "filter": {
+      "Servicio_Tramite.Id_Cuenta_Servicio": payload.idServiceAccount
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+						<ee:set-variable resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+					</ee:variables>
+				</ee:transform>
+						<flow-ref doc:name="mongo-db-sapi-dynamic-querySub_Flow" doc:id="25517197-d1fc-4821-bede-5e8891e95ece" name="mongo-db-sapi-dynamic-querySub_Flow" target="getOrderNumberByidServiceAccount" />
+					</when>
+					<otherwise >
+						<logger level="INFO" doc:name="Logger" doc:id="bdd09407-361f-41e2-bd0e-a7c456c770bd" message='#["Entro por payload orderNumber"]' />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
 		<ee:transform doc:name="Transform Message" doc:id="b18fd6d1-0b73-483e-8fe1-8674872defcf">
 			<ee:message />
 			<ee:variables>
 				<ee:set-variable variableName="result"><![CDATA[%dw 2.0
 output application/json
-
 var normalizeOrigin =
     upper(
-        if (isEmpty(attributes.headers.origin default ""))
-            "TIGO"
+        if ( isEmpty(vars.headers.origin default "") ) "TIGO"
         else
-            attributes.headers.origin
+            vars.headers.origin
     )
-
 var baseKey =
-    if (!isEmpty(attributes.uriParams.idServiceAccount default ""))
-        attributes.uriParams.idServiceAccount
-    else if (!isEmpty(attributes.uriParams.orderNumber default ""))
-        attributes.uriParams.orderNumber
-    else if (!isEmpty(payload.orderNumber default ""))
-        payload.orderNumber
-    else if (!isEmpty(payload.idServiceAccount default ""))
-        payload.idServiceAccount
+    if ( !isEmpty(vars.getOrderNumberByidServiceAccount.result[0].Numero_Orden default "") ) vars.getOrderNumberByidServiceAccount.result[0].Numero_Orden
+    else if ( !isEmpty(attributes.uriParams.orderNumber default "") ) attributes.uriParams.orderNumber
+    else if ( !isEmpty(payload.orderNumber default "") ) payload.orderNumber
     else
         ""
-
 var keyObjectStore =
     normalizeOrigin ++ "_" ++ baseKey
 ---
 keyObjectStore]]></ee:set-variable>
 				<ee:set-variable variableName="orderNumberValidation" ><![CDATA[%dw 2.0
 output application/json
-
 var ordNmbr =
-    if (!isEmpty(attributes.uriParams.idServiceAccount default ""))
-        attributes.uriParams.idServiceAccount
-    else if (!isEmpty(attributes.uriParams.orderNumber default ""))
-        attributes.uriParams.orderNumber
-    else if (!isEmpty(payload.orderNumber default ""))
-        payload.orderNumber
-    else if (!isEmpty(payload.idServiceAccount default ""))
-        payload.idServiceAccount
+	if ( !isEmpty(vars.getOrderNumberByidServiceAccount.result[0].Numero_Orden default "") ) vars.getOrderNumberByidServiceAccount.result[0].Numero_Orden
+    else if ( !isEmpty(attributes.uriParams.orderNumber default "") ) attributes.uriParams.orderNumber
+    else if ( !isEmpty(payload.orderNumber default "") ) payload.orderNumber
     else
         ""
 ---
