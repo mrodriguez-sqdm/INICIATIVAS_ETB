@@ -1537,8 +1537,8 @@ var dynamicMatch = payload.accion.evaluacionRequest reduce (item, acc = {}) -> (
 )
 
 ---
-{
-  "query": {
+if(upper(payload.accion.metodo) == "POST"){
+	"query": {
     "aggregate": payload.accion.coleccion,
     "pipeline": [
       {
@@ -1548,17 +1548,13 @@ var dynamicMatch = payload.accion.evaluacionRequest reduce (item, acc = {}) -> (
     ],
     "cursor": {}
   }
-}]]></ee:set-payload>
+}
+else if(upper(payload.accion.metodo) == "GET")
+  	dynamicMatch
+else
+{}]]></ee:set-payload>
 						</ee:message>
 						<ee:variables>
-							<ee:set-variable variableName="method"><![CDATA[%dw 2.0
-output application/json
----
-vars.currentRule.accion.metodo default "POST"]]></ee:set-variable>
-							<ee:set-variable variableName="path"><![CDATA[%dw 2.0
-output application/json
----
-vars.currentRule.accion.path default ""]]></ee:set-variable>
 						</ee:variables>
 					</ee:transform>
 					<ee:transform doc:name="Transform Message" doc:id="22e310a6-1527-483c-a786-44e233e28a0c">
@@ -1568,12 +1564,13 @@ output application/json
 
 ---
 {
+	sistema: vars.currentRule.accion.sistema,
 	basePath: p("mongo-db-sapi.base-path"),
 	host: p("mongo-db-sapi.host"),
 	port: p("mongo-db-sapi.port"),
 	method: vars.currentRule.accion.metodo,
 	path: vars.currentRule.accion.path,
-	body: payload,
+	body: if(upper(vars.currentRule.accion.metodo) == "POST") payload else {},
 	headers: {
 	"client_secret" : p('mongo-db-sapi.security.client-secret'),
 	"client_id" : p('mongo-db-sapi.security.client-id'),
@@ -1582,9 +1579,7 @@ output application/json
 	"source": vars.headers.source,
 	"systemId": vars.headers.systemId
 },
-	queryParameters:{
-		
-	},
+	queryParameters:if(upper(vars.currentRule.accion.metodo) == "GET") payload else {},
 	uriParameters:{
 		
 	}
@@ -1592,6 +1587,101 @@ output application/json
 			</ee:message>
 		</ee:transform>
 				</when>
+	<when expression='#[vars.currentRule.accion.sistema == "oracle-sapi-services"]'>
+					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="7f00cecc-f502-4e8a-b433-8f879c18e2e3">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// 1. Obtenemos el Request Original
+var requestOriginal = vars.RequestOrder 
+
+// 2. Función de navegación segura
+fun resolvePath(obj: Any, path: String) = 
+    if (path != null) 
+        path splitBy "." reduce (key, acc = obj) -> acc[key]
+    else null
+
+// 3. Construimos el filtro dinámico basado en las reglas
+var dynamicMatch = payload.accion.evaluacionRequest reduce (item, acc = {}) -> (
+    if (item.parametro != null and item.valor != null)
+        do {
+
+        	
+             // Resolvemos el valor real del request usando el path elegido
+           var valorReal =
+    if ((item.parametro default "") == "==" or isEmpty(item.parametro default ""))
+        item.comparacion
+    else
+        resolvePath(requestOriginal, item.parametro)
+            // Construimos la llave final (root o dot notation)
+            var llaveFinal = if (item.contenedor == "root") item.valor 
+                             else (item.contenedor ++ "." ++ item.valor)
+// --- LÓGICA DE TRANSFORMACIÓN DE VALOR ---
+            var valorFinal = if (item.valor == "_id") 
+                                { "\$oid": valorReal } // Si es _id, aplicamos formato ObjectId
+                             else if (item.usaRegex == true) 
+                                { "\$regex": valorReal } 
+                             else 
+                                valorReal
+            ---
+            acc ++ { (llaveFinal): valorFinal }
+        }
+    else acc
+)
+
+---
+if(upper(payload.accion.metodo) == "POST"){
+	"query": {
+    "aggregate": payload.accion.coleccion,
+    "pipeline": [
+      {
+        // Envolvemos el resultado en un $match para que Mongo filtre
+        "\$match": dynamicMatch
+      }
+    ],
+    "cursor": {}
+  }
+}
+else if(upper(payload.accion.metodo) == "GET")
+  	dynamicMatch
+else
+{}
+  	]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+						</ee:variables>
+					</ee:transform>
+					<ee:transform doc:name="Transform Message" doc:id="02e7c35f-c0bb-4f20-8040-ed22fb0be103">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+	sistema: vars.currentRule.accion.sistema,
+	basePath: p("oracle-sapi.base-path"),
+	host: p("oracle-sapi.host"),
+	port: p("oracle-sapi.port"),
+	method: vars.currentRule.accion.metodo,
+	path: vars.currentRule.accion.path,
+	body: if(upper(vars.currentRule.accion.metodo) == "POST") payload else {},
+	headers: {
+	"client_secret" : p('oracle-sapi.security.client-secret'),
+	"client_id" : p('oracle-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{},
+	uriParameters:if(upper(vars.currentRule.accion.metodo) == "GET") payload else {}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					<logger level="INFO" doc:name="Logger" doc:id="323d31dc-817a-4275-9d39-980238522dff" message="#[payload]"/>
+				
+</when>
 				<otherwise >
 					<raise-error 
     doc:name="Raise error" 
@@ -1599,6 +1689,7 @@ output application/json
     description='#["La regla con ID " ++ (vars.currentRule.idRegla default "Desconocida") ++ " no tiene la conexion parametrizada."]'/>
 				</otherwise>
 			</choice>
+			<set-variable value="#[payload]" doc:name="Set body sapi" doc:id="ac95286d-beed-401c-b044-befc70cd3003" variableName="requestDataSapi"/>
 			<flow-ref doc:name="Flow Reference" doc:id="79a6cdcc-47a6-4a48-8f46-f3dc5107ffc4" name="generic-sapi-clientSub_Flow" />
 			<ee:transform doc:name="Set Variables Reglas y resultadoSapi" doc:id="3fdad963-9e14-41e7-a00d-109188a8bf23" >
 				<ee:message >
@@ -1628,7 +1719,9 @@ import * from dw::core::Dates
 
 // 1. Datos de origen (usando tus nombres de variables actuales)
 var requestOriginal = vars.RequestOrder 
-var mongoResponse = payload default {} 
+var mongoResponse = if(vars.requestDataSapi.sistema == "mongo-db-sapi-services") payload default {} else {
+	result: [payload]
+} 
 var validaciones = vars.currentRule.accion.evaluacionRespuesta default []
 
 // --- FUNCIONES CORE ---
@@ -1685,6 +1778,13 @@ fun checkCondition(actual, operator, expected) = do {
             ---
             if (fechaEvaluar != null) abs(daysBetween(fechaEvaluar, hoy)) <= 30 else false
         }
+        case "mayor_hoy" -> do {
+	        var hoy = now() as Date
+	        var fechaEvaluar = actual as Date default null
+	        ---
+	        // Si fechaEvaluar es mayor a hoy, daysBetween devuelve un número positivo
+	        if (fechaEvaluar != null) (fechaEvaluar > hoy) else false
+    	}
         case ">" -> (actual default 0) > (expected default 0)
         case "==" -> a == e
         case "!=" -> a != e
@@ -1720,6 +1820,8 @@ var listaResultados = validaciones map (item) -> do {
                 (if (cumpleCondicion) "El objeto existe" else "El objeto NO existe")
              else if (item.logica == "max_30_days")
                 "$(valorEnMongo default 'null') no supera los 30 días respecto a hoy"
+             else if (item.logica == "mayor_hoy")
+                "$(valorEnMongo default 'null') la agenda no es mayor a hoy"
              else 
                 "$(valorEnMongo default 'null') $(item.logica) $(valorAComparar default 'null')",
         critica: (not cumpleCondicion) and (item.obligatoria default false),
