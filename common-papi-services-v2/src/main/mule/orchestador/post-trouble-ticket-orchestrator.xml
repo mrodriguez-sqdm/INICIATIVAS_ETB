@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-trouble-ticket-orchestrator-sub-flow"
+		doc:id="9fed4b65-6426-4d22-b388-a5401c2d73d1">
+		<ee:transform doc:name="set variables"
+			doc:id="dc03b0f4-83e7-47d9-9e12-f63b6ff2a54a">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="validate cun flag"
+			doc:id="9e9b7174-ea75-4f72-8d96-4fdb7a999c57">
+			<when expression="#[payload.ticket.cun == true]">
+				<ee:transform doc:name="set common sapi request"
+					doc:id="170a1d54-3f8e-4152-9601-b6ade6a8c924">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "pqrType": payload.ticket.pqr.pqrType,
+  "pqrDate": payload.ticket.pqr.pqrDate,
+  "system": payload.ticket.service.system,
+  "orderNumber": payload.ticket.service.orderNumber,
+  "connectionNumber": payload.ticket.service.connectionNumber,
+  "identification": payload.ticket.customer.documentType,
+  "identificationType": payload.ticket.customer.documentNumber,
+  "user": payload.ticket.customer.user
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="common-sapi-client-sub-flow"
+					doc:id="7c74995d-dc5b-4340-b410-bcabb50dd0d0"
+					name="common-sapi-client-sub-flow" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message"
+					doc:id="a2eda198-7b7c-4a0a-a3dc-250e06941d2b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": "200",
+  "message": "PQR created correctly",
+  "pqr": {
+    "databaseId": "PQR879865",
+    "operationResult": "Success",
+    "operationResultDescription": "PQR Created successfully",
+    "mongoId": "546898654651"
+  }
+} as Object {encoding: "UTF-8", mediaType: "application/json"}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
