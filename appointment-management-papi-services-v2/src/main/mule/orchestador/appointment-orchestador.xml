@@ -281,4 +281,160 @@ output application/json
 			</otherwise>
 		</choice>
 	</sub-flow>
+	<sub-flow name="appointment-post-schedules-orchestadorSub_Flow" doc:id="429252ad-ac84-4a9a-8daa-d2e45e6d7b6e" >
+		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="f3d2d8a2-3bcc-4c38-b23d-3af44258fa1c" variableName="payloadRequest"/>
+		<ee:transform doc:name="Transform Message" doc:id="294d7844-39ef-4b00-8711-06395d3ff3c0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_CD_ORDEN",
+    "filter": {
+      "Numero_Orden": vars.payloadRequest.orderData.orderId
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+				<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output application/json
+---
+Mule::p('mongo-db-sapi.resources.dynamicQuery.base-path')
+ ]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-post-dynamic" doc:id="d07d9ebf-4fd5-4b50-a3f2-90da824bf6f5" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="orderSchedule"/>
+		<set-variable value="#[vars.orderSchedule.Servicio_Tramite.flag_agendamiento default false]" doc:name="Set Variable" doc:id="40371a11-6ab6-4bc3-a8b0-dc85eb7c746f" variableName="flagSchedule"/>
+		<choice doc:name="Choice" doc:id="b4605b1c-2afe-4b55-bc00-0ba981d30521" >
+			<when expression="#[vars.flagSchedule == true]">
+				<ee:transform doc:name="Transform Message" doc:id="81c9e235-9454-4b53-a7f7-6ee0e706423d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var request = vars.payloadRequest default {}
+var order = vars.orderSchedule default {}
+
+// 1. MAPEO ACTIVITY TYPE
+
+var activityTypeMap = {
+    Aprovisionamiento: "INS",
+    Aseguramiento: "AS",
+    Agenda: "INS",
+    Reagenda: "MOD",
+    Cancelacion: "RET",
+    Suspension: "DES"
+}
+
+var activityType =
+    activityTypeMap[request.scheduleData.visitType]
+    default request.scheduleData.visitType
+
+// 2. MAPEO TECNOLOGÍA
+
+var techMap = {
+    FTTH: "F.O.",
+    COBRE: "CU",
+    FWA: "FWA"
+}
+
+var techPrefix =
+    techMap[request.scheduleData.technology]
+    default "GEN"
+
+// 3. OBTENER Y LIMPIAR FAMILIAS
+
+var familiasRaw =
+    request.orderData.services map (s) -> s.family
+
+var familiasClean =
+    (familiasRaw filter ($ != null)) distinctBy $
+
+// 4. CONSTRUIR ACTION TYPE
+
+var actionType =
+    techPrefix ++ " (" ++ (familiasClean joinBy "/") ++ ")"
+
+// 5. CALCULAR WORKSKILL
+
+var workSkill =
+    if (techPrefix == "F.O.") "INST_FO"
+    else if (techPrefix == "CU") "INST_CU"
+    else if (techPrefix == "FWA") "INST_FWA"
+    else "GENERIC"
+
+    //aun no se ha mapeado actionType
+    
+    //"aworktype": actionType
+
+---
+
+{
+  "id_tarea_remedy": request.orderData.orderId,
+  "cedula": order.Cliente_Tramite.Numero_Identificacion,
+  "tipo_actividad": activityType,
+  "franja": request.scheduleData.timeSlot,
+  "nombre_cliente": request.customerData.name,
+  "direccion": request.customerData.address,
+  "ciudad": request.customerData.city,
+  "departamento": request.customerData.state,
+  "zip": null,
+  "cord_x": request.scheduleData.longitude,
+  "cord_y": request.scheduleData.latitude,
+  "telefono": request.customerData.phone,
+  "email": request.customerData.email,
+  "telefono": request.customerData.phone,
+  "XA_request_type": "inmediata",
+  "fecha_agendamiento": request.scheduleData.date,
+  "zona": request.scheduleData.resourceId,
+  "nombre_orden": workSkill,
+  "tipo_actividad": activityType,
+  "cord_x": request.scheduleData.longitude,
+  "cord_y": request.scheduleData.latitude,
+  "Anillo": "",
+  "nemonico_equipo": "",
+  "cable": "",
+  "hilo": "",
+  "distancia": "",
+  "direccion": request.customerData.address,
+  "topologia": "",
+  "zona_agenda": request.scheduleData.zone
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="oracle-sapi-services" doc:id="46b61329-16ea-488c-83ae-d8ce1b0e5a04" name="oracle-sapi-servicesSub_Flow"/>
+				<ee:transform doc:name="Transform Message" doc:id="56d2c219-3c0f-4fb8-9e3f-d1d8b5782461" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "code": "201",
+    "messageResponse": "Transaction Successful."
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="d799f51f-3611-49c9-b1bc-6c4ef203a99f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "code": "400",
+    "messageResponse": "Does not require scheduling."
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
 </mule>
