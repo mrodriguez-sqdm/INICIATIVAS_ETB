@@ -289,12 +289,12 @@ output application/json
 output application/json
 ---
 {
-  "query": {
-    "find": "MDM_CD_ORDEN",
-    "filter": {
-      "Numero_Orden": vars.payloadRequest.orderData.orderId
-    }
-  }
+	"query": {
+		"find": "MDM_CD_ORDEN",
+		"filter": {
+			"Numero_Orden": vars.payloadRequest.orderData.orderId
+		}
+	}
 }]]></ee:set-payload>
 			</ee:message>
 			<ee:variables >
@@ -307,104 +307,85 @@ output application/json
 ---
 Mule::p('mongo-db-sapi.resources.dynamicQuery.base-path')
  ]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="mongo-db-sapi-post-dynamic" doc:id="d07d9ebf-4fd5-4b50-a3f2-90da824bf6f5" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="orderSchedule"/>
-		<set-variable value="#[vars.orderSchedule.Servicio_Tramite.flag_agendamiento default false]" doc:name="Set Variable" doc:id="40371a11-6ab6-4bc3-a8b0-dc85eb7c746f" variableName="flagSchedule"/>
+		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="d07d9ebf-4fd5-4b50-a3f2-90da824bf6f5" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="orderSchedule"/>
+		<set-variable value="#[vars.orderSchedule.result[0].Servicio_Tramite.flag_agendamiento default false]" doc:name="Set Variable" doc:id="40371a11-6ab6-4bc3-a8b0-dc85eb7c746f" variableName="flagSchedule"/>
 		<choice doc:name="Choice" doc:id="b4605b1c-2afe-4b55-bc00-0ba981d30521" >
 			<when expression="#[vars.flagSchedule == true]">
 				<ee:transform doc:name="Transform Message" doc:id="81c9e235-9454-4b53-a7f7-6ee0e706423d" >
 					<ee:message >
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
-
-var request = vars.payloadRequest default {}
-var order = vars.orderSchedule default {}
-
-// 1. MAPEO ACTIVITY TYPE
-
-var activityTypeMap = {
-    Aprovisionamiento: "INS",
-    Aseguramiento: "AS",
-    Agenda: "INS",
-    Reagenda: "MOD",
-    Cancelacion: "RET",
-    Suspension: "DES"
+var request = vars.payloadRequest default {
 }
-
+var order = vars.orderSchedule default {
+}
+// 1. MAPEO ACTIVITY TYPE
+var activityTypeMap = {
+	Aprovisionamiento: "INS",
+	Aseguramiento: "AS",
+	Agenda: "INS",
+	Reagenda: "MOD",
+	Cancelacion: "RET",
+	Suspension: "DES"
+}
 var activityType =
     activityTypeMap[request.scheduleData.visitType]
     default request.scheduleData.visitType
-
 // 2. MAPEO TECNOLOGÍA
-
 var techMap = {
-    FTTH: "F.O.",
-    COBRE: "CU",
-    FWA: "FWA"
+	FTTH: "F.O.",
+	COBRE: "CU",
+	FWA: "FWA"
 }
-
 var techPrefix =
     techMap[request.scheduleData.technology]
     default "GEN"
-
 // 3. OBTENER Y LIMPIAR FAMILIAS
-
 var familiasRaw =
     request.orderData.services map (s) -> s.family
-
 var familiasClean =
     (familiasRaw filter ($ != null)) distinctBy $
-
 // 4. CONSTRUIR ACTION TYPE
-
 var actionType =
     techPrefix ++ " (" ++ (familiasClean joinBy "/") ++ ")"
-
 // 5. CALCULAR WORKSKILL
-
 var workSkill =
-    if (techPrefix == "F.O.") "INST_FO"
-    else if (techPrefix == "CU") "INST_CU"
-    else if (techPrefix == "FWA") "INST_FWA"
+    if ( techPrefix == "F.O." ) "INST_FO"
+    else if ( techPrefix == "CU" ) "INST_CU"
+    else if ( techPrefix == "FWA" ) "INST_FWA"
     else "GENERIC"
-
-    //aun no se ha mapeado actionType
-    
-    //"aworktype": actionType
-
+// aun no se ha mapeado actionType
+// "aworktype": actionType
 ---
-
 {
-  "id_tarea_remedy": request.orderData.orderId,
-  "cedula": order.Cliente_Tramite.Numero_Identificacion,
-  "tipo_actividad": activityType,
-  "franja": request.scheduleData.timeSlot,
-  "nombre_cliente": request.customerData.name,
-  "direccion": request.customerData.address,
-  "ciudad": request.customerData.city,
-  "departamento": request.customerData.state,
-  "zip": null,
-  "cord_x": request.scheduleData.longitude,
-  "cord_y": request.scheduleData.latitude,
-  "telefono": request.customerData.phone,
-  "email": request.customerData.email,
-  "telefono": request.customerData.phone,
-  "XA_request_type": "inmediata",
-  "fecha_agendamiento": request.scheduleData.date,
-  "zona": request.scheduleData.resourceId,
-  "nombre_orden": workSkill,
-  "tipo_actividad": activityType,
-  "cord_x": request.scheduleData.longitude,
-  "cord_y": request.scheduleData.latitude,
-  "Anillo": "",
-  "nemonico_equipo": "",
-  "cable": "",
-  "hilo": "",
-  "distancia": "",
-  "direccion": request.customerData.address,
-  "topologia": "",
-  "zona_agenda": request.scheduleData.zone
+	"id_tarea_remedy": request.orderData.orderId,
+	"cedula": order.Cliente_Tramite.Numero_Identificacion,
+	"franja": request.scheduleData.timeSlot,
+	"nombre_cliente": request.customerData.name,
+	"direccion": request.customerData.address,
+	"ciudad": request.customerData.city,
+	"departamento": request.customerData.state,
+	"zip": null,
+	"cord_x": request.scheduleData.longitude as String,
+	"cord_y": request.scheduleData.latitude as String,
+	"telefono": request.customerData.phone,
+	"email": request.customerData.email,
+	"fecha_agendamiento": request.scheduleData.date,
+	"zona": request.scheduleData.resourceId,
+	"nombre_orden": workSkill,
+	"tipo_actividad": activityType,
+	"Anillo": "",
+	"nemonico_equipo": "",
+	"cable": "",
+	"hilo": 0,
+	"producto": "",
+	"tipo_solicitud": "",
+	"distancia": "",
+	"topologia": "",
+	"zona_agenda": request.scheduleData.zone
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
@@ -415,10 +396,13 @@ var workSkill =
 output application/json
 ---
 {
-    "code": "201",
-    "messageResponse": "Transaction Successful."
+	"code": "201",
+	"messageResponse": "Transaction Successful."
 }]]></ee:set-payload>
 					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[201]]></ee:set-variable>
+					</ee:variables>
 				</ee:transform>
 			</when>
 			<otherwise >
@@ -433,6 +417,9 @@ output application/json
 }
 ]]></ee:set-payload>
 					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
 				</ee:transform>
 			</otherwise>
 		</choice>

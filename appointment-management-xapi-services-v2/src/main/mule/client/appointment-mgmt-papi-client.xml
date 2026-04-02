@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="get-appointment-clientSub_Flow" doc:id="68e546d4-795a-482f-9829-48eb86595cca" >
 		<http:request method="GET" doc:name="Request" doc:id="a26216f5-2693-494f-8b6d-995003d950a4" config-ref="appointment_mgmt_papi_config" path="${appointment-mgmt-papi.resources.appointment.base-path}${appointment-mgmt-papi.resources.appointment.get.path}" >
 			<http:headers ><![CDATA[#[output application/java
@@ -39,7 +40,8 @@ attributes.queryParams]]]></http:query-params>
 		</http:request>
 	</sub-flow>
 	<sub-flow name="post-schedules-appointment-mgmt-papi-clientSub_Flow" doc:id="0fa61716-bffe-467c-9e95-353d7d3b6bba" >
-		<http:request method="POST" doc:name="Request" doc:id="572d63c2-7baf-45d2-b6fc-b8c49abdee87" config-ref="appointment_mgmt_papi_config" path="${appointment-mgmt-papi.resources.schedules.base-path}${appointment-mgmt-papi.resources.schedules.post.path}">
+		<try doc:name="Try" doc:id="9da9701b-d1af-427d-a5c4-e55040672b83" >
+			<http:request method="POST" doc:name="Request" doc:id="572d63c2-7baf-45d2-b6fc-b8c49abdee87" config-ref="appointment_mgmt_papi_config" path="${appointment-mgmt-papi.resources.schedules.base-path}${appointment-mgmt-papi.resources.schedules.post.path}">
 			<http:headers ><![CDATA[#[output application/java
 ---
 {
@@ -51,5 +53,132 @@ attributes.queryParams]]]></http:query-params>
 	"systemId": attributes.headers.systemId
 }]]]></http:headers>
 		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Client Errors" doc:id="634b6dfe-182f-495e-af13-e088e591182d" type="HTTP:BAD_REQUEST, HTTP:UNAUTHORIZED, HTTP:FORBIDDEN, HTTP:NOT_FOUND, HTTP:METHOD_NOT_ALLOWED, HTTP:NOT_ACCEPTABLE, HTTP:UNSUPPORTED_MEDIA_TYPE, HTTP:TOO_MANY_REQUESTS">
+					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 400]" doc:name="Set Variable" doc:id="63f75721-a43f-4d7a-889c-9f781f9042b5" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Message" doc:id="2f776423-8412-4316-8bbe-5f155362a2dc" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var errorBody = error.cause.errorMessage.payload default {}
+var papiError = if (errorBody is Object and errorBody.status?) errorBody else null
+---
+if (papiError != null) 
+	papiError
+else {
+	"status": vars.httpStatus,
+	"code": error.errorType.identifier default "CLIENT_ERROR",
+	"message": {
+		"message": if (errorBody is String and !isEmpty(errorBody)) 
+					errorBody 
+				   else 
+					error.description default "Error en la solicitud al servicio de agendamientos."
+	},
+	"messageServer": error.description default "Error en la solicitud al servicio de agendamientos.",
+	"cause": [
+		{
+			"origin": "customer-xapi-services",
+			"message": "Error en llamada a appointment-papi-services: " ++ (error.errorType.identifier default "HTTP_CLIENT_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Server Errors" doc:id="645e40b1-1257-4bd3-829f-c2fe5453678b" type="HTTP:INTERNAL_SERVER_ERROR, HTTP:BAD_GATEWAY, HTTP:SERVICE_UNAVAILABLE, HTTP:GATEWAY_TIMEOUT">
+					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 500]" doc:name="Set Variable" doc:id="82596040-6ef7-488d-a9a8-0a9b2a5d3f2f" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Message" doc:id="9b6ac607-bc5f-47e4-bcc2-5890e0ee6e3f" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var errorBody = error.cause.errorMessage.payload default {}
+var papiError = if (errorBody is Object and errorBody.status?) errorBody else null
+---
+if (papiError != null) 
+	papiError
+else {
+	"status": vars.httpStatus,
+	"code": if (vars.httpStatus == 503) "SERVICE_UNAVAILABLE" 
+			else if (vars.httpStatus == 504) "GATEWAY_TIMEOUT"
+			else "PAPI_ERROR",
+	"message": {
+		"message": if (errorBody is String and !isEmpty(errorBody)) 
+					errorBody 
+				   else if (vars.httpStatus == 503)
+					"El servicio de agendamiento no está disponible temporalmente. Por favor intente más tarde."
+				   else if (vars.httpStatus == 504)
+					"Tiempo de espera agotado al conectar con el servicio de agendamiento."
+				   else 
+					"Error en el servicio de agendamiento."
+	},
+	"messageServer": error.description default "Error en el servicio de agendamiento.",
+	"cause": [
+		{
+			"origin": "appointment-xapi-services",
+			"message": "Error en llamada a appointment-papi-services: " ++ (error.errorType.identifier default "HTTP_SERVER_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Connectivity" doc:id="cb4f651d-06fc-44f9-bffb-808943216aa0" type="HTTP:CONNECTIVITY, HTTP:TIMEOUT, MULE:CONNECTIVITY, MULE:RETRY_EXHAUSTED">
+					<set-variable value="503" doc:name="Set Variable" doc:id="6930eb83-b8aa-49f8-838c-fa0cbbf3502d" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Message" doc:id="699744ad-6116-4bd9-8b4a-628f839e0a94" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var isTimeout = (error.errorType.identifier default "") contains "TIMEOUT"
+---
+{
+	"status": 503,
+	"code": if (isTimeout) "TIMEOUT" else "SERVICE_UNAVAILABLE",
+	"message": {
+		"message": if (isTimeout) 
+					"Tiempo de espera agotado al conectar con el servicio de agendamiento. Por favor intente nuevamente."
+				   else 
+					"No fue posible conectar con el servicio de agendamiento. Por favor intente más tarde."
+	},
+	"messageServer": error.description default "Error en el servicio de agendamiento.",
+	"cause": [
+		{
+			"origin": "appointment-xapi-services",
+			"message": "Error de conectividad con appointment-papi-services: " ++ (error.errorType.identifier default "CONNECTIVITY_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Any" doc:id="7f4be8bf-780e-4e5f-b6ae-6dcab2c6240e" type="ANY">
+					<set-variable value="500" doc:name="Set Variable" doc:id="012486b9-2c1a-4857-b538-a2abd689a9bb" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Message" doc:id="dc378b20-81d7-4dd3-8b13-eeccab0c1831" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var errorBody = error.cause.errorMessage.payload default {}
+---
+{
+	"status": 500,
+	"code": "INTERNAL_SERVER_ERROR",
+	"message": {
+		"message": if (errorBody is String and !isEmpty(errorBody)) 
+					errorBody 
+				   else 
+					"Error inesperado en el servicio de agendamiento."
+	},
+	"messageServer": error.description default "Error en el servicio de agendamiento.",
+	"cause": [
+		{
+			"origin": "appointment-xapi-services",
+			"message": "Error inesperado en llamada a appointment-papi-services: " ++ (error.errorType.identifier default "UNKNOWN_ERROR")
+		}
+	]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
 	</sub-flow>
 </mule>
