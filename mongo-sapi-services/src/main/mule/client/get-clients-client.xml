@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-clients-client" doc:id="829b034d-7fe3-464e-bdec-d63f7dbdea4a" >
+		<async doc:name="Async" doc:id="aaeaf21f-c294-42c1-9e1f-ecddf4fab4e2" >
+			<choice doc:name="Choice" doc:id="096e0141-76e3-4b91-82bb-5dacfe0a3281" >
+				<when expression="#[p('logging.mayoristas.clientes') == &quot;ON&quot;]">
+					<flow-ref doc:name="Call logger before" doc:id="bd88f77f-2ffd-4394-9ed6-53b607467aea" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="69fb0ee2-8342-409f-a0e8-8da225bb51b8">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="90659bd2-479a-45b5-bdde-0c8889888818" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+		<mongo:find-documents doc:name="Find documents" doc:id="0cc39851-83fd-4f65-a605-a857ef6da1eb" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-client}" fields=",">
+			<mongo:query ><![CDATA[#[output application/json
+---
+{
+    ("Tipo_Documento":  {'\$regex': attributes.queryParams.'tipoDocumento', '\$options': "i"}) if (attributes.queryParams.'tipoDocumento' != null),
+    "Numero_Identificacion": attributes.queryParams.'numeroIdentificacion'
+}]]]></mongo:query>
+		</mongo:find-documents>
+		<async doc:name="Async" doc:id="1bfcc077-8968-4284-98aa-2bbff2007099" >
+			<choice doc:name="Choice" doc:id="48d8f85d-a38f-41b5-a694-c55f563d81e8" >
+				<when expression="#[p('logging.mayoristas.clientes') == &quot;ON&quot;]" >
+					<flow-ref doc:name="Call logger after" doc:id="43bbf4b5-32e3-4d33-8a1d-91afcac131ee" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="a8310168-0ea1-4f1f-bb49-f23c50334393">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="48ff4db0-1455-4438-92d0-46486d43dd82" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+
+	</sub-flow>
+	<sub-flow name="get-clientsByChannel-client" doc:id="c4735e44-7bb2-43c6-bc16-fa10a50338e1" >
+		<async doc:name="Async" doc:id="9159a201-ebf2-4072-91cc-7449acdc76f0" >
+			<flow-ref doc:name="Call logger before" doc:id="6763b0fd-7cb1-480c-85d4-4297ab7d524e" name="loggin-client-call"/>
+		</async>
+		<mongo:find-documents doc:name="Find documents" doc:id="947ddc2b-ca95-4fce-8e85-237493f4f3e1" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-client}" fields=",">
+			<mongo:query ><![CDATA[#[output application/json
+---
+{
+    "Comunicaciones_Cobranza.Registro_Contacto.Valor": attributes.queryParams.'channelValue'
+}]]]></mongo:query>
+		</mongo:find-documents>
+		<async doc:name="Async" doc:id="2f7c5b7a-5a70-4f84-885c-993df7ea792c" >
+			<flow-ref doc:name="Call logger after" doc:id="86d52d5a-dbec-445a-a8d8-9f15219d123c" name="loggin-client-call"/>
+		</async>
+	</sub-flow>
+</mule>

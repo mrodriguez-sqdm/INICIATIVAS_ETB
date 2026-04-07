@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="patch-typeParameter-orchestrator" doc:id="4c6f1122-f6cc-445d-b0c9-f00772521d85" >
+		<flow-ref doc:name="Get parameters" doc:id="d78de004-f113-4dfa-a9c5-87fad19e2ff5" name="get-typeParameter-client" target="responseMongo"/>
+		<choice doc:name="Choice" doc:id="c637676d-cf7e-42ff-8564-986dc2dcb803" >
+			<when expression="#[!isEmpty(vars.responseMongo)]">
+				<ee:transform doc:name="Add or replace new values" doc:id="6a10419c-30ca-4aad-9011-b29c956bf328">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Arrays
+var mergedArrays = outerJoin(vars.responseMongo[0].Valores, payload, (a) -> a.Nombre, (b) -> b.Nombre)
+---
+{
+	"Valores": mergedArrays map ((item, index) -> 
+		if (item.l? and item.r?)
+		 item.r 
+		else if (item.l?)
+			  item.l 
+			 else item.r
+	)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Update parameters" doc:id="2405fab0-c84e-4c97-8c9f-dd3315fe7419" name="patch-typeParameter-client" />
+				<async doc:name="Async" doc:id="e125930d-b751-4bf8-81a8-64ec9565f522" >
+					<os:remove doc:name="Clear cache entry" doc:id="10f014c1-6ac6-4319-b76b-a0012d8035e9" key="#[vars.osEntry]" objectStore="Object_store_caching" />
+				</async>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="set response" doc:id="8ed2a1ac-0c0b-4a6c-b0b2-2d65d919bd2b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "There are no matching records"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

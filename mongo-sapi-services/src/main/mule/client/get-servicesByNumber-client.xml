@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-servicesByNumber-clientSub_Flow" doc:id="b8c2129b-98d5-4460-ba09-181095913507" >
+		<async doc:name="Async" doc:id="72ec8365-940d-47ce-9fff-3368ba73b483">
+					<flow-ref doc:name="Call logger before audits-mongo" doc:id="497362c5-4900-4c60-b11d-a55a668d4a2e" name="audits-mongo-log-before" />
+				</async>
+		<choice doc:name="Choice" doc:id="0884739f-be48-43ff-a666-8235048c6ecd" >
+			<when expression='#[vars.activo == "Y"]'>
+				<mongo:find-documents collectionName="${mongoDb-mdm.mayoristas.collection-rneMoviles}" fields="," doc:name="Get active services" doc:id="caba2619-2c5f-4c59-9948-9d22483891c7" config-ref="mdm_db_Config" limit="1">
+					<mongo:query ><![CDATA[#["{'Tipo_Documento': '" ++ vars.tipoDoc ++ "', 
+'Numero_Identificacion': '" ++ vars.numDoc ++ "',
+\$or: [
+   {'Numero_Conexion': '" ++ vars.numero ++ "'},
+   {'Cuenta_Facturacion': '" ++ vars.numero ++ "'}],
+'Producto' : { \$ne : ['LARGA DISTANCIA','EQUIPO MOVIL (LTE)']}
+}"]]]></mongo:query>
+					<mongo:sort-by ><![CDATA[{"Fecha_Activacion": "DESC"}]]></mongo:sort-by>
+				</mongo:find-documents>
+			</when>
+			<otherwise >
+				<mongo:find-documents collectionName="${mongoDb-mdm.mayoristas.collection-services}" fields="," doc:name="Get services" doc:id="e9a02f33-023b-41b3-985e-62a0a023637c" config-ref="mdm_db_Config" limit="1">
+			<mongo:query><![CDATA[#["{'Cliente.Tipo_Documento': '" ++ vars.tipoDoc ++ "', 
+'Cliente.Numero_Documento': '" ++ vars.numDoc ++ "',
+\$or: [
+       {'Bundle.Primarios': {\$elemMatch: {Numero: '" ++ vars.numero ++ "'}}},
+       {'Id_Cuenta_Facturacion': '" ++ vars.numero ++ "'}
+    ]
+}"]]]></mongo:query>
+					<mongo:sort-by ><![CDATA[{"Fecha_Creacion": "DESC"}]]></mongo:sort-by>
+		</mongo:find-documents>
+			</otherwise>
+		</choice>
+		<async doc:name="Async" doc:id="bd598d0e-2460-4393-a713-f50bbb6ca77a">
+					<flow-ref doc:name="Call logger after audits-mongo" doc:id="cf55fd95-4d2f-4292-8ee6-acb9f0270821" name="audits-mongo-log-after" />
+				</async>
+	</sub-flow>
+</mule>
