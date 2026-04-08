@@ -80,9 +80,18 @@ output application/json
 	</sub-flow>
 	<sub-flow name="post-customer-clientSub_Flow" doc:id="d9470ac5-faae-412a-b58d-1a32afcc624e" >
 		<try doc:name="Try" doc:id="b3938aed-3b32-4732-b1ce-51f0e129b4c1" >
-			<ee:transform doc:name="Transform Message" doc:id="ee8a93d8-3695-47cc-90ec-fe4090d9aed9" >
-				<ee:message >
-					<ee:set-payload ><![CDATA[%dw 2.0
+			<mongo:find-documents doc:name="Find documents" doc:id="608be0e0-a87d-429a-b8f2-bddae909f3aa" config-ref="mdm_db_Config" fields="," collectionName="${mongoDb-mdm.clientes.collection-cliente}" target="vClienteExiste">
+				<mongo:query ><![CDATA[#[{
+  "Numero_Identificacion": payload.customer.Numero_Identificacion,
+  "Tipo_Documento": payload.customer.Tipo_Documento
+}]]]></mongo:query>
+			</mongo:find-documents>
+			<logger level="INFO" doc:name="Logger" doc:id="a55be235-9dbb-49f7-b62e-ced857a9f995" message="#[vars.vClienteExiste]"/>
+			<choice doc:name="Choice" doc:id="59bc884c-2fe1-435d-ad05-08b8ca003bf6" >
+				<when expression="#[isEmpty(vars.vClienteExiste)]">
+					<ee:transform doc:name="Transform Message" doc:id="ee8a93d8-3695-47cc-90ec-fe4090d9aed9">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 if(payload.customer.Tipo_Cliente == "JURIDICO")
@@ -97,12 +106,12 @@ else
  payload]]></ee:set-payload>
 				</ee:message>
 			</ee:transform>
-			<mongo:insert-document doc:name="Insert document" doc:id="1bde0be1-6350-4b68-8647-d0765a1dea6d" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.clientes.collection-cliente}">
-				<mongo:document ><![CDATA[#[payload.customer]]]></mongo:document>
+					<mongo:insert-document doc:name="Insert document" doc:id="1bde0be1-6350-4b68-8647-d0765a1dea6d" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.clientes.collection-cliente}">
+				<mongo:document><![CDATA[#[payload.customer]]]></mongo:document>
 			</mongo:insert-document>
-			<ee:transform doc:name="Set Response Body" doc:id="03175e81-46e3-4883-9c32-0071267c2582" >
-				<ee:message >
-					<ee:set-payload ><![CDATA[%dw 2.0
+					<ee:transform doc:name="Set Response Body" doc:id="03175e81-46e3-4883-9c32-0071267c2582">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -112,6 +121,22 @@ output application/json
 }]]></ee:set-payload>
 				</ee:message>
 			</ee:transform>
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Transform Message" doc:id="17c0ab7f-5012-457e-8086-0481f6bd246b" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "409",
+	mensaje: "Ya existe un cliente con el identificador indicado.",
+	id: vars.vClienteExiste[0]."_id".'\$oid'
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</otherwise>
+			</choice>
 			<error-handler >
 				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="cb886f63-eac8-42b2-bc77-89696c87004e" type="ANY">
 					<ee:transform doc:name="Set Response Fail Body" doc:id="4fc32437-2991-4b82-b98f-745c3b9aa9aa" >
@@ -137,40 +162,68 @@ output application/json
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
----
-if(payload.customer.Tipo_Cliente == "JURIDICO")
-  payload update {
-    case cust at .customer -> (cust -- [ "ATDP_PJ", "ATDP_PN"]) ++ { ATDP: cust.ATDP_PJ }
-  }
-else if(payload.customer.Tipo_Cliente == "NATURAL")
-  payload update {
-    case cust at .customer -> (cust -- [ "ATDP_PJ", "ATDP_PN"]) ++ { ATDP: cust.ATDP_PN }
-  }
-else
- payload]]></ee:set-payload>
-				</ee:message>
-			</ee:transform>
-			<mongo:update-documents doc:name="Update documents" doc:id="c73dba1f-61ac-4de5-b86d-72695a3866cf" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.clientes.collection-cliente}">
-				<mongo:query ><![CDATA[#[%dw 2.0
-output application/json
+
+// 1. Campos que NO se actualizan
+var excludedFields = [
+    "Numero_Identificacion",
+    "Tipo_Documento",
+    "Nombre_Cliente",
+    "Primer_Apellido",
+    "Segundo_Apellido",
+    "Nombres",
+    "ATDP_PJ",
+    "ATDP_PN"
+]
+
+// 2. Lógica ATDP
+var baseCustomer = if (payload.customer.Tipo_Cliente == "JURIDICO")
+    (payload.customer -- ["ATDP_PJ", "ATDP_PN"]) ++ { ATDP: payload.customer.ATDP_PJ }
+else if (payload.customer.Tipo_Cliente == "NATURAL")
+    (payload.customer -- ["ATDP_PJ", "ATDP_PN"]) ++ { ATDP: payload.customer.ATDP_PN }
+else 
+    payload.customer
+
+// 3. Preparar datos de actualización
+var updateData = baseCustomer -- excludedFields
+var arrayFields = updateData filterObject ($ is Array)
+var simpleFields = updateData filterObject (!($ is Array))
+
 ---
 {
-  "Numero_Identificacion": payload.customer.Numero_Identificacion,
-  "Tipo_Documento": payload.customer.Tipo_Documento
-}]]]></mongo:query>
-				<mongo:content-to-update ><![CDATA[#[%dw 2.0
-output application/json
-var excludedFields = [
-  "Numero_Identificacion",
-  "Tipo_Documento",
-  "Nombre_Cliente",
-  "Primer_Apellido",
-  "Segundo_Apellido",
-  "Nombres"
-]
+  "update": p('mongoDb-mdm.clientes.collection-cliente'), // El nombre de tu colección
+  "updates": [
+    {
+      "q": { 
+          "Numero_Identificacion": payload.customer.Numero_Identificacion, 
+          "Tipo_Documento": payload.customer.Tipo_Documento 
+      },
+      "u": {
+        (if (!isEmpty(simpleFields)) "\$set": simpleFields else {}),
+        (if (!isEmpty(arrayFields)) 
+            "\$push": arrayFields mapObject (value, key) -> {
+                (key): { "\$each": value }
+            }
+        else {})
+      },
+      "upsert": false,
+      "multi": false
+    }
+  ]
+}]]></ee:set-payload>
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="Numero_Identificacion" ><![CDATA[%dw 2.0
+output application/java
 ---
-payload.customer -- excludedFields]]]></mongo:content-to-update>
-			</mongo:update-documents>
+payload.customer.Numero_Identificacion]]></ee:set-variable>
+					<ee:set-variable variableName="Tipo_Documento" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.customer.Tipo_Documento]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<logger level="INFO" doc:name="Logger" doc:id="42c1b571-8b51-4c7a-8b8d-337c95ad2c56" message="#[payload]"/>
+			<mongo:execute-command doc:name="Execute command" doc:id="6f7692db-4c60-4523-a18a-deff0076714a" config-ref="mdm_db_Config"/>
 			<ee:transform doc:name="Set Response Body" doc:id="c8e9fd8a-784b-41dc-89f8-8ed4db821500" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
@@ -178,11 +231,11 @@ output application/json
 ---
 {
   codigo: "200",
-  mensaje: if ((payload.matched default 0) == 1 and (payload.modified default 0) == 1) 
+  mensaje: if ((payload.n default 0) == 1 and (payload.nModified default 0) == 1) 
               "Cliente actualizado con éxito"
-           else if ((payload.matched default 0) == 1 and (payload.modified default 0) == 0)
+           else if ((payload.n default 0) == 1 and (payload.nModified default 0) == 0)
              "Sin cambios detectados: cliente fue encontrado pero no se encontraron modificaciones"
-           else if ((payload.matched default 0) == 0 )
+           else if ((payload.n default 0) == 0 )
               "Cliente no existe"
            else
              "Error en el proceso de actualizar cliente"
