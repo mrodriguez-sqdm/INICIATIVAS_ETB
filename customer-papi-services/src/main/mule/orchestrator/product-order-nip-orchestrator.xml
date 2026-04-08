@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="post-product-order-nip-orchestratorSub_Flow" doc:id="ff6055e1-b47e-4306-afb1-154cf1c82b37" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="4fcfe900-208d-4b49-94ec-8b3f2d6bad0e" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="249179cc-6591-4d20-8f37-854524d51d4a" variableName="headers" />
+		<set-variable value="#[%dw 2.0&#10;output text/plain&#10;---&#10;write({&#10;	&quot;Audit&quot;: {&#10;		&quot;Canal&quot;: vars.headers.name&#10;	},&#10;        &quot;Document_Type&quot;: payload.customer.documentType,&#10;        &quot;Document_Number&quot;: payload.customer.documentNumber,&#10;        &quot;From_Operator&quot;: payload.service.fromOperator,&#10;        &quot;Order_Number&quot;: payload.orderNumber,&#10;        &quot;Phone&quot;: payload.customer.phone as Number,&#10;        &quot;Request_Date&quot;: (payload.service.requestDate as DateTime)&#10;            as String {format: &quot;yyyy-MM-dd'T'00:00:00&quot;}&#10;},&#10;&quot;application/json&quot;&#10;)]" doc:name="Set request info" doc:id="09ca713f-1573-4dcd-90d2-d3f697e1ab43" variableName="requestInfo" />
+		<flow-ref doc:name="get azure secret" doc:id="db14af61-004f-4200-b043-71d92f7bf469" name="get-keySecret-AzureSub_Flow" target="secret" />
+		<java:invoke-static method="AESEncrypter(java.lang.String,java.lang.String)" doc:id="3aa40b8d-ad9c-4611-8161-f1e9b134f9db" class="com.etb.Encryption" target="encryptedRequest" doc:name="get encrypted body and iv">
+			<java:args><![CDATA[#[{
+	text: vars.requestInfo,
+	secret: vars.secret.secret
+}]]]></java:args>
+		</java:invoke-static>
+		<ee:transform doc:name="Set payload encrypted" doc:id="4f103909-b421-4773-86b9-c58285113e42">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"WSRequestHeader": {
+		"System": {
+			"Name": vars.headers.source,
+			"CorrelationID": vars.headers."x-correlation-id",
+			"ProcessingServer": vars.headers.source
+		},
+		"Property": []
+	},
+	"WSRequestBody": vars.encryptedRequest[0]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="faf72155-8b3e-43aa-960a-49ee9d39e5ef" name="post-nipportability-clientSub_Flow" />
+		<set-variable value='#[(attributes.headers["x_civ_response"])]' doc:name="Set x_civ_response" doc:id="baa0e894-6663-46e4-84d0-0b8bc1049ccc" variableName="x_civ_response" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="92aba68e-121f-4a6d-9cdb-97d4755e9235" variableName="httpStatus" />
+		<java:invoke-static method="AESDecrypter(java.lang.String,java.lang.String,java.lang.String)" doc:name="get decrypted body and iv" doc:id="1db69a45-6a22-461a-9b72-437dc2f426c5" class="com.etb.Encryption" target="decryptedResponse">
+					<java:args><![CDATA[#[{
+	text: payload.WSResponseBody,
+	ivBase64: vars.x_civ_response,
+	secret: vars.secret.secret
+}]]]></java:args>
+				</java:invoke-static>
+		<ee:transform doc:name="Transform Message" doc:id="1bccd877-417f-44e0-91be-b8d9761e7505">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Objects
+
+var mensaje = payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode
+
+---
+{
+  codeResponse: vars.httpStatus as String,
+  messageResponse: 
+      if (payload.WSResponseHeader.Service.status == "OK")
+         mensaje
+      else 
+         payload.WSResponseHeader.Service.statusDetail[0].errorMessage default "",
+
+  detail: 
+        {
+          nipGenerated: payload.WSResponseBody.NIP_Generated,
+          orderStatus: payload.WSResponseBody.Order_Status,
+          portabilityStatus: payload.WSResponseBody.Portability_Status,
+          status: payload.WSResponseBody.Status,
+          message: payload.WSResponseBody.Message
+        }
+        filterObject ((v, k) -> v != null and v != "")
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
