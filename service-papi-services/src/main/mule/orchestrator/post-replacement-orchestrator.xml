@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-replacement-orchestratorSub_Flow" doc:id="32060c2c-9bfc-4064-ac06-bc73d65c9415" >
+		<try doc:name="Try" doc:id="73e550d4-ac8c-421d-b4ee-787b316143ae" >
+			<flow-ref doc:name="Get subscription" doc:id="b21cda25-90a8-4670-9e7b-016acee9148c" name="get-subscription-client-by-msisdn" />
+			<choice doc:name="Choice" doc:id="ab97b534-1cbe-4ce0-ba0f-447e098faecc">
+			<when expression="#[!isEmpty(payload.content)]">
+				<set-variable value="#[payload.content.id[0]]" doc:name="subscriptionId" doc:id="952f0f77-5e66-4bd4-a5f4-33a3033acfbd" variableName="subscriptionId" />
+					<ee:transform doc:name="Set payload order" doc:id="abaa4260-726a-4fd4-b5b4-730df0e14b7f">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "type": "RETAIL",
+  "salesChannel": "OWN_CALLCENTER",
+  "status": "CONFIRMED",
+  "packages": [
+    {
+      "id": vars.packageId
+    }
+  ],
+  "subscription": {
+    "id": vars.subscriptionId
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Create order" doc:id="3b55344e-d0c8-4c4c-8475-303064273a3b" name="post-order-client" />
+					<flow-ref doc:name="Reserve SIM" doc:id="56c52fb9-f8cc-451d-b3b1-e783d4dda6ad" name="patch-simCard-client"/>
+					<flow-ref doc:name="Apply order" doc:id="44233ad6-148b-4783-b5ba-58ad561c4177" name="patch-endOrder-client" />
+					<ee:transform doc:name="Set response" doc:id="4aa34af8-ea15-428c-b6ea-4ca640905550" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: "OK",
+  descripcion: "Activación exitosa."
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+			</when>
+				<otherwise >
+					<ee:transform doc:name="Error Output" doc:id="a20f4bf8-6426-4a12-845b-b0506d15392a" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 404,
+	"code": "NOT_FOUND",
+	"message": {
+		"message": "Data not found"
+	},
+	"messageServer": "",
+	"cause": [{
+		"origin": app.name,
+		"message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</otherwise>
+		</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e1ff2610-cf06-4f3f-987e-2d59e0094830" >
+					<ee:transform doc:name="Error output" doc:id="064a431b-d234-4c90-a498-2632ed09b269" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "",
+	"message": {
+	  "message": (vars.errorMessageOutput default "") ++ " Respuesta JSC: " ++ error.muleMessage.typedValue.message.message default ""
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

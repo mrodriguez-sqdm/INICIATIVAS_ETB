@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-servicios-svas-orchestratorSub_Flow" doc:id="b611325e-a317-45c7-8e80-68318ec4ac78" >
+		<flow-ref doc:name="consultar-catalogo-tecnico" doc:id="4546e13a-67d9-4d8a-86b6-94d28b21879f" name="consultar-catalogo-tecnico"/>
+		<flow-ref doc:name="consultar-saldo-monedero" doc:id="2cee53ef-cc7d-4e4f-b7f0-812cfa97dcc9" name="consultar-saldo-monedero"/>
+		<choice doc:name="Choice" doc:id="8112ecae-ea09-4f10-ba38-82519d2e0fde" >
+			<when expression="#[vars.total &lt; vars.subscription.balance]">
+				<ee:transform doc:name="Set payload order" doc:id="ec27695b-1c0d-43dc-8601-d060a98d2284" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "type": "RETAIL",
+  "salesChannel": "OWN_CALLCENTER",
+  "status": "CONFIRMED",
+  "packages": vars.inputPayload.svas, //vars.packages,
+  "subscriber": {
+    "id": vars.subscription.subscriber
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Create order" doc:id="6c023d47-f087-4ecf-874c-dbd12693b0d8" name="post-order-client" />
+				<flow-ref doc:name="Apply order" doc:id="29541a6e-7c4e-41d2-b312-23141dc2a926" name="patch-endOrder-client" />
+				<ee:transform doc:name="Response final" doc:id="037959a1-51ab-41c3-86ea-d634a5b5367a" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "OK",
+	descripcion: "Proceso exitoso"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="4b2ca33f-53e8-4bfb-8ab2-50077609a3d5" type="ERROR:VALIDATION" description="No puede adquirir bolsas"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="consultar-catalogo-tecnico" doc:id="c8c7231e-0ce1-4fb9-9b45-69e7b9517259" >
+		<set-variable value="#[0]" doc:name="Set total" doc:id="7bdcf646-6a40-43ff-906e-4c981490930b" variableName="total" />
+		<foreach doc:name="For Each" doc:id="faece1e5-571e-477e-8e47-d4c0cacd1d11" collection="#[vars.inputPayload.svas]">
+			<set-variable value="#[payload.id]" doc:name="Set id" doc:id="86f6a126-06ba-4d8e-98b4-20d630524805" variableName="id"/>
+			<flow-ref doc:name="Get catalog by id" doc:id="e73bc6f5-2031-421e-ad35-c5df8935f75b" name="get-catalog-clientSub_Flow"/>
+			<choice doc:name="Choice" doc:id="69ea0eed-d936-4ded-8cc6-f432762e7041" >
+				<when expression="#[isEmpty(payload)]">
+					<raise-error doc:name="Raise error" doc:id="47e7b77e-b441-4b29-a0be-a6a1956eb4bf" type="ERROR:VALIDATION" description="No se encontraron bolsas asociadas"/>
+				</when>
+			</choice>
+			<ee:transform doc:name="Set acumulators" doc:id="bd2b59d9-6245-4bc6-acc5-386d59778c85" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="total" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.total) + ((payload flatMap ($.precio_oferta map ($.precio_con_iva)) reduce ($$ + $))  default 0)]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<logger level="INFO" doc:name="Logger" doc:id="d518f769-3457-4693-97f4-a255dde3f74f" message='#[output application/json&#10;---&#10;{&#10;	"Total " : vars.total,&#10;	//"Caracteristicas" : vars.caracteristicas&#10;}]' />
+		</foreach>
+	</sub-flow>
+	<sub-flow name="consultar-saldo-monedero" doc:id="5fc13c61-71ae-44cd-a3d0-e98696bda34b" >
+		<set-variable value="#[vars.inputPayload.numeroConexion]" doc:name="Set id" doc:id="418a362b-f0ab-4029-8600-476c1859e6d3" variableName="connectionNumber"/>
+		<flow-ref doc:name="Get subscription by msisdn" doc:id="d9fef248-9389-4da8-9c1b-d68aa1c471b1" name="get-subscription-client-by-msisdn"/>
+		<choice doc:name="Choice" doc:id="63a354d8-f8dc-436a-87fc-4c9182a26c96" >
+			<when expression="#[!isEmpty(payload.content)]">
+				<ee:transform doc:name="" doc:id="84518de5-57a3-431e-acb8-4e6a478a8150">
+			<ee:message>
+			</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="subscription" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    balance: payload.content[0].balance.amount,
+    subscriber: payload.content[0].subscriber.id
+}]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+			</when>
+			<otherwise>
+				<raise-error doc:name="Raise error" doc:id="3143df58-67ea-4a64-bbde-57be8d816569" type="ERROR:NOT_FOUND" description='No se encuentra datos con el MSISDN'/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="send-message-enrutador-datos-orchestratorSub_Flow" doc:id="04ed6741-2103-4975-a660-1a8ee128a45b">
+		<flow-ref doc:name="Flow to Obtain Pending Messages" doc:id="e3a49c2c-a651-4f48-a487-6696086ca574" name="get-send-message-enrutador-datos-orchestratorSub_Flow" />
+		<parallel-foreach doc:name="Parallel For Each" doc:id="b6d2e55a-727f-4754-ab8b-a07009e0f678" collection="#[payload.results]" maxConcurrency="${global.msgPerCall}">
+			<os:retrieve doc:name="Retrieve trxPorHora" doc:id="6d418c04-fa84-42f0-a8c2-7f38c2442ee9" key="trxPorHora" target="trxPorHora">
+				<os:default-value ><![CDATA[#[0]]]></os:default-value>
+			</os:retrieve>
+			<choice doc:name="Choice ¿Se supero el tope de mensajes por hora?" doc:id="b83f764f-a906-44c0-9cb9-13f10f673658">
+				<when expression="#[(vars.trxPorHora default 0) &lt;= p('global.txrMaxPorHora')]">
+					<set-variable value="#[%dw 2.0
+output application/json
+---
+payload.priority]" doc:name="Set Variable priority" doc:id="3642b0a8-a008-493b-ba99-86f6c2d112b1" variableName="priority"/>
+					<choice doc:name="Choice ¿Dentro de horario de envio o scheduled false?" doc:id="f0c6c106-4fc0-4fec-b056-8236b9119c3d" >
+						<when expression='#[%dw 2.0
+output application/json
+var beginHour = ((now() &gt;&gt; "America/Bogota") as Date) ++ |08:00:00|
+var endHour = ((now() &gt;&gt; "America/Bogota") as Date) ++ |21:00:00|
+var currentHour = (now() &gt;&gt; "America/Bogota")
+---
+(beginHour &lt;= currentHour and currentHour &lt;= endHour) or vars.priority == "1"]'>
+							<set-variable value="#[payload.messageId]" doc:name="Set messageId" doc:id="854e8ab1-4b3d-4f03-8780-57439f30b6e7" variableName="messageId"/>
+							<set-variable value="#[payload]" doc:name="Set Variable originalPayload" doc:id="a9ee6018-ef1d-4beb-b070-c9926bcc1c49" variableName="originalPayload"/>
+							<ee:transform doc:name="Transform Message to Processing" doc:id="69dfef01-bcf0-4dd4-9743-cd724bfad4ee">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "_id": payload."_id",
+  "message": payload.message,
+  "createdAt": payload.createdAt,
+  "destination": payload.destination,
+  "status": "processing",
+  "priority": payload.priority
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<set-variable value="#[payload]" doc:name="Set Variable messagePayload" doc:id="c3097aa5-5b21-45c3-99a0-33b6bc312137" variableName="messagePayload"/>
+							<flow-ref doc:name="Flow to Update Message to Processing" doc:id="504117b1-e400-48ef-9b8d-01e1c3f25797" name="patch-send-message-enrutador-datos-orchestratorSub_Flow"/>
+							<async doc:name="Async" doc:id="fe0001b6-0c36-4588-a8f6-485b8be42677" >
+								<ee:transform doc:name="Set historialEstados of processing Mesage" doc:id="f07c9a2d-bb07-48c7-91e1-3af75bc4d6d0">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  uuids: if ((vars.originalPayload.messageId default null) is Array) payload.messageId else [vars.originalPayload.messageId],
+  codigoEstado: "MSG_PROCESSING",    // Código del estado (Ej: "MSG_RECEIVED", "MSG_SENT")
+  estado: "Procesando Mensaje",          // Nombre del estado (Ej: "Mensaje Recibido", "Mensaje Enviado")
+  detalle: "El mensaje está siendo procesado para ser enviado al servidor SMPP.",         // Descripción del estado (Ej: "Mensaje validado correctamente")
+  fecha: (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},         // Fecha y hora en que ocurrió este estado
+  usuario: "MuleSoft",       // Usuario o sistema que generó el estado (Ej: "MuleSoft", "SMSC")
+ }]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<flow-ref doc:name="Go to logging-historial-estados" doc:id="667ffd95-feb0-4ac8-a2d8-7ec8c58db2c5" name="logging-historial-estados" />
+							</async>
+							<ee:transform doc:name="Transform Message to be Send" doc:id="2189a671-356a-4d5d-9bd1-a5add724c718">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "_id": vars.messagePayload."_id",
+  "message": vars.messagePayload.message,
+  "createdAt": vars.messagePayload.createdAt,
+  "destination": vars.messagePayload.destination,
+  "status": "pending",
+  "priority": vars.messagePayload.priority
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							<flow-ref doc:name="go to post-jsc-sapi-client" doc:id="540f66eb-f2fd-4c6b-bf33-5498168b1391" name="post-jsc-sapi-clientSub_Flow" />
+							<set-variable value="#[payload.details]" doc:name="Set Variable details" doc:id="6c516502-a1bf-4db1-be4d-7e955d174d8c" variableName="details"/>
+							<choice doc:name="Choice" doc:id="7f6c3560-acba-4630-96ef-ec9138bbcf42">
+								<when expression="#[vars.details == 'Message sent successfully']">
+									<set-variable value="#[payload]" doc:name="Set Variable payloadSent" doc:id="67399d96-51f9-4703-a6b6-dc560a0abb1c" variableName="payloadSent"/>
+									<async doc:name="Async" doc:id="79b956d9-5086-446c-80ab-e6fb36c6bc26">
+										<ee:transform doc:name="Set historialEstados of processed Message" doc:id="28a1429d-052f-46e7-8012-9ca5ab06a4d0">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  uuids: if ((vars.originalPayload.messageId default null) is Array) payload.messageId else [vars.originalPayload.messageId],
+  codigoEstado: "MSG_SENT",    // Código del estado (Ej: "MSG_RECEIVED", "MSG_SENT")
+  estado: "Mensaje Enviado",          // Nombre del estado (Ej: "Mensaje Recibido", "Mensaje Enviado")
+  detalle: "El mensaje ha sido enviado exitosamente al servidor SMPP del operador.",         // Descripción del estado (Ej: "Mensaje validado correctamente")
+  fecha: (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},         // Fecha y hora en que ocurrió este estado
+  usuario: "MuleSoft"        // Usuario o sistema que generó el estado (Ej: "MuleSoft", "SMSC")
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+										<flow-ref doc:name="Go to logging-historial-estados" doc:id="9cc6abeb-4bde-4211-b36f-2c4a57146811" name="logging-historial-estados" />
+										<ee:transform doc:name="Transform Message" doc:id="28755b24-8818-483b-a479-3dc01fe977ac" >
+											<ee:message >
+												<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  uuids: if ((vars.originalPayload.messageId default null) is Array)
+           vars.originalPayload.messageId
+         else
+           [vars.originalPayload.messageId],
+  codigoEstado: "MSG_SENT_INFO",    
+  smscId: vars.payloadSent.smscId,
+  fechaRespuesta: vars.payloadSent.fechaRespuesta,
+  respuestaSMSC: vars.payloadSent.respuestaSMSC, 
+  metadata: ((vars.payloadSent.metadata default {}) as Object)
+}
+]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+										<flow-ref doc:name="Go to logging-historia-estados to Patch Info" doc:id="32f36b1e-07b6-4f5e-8147-f6a4cf5deb09" name="patch-log-info-historial-estado-client"/>
+							</async>
+									<ee:transform doc:name="Transform Message to Processed" doc:id="bc3245ac-29ef-4ec3-8965-3ca1b7e361a8">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "_id": vars.messagePayload."_id",
+  "message": vars.messagePayload.message,
+  "createdAt": vars.messagePayload.createdAt,
+  "destination": vars.messagePayload.destination,
+  "status": "processed",
+  "priority": vars.messagePayload.priority
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+									<flow-ref doc:name="Flow to Update Messaging to Processed" doc:id="3594341a-299c-4107-b391-5fefeef3d2e2" name="patch-send-message-enrutador-datos-orchestratorSub_Flow" />
+								</when>
+								<otherwise >
+									<set-variable value="#[payload]" doc:name="Set Variable payloadSent" doc:id="635bdf13-4c51-4974-b7cb-f914d4d7454f" variableName="payloadSent"/>
+									<ee:transform doc:name="Set historialEstados of error Message" doc:id="fd6f94bc-2b26-411a-a5ae-296aa481bdbd">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  uuids: if ((vars.originalPayload.messageId default null) is Array) payload.messageId else [vars.originalPayload.messageId],
+  codigoEstado: "MSG_FAILED_SEND",    // Código del estado (Ej: "MSG_RECEIVED", "MSG_SENT")
+  estado: "Fallo al Enviar",          // Nombre del estado (Ej: "Mensaje Recibido", "Mensaje Enviado")
+  detalle: "El mensaje no pudo ser enviado al servidor SMPP.",         // Descripción del estado (Ej: "Mensaje validado correctamente")
+  fecha: (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},         // Fecha y hora en que ocurrió este estado
+  usuario: "MuleSoft",         // Usuario o sistema que generó el estado (Ej: "MuleSoft", "SMSC")
+  codigoError: "SMPP_CONNECTION_FAILED"     // Código de error si aplica (Ej: "VALIDATION_ERROR", "SMPP_CONNECTION_FAILED")
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									<flow-ref doc:name="Go to logging-historial-estados" doc:id="b5ced9ee-a8b2-4bc1-81ad-e77d10785de7" name="logging-historial-estados" />
+									<ee:transform doc:name="Transform Message" doc:id="6e6a2b7e-6407-48b8-9ce5-d77491a69527">
+										<ee:message>
+											<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  uuids: if ((vars.originalPayload.messageId default null) is Array)
+           vars.originalPayload.messageId
+         else
+           [vars.originalPayload.messageId],
+  codigoEstado: "MSG_SENT_INFO",    
+  fechaRespuesta: vars.payloadSent.fechaRespuesta,
+  respuestaSMSC: 'FAILED', 
+  metadata: ((vars.payloadSent.metadata default {}) as Object)
+}
+]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<flow-ref doc:name="Go to logging-historia-estados to Patch Failed Info" doc:id="4060a043-25fa-4a78-a319-a8d3e4da0112" name="patch-log-info-historial-estado-client"/>
+									<set-variable value='#[(flatten([vars.originalPayload.messageId]) default [])[0] default ""]' doc:name="Set Variable messageId" doc:id="f1a6e0f6-dc27-4869-bb10-33f602443ebc" variableName="messageId"/>
+									<flow-ref doc:name="Go to logging-historial-estados to Get" doc:id="18e90906-9afc-4d95-bbab-5e3dcde6e708" name="get-log-historial-estado-client"/>
+									<set-variable value="#[payload[-1]]" doc:name="Set Variable last resend value" doc:id="bf848762-e267-41c4-9ee9-b4b029959cef" variableName="resend"/>
+									<ee:transform doc:name="Transform Message to new Status" doc:id="047fe1de-f14f-49ae-b8d4-1066d990b740">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "_id": vars.messagePayload."_id",
+  "message": vars.messagePayload.message,
+  "createdAt": vars.messagePayload.createdAt,
+  "destination": vars.messagePayload.destination,
+  "status": if ((vars.resend.reintentos default 0) == 3) "processed" else "pending",
+  "priority": vars.messagePayload.priority
+}
+]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									<flow-ref doc:name="Flow to Update Messaging to new Status" doc:id="2295cebc-1f3c-400c-9b98-28a4ffe8c020" name="patch-send-message-enrutador-datos-orchestratorSub_Flow" />
+								</otherwise>
+							</choice>
+						</when>
+						<otherwise >
+							<ee:transform doc:name="Set historialEstados of error message" doc:id="5872a7d3-037f-4bbd-a93d-b008aa952fd6" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  uuids: if ((payload.messageId default null) is Array) payload.messageId else [payload.messageId],
+  codigoEstado: "MSG_FAILED_VALIDATION",    // Código del estado (Ej: "MSG_RECEIVED", "MSG_SENT")
+  estado: "Validación Fallida",          // Nombre del estado (Ej: "Mensaje Recibido", "Mensaje Enviado")
+  detalle: "Por fuera de horario establecido para envio",         // Descripción del estado (Ej: "Mensaje validado correctamente")
+  fecha: (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},         // Fecha y hora en que ocurrió este estado
+  usuario: "MuleSoft",         // Usuario o sistema que generó el estado (Ej: "MuleSoft", "SMSC")
+  codigoError: "VALIDATION_ERROR"     // Código de error si aplica (Ej: "VALIDATION_ERROR", "SMPP_CONNECTION_FAILED")
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<flow-ref doc:name="Go to logging-historial-estados" doc:id="e98d0810-6d86-442f-b360-279aa86d4bcf" name="logging-historial-estados"/>
+						</otherwise>
+					</choice>
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Set historialEstados of error message" doc:id="514eb8b8-e3b5-49a4-927a-2c902d4d24b9">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  uuids: if ((payload.messageId default null) is Array) payload.messageId else [payload.messageId],
+  codigoEstado: "MSG_FAILED_VALIDATION",
+  estado: "Validación Fallida",
+  detalle: "Numero de mensajes maximo por hora superado",
+  fecha: (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},
+  usuario: "MuleSoft",
+  codigoError: "QUEUE_OVERFLOW"
+}
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="Go to logging-historial-estados" doc:id="dbd92004-9193-4b5c-ac9a-e51fb7cce20d" name="logging-historial-estados"/>
+				</otherwise>
+			</choice>
+			<os:store doc:name="Store trxPorHora" doc:id="e942d09f-9bd0-49fc-8e51-edc4be31f26c" key="trxPorHora">
+			<os:value><![CDATA[#[(vars.trxPorHora default 0)  + 1]]]></os:value>
+		</os:store>
+		</parallel-foreach>
+
+</sub-flow>
+</mule>
