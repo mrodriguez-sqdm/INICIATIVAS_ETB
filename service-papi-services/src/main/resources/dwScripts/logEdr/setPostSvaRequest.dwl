@@ -1,22 +1,26 @@
 %dw 2.0
 output application/json
 
+var responseJSC = vars.orderObject
+var creationDate = responseJSC.creationDate as DateTime
+
 ---
 {
   eventType: "SVA",
-  ID_Sistema: vars.ID_Sistema default "",
-  ID_Tpo_Xdr: vars.ID_Tpo_Xdr default "",
-  Fecha_Ini: vars.Fecha_Ini default "",
-  Hora_Ini: vars.Hora_Ini default "",
-  Abonado_A: vars.Abonado_A default "",
-  Valor_Nominal: vars.Valor_Nominal default 0,
-  Fch_Vigencia_Ini: vars.Fch_Vigencia_Ini default "",
-  Hora_Vigencia_Ini: vars.Hora_Vigencia_Ini default "",
-  Fch_Vigencia_Fin: vars.Fch_Vigencia_Fin default "",
-  Hora_Vigencia_Fin: vars.Hora_Vigencia_Fin default "",
-  Gestor_Rec: vars.Gestor_Rec default 0,
-  Modalidad_pago: vars.Modalidad_pago default "",
-  ID_Plan: vars.ID_Plan default 0,
-  Bolsa: vars.Bolsa default "",
-  Usuario: vars.Usuario default ""
+  ID_Sistema: responseJSC.domain,
+  ID_Tpo_Xdr: "SVA",
+  Fecha_Ini: creationDate as String {format: "yyyyMMdd"},
+  Hora_Ini: creationDate as String {format: "HH:mm:ss"},
+  Abonado_A: responseJSC.subscription.id default "",
+  Bolsa: (responseJSC.packages default [])[0].id default "",
+  Valor_Nominal: responseJSC.amount.amount default 0,
+  Fch_Vigencia_Ini: creationDate as String {format: "yyyyMMdd"},
+  Hora_Vigencia_Ini: creationDate as String {format: "HH:mm:ss"},
+  Fch_Vigencia_Fin: "",
+  Hora_Vigencia_Fin: "",
+  Gestor_Rec: responseJSC.salesPerson default "",
+  ID_Punto_Rec: responseJSC.pos.id default "",
+  Modalidad_pago: "PREPAGO",
+  ID_Canal_Rec: responseJSC.salesChannel,
+  ID_Plan: (responseJSC.packages default [])[0].id default ""
 }
