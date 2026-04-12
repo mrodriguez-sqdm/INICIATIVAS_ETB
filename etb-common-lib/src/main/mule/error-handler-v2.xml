@@ -68,12 +68,19 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
         <!-- ======================= -->
         <!-- DEFAULT / ANY           -->
         <!-- ======================= -->
-
-        <on-error-propagate type="ANY">
-            <flow-ref name="build-error-response-500" doc:name="build-error-response-500"/>
+		<on-error-propagate type="ANY">
+            <choice doc:name="Choice" doc:id="3c56e3ef-6517-42e3-b273-90ea5b89db22" >
+				<when expression="#[error.errorMessage.attributes.statusCode == 409]">
+					<flow-ref doc:name="build-error-response-409" doc:id="653cdb8f-560b-46fa-8944-1c8b4089ef9e" name="build-error-response-409"/>
+				</when>
+				<otherwise >
+					<flow-ref name="build-error-response-500" doc:name="build-error-response-500" />
+				</otherwise>
+			</choice>
         </on-error-propagate>
 
-    </error-handler>
+    
+</error-handler>
 
     <!-- ================================================= -->
     <!-- ERROR RESPONSE BUILDERS                          -->
@@ -113,7 +120,11 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 		<flow-ref name="build-common-error"/>
     </sub-flow>
 
-    <sub-flow name="build-error-response-504">
+    <sub-flow name="build-error-response-409" doc:id="8f8c48bf-c08a-409a-adc8-ac8fd4559408">
+		<set-variable value="409" doc:name="Set Variable" doc:id="9e2e47a3-a545-4199-b2ba-8f67b1aec507" variableName="httpStatus" />
+		<flow-ref doc:name="Flow Reference" doc:id="570808ff-ce7e-48e9-a4f0-9eebc6aa478c" name="build-common-error" />
+	</sub-flow>
+	<sub-flow name="build-error-response-504">
         <set-variable variableName="httpStatus" value="504" />
 		<flow-ref name="build-common-error"/>
     </sub-flow>
@@ -137,7 +148,7 @@ fun getError(errorPayload, defaultCause, appName) = do {
 	var origin = {
 		"origin": appName
 	}
-	var currentCause = if ( errorPayload is Object ) errorPayload.cause else []
+	var currentCause = if ( errorPayload is Object ) (errorPayload.cause default []) else []
 	var errorCause = errorPayload match {
 		case is Object ->  [origin ++ {
 			"message": defaultCause
@@ -177,5 +188,6 @@ fun getErrorMessage(errorMessage, defaultMessage, appName) =
         </async>
 
     </sub-flow>
+
 
 </mule>
