@@ -189,21 +189,36 @@ var simpleFields = updateData filterObject (!($ is Array))
 
 ---
 {
-  "update": p('mongoDb-mdm.clientes.collection-cliente'), // El nombre de tu colección
+  "update": p('mongoDb-mdm.clientes.collection-cliente'),
   "updates": [
     {
       "q": { 
           "Numero_Identificacion": payload.customer.Numero_Identificacion, 
           "Tipo_Documento": payload.customer.Tipo_Documento 
       },
-      "u": {
-        (if (!isEmpty(simpleFields)) "\$set": simpleFields else {}),
-        (if (!isEmpty(arrayFields)) 
-            "\$push": arrayFields mapObject (value, key) -> {
-                (key): { "\$each": value }
-            }
-        else {})
-      },
+      /** * IMPORTANTE: Cambiamos "u" a un Array [ ] para habilitar el Update Pipeline.
+       * Esto permite usar funciones de agregación como $ifNull y $concatArrays.
+       */
+      "u": [
+        {
+          "\$set": {
+            // Actualizamos campos simples normalmente
+            (simpleFields),
+            
+            // Para cada campo de tipo array, controlamos el valor null
+            (arrayFields mapObject (value, key) -> {
+                (key): {
+                    "\$concatArrays": [
+                        // Si el campo actual en DB es null, lo trata como []
+                        { "\$ifNull": ["\$" ++ (key as String), []] },
+                        // Concatena los nuevos elementos del payload
+                        value
+                    ]
+                }
+            })
+          }
+        }
+      ],
       "upsert": false,
       "multi": false
     }
@@ -221,7 +236,6 @@ output application/java
 payload.customer.Tipo_Documento]]></ee:set-variable>
 				</ee:variables>
 			</ee:transform>
-			<logger level="INFO" doc:name="Logger" doc:id="42c1b571-8b51-4c7a-8b8d-337c95ad2c56" message="#[payload]"/>
 			<mongo:execute-command doc:name="Execute command" doc:id="6f7692db-4c60-4523-a18a-deff0076714a" config-ref="mdm_db_Config"/>
 			<ee:transform doc:name="Set Response Body" doc:id="c8e9fd8a-784b-41dc-89f8-8ed4db821500" >
 				<ee:message >
@@ -229,15 +243,17 @@ payload.customer.Tipo_Documento]]></ee:set-variable>
 output application/json
 ---
 {
-  codigo: "200",
-  mensaje: if ((payload.n default 0) == 1 and (payload.nModified default 0) == 1) 
+  codigo: if (!isEmpty(payload.writeErrors)) "500" else "200",
+  mensaje: if (!isEmpty(payload.writeErrors)) 
+              payload.writeErrors[0].errmsg 
+           else if ((payload.n default 0) == 1 and (payload.nModified default 0) == 1) 
               "Cliente actualizado con éxito"
            else if ((payload.n default 0) == 1 and (payload.nModified default 0) == 0)
-             "Sin cambios detectados: cliente fue encontrado pero no se encontraron modificaciones"
-           else if ((payload.n default 0) == 0 )
+              "Sin cambios detectados: el documento ya tenía la información enviada"
+           else if ((payload.n default 0) == 0)
               "Cliente no existe"
            else
-             "Error en el proceso de actualizar cliente"
+              "Error en el proceso de actualizar cliente"
 }]]></ee:set-payload>
 				</ee:message>
 			</ee:transform>
