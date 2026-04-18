@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-resources-inArea-orchestratorSub_Flow" doc:id="75693c08-b443-4938-85ef-04233cb33ab7" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="69f3a96e-8e78-455c-8e6b-0207cc317c8b" variableName="parameters"/>
+		<ee:transform doc:name="Set typeParameter" doc:id="dcee142a-bbbd-447f-ba88-15c05d0cff90" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="typeParameter" ><![CDATA[%dw 2.0
+output application/java
+---
+p('mongo-sapi-services.parameters.param')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to get parameter mongo client" doc:id="6c1c0aac-ccb6-46a3-90a9-d3559cee8631" name="get-parameters" target="get_parameters_resp" />
+		<ee:transform doc:name="authString" doc:id="ee446604-8420-4979-8b3c-7ad4c2ea3823" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="authString" ><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/json
+var user = (vars.get_parameters_resp[0].Valores filter $.Codigo == p('oracle-ocs.syncOrder.user'))[0].Nombre
+var company = (vars.get_parameters_resp[0].Valores filter $.Codigo == p('oracle-ocs.syncOrder.company'))[0].Nombre
+var pass = (vars.get_parameters_resp[0].Valores filter $.Codigo == p('oracle-ocs.syncOrder.pass'))[0].Nombre
+---
+toBase64((user ++ "@" ++ company ++ ":" ++ pass) as Binary)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try" doc:id="709805b4-8aba-4682-b282-fb8a9dc5c1e2" >
+			<flow-ref doc:name="Go to patch assurance order" doc:id="8059b36a-fd94-4603-9a1e-6ddb069028c8" name="get-resources-inArea-clientSub_Flow" />
+			<ee:transform doc:name="Set response" doc:id="d00f43ab-17f9-4e27-b09a-0dd4450c7856" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="httpStatus" ><![CDATA[200]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4d09cb90-1fba-4113-b57a-38cd9790a9fc" >
+					<ee:transform doc:name="Set error description" doc:id="c2e13c3a-649a-41e8-a77a-4ff0d3710c7b" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="errorDescription" ><![CDATA[error.errorMessage.payload.detail]]></ee:set-variable>
+							<ee:set-variable variableName="httpStatus" ><![CDATA[error.errorMessage.payload.status]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<raise-error doc:name="Raise error" doc:id="63afa941-7729-49a3-914e-0c0d6b53bb51" type="CUSTOM:ERROR" description="#[vars.errorDescription]" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
