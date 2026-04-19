@@ -472,6 +472,7 @@ output application/json
 
 // Nueva función: SOLO valida que no sea nulo. 
 fun isNotNull(val) = val != null
+fun generarIdDireccion(index) = index + 1
 ---
 {
   customer: {
@@ -608,9 +609,9 @@ fun isNotNull(val) = val != null
     Depto_Exp_Documento: payload.customer.documentIssueDepartment,
     Direccion: payload.customer.address,
 
-    (Direcciones: flatten([payload.customer.addresses]) map (item) -> (
+    (Direcciones: flatten([payload.customer.addresses]) map (item, index) -> (
       {
-        "Id_Direccion": item.addressId,
+        "Id_Direccion": generarIdDireccion(index),
         "Tipo_Direccion": item.addressType,
         "Direccion_Normalizada": item.standardizedAddress,
         "Codigo_Direccion": item.addressCode,
@@ -707,10 +708,57 @@ output application/json
 	<sub-flow name="update-customer-orchestratorSub_Flow" doc:id="b0f64569-147e-4617-9409-a2fef41e16d7" >
 		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="6ed0a58a-9e95-492f-b380-5bca16dc31fe" variableName="parameters" />
 		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="a5d4d029-1b85-4f6b-97dd-a6bb47bf6904" variableName="headers" />
-		<ee:transform doc:name="Transform Message" doc:id="f72f46c6-f4b4-4efe-9a9b-3398c462da13">
+		<ee:transform doc:name="set queryGetMaxIdDireccionCliente" doc:id="b5ebe246-3d29-4682-95de-d6461ce8a43f" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="queryGetMaxIdDireccionCliente" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  query: {
+    aggregate: "MDM_CLIENTE",
+    pipeline: [
+      {
+        "\$match": {
+          "Tipo_Documento": payload.customer.documentType,
+          "Numero_Identificacion": payload.customer.identificationNumber
+        }
+      },
+      {
+        "\$unwind": "\$Direcciones"
+      },
+      {
+        "\$sort": {
+          "Direcciones.Id_Direccion": -1
+        }
+      },
+      {
+        "\$limit": 1
+      },
+      {
+        "\$project": {
+          "_id": 0,
+          "maxIdDireccionCliente": "\$Direcciones.Id_Direccion"
+        }
+      }
+    ],
+    cursor: {}
+  }
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="b5d081f0-9086-4755-aca9-d241efba97af" name="mongo-db-sapi-get-maxIdDireccionCustomer-clientSub_Flow" target="resMaxIdDireccionCliente"/>
+		<ee:transform doc:name="set requestUpdateCustomer" doc:id="f72f46c6-f4b4-4efe-9a9b-3398c462da13">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
+
+var maxIdDireccionCliente = 
+    if (isEmpty(vars.resMaxIdDireccionCliente.result)) 
+        0 
+    else 
+        vars.resMaxIdDireccionCliente.result[0].maxIdDireccionCliente default 0
 ---
 {
   customer:
@@ -869,7 +917,7 @@ output application/json
       Direccion: payload.customer.address,
       "Direcciones": if (isEmpty(payload.customer.addresses)) [] 
                    else payload.customer.addresses map (item, index) -> {
-        "Id_Direccion": item.addressId default "",
+        "Id_Direccion": maxIdDireccionCliente + index + 1,
         "Tipo_Direccion": item.addressType default "",
         "Direccion_Normalizada": item.standardizedAddress default "",
         "Codigo_Direccion": item.addressCode default "",
