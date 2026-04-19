@@ -79,9 +79,11 @@ output application/json
 			</when>
 
 			<otherwise >
-				<ee:transform doc:name="Transform Message" doc:id="73c11fdf-dfca-4390-bc73-79b59087fefd" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
+				<scatter-gather doc:name="Scatter-Gather" doc:id="c21dc223-68e5-433c-92e2-f1c11a6cfdb9" >
+					<route >
+						<ee:transform doc:name="Transform Message" doc:id="73c11fdf-dfca-4390-bc73-79b59087fefd">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -116,18 +118,279 @@ output application/json
 }
  ]]></ee:set-payload>
 					</ee:message>
-					<ee:variables >
-						<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
+					<ee:variables>
+						<ee:set-variable variableName="method"><![CDATA[%dw 2.0
 output application/json
 ---
 "POST"]]></ee:set-variable>
-						<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+						<ee:set-variable variableName="path"><![CDATA[%dw 2.0
 output application/json
 ---
 p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
-				<flow-ref doc:name="Get Consecutive" doc:id="501c888d-54a2-44eb-a2a3-e1a1f1ac82ca" name="generic-sapi-clientSub_Flow" target="resultadoConsecutivo"/>
+						<flow-ref doc:name="Get Consecutive" doc:id="501c888d-54a2-44eb-a2a3-e1a1f1ac82ca" name="generic-sapi-clientSub_Flow" target="resultadoConsecutivo" />
+					</route>
+					<route >
+						<choice doc:name="Choice" doc:id="8bfba181-dce4-4894-a632-3d16547be09a" >
+							<when expression='#[(vars.reglasAcumuladas filter ($.idRegla == "REG-OFERTA-001"))[0].esValido default false]'>
+								<ee:transform doc:name="queryProductos" doc:id="95052aae-7b4e-4e84-93ea-3c5651dad802">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+		"query" :{
+  "aggregate": "CMP_OFERTA_PRODUCTO",
+  "pipeline": [
+    {
+      "\$match": {
+        // Aquí usamos el valor dinámico que viene de tu flujo de Mule
+        "num_agrupacion": vars.RequestOrder.requestService.productGroupingNumber default 0
+      }
+    },
+    {
+      "\$group": {
+        "_id": "\$num_agrupacion",
+        "bundle": {
+          "\$push": {
+            "\$cond": [
+              { "\$eq": ["\$tipo_producto", "BUNDLE"] },
+              "\$\$ROOT",
+              "\$\$REMOVE"
+            ]
+          }
+        },
+        "primarios": {
+          "\$push": {
+            "\$cond": [
+              { "\$eq": ["\$tipo_producto", "Primario"] },
+              "\$\$ROOT",
+              "\$\$REMOVE"
+            ]
+          }
+        },
+        "secundarios": {
+          "\$push": {
+            "\$cond": [
+              { "\$in": ["\$tipo_producto", ["SECUNDARIO"]] },
+              "\$\$ROOT",
+              "\$\$REMOVE"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "\$addFields": {
+        "bundle": { "\$arrayElemAt": ["\$bundle", 0] }
+      }
+    },
+    {
+      "\$addFields": {
+        "primarios": {
+          "\$map": {
+            "input": "\$primarios",
+            "as": "prim",
+            "in": {
+              "\$mergeObjects": [
+                "\$\$prim",
+                {
+                  "secundarios": {
+                    "\$filter": {
+                      "input": "\$secundarios",
+                      "as": "sec",
+                      "cond": {
+                        "\$eq": [
+                          "\$\$sec.id_producto_principal",
+                          { "\$toString": "\$\$prim._id" }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "\$addFields": {
+        "primarios": {
+          "\$sortArray": {
+            "input": "\$primarios",
+            "sortBy": { "secuencia": 1 }
+          }
+        }
+      }
+    },
+    {
+      "\$addFields": {
+        "bundle": {
+          "\$mergeObjects": [
+            "\$bundle",
+            { "primarios": "\$primarios" }
+          ]
+        }
+      }
+    },
+    {
+      "\$project": {
+        "_id": 0,
+        "num_agrupacion": "\$_id",
+        "bundle": 1
+      }
+    }
+  ],
+  "cursor": {}
+}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+ ]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+								<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+								<flow-ref doc:name="Get Products" doc:id="abf30e6d-e10f-4a92-a0b2-e100f3637bb5" name="generic-sapi-clientSub_Flow" />
+								<set-variable value='#[%dw 2.0&#10;output application/json&#10;&#10;// Funciones de utilidad para el manejo de fechas&#10;fun toDate(dateString) = if (dateString != null) dateString as DateTime else null&#10;&#10;&#10;var inputData = vars.RequestOrder default {} &#10;var bundleSource = payload.result[0].bundle&#10;---&#10;{&#10;    "Servicio_Tramite": {&#10;        "_id": {&#10;            "\$oid": "000000000000000000000000"&#10;        },&#10;        "Fecha_Creacion": toDate(inputData.createdAt),&#10;        "Fecha_Modificacion": toDate(inputData.updatedAt),&#10;        "Usuario_Modificacion": inputData.updatedBy default "",&#10;        "Usuario_Creacion": inputData.createdBy default "",&#10;        "Actualizacion_Extractor": inputData.extractorUpdate default "",&#10;        "Id_Cuenta_Servicio": "",&#10;        &#10;        // Aquí inyectamos el bundle completo del origen&#10;        "Bundle": {&#10;            "_id": bundleSource."_id",&#10;            "Fecha_Creacion": bundleSource.fecha_creacion,&#10;            "Fecha_Modificacion": bundleSource.fecha_modificacion,&#10;            "Usuario_Modificacion": bundleSource.usuario_modifico,&#10;            "Usuario_Creacion": bundleSource.usuario_creo,&#10;            "Actualizacion_Extractor": null,&#10;            "Codigo_Configuracion": bundleSource.cod_configuracion,&#10;            "Numero_Agrupacion": bundleSource.num_agrupacion,&#10;            "Tipo_Producto": bundleSource.tipo_producto,&#10;            "Tipo_Servicio": bundleSource.tipo_servicio,&#10;            "Subtipo_Servicio": bundleSource.subtipo_servicio,&#10;            "Subtipo_Producto": bundleSource.subtipo_producto,&#10;            "Secuencia": bundleSource.secuencia,&#10;            "Dependencia": bundleSource.dependencia,&#10;            "Clasificacion": bundleSource.clasificacion,&#10;            "Nombre": bundleSource.producto,&#10;            "Icono": bundleSource.icono,&#10;            "Display": bundleSource.display,&#10;            "Estado": bundleSource.estado,&#10;            "Cantidad_Minima": bundleSource.cantidad_minima,&#10;            "Cantidad_Maxima": bundleSource.cantidad_maxima,&#10;            "Precio_Oferta": bundleSource.precio_oferta map (item) -&gt; {&#10;                "Canal_Venta": item.canal_venta,&#10;                "Precio_Sin_Iva": item.precio_sin_iva,&#10;                "Precio_Con_Iva": item.precio_con_iva,&#10;                "Iva": item.iva&#10;            },&#10;            "Caracteristicas_Producto_Oferta": bundleSource.caracteristicas_producto_oferta default [],&#10;            "Agrupa_filtros_oferta": bundleSource.agrupa_filtros_oferta,&#10;            "Valor_Especificacion_Tecnica_Oferta": bundleSource.valor_espec_tecnica_oferta,&#10;            "Parametros_bundle": bundleSource.parametros_bundle map (param) -&gt; {&#10;                "Parametro": param.parametro,&#10;                "Tipo_Parametro": param.tipo_parametro,&#10;                "Valor": param.valor&#10;            },&#10;            "Primarios": bundleSource.primarios map (primario) -&gt; {&#10;				"_id": primario."_id",&#10;				"Fecha_Creacion": primario.fecha_creacion,&#10;				"Fecha_Modificacion": primario.fecha_modificacion,&#10;				"Usuario_Modificacion": primario.usuario_modifico,&#10;				"Usuario_Creacion": primario.usuario_creo,&#10;				"Actualizacion_Extractor": primario.actualizacion_extractor,&#10;				"Codigo_Configuracion": primario.cod_configuracion,&#10;				"Numero_Agrupacion": primario.num_agrupacion,&#10;				"Tipo_Producto": primario.tipo_producto,&#10;				"Tipo_Servicio": primario.tipo_servicio,&#10;				"Subtipo_Servicio": primario.subtipo_servicio,&#10;				"Subtipo_Producto": primario.subtipo_producto,&#10;				"Secuencia": primario.secuencia,&#10;				"Dependencia": primario.dependencia,&#10;				"Clasificacion": primario.clasificacion,&#10;				"Nombre": primario.producto,&#10;				"Icono": primario.icono,&#10;				"Display": primario.display,&#10;				"Estado": primario.estado,&#10;				"Cantidad_Minima": primario.cantidad_minima,&#10;				"Cantidad_Maxima": primario.cantidad_maxima,&#10;				"Precio_Oferta": primario.precio_oferta default [],&#10;				"Caracteristicas_Producto_Oferta": primario.caracteristicas_producto_oferta default [],&#10;				"Agrupa_filtros_oferta": primario.agrupa_filtros_oferta,&#10;				"Valor_Especificacion_Tecnica_Oferta": primario.valor_espec_tecnica_oferta,&#10;				"Id_Clase_Servicio": primario.serviceclass as Number default null,&#10;				"Disponibilidad": primario.flag_disponibilidad,&#10;				"Agendamiento": primario.flag_agendamiento,&#10;				"Aprovisionamiento": primario.flag_aprovisionamiento,&#10;				"Facturacion": primario.flag_facturacion,&#10;				"Accion": null,&#10;				"Id_Item": null,&#10;				"Id_Item_Padre": null,&#10;				"Id_Tipo_Producto": primario.id_tipo_producto as Number default null,&#10;				"Id_Tipo_Servicio": primario.id_tipo_servicio as Number default null,&#10;				"Id_Subtipo_Servicio": primario.id_subtipo_servicio as Number default null,&#10;				"Id_Subtipo_Producto": primario.id_subtipo_producto as Number default 0,&#10;				"Id_Servicio": "SR-" ++ (primario.id_producto default ""), // Ejemplo de generación de ID de servicio&#10;				"id_opcional_auxiliar": primario.id_opcional_auxiliar,&#10;				"Atributos": (primario.atributos_agendamiento map (attr) -&gt; {&#10;					"Nombre": attr.Nombre,&#10;					"Valor": attr.valor,&#10;					"Tipo": "Agendamiento"&#10;				}) ++ (primario.atributos_disponibilidad map (attr) -&gt; {&#10;					"Nombre": attr.Nombre,&#10;					"Valor": attr.valor,&#10;					"Tipo": "Disponibilidad"&#10;				}) ++ (primario.atributos_aprovisionamiento map (attr) -&gt; {&#10;					"Nombre": attr.Nombre,&#10;					"Valor": attr.valor,&#10;					"Tipo": "Aprovisionamiento"&#10;				}),&#10;				"tipo_adicional": null,&#10;				"Parametros_Producto": [],&#10;				"seleccionado": false,&#10;				"deshabilitado": false,&#10;				"Descuento": 0,&#10;				"PrecioFinal": 0,&#10;				// Aquí podrías anidar el mapeo de Secundarios si fuera necesario&#10;				"Secundarios": primario.secundarios map (secundario, sIndex) -&gt; {&#10;					"_id": secundario."_id",&#10;					"Fecha_Creacion": secundario.fecha_creacion,&#10;							"Fecha_Modificacion": secundario.fecha_modificacion,&#10;							"Usuario_Modificacion": secundario.usuario_modifico,&#10;							"Usuario_Creacion": secundario.usuario_creo,&#10;							"Actualizacion_Extractor": primario.actualizacion_extractor,&#10;					"Codigo_Configuracion": secundario.cod_configuracion,&#10;					"Numero_Agrupacion": secundario.num_agrupacion as Number default 0,&#10;					"Tipo_Producto": secundario.tipo_producto,&#10;					"Tipo_Servicio": secundario.tipo_servicio,&#10;					"Subtipo_Servicio": secundario.subtipo_servicio,&#10;					"Subtipo_Producto": secundario.subtipo_producto,&#10;					"Secuencia": secundario.secuencia as Number default 0,&#10;					"Dependencia": secundario.dependencia as Number default 0,&#10;					"Clasificacion": secundario.clasificacion,&#10;					"Nombre": secundario.producto,&#10;					"Icono": secundario.icono,&#10;					"Display": secundario.display,&#10;					"Estado": secundario.estado,&#10;					"Cantidad_Minima": secundario.cantidad_minima as Number default 0,&#10;					"Cantidad_Maxima": secundario.cantidad_maxima as Number default 0,&#10;					"Precio_Oferta": secundario.precio_oferta,&#10;					"Caracteristicas_Producto_Oferta": secundario.caracteristicas_producto_oferta,&#10;					"Agrupa_filtros_oferta": secundario.agrupa_filtros_oferta,&#10;					"Valor_Especificacion_Tecnica_Oferta": secundario.valor_espec_tecnica_oferta,&#10;					"Id_Clase_Servicio": secundario.serviceclass as Number default 0,&#10;					"Disponibilidad": secundario.flag_disponibilidad default false,&#10;					"Agendamiento": secundario.flag_agendamiento default false,&#10;					"Aprovisionamiento": secundario.flag_aprovisionamiento default false,&#10;					"Facturacion": secundario.flag_facturacion default false,&#10;					"Accion": null,&#10;					"Id_Item": null,&#10;					"Id_Item_Padre": null ,&#10;					"Id_Tipo_Producto": secundario.id_tipo_producto as Number default 0,&#10;					"Id_Tipo_Servicio": secundario.id_tipo_servicio as Number default 0,&#10;					"Id_Subtipo_Servicio": secundario.id_subtipo_servicio as Number default 0,&#10;					"Id_Subtipo_Producto": secundario.id_subtipo_producto as Number default 0,&#10;					"Id_Servicio": "SR-" ++ (secundario.id_producto default ""),&#10;					"id_opcional_auxiliar": secundario.id_opcional_auxiliar,&#10;					"Atributos": flatten([&#10;						(secundario.atributos_agendamiento) map (attr) -&gt; {&#10;							"Nombre": attr.Nombre,&#10;							"Valor": attr.valor,&#10;							"Tipo": attr.Tipo_Atributo&#10;						},&#10;						(secundario.atributos_disponibilidad) map (attr) -&gt; {&#10;							"Nombre": attr.Nombre,&#10;							"Valor": attr.valor,&#10;							"Tipo": attr.Tipo_Atributo&#10;						},&#10;						(secundario.atributos_aprovisionamiento) map (attr) -&gt; {&#10;							"Nombre": attr.Nombre,&#10;							"Valor": attr.valor,&#10;							"Tipo": attr.Tipo_Atributo&#10;						}&#10;					]),&#10;					"tipo_adicional": null,&#10;					"Parametros_Producto": [],&#10;					"seleccionado": false,&#10;					"deshabilitado": false,&#10;					"Descuento": 0,&#10;					"PrecioFinal": 0&#10;				}, &#10;				"Adicionales": [],&#10;				"Gold": "",&#10;				"Numero": ""&#10;			}&#10;        },&#10;        &#10;        "Bundle_Clausula_Permanencia": "",&#10;        "Opcionales": [],&#10;        "Promociones": [],&#10;        "Cliente": "",&#10;        "Estado": "",&#10;        "Id_Orden_Tramite": "",&#10;        "Id_Cuenta_Facturacion": "0",&#10;        "Sistema_Origen": "",&#10;        "Id_Direccion_Instalacion": 1,&#10;        "Fecha_Activacion": "",&#10;        "Clausula_Permanencia": "",&#10;        "Numero_Conexion_Anterior": {&#10;            "\$numberLong": "0"&#10;        },&#10;        "Id_SalesForce": 0,&#10;        "Integration_Id": "",&#10;        "Caracteristica_Servicio": [],&#10;        "Adjuntos": [],&#10;        "Proyecto": "",&#10;        "Riesgo_Churn": "",&#10;        "Servicios_Auxiliares": [],&#10;        "Is_Pago_Recurrente": false,&#10;        "Promociones_Condicionadas": [],&#10;        "Descuento": 0,&#10;        "PrecioFinal": 0,&#10;        "Cambio_Tecnologia_Migrado": false&#10;    }&#10;}]' doc:name="Set Variable" doc:id="df125293-1334-4f13-91cd-23ca341c5997" variableName="resultadoProductos" />
+							</when>
+							<otherwise >
+								<set-variable doc:name="Set Variable" doc:id="bd6e6a31-11d5-4df9-872d-9689d852582c" variableName="resultadoProductos" value="#[{}]"/>
+							</otherwise>
+						</choice>
+					</route>
+					<route >
+						<ee:transform doc:name="request consecutivo CS" doc:id="7f7e45ad-fb25-42fb-89ff-7a4d488e017b">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+		"query" :{
+ 			findAndModify: "MDM_CD_CONSECUTIVO",
+ 			query: { Serie: "SecuenciaCuentaServicio"
+  			},
+  		update: { "\$inc": { Secuencia: 1 } },
+  		new: true
+		}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+ ]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+								<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Get Consecutive CS" doc:id="d9d5a6d9-951a-48e8-a107-85f182b4871c" name="generic-sapi-clientSub_Flow" target="resultadoConsecutivoCS" />
+					</route>
+					<route >
+						<ee:transform doc:name="request consecutivo SR" doc:id="13c50626-4c20-4e52-b6ce-fb20cddf1880">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+		"query" :{
+ 			findAndModify: "MDM_CD_CONSECUTIVO",
+ 			query: { Serie: "SecuenciaIdServicio"
+  			},
+  		update: { "\$inc": { Secuencia: 1 } },
+  		new: true
+		}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+ ]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+								<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Get Consecutive SR" doc:id="6237c85d-80e9-419a-b5d1-aef46e2ae92b" name="generic-sapi-clientSub_Flow" target="resultadoConsecutivoSR" />
+					</route>
+				</scatter-gather>
 				<scatter-gather doc:name="Scatter-Gather" doc:id="f83dafd0-59b5-43bf-83ef-9615f29aeb95" >
 					<route >
 						<ee:transform doc:name="Set Body Create Order" doc:id="9b9d81c8-5378-427c-a08a-20a71f3dba7c">
@@ -171,12 +434,18 @@ fun calcularEstadoComercial(reglas) = do {
         {
             "Codigo": p("status-orchestrator.code"),
             "Descripcion": p("status-orchestrator.description"),
-            "Fecha": fechaActual
+            "Fecha": fechaActual,
+            "Reintentos": 0,
+            "CodigoExcepcion": 0
         }
     else
         // CASO 2: Algo falló (pero no fue obligatorio) 
         // Retornamos el estado de la ÚLTIMA regla que sí tuvo éxito
-        (reglasExitosas[-1].estadoOrdenComercial ++ { "Fecha": fechaActual default "" } default {})
+        (reglasExitosas[-1].estadoOrdenComercial ++ { 
+        "Fecha": fechaActual default "" ,
+            "Reintentos": 0,
+            "CodigoExcepcion": 0
+        } default {})
 }
 
 ---
@@ -223,7 +492,36 @@ fun calcularEstadoComercial(reglas) = do {
         // --- AQUÍ USAMOS LA FUNCIÓN ---
         "Cliente_Tramite": findObject("MDM_CLIENTE"),
 
-        "Servicio_Tramite": findObject("CMP_OFERTA_PRODUCTO")
+        "Servicio_Tramite": vars.resultadoProductos.Servicio_Tramite,
+        "Orden_Servicio": {},
+        "Agendamiento":{},
+        "Orden_Activacion": null,
+  		"Cuenta_Facturacion_Anterior": null,
+  		"Cuenta_Facturacion_Tramite":{},
+  		"Orden_Requiere_Disponibilidad": null,
+	  	"Orden_Requiere_Agendamiento": null,
+	  	"Precio_Total_Orden": "",
+	  	"Adjuntos": {
+        "Servicio": (inputData.attachments.service default []) map (item) -> {
+            "nombre": item.fileName,
+            "ruta": item.path,
+            "tamano": item.size
+        }
+    },
+	  	"Adjuntos_Cliente": null,
+  		"Adjuntos_Servicio": null,
+  		"Caracteristica_Orden": inputData.orderCharacteristics default [] map (item) -> {
+	        "Caracteristica": item.characteristic,
+	        "Valor": item.value
+    	},
+  		"Otros": {
+		    "Envio_Contrato": "",
+		    "Usuario_Venta": "",
+		    "Medio_Comunicacion": ""
+		  },
+		 "Presencial": false,
+  		 "OfertaSugerida": [],
+  	 	 "Reserva": null
       }
     ]
   }
@@ -1490,11 +1788,47 @@ output application/java
 			</ee:variables>
 		</ee:transform>
 		<foreach doc:name="For Each Rule" doc:id="10a7c8d5-3856-49ab-8c6a-976faf12bfdd" collection="#[payload]">
-			<logger level="INFO" doc:name="Logger" doc:id="e785052c-d9f3-4c6f-917e-a4c81a2df6f9" message="#[payload.idRegla]"/>
 			<set-variable value="#[payload]" doc:name="Set Variable currentRule" doc:id="b68959a2-89ca-4054-854a-7e71f9334d9e" variableName="currentRule" />
-			<choice doc:name="Choice" doc:id="62c3d4ae-e1a7-4f7e-8e5a-b449f35f5479" >
+			<choice doc:name="Choice" doc:id="a298cdcb-2a0c-41f1-b589-4f894790f846" >
+				<when expression="#[%dw 2.0&#10;output application/json&#10;&#10;// IDs que la regla actual exige&#10;var idsRequeridos = vars.currentRule.dependencias.reglas default []&#10;&#10;// El histórico, si es la primera vez, será un array vacío&#10;var historico = vars.reglasAcumuladas default []&#10;&#10;// Buscamos en el histórico&#10;var dependenciasEncontradas = historico filter ((acumulada) -&gt; &#10;    idsRequeridos contains acumulada.idRegla&#10;)&#10;&#10;// PASO DE SEGURIDAD 1: ¿Están todas? &#10;// (Si es la primera ejecución y hay requeridas, esto dará FALSE automáticamente)&#10;var estanTodas = if (isEmpty(idsRequeridos)) true &#10;                 else sizeOf(dependenciasEncontradas) == sizeOf(idsRequeridos)&#10;&#10;// PASO DE SEGURIDAD 2: ¿Son válidas?&#10;var todasSonValidas = sizeOf(dependenciasEncontradas filter ($.esValido == false)) == 0&#10;&#10;---&#10;// Lógica para el Choice:&#10;// Si la regla dice que es dependiente, pero el historial no tiene lo que ella necesita... &#10;// devuelve TRUE (bloquea y manda al camino de error).&#10;(vars.currentRule.dependencias.esDependiente default false) and (!(estanTodas and todasSonValidas))]">
+					<ee:transform doc:name="Transform Message" doc:id="f3e8a6cd-4935-4ea3-8bf7-152511c597b4" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="reglasAcumuladas" ><![CDATA[%dw 2.0
+output application/json
+---
+do {
+    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
+    var acumulado = vars.reglasAcumuladas default []
+    
+    // 2. Creamos el objeto de la regla actual
+    var resultadoActual = {
+		idRegla: vars.currentRule.idRegla default "",
+		obligatoria: vars.currentRule.obligatoria default false,
+		evaluacionDetallada: [{
+			descripcion: "No ejecutada: Una o más dependencias fallaron o no existen.",
+			comparacion: "N/A",
+			resultado: "FALLO",
+			critica: "",
+			obligatoria: ""
+			
+		}],
+		esValido: false,
+		respuestaRegla: vars.currentRule.siFalla default "Rechazo por dependencia",
+		estadoOrdenComercial: vars.currentRule.estadoOrdenComercial
+	}
+    ---
+    // 3. Retornamos la lista con el nuevo elemento al final
+    acumulado ++ [resultadoActual]
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</when>
+				<otherwise >
+					<choice doc:name="Choice" doc:id="17b6f6fd-d288-4216-addf-460d9fa752de" >
 				<when expression='#[vars.currentRule.accion.sistema == "mongo-db-sapi-services"]'>
-					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="a6b68854-8fc0-48d6-b393-bd49e827b16a">
+					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="56eee99c-38e6-42bf-9fef-2611444495bc">
 						<ee:message>
 							<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -1557,7 +1891,7 @@ else
 						<ee:variables>
 						</ee:variables>
 					</ee:transform>
-					<ee:transform doc:name="Transform Message" doc:id="22e310a6-1527-483c-a786-44e233e28a0c">
+					<ee:transform doc:name="Transform Message" doc:id="e837d0a8-a089-466b-8154-f62517922158">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -1588,7 +1922,7 @@ output application/json
 		</ee:transform>
 				</when>
 	<when expression='#[vars.currentRule.accion.sistema == "oracle-sapi-services"]'>
-					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="7f00cecc-f502-4e8a-b433-8f879c18e2e3">
+					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="9e19dfe4-5363-4448-93b2-5c56fb55c4e4">
 						<ee:message>
 							<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -1652,7 +1986,7 @@ else
 						<ee:variables>
 						</ee:variables>
 					</ee:transform>
-					<ee:transform doc:name="Transform Message" doc:id="02e7c35f-c0bb-4f20-8040-ed22fb0be103">
+					<ee:transform doc:name="Transform Message" doc:id="d276cf94-82f4-4426-b24a-505c4556b508">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -1679,7 +2013,6 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-					<logger level="INFO" doc:name="Logger" doc:id="323d31dc-817a-4275-9d39-980238522dff" message="#[payload]"/>
 				
 </when>
 				<otherwise >
@@ -1689,9 +2022,9 @@ output application/json
     description='#["La regla con ID " ++ (vars.currentRule.idRegla default "Desconocida") ++ " no tiene la conexion parametrizada."]'/>
 				</otherwise>
 			</choice>
-			<set-variable value="#[payload]" doc:name="Set body sapi" doc:id="ac95286d-beed-401c-b044-befc70cd3003" variableName="requestDataSapi"/>
-			<flow-ref doc:name="Flow Reference" doc:id="79a6cdcc-47a6-4a48-8f46-f3dc5107ffc4" name="generic-sapi-clientSub_Flow" />
-			<ee:transform doc:name="Set Variables Reglas y resultadoSapi" doc:id="3fdad963-9e14-41e7-a00d-109188a8bf23" >
+			<set-variable value="#[payload]" doc:name="Set body sapi" doc:id="24a059ff-bbe5-4c2b-ade1-2841fec6f71e" variableName="requestDataSapi"/>
+			<flow-ref doc:name="Flow Reference" doc:id="1701aa9c-8adf-4e83-baae-8429b20ee909" name="generic-sapi-clientSub_Flow" />
+			<ee:transform doc:name="Set Variables Reglas y resultadoSapi" doc:id="08d3dbaf-43b2-4436-bcc8-863e7f04082b" >
 				<ee:message >
 				</ee:message>
 				<ee:variables >
@@ -1705,6 +2038,7 @@ do {
     // 2. Creamos el objeto de la regla actual
     var resultadoActual = {
         llave: vars.currentRule.accion.coleccion default "",
+        idRegla: vars.currentRule.idRegla default "",
         objeto: payload.result[0] default {}
     }
     ---
@@ -1786,8 +2120,8 @@ fun checkCondition(actual, operator, expected) = do {
 	        if (fechaEvaluar != null) (fechaEvaluar > hoy) else false
     	}
         case ">" -> (actual default 0) > (expected default 0)
-        case "==" -> a == e
-        case "!=" -> a != e
+        case "==" -> upper(a) == upper(e)
+        case "!=" -> upper(a) != upper(e)
         case "is_not_empty" -> !isEmpty(actual)
         else -> false
     }
@@ -1823,7 +2157,7 @@ var listaResultados = validaciones map (item) -> do {
              else if (item.logica == "mayor_hoy")
                 "$(valorEnMongo default 'null') la agenda no es mayor a hoy"
              else 
-                "$(valorEnMongo default 'null') $(item.logica) $(valorAComparar default 'null')",
+                "$(upper(valorEnMongo) default 'null') $(item.logica) $(upper(valorAComparar) default 'null')",
         critica: (not cumpleCondicion) and (item.obligatoria default false),
         obligatoria: item.obligatoria
     }
@@ -1852,7 +2186,9 @@ do {
 }]]></ee:set-variable>
 				</ee:variables>
 			</ee:transform>
-			<logger level="INFO" doc:name="Logger" doc:id="519fe849-cfb7-46cc-8a94-a97e30806e21" message="#[vars.reglasAcumuladas]" />
+				</otherwise>
+			</choice>
+			
 
 
 </foreach>
