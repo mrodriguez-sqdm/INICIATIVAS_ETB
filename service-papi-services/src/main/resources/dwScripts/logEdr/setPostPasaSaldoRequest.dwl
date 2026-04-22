@@ -9,19 +9,10 @@ var creationDate = subscription.creationDate default null
 
 ---
 {
-  eventType: "PASASALDO" as String,
   ID_Sistema: "JSC" as String,
   ID_Tpo_Xdr: "PASASALDO" as String,
-  Fecha_Ini: 
-    if (creationDate != null)
-      ((creationDate as DateTime {format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"})
-        as String {format: "yyyyMMdd"})
-    else "",
-  Hora_Ini: 
-    if (creationDate != null)
-      ((creationDate as DateTime {format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"})
-        as String {format: "HH:mm:ss"})
-    else "",
+  Fecha_Ini: (now() as String {format: "yyyyMMdd"}),
+  Hora_Ini: (now() as String {format: "HH:mm:ss"}),
   Abonado_A: (requestTransferBalance.msisdnOrig default "") as String,
   Abonado_B: (requestTransferBalance.msisdnDest default "") as String,
   Valor_Nominal: (requestTransferBalance.monto default "") as String,

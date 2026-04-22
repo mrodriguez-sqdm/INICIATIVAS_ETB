@@ -9,7 +9,6 @@ var expirationDate = responseJSC.expirationDate default null
 
 ---
 {
-  eventType: "RECARGAS",
   ID_Sistema: "JSC",
   ID_Tpo_Xdr: "RECARGAS",
   Fecha_Ini: if (creationDate != null) ((creationDate as DateTime) as String {format: "yyyyMMdd"}) else "",

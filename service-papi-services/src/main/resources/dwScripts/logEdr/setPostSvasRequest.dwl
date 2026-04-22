@@ -6,7 +6,6 @@ var creationDate = responseJSC.creationDate default null
 
 ---
 {
-  eventType: "SVA",
   ID_Sistema: (responseJSC.domain default "") as String,
   ID_Tpo_Xdr: "SVA",
   Fecha_Ini: if (creationDate != null) ((creationDate as DateTime) as String {format: "yyyyMMdd"}) else "",
