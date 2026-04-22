@@ -10,7 +10,7 @@ var creationDate = responseJSC.creationDate default null
   ID_Tpo_Xdr: "SVA",
   Fecha_Ini: if (creationDate != null) ((creationDate as DateTime) as String {format: "yyyyMMdd"}) else "",
   Hora_Ini: if (creationDate != null) ((creationDate as DateTime) as String {format: "HH:mm:ss"}) else "",
-  Abonado_A: (responseJSC.subscription.id default "") as String,
+  Abonado_A: vars.connectionNumber,
   Bolsa: ((responseJSC.packages default [])[0].id default "") as String,
   Valor_Nominal: (responseJSC.amount.amount default "") as String,
   Fch_Vigencia_Ini: if (creationDate != null) ((creationDate as DateTime) as String {format: "yyyyMMdd"}) else "",
