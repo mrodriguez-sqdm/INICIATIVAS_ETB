@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-notifications-orchestrator"
+		doc:id="029cce0a-392e-46ec-89b5-a5fe5979f941">
+		<logger level="INFO" doc:name="Log Orchestration Start"
+			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /notifications"]' />
+		<ee:transform doc:name="set initial payload and pau login request" doc:id="122708ee-3139-4c9d-b8b1-7b2d8a4a24d3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/x-www-form-urlencoded
+---
+{
+	"username": p('secure::pau.user'),
+	"password": p('secure::pau.pass')
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="post-login-pau-client" doc:id="e9c12c62-0d49-46cf-b255-ec82bd4baceb" name="post-login-pau-client" target="loginResponse"/>
+		<ee:transform doc:name="set token and pau connector by id request" doc:id="799747cf-199a-428b-bbd5-03c198f190b6" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/x-www-form-urlencoded
+---
+{
+	"identificador": vars.initialPayload.notification.receiverPhoneNumber,
+	"interface_id": "21",
+	"entidad_interface_id": "5"
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="pauToken" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.loginResponse.token]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="post-connector-by-id-pau-client"
+			doc:id="5769df10-89f4-48d5-91d5-03dae0defab1"
+			name="post-connector-by-id-pau-client" target="connectorResponse"/>
+		<ee:transform doc:name="set pau notification request" doc:id="a7212cc9-19c4-41ec-98df-516d82c0e2c4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/x-www-form-urlencoded
+---
+{
+	"conector_id": vars.connectorResponse.data.id,
+	"tipo": "1",
+	"texto": '&SEND_TEMPLATE#WABA#{"plantilla":"deg_tecnico_en_caminoaseguramiento_v1","body_param":["Camilo","https://etb.pau.zone/"]}'
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-notification-pau-client" doc:id="618cac09-dab1-40fb-82fb-7d3ea8fa9cbb" name="post-notification-pau-client"/>
+		<ee:transform doc:name="set response" doc:id="2443e73e-8ba8-4e37-b23f-81a803d4dc8f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: "200",
+	message: "Notification Sent Successfully",
+	result: {
+		notificationStatus: "ok",
+		notificationId: payload[0].data.'notifiacion_id'
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Orchestration End"
+                message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /notifications | status=201"]' />
+	</sub-flow>
+</mule>
