@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<sub-flow name="get-health-check-orchestratorSub_Flow" doc:id="8de206b7-df85-4c6a-9274-987b22ad80be" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="f2a759b0-477d-4d4f-ace9-99e4e2c96759" >
+			<route >
+				<ee:transform doc:name="Mapping oracle" doc:id="5af6404f-e338-41e4-a82c-de8d791c3784" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="host" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"hostname":p('oracle-db.host'),
+	"port":p('oracle-db.port'),
+	"serviceName":p('oracle-db.serviceName')
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to orchestrate testing" doc:id="a9a1359a-b678-44a0-92a4-66ed93476ef2" name="orchestrateTesting"/>
+			</route>
+			<route >
+				<ee:transform doc:name="Mapping oracle normalize" doc:id="bbb8d28e-d4c3-4822-839c-f7547b7e21aa" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="host" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"hostname":p('oracle-db-normalize.host'),
+	"port":p('oracle-db-normalize.port'),
+	"serviceName":p('oracle-db-normalize.serviceName')
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to orchestrate testing normalize" doc:id="66c189a0-2e40-4e9e-840e-9ebc0de29945" name="orchestrateTestingNormalize"/>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Mapping array of results" doc:id="2b70a441-33fe-4645-b567-2cf38b0df3af" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload..payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Mapping size of healthy" doc:id="ebb22539-3595-4f1a-ba3e-b6bfcaffc014" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="healthy" ><![CDATA[%dw 2.0
+output application/java
+---
+sizeOf(payload filter ((value,index) -> (value.status == "Up")))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Mapping response" doc:id="19ed7bc4-66d1-40c6-96f1-65be7ebcb1e8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"application": app.name,
+	"status": if(vars.healthy == sizeOf(payload)) "Up" else "Critical",
+	"dependencies": payload	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="orchestrateTesting" doc:id="e5e5daff-b35c-4fe6-b3a2-58f9fc6eaff3" >
+		<flow-ref doc:name="Go to test channel" doc:id="921306ca-b222-4701-a2fd-261d375f3be8" name="test-channel"/>
+		<ee:transform doc:name="Mapping status" doc:id="bdec8fb7-4862-4183-b27c-6e0b365caa10" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+vars.host ++ { "status" : payload }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="test-channel" doc:id="538a17e5-3ffe-4223-a593-f291d71724bb" >
+		<try doc:name="Try" doc:id="1101b79d-cceb-45d4-8a19-3b96095c493e" >
+			<db:select doc:name="Select Global Name" doc:id="4ca38058-739a-48ef-8d8f-751c86ead6bf" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT * FROM GLOBAL_NAME]]></db:sql>
+		</db:select>
+			<ee:transform doc:name="Payload Up" doc:id="4337d099-22f6-4835-aa27-be02ca2c654d" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"Up"]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e8f87ed6-4fab-4dd8-aec1-2b6ab89ddc23" >
+					<ee:transform doc:name="Payload Down" doc:id="b6e3aaeb-01f3-495e-80fd-70894221db38" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"Down"]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="orchestrateTestingNormalize" doc:id="21a06b6c-ecad-477c-a2dc-42952f3d87b9" >
+		<flow-ref doc:name="Go to test channel normalize" doc:id="5080287c-6f6a-4c1c-b267-25ce87c4e3ea" name="test-channel-Normalize" />
+		<ee:transform doc:name="Mapping status" doc:id="c6304918-9dc4-4148-9b92-36afa30222f3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+vars.host ++ { "status" : payload }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="test-channel-Normalize" doc:id="cba478cd-e8a9-4ca3-82bb-26ed89d3c720" >
+		<try doc:name="Try" doc:id="f5974859-af7a-4167-b9f4-15935253e701" >
+			<db:select doc:name="Select Global Name" doc:id="4071477a-3279-4b41-b78f-56695d52d6da" config-ref="Normalize_Address_Config" >
+				<db:sql ><![CDATA[SELECT * FROM GLOBAL_NAME]]></db:sql>
+			</db:select>
+			<ee:transform doc:name="Payload Up" doc:id="f00594ad-ae6b-41c7-b870-d8499ea7e50f" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"Up"]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="572910a5-839d-4b71-ac63-fc9d542c397a" >
+					<ee:transform doc:name="Payload Down" doc:id="5865d579-36c7-474c-b1d9-3a6dadcf4efb" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"Down"]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

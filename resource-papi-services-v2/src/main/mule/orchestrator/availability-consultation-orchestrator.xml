@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<sub-flow name="availability-consultationSub_Flow" doc:id="a1b2c3d4-1111-2222-3333-444455556666">
+
+		<ee:transform doc:name="Extract MSISDN/SIM ids and context" doc:id="d4e5f6a7-4444-5555-6666-777788889999">
+			<ee:variables>
+				<ee:set-variable variableName="msisdnId"><![CDATA[%dw 2.0
+output application/java
+var r = payload.recursos default []
+var m = r filter ((re) -> lower(re.nombreRecurso default "") == "msisdn")
+---
+if (sizeOf(m) > 0) m[0].idRecurso else null]]></ee:set-variable>
+				<ee:set-variable variableName="simIccid"><![CDATA[%dw 2.0
+output application/java
+var r = payload.recursos default []
+var s = r filter ((re) -> lower(re.nombreRecurso default "") == "sim")
+---
+if (sizeOf(s) > 0) s[0].idRecurso else null]]></ee:set-variable>
+				<ee:set-variable variableName="systemId"><![CDATA[attributes.headers.systemId]]></ee:set-variable>
+				<ee:set-variable variableName="processname"><![CDATA["availability-consultation"]]></ee:set-variable>
+				<ee:set-variable variableName="logs"><![CDATA[attributes.headers.logs]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+
+		<!-- SCAD = Scatter-Gather: MSISDN y SIM en paralelo; cada ruta es independiente (no solicitado → null; error → objeto de error sin tumbar la otra ruta). -->
+		<scatter-gather doc:name="Scatter-Gather MSISDN y SIM" doc:id="sg-avail-1111-2222-3333-444455556666" maxConcurrency="2">
+			<route>
+				<try doc:name="Ruta MSISDN (independiente)" doc:id="try-msisdn-2222-3333-4444-555566667777">
+					<choice doc:name="Solo si hay id MSISDN">
+						<when expression="#[vars.msisdnId != null]">
+							<flow-ref doc:name="JSC GET MSISDN disponibilidad" name="jsc-get-msisdn-disponibilidad-client" doc:id="ref-msisdn-3333-4444-5555-666677778888" />
+						</when>
+						<otherwise>
+							<set-payload doc:name="Sin consulta MSISDN" doc:id="noop-msisdn-4444-5555-6666-777788889999" value="#[null]" />
+						</otherwise>
+					</choice>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="Error MSISDN aislado" doc:id="err-msisdn-5555-6666-7777-888899990000" type="ANY">
+							<ee:transform doc:name="Payload error MSISDN">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: true,
+  servicio: "MSISDN",
+  mensaje: error.description default "Error consulta disponibilidad MSISDN"
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</route>
+			<route>
+				<try doc:name="Ruta SIM (independiente)" doc:id="try-sim-6666-7777-8888-999900001111">
+					<choice doc:name="Solo si hay ICCID SIM">
+						<when expression="#[vars.simIccid != null]">
+							<flow-ref doc:name="JSC GET SIM disponibilidad" name="jsc-get-sim-disponibilidad-client" doc:id="ref-sim-7777-8888-9999-000011112222" />
+						</when>
+						<otherwise>
+							<set-payload doc:name="Sin consulta SIM" doc:id="noop-sim-8888-9999-0000-111122223333" value="#[null]" />
+						</otherwise>
+					</choice>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="Error SIM aislado" doc:id="err-sim-9999-0000-1111-222233334444" type="ANY">
+							<ee:transform doc:name="Payload error SIM">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: true,
+  servicio: "SIM",
+  mensaje: error.description default "Error consulta disponibilidad SIM"
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</route>
+		</scatter-gather>
+
+		<ee:transform doc:name="Build availability response desde rutas SCAD" doc:id="e1f2a3b4-1111-2222-3333-444455556666">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var msisdnRaw = payload."0".payload default null
+var simRaw = payload."1".payload default null
+fun mapMsisdn(x) =
+  if (x == null or (x.error default false))
+    {
+      status: null,
+      id: null
+    }
+  else
+    {
+      status: x.status default null,
+      id: x.id default null
+    }
+fun mapSim(x) =
+  if (x == null or (x.error default false))
+    {
+      status: null,
+      simCode: null
+    }
+  else
+    {
+      status: x.status default null,
+      simCode: x.simCode default null
+    }
+---
+{
+  cod_res: "200",
+  res: "Consulta exitosa.",
+  objDisponibilidad: {
+    resultadoMsisdn: mapMsisdn(msisdnRaw),
+    resultadoSim: mapSim(simRaw)
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+
+	</sub-flow>
+</mule>

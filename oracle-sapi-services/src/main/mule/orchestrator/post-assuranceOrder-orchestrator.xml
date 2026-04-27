@@ -1,0 +1,162 @@
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-assuranceOrder-orchestratorSub_Flow" doc:id="dc143f09-2e87-40e7-be41-f06c8a43513f" >
+				<ee:transform doc:name="authString" doc:id="460a8657-15d1-4fc8-8008-a99e36a303fb">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="authString"><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/json
+var user = p('oracle-ocs.createAssuranceOrder.user')
+var pass = p('oracle-ocs.createAssuranceOrder.pass')
+---
+toBase64((user ++ ":" ++ pass) as Binary)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+
+		<ee:transform doc:name="Prepare input" doc:id="22100194-af69-4a78-b80c-fde72166f1be" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	apptNumber: payload.id_tarea_remedy,
+	customerNumber: payload.cedula default "",
+	worktypeLabel: payload.tipo_actividad,
+	timeSlot: payload.franja,	
+	name: payload.nombre_cliente default "",
+	address: payload.direccion,
+	city: payload.ciudad default "",
+	cstate: payload.departamento default "",
+	zip: null,
+	coordx: payload.cord_x default "",
+	coordy: payload.cord_y default "",
+	phone: payload.telefono default "",
+	email: payload.email default "",
+	cell: payload.telefono default "",
+	XA_request_type: p('oracle-ocs.createAssuranceOrder.XA_request_type') default "",
+	date: payload.fecha_agendamiento default "",
+	resourceId: payload.zona default "",
+	workSkill: payload.nombre_orden default "",
+	activityType: payload.tipo_actividad default "",
+	XA_LATITUD: payload.cord_x default "",
+	XA_LONGITUD: payload.cord_y default "",
+	XA_ring: payload.Anillo default "",
+	XA_equipmentNemonic: payload.nemonico_equipo default "",
+	XA_cable: payload.cable default "",
+	XA_hilo: payload.hilo as String,
+	XA_distancia: payload.distancia default "",
+	XA_direccion: payload.direccion default "",
+	"XA_topología": payload.topologia default "",
+	XA_Zone: payload.zona_agenda default ""
+}
+
+
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="4b140253-bafc-4d8f-9e10-ebe218e9a47b" name="post-assuranceOrder-clientSub_Flow" target="response" />
+		<choice doc:name="Choice" doc:id="eaf5c9da-6625-4354-b892-bfd9b84ca31b">
+			<when expression='#[%dw 2.0 output application/java var appReport = vars.response.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.*message var report = vars.response.Envelope.Body.inbound_interface_response.report.*message --- (appReport.result contains "error") or (report.result contains "error")]'>
+				<raise-error doc:name="Raise error" doc:id="f6d1587e-ae18-4fa2-b0ca-f14c014f0c16" type="CUSTOM:FAIL_ORDER" description='#[%dw 2.0 output application/java var appReport = vars.response.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.*message var report = vars.response.Envelope.Body.inbound_interface_response.report.*message --- if (appReport != null) (appReport filter ($.result == "error"))[0].description else (report filter ($.result == "error"))[0].description]' />
+			</when>
+		</choice>
+		<choice doc:name="Choice" doc:id="cbf94417-ddf7-4509-b8f1-26e39672b60f">
+			<when expression="#[vars.inputPayload.nombre_archivo != null]">
+				<ee:transform doc:name="Base 64" doc:id="78a67e1a-ce82-45b1-99f2-9c85f0011ddb">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/octet-stream
+import * from dw::core::Binaries
+---
+fromBase64(vars.inputPayload.contenido_archivo)]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Go to put-assuranceOrder-clientSub_Flow" doc:id="6254020e-361e-4f37-8f85-5ee035595412" name="put-assuranceOrder-clientSub_Flow" />
+				<choice doc:name="Choice" doc:id="f42519b0-83f2-40c1-aaaf-31acb05d12e4">
+					<when expression='#[%dw 2.0 output application/java var appReport = vars.response.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.*message var report = vars.response.Envelope.Body.inbound_interface_response.report.*message --- (appReport.result contains "error") or (report.result contains "error")]'>
+						<raise-error doc:name="Raise error" doc:id="cb02e2a9-80b2-4efb-a77a-b4eed9a74763" type="CUSTOM:FAIL_ORDER" description='#[%dw 2.0 output application/java var appReport = vars.response.Envelope.Body.inbound_interface_response.data.commands.command.appointment.report.*message var report = vars.response.Envelope.Body.inbound_interface_response.report.*message --- if (appReport != null) (appReport filter ($.result == "error"))[0].description else (report filter ($.result == "error"))[0].description]' />
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Set Success response" doc:id="dec65c4c-56c6-4515-8271-f37051defa8c">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "codigo": "200",
+    "activityId": vars.response.activityId
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			
+</when>
+			<otherwise>
+				<ee:transform doc:name="Set Success response" doc:id="ab0b4b04-03fb-43ae-8b46-9d054de28709">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "codigo": "200",
+    "activityId": vars.response.activityId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		
+</choice>
+		<choice doc:name="Choice" doc:id="30119a1c-ae26-49d7-a941-40ef0aead0bc" >
+			<when expression="#[vars.inputPayload.tipo_actividad == 'MOD_CORP']">
+				<ee:transform doc:name="Input createNewTask" doc:id="a9d6edea-cb59-47f4-abad-2305deffa7ab">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "accion": "GENERAR TAREA SALESFORCE REMEDY",
+  "nombreTask": vars.inputPayload.nombre_orden,
+  "resumenTask": "Tarea " ++ vars.inputPayload.tipo_solicitud ++ " N-" ++ vars.response.activityId ++ " de Agendamiento Técnico en Terreno a través de ETA",
+  "notasTask": "Creacion de tarea de agendamiento planta externa",
+  "idCasoSalesforce": "0",
+  "idTarea": "TOA " ++ vars.response.activityId ,
+  "grupoAsg": vars.inputPayload.zona_agenda
+}
+
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[vars.inputPayload.id_tarea_remedy]" doc:name="incidence_id" doc:id="827b1b0b-aec2-4a9a-a1ef-a59dc444c556" variableName="incidence_id"/>
+				<flow-ref doc:name="createNewTask" doc:id="d00c815c-fa53-4337-a15c-8bf33ea06d97" name="createNewTask-remedy-sapiSub_Flow" target="remedyTaskOut"/>
+				<ee:transform doc:name="Transform Message" doc:id="2b4ebb72-016c-47c2-b378-0150984fd8bd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "XA_IdTask" : vars.remedyTaskOut.createNewTaskOut.tasksId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[vars.response.activityId]" doc:name="activityId" doc:id="70ab3913-6786-410c-936f-edea528c89cd" variableName="activityId"/>
+				<flow-ref doc:name="patch-assurance-order-clientSub_Flow" doc:id="fb430e80-5bf3-49aa-88ea-89ed417d7c4c" name="patch-assurance-order-clientSub_Flow"/>
+				<ee:transform doc:name="Succes" doc:id="8ee57076-0e6a-4b46-b55c-c87fa6c7df60" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "codigo": "200",
+    "activityId": vars.response.activityId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+		</choice>
+	</sub-flow>
+</mule>
