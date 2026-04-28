@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-inventory-configuration-common-Sub_Flow" doc:id="f7aa2e39-2011-416c-aaab-03ac498a4624" >
+		<ee:transform doc:name="Transform Message" doc:id="09590d58-1c73-4e26-8c96-3de3fbc4ae44" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml skipNullOn="everywhere"
+
+ns open http://www.openuri.org/
+ns tec http://com/tecnocom
+
+var qp = attributes.queryParams
+
+var fechaPeticion =
+    now() as String {format: "yyyy-MM-dd HH:mm:ss.SS"}
+
+---
+{
+  open#doConsultarConfiguracionInventario: {
+    tec#PeticionConsultarConfiguracionInventario: {
+      tec#EncabezadoMensaje: {
+        tec#IdDisponibilidad: qp.idDisponibilidad,
+        tec#NumeroOrdenAprovisionador: qp.numeroOrdenAprovisionador,
+        tec#NumeroRevision: "1",
+        tec#FechaPeticionOrden: fechaPeticion,
+        tec#TecnologiaETB: qp.tecnologia
+      },
+      tec#DetalleMensaje: {
+        tec#CuentasServicio: {
+          tec#CuentaServicio: {
+            tec#IdCuentaServicio: qp.idServicio
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="7e199c1b-8fa4-4f71-a424-0c79d436425b" name="get-inventory-configuration-client-Sub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="ac98c339-c5a5-4b65-89eb-36564a7a856a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+ns open http://www.openuri.org/
+ns tec http://com/tecnocom
+
+var body =
+  payload.body.open#doConsultarConfiguracionInventarioResponse.tec#RespuestaPeticionConsultarConfiguracionInventario
+
+var detalle = body.tec#DetalleMensaje
+var resultado = detalle.tec#Resultado
+
+---
+{
+  cod_res:
+    if ((resultado.tec#Resultado default "") == "OK")
+      "200"
+    else
+      resultado.tec#CodigoErrorResultado default null,
+
+  res:
+    if ((resultado.tec#Resultado default "") == "OK")
+      "Consulta exitosa."
+    else
+      resultado.tec#DescripcionErrorResultado default null,
+
+  objConfiguracionInventario: {
+    serviceAccounts: detalle.tec#CuentasServicio.*tec#CuentaServicio map ((cuentaServicio) -> {
+      serviceAccountId: cuentaServicio.tec#IdCuentaServicio default null,
+
+      addresses: cuentaServicio.tec#Direcciones.*tec#Direccion map ((direccion) -> {
+        accesses: direccion.tec#Accesos.*tec#Acceso map ((acceso) -> {
+          accessId: acceso.tec#IdAcceso default null,
+          technologyName: acceso.tec#NombreTecnologia default null,
+
+          detailedRoute: {
+            elements: acceso.tec#RutaDetallada.tec#Elementos.*tec#Elemento map ((elemento) -> {
+              elementId: elemento.tec#IdElemento default null,
+              elementType: elemento.tec#TipoElemento default null,
+              hostName: elemento.tec#HostName default null,
+              port: elemento.tec#PuertoElemento default null,
+              vendor: elemento.tec#Fabricante default null,
+              networkLocation: elemento.tec#UbicacionRed default null,
+
+              attributes: elemento.tec#Atributos.*tec#Atributo map ((atributo) -> {
+                name: atributo.tec#Atributo default null,
+                value: atributo.tec#Valor default null
+              })
+            })
+          },
+
+          attributes: acceso.tec#Atributos.*tec#Atributo map ((atributo) -> {
+            name: atributo.tec#Atributo default null,
+            value: atributo.tec#Valor default null
+          })
+        }),
+
+        services: direccion.tec#Servicios.*tec#Servicio map ((servicio) -> {
+          serviceId: servicio.tec#IdServicio default null,
+          rootServiceId: servicio.tec#IdServicioRaiz default null,
+          parentServiceId: servicio.tec#IdServicioPadre default null,
+          serviceName: servicio.tec#NombreTecnicoServicio default null,
+          serviceStatus: servicio.tec#EstadoServicio default null,
+
+          attributes: servicio.tec#Atributos.*tec#Atributo map ((atributo) -> {
+            name: atributo.tec#Atributo default null,
+            value: atributo.tec#Valor default null,
+            action: atributo.tec#Accion default null
+          })
+        }),
+
+        policies: direccion.tec#Politicas.*tec#Politica map ((politica) -> {
+          equipmentPolicies: politica.*tec#EquipoPolitica map ((equipo) -> {
+            equipmentType: equipo.tec#TipoEquipo default null,
+            brand: equipo.tec#MarcaEquipo default null,
+            model: equipo.tec#ModeloEquipo default null,
+            minimumQuantity: equipo.tec#CantidadMinima default null,
+
+            attributes: equipo.tec#Atributos.*tec#Atributo map ((atributo) -> {
+              name: atributo.tec#Atributo default null,
+              value: atributo.tec#Valor default null
+            })
+          })
+        })
+      })
+    })
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
