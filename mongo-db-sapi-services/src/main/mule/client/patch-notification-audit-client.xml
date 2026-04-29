@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-notification-audit-client" doc:id="81a55153-a931-4482-a2a7-f751895a3cee" >
+		<try doc:name="Try" doc:id="85f11317-ad04-4c0a-a694-ea2c21a7595e" >
+			<mongo:update-documents collectionName="${mongoDb-mdm.collection-notification-audit}" doc:name="update document MDM_VALIDACION_CLIENTE" doc:id="5759e933-79ea-4ae8-af24-a1bf36dfd252" config-ref="MongoDB_Local_Config" >
+				<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{ "_id": { "$oid": vars.auditId } }]]]></mongo:query>
+			</mongo:update-documents>
+			<ee:transform doc:name="set response" doc:id="12d7a9a0-099c-48f0-9653-828c270c2d79" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "201",
+	"message": "Notification Audit Record Updated",
+	"identity": payload
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4a076e32-7d4c-4dec-8205-8fe45761667b" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="ea5db0f4-0fab-4781-adf7-f3c8fb8141ec" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 500,
+	code: "INTERNAL SERVER ERROR",
+	message: error.description,
+	messageServer: error.detailedDescription
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="082c9024-d3ae-42dd-aebf-37961fbcd5b5" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
