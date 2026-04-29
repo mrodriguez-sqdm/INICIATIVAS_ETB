@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-notifications-campaigns-client" doc:id="a5dafcb3-3a36-4e6c-b207-b5ac60e3b5e0" >
+		<try doc:name="Try" doc:id="a263294d-79d9-4be8-af00-eb9c3d6cec8c" >
+			<mongo:find-documents collectionName="${mongoDb-mdm.collection-notification-campaigns}" fields="," doc:name="find document PAR_PARAMETROS" doc:id="f66450a2-76e0-4e0d-9be4-4e822ab1ff41" config-ref="mdm_db_Config" >
+				<mongo:query ><![CDATA[#[output application/json 
+---
+{
+	"nombre": "TEMPLATES_NOTIFICACIONES"
+}]]]></mongo:query>
+			</mongo:find-documents>
+			<ee:transform doc:name="set response" doc:id="1b8594a7-9bd5-41de-a9e5-74e9642b69d8" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if ( isEmpty(payload) ) {
+	"status": 404,
+	"code": "NOT_FOUND",
+	"message": {
+		"message": ""
+	},
+	"messageServer": "Data not found",
+	"cause": [{
+		"origin": app.name,
+		"message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+	}]
+}
+else
+{
+	"status": "200",
+	"message": "Campaigns retrieved successfully",
+	"result": payload[0].valor
+}]]></ee:set-payload>
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload)) 404 else 200
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="96af753e-9440-44f7-bf6c-322fda52ce68" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="af0d5120-cc76-4aef-abac-d8db70789665" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 500,
+	code: "INTERNAL SERVER ERROR",
+	message: error.description,
+	messageServer: error.detailedDescription
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="68f7732c-9323-4d4a-b93d-8883b7514495" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
