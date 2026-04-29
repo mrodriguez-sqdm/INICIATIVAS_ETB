@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-comm-message-orchestrator" doc:id="34961647-b2a3-49ff-ad3a-3aa778f29b92" >
+		<logger level="INFO" doc:name="Log Orchestration Start" doc:id="e9c9f501-eb82-4869-93ab-9886f93d7959" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /communications/message"]' />
+		<ee:transform doc:name="set initial variables" doc:id="295eb254-735f-449e-9c23-2a6f1644dc95" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="provider" ><![CDATA[%dw 2.0
+output application/json
+---
+lower(attributes.headers.'x-provider-id')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="dynamic-send-notification" doc:id="866814a9-74af-4818-9948-18ced94d971e" name='#[vars.provider ++ "-send-notification"]'/>
+		<logger level="INFO" doc:name="Log Orchestration End" doc:id="ff3d01d5-c284-432f-a050-08677ec127d7" message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /communications/message | status=201"]' />
+	</sub-flow>
+	<sub-flow name="pau-send-notification" doc:id="7437653a-1ac9-480c-8952-862114eee17c" >
+		<ee:transform doc:name="set silice notifications request" doc:id="b8bfba44-cb93-4c90-8860-3e7fa32858c7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"notification": {
+		"message": payload.messageContent,
+		"messageChannel": payload.messageChannel,
+		"templateId": payload.templateId,
+		"templateName": payload.templateName,
+		"templateSubject": payload.templateSubject,
+		"receiverName": payload.receiver.name,
+		"receiverPhoneNumber": payload.receiver.phoneNumber
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-notification-silice-sapi-client" doc:id="d2c6db4a-d5ad-4729-a596-dfc623aef851" name="post-notification-silice-sapi-client" />
+		<ee:transform doc:name="set response" doc:id="973cc33e-dbe7-4e4c-9efb-512e0152ba9c">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": "201",
+  "message": "Notification Sent Successfully",
+  "result": {
+    "state": vars.initialPayload.state,
+    "messageChannel": vars.initialPayload.messageChannel,
+    "provider": vars.provider,
+    "notificationSendingDate": (now() >> "UTC") as String {format: "YYYY-MM-dd'T'HH:mm:ss"},
+    "notificationId": payload.result.notificationId
+  }
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		<flow-ref doc:name="save-message-audit" doc:id="8e1f3526-cd1b-4835-94c7-1ce25620b14d" name="save-message-audit" />
+	</sub-flow>
+	<sub-flow name="responsys-send-notification" doc:id="6f41b7eb-e3ed-4256-b89f-35be6b29e936" >
+		<logger level="INFO" doc:name="set oracle sapi notifications request" doc:id="db490370-7f52-4451-9f75-2008336d3c43" />
+		<logger level="INFO" doc:name="post notification oracle sapi client" doc:id="3c8ca204-7a3e-4ba8-97d5-76f6146a352c" />
+		<logger level="INFO" doc:name="set response" doc:id="bd7f9079-6d0a-4e6f-a141-ac759d31d508" />
+		<flow-ref doc:name="save-message-audit" doc:id="6cb4e06d-bd26-499b-a4fd-f6ee77faa608" name="save-message-audit" />
+	</sub-flow>
+	<sub-flow name="save-message-audit" doc:id="7ce1facc-b7f1-49a9-97a0-b9a8cacd8c59" >
+		<async doc:name="Async" doc:id="e4d543b2-4f97-4e1a-b7e0-f40e0568862b" >
+			<ee:transform doc:name="set mongo sapi comm message request" doc:id="b178da0a-0360-4d6c-a2db-84c98d192200" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.initialPayload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="post-message-audit-mongo-db-sapi-clientSub_Flow" doc:id="b305c451-7bf0-47cc-9b3d-a61fc001d680" name="post-message-audit-mongo-db-sapi-clientSub_Flow"/>
+		</async>
+	</sub-flow>
+</mule>
