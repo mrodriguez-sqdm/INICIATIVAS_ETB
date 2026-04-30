@@ -84,7 +84,7 @@ output application/json
 						<flow-ref doc:name="Build NumeroOrden" doc:id="3a465431-51bd-4649-bd66-038d19be08e6" name="generate-OrderNumber-Sub_Flow" target="orderNumber"/>
 					</route>
 					<route >
-						<flow-ref doc:name="Build ServicioTramite" doc:id="08f9b1d1-ede0-4ea6-bb05-b1f82244ef90" target="resultadoProductos" name="build-ClienteTramite-Sub_Flow"/>
+						<flow-ref doc:name="Build ServicioTramite" doc:id="08f9b1d1-ede0-4ea6-bb05-b1f82244ef90" target="resultadoProductos" name="build-ServicioTramite-Sub_Flow"/>
 						
 					</route>
 					<route >
@@ -190,8 +190,15 @@ var objectCustomer = findObject("MDM_CLIENTE")
 						</ee:transform>
 					</route>
 				</scatter-gather>
-				<flow-ref doc:name="Flow Reference" doc:id="e7fc298a-fb44-480a-a5bd-0c2d60d11382" name="build-OrdenServicio-Sub_Flow" target="ordenServicio"/>
-				<!-- [STUDIO:"Scatter-Gather"]<scatter-gather doc:name="Scatter-Gather" doc:id="f83dafd0-59b5-43bf-83ef-9615f29aeb95" >
+				<scatter-gather doc:name="Scatter-Gather" doc:id="27f200ed-95c8-47bd-ab38-859f52073a90" >
+					<route >
+						<flow-ref doc:name="Build OrdenServicio" doc:id="e7fc298a-fb44-480a-a5bd-0c2d60d11382" name="build-OrdenServicio-Sub_Flow" target="ordenServicio" />
+					</route>
+					<route >
+						<flow-ref doc:name="Build code CUN" doc:id="6b6c6c5a-4097-4710-9f0b-4da15b4b08a5" name="build-CUN-orderSub_Flow" target="cun" />
+					</route>
+				</scatter-gather>
+				<scatter-gather doc:name="Scatter-Gather" doc:id="f83dafd0-59b5-43bf-83ef-9615f29aeb95" >
 					<route >
 						<ee:transform doc:name="Set Body Insert MDM_CD_ORDEN" doc:id="9b9d81c8-5378-427c-a08a-20a71f3dba7c">
 					<ee:message>
@@ -210,12 +217,12 @@ var fechaActual = {
 // 2. LA CLAVE: Función para buscar el objeto dentro del array de la variable
 // Busca en el array donde 'llave' coincida con el nombre y devuelve el campo 'objeto'
 fun findObject(nombreLlave) = 
-    (vars.resultadoSapi filter ($.llave == nombreLlave))[0&#93;.objeto default {}
+    (vars.resultadoSapi filter ($.llave == nombreLlave))[0].objeto default {}
 
 // Función para formatear fechas al estilo MongoDB
 fun toDate(d) = if (isEmpty(d)) null else { "\$date": d }
 
-// &#45;&#45;- FUNCIÓN PARA EL CALCULO DEL ESTADO&#45;&#45;-
+// --- FUNCIÓN PARA EL CALCULO DEL ESTADO---
 fun calcularEstadoComercial(reglas) = do {
     // 1. Limpiamos y ordenamos por código para asegurar la línea de tiempo
     var estadosLimpios = (reglas map (item) -> {
@@ -233,7 +240,7 @@ fun calcularEstadoComercial(reglas) = do {
     // Definimos la fecha actual una sola vez para que sea consistente
     var fechaActual = { "\$date": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"} }
 
-    &#45;&#45;-
+    ---
     if (todasPasaron)
         // CASO 1: Éxito total -> Estado Maestro
         {
@@ -246,14 +253,14 @@ fun calcularEstadoComercial(reglas) = do {
     else
         // CASO 2: Algo falló (pero no fue obligatorio) 
         // Retornamos el estado de la ÚLTIMA regla que sí tuvo éxito
-        (reglasExitosas[-1&#93;.estadoOrdenComercial ++ { 
+        (reglasExitosas[-1].estadoOrdenComercial ++ { 
         "Fecha": fechaActual default "" ,
             "Reintentos": 0,
             "CodigoExcepcion": 0
         } default {})
 }
 
-&#45;&#45;-
+---
 {
 	basePath: p("mongo-db-sapi.base-path"),
 	host: p("mongo-db-sapi.host"),
@@ -292,21 +299,12 @@ fun calcularEstadoComercial(reglas) = do {
           "MotivosOrden": null
         },
         "Tipo_Servicio": null,
-        "CUN": "",
+        "CUN": vars.cun.cun,
         "Cliente_Anterior": null,
         "Cliente_Tramite": vars.clienteTramite.Cliente_Tramite,
 		"Servicio_Anterior": null,
         "Servicio_Tramite": vars.resultadoProductos.Servicio_Tramite,
-        "Orden_Servicio": {
-			"Numero_Orden": vars.orderNumber,                      // AGREGAR PREFIJO "OS-" AL NUMERO DE ORDEN GENERADO PREVIAMENTE                
-			"Estado_Orden": {
-			  "Codigo": "90",                                             // SI DISPONIBILIDAD ES FACTIBLE CODIGO 110
-			  "Descripcion": " Ejecutar Agenda",                // ESTADO DE RESERVA DE INVENTARIO
-			  "Fecha": fechaActual,
-			  "Reintentos": 0,
-			  "CodigoExcepcion": 0
-    	}
-        },
+        "Orden_Servicio": vars.ordenServicio.Orden_Servicio,
         "Agendamiento":{},
         "Orden_Activacion": null,
   		"Cuenta_Facturacion_Anterior": null,
@@ -342,7 +340,7 @@ fun calcularEstadoComercial(reglas) = do {
 	  	"Orden_Requiere_Agendamiento": null,
 	  	"Precio_Total_Orden": "",
 	  	"Adjuntos": {
-        "Servicio": (inputData.attachments.service default [&#93;) map (item) -> {
+        "Servicio": (inputData.attachments.service default []) map (item) -> {
             "nombre": item.fileName,
             "ruta": item.path,
             "tamano": item.size
@@ -350,7 +348,7 @@ fun calcularEstadoComercial(reglas) = do {
     },
 	  	"Adjuntos_Cliente": null,
   		"Adjuntos_Servicio": null,
-  		"Caracteristica_Orden": inputData.orderCharacteristics default [&#93; map (item) -> {
+  		"Caracteristica_Orden": inputData.orderCharacteristics default [] map (item) -> {
 	        "Caracteristica": item.characteristic,
 	        "Valor": item.value
     	},
@@ -360,10 +358,10 @@ fun calcularEstadoComercial(reglas) = do {
 		    "Medio_Comunicacion": ""
 		  },
 		 "Presencial": false,
-  		 "OfertaSugerida": [&#93;,
+  		 "OfertaSugerida": [],
   	 	 "Reserva": null
       }
-    &#93;
+    ]
   }
 },
 	headers: {
@@ -380,7 +378,7 @@ fun calcularEstadoComercial(reglas) = do {
 	uriParameters:{
 		
 	}
-}&#93;&#93;></ee:set-payload>
+}]]></ee:set-payload>
 					</ee:message>
 					<ee:variables>
 					</ee:variables>
@@ -392,7 +390,7 @@ fun calcularEstadoComercial(reglas) = do {
 							<ee:message >
 								<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
-&#45;&#45;-
+---
 {
 	basePath: p("mongo-db-sapi.base-path"),
 	host: p("mongo-db-sapi.host"),
@@ -407,7 +405,7 @@ output application/json
 	        "Numero_Orden": vars.orderNumber as String,
 	        "Reglas_Aplicadas": vars.reglasAcumuladas
 	       }
-	      &#93;
+	      ]
 	 }
     },
 	headers: {
@@ -424,23 +422,23 @@ output application/json
 	uriParameters:{
 		
 	}
-}&#93;&#93;></ee:set-payload>
+}]]></ee:set-payload>
 							</ee:message>
 						</ee:transform>
 						<flow-ref doc:name="Insert Reglas ejecutadas" doc:id="2ff8bbcd-c4b4-4bd6-9339-db7105347d54" name="generic-sapi-clientSub_Flow" />
 					</route>
-				</scatter-gather> [STUDIO] -->
-				<!-- [STUDIO:"Transform Message"]<ee:transform doc:name="Transform Message" doc:id="bbc03bd9-0ff0-46c0-9495-68990edc0b33">
+				</scatter-gather>
+				<flow-ref doc:name="Flow Reference" doc:id="34dda13e-683a-4022-a7f6-68efc9c77bc8" name="create-mdm-cd-servicioSub_Flow" target="mdm_cd_servicio"/>
+				<ee:transform doc:name="Transform Message" doc:id="bbc03bd9-0ff0-46c0-9495-68990edc0b33">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
-&#45;&#45;-
+---
 {
 	code: if(payload."0".payload.result.ok > 0) "200" else "500",
 	messageResponse: if(payload."0".payload.result.ok > 0) "Order Created" else "Error Created Order",
 	order: {
 		orderNumber: vars.orderNumber default "",
-		
 		rulesApplied: vars.reglasAcumuladas map (regla) -> {
 			idRule: regla.idRegla,
 	        isValid: regla.esValido,
@@ -459,17 +457,17 @@ output application/json
 	    }
 	}
 	
-}&#93;&#93;></ee:set-payload>
+}]]></ee:set-payload>
 					</ee:message>
-				</ee:transform> [STUDIO] -->
-				<ee:transform doc:name="Transform Message" doc:id="4f122348-b28f-42f1-b81c-01eb74285673" >
+				</ee:transform>
+				<!-- [STUDIO:"Transform Message"]<ee:transform doc:name="Transform Message" doc:id="4f122348-b28f-42f1-b81c-01eb74285673" >
 					<ee:message >
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
----
-vars.ordenServicio]]></ee:set-payload>
+&#45;&#45;-
+vars.ordenServicio&#93;&#93;></ee:set-payload>
 					</ee:message>
-				</ee:transform>
+				</ee:transform> [STUDIO] -->
 				
 </otherwise>
 		</choice>
