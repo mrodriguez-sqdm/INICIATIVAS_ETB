@@ -1,51 +1,105 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
 	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
-	<sub-flow name="post-comm-message-orchestrator" doc:id="34961647-b2a3-49ff-ad3a-3aa778f29b92" >
-		<logger level="INFO" doc:name="Log Orchestration Start" doc:id="e9c9f501-eb82-4869-93ab-9886f93d7959" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /communications/message"]' />
-		<ee:transform doc:name="set initial variables" doc:id="295eb254-735f-449e-9c23-2a6f1644dc95" >
-			<ee:message >
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="post-comm-message-orchestrator"
+		doc:id="34961647-b2a3-49ff-ad3a-3aa778f29b92">
+		<logger level="INFO" doc:name="Log Orchestration Start"
+			doc:id="e9c9f501-eb82-4869-93ab-9886f93d7959"
+			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /communications/message"]' />
+		<ee:transform doc:name="set initial variables"
+			doc:id="295eb254-735f-449e-9c23-2a6f1644dc95">
+			<ee:message>
 			</ee:message>
-			<ee:variables >
-				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
 output application/json
 ---
 payload]]></ee:set-variable>
-				<ee:set-variable variableName="provider" ><![CDATA[%dw 2.0
+				<ee:set-variable variableName="provider"><![CDATA[%dw 2.0
 output application/json
 ---
 lower(attributes.headers.'x-provider-id')]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="dynamic-send-notification" doc:id="866814a9-74af-4818-9948-18ced94d971e" name='#[vars.provider ++ "-send-notification"]'/>
-		<logger level="INFO" doc:name="Log Orchestration End" doc:id="ff3d01d5-c284-432f-a050-08677ec127d7" message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /communications/message | status=201"]' />
+		<flow-ref doc:name="retrieve-campaigns-cache"
+			doc:id="6d5ef07a-033a-4700-89f9-02c5a6645791"
+			name="retrieve-campaigns-cache" />
+		<ee:transform doc:name="set related campaign"
+			doc:id="b84d68c4-e885-4811-a9f1-02d5586ade13">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="relatedCampaign"><![CDATA[%dw 2.0
+output application/json
+---
+vars.campaignsCache filter ((item, index) -> item.campaignId == vars.initialPayload.template.id and item.channel == vars.initialPayload.messageChannel and lower(item.provider) == vars.provider)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="validate campaign"
+			doc:id="d1e91ad0-4b23-4e4b-8cf0-253ad7f731c2">
+			<when expression="#[isEmpty(vars.relatedCampaign)]">
+				<raise-error doc:name="COMMON_PAPI:CAMPAIGN_NOT_FOUND"
+					doc:id="3986729c-1171-4805-9074-15f3b53a4b3e"
+					type="COMMON_PAPI:CAMPAIGN_NOT_FOUND"
+					description="The template id does not exists" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="dynamic-send-notification"
+					doc:id="866814a9-74af-4818-9948-18ced94d971e"
+					name='#[vars.provider ++ "-send-notification"]' />
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Log Orchestration End"
+			doc:id="ff3d01d5-c284-432f-a050-08677ec127d7"
+			message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /communications/message | status=201"]' />
 	</sub-flow>
-	<sub-flow name="pau-send-notification" doc:id="7437653a-1ac9-480c-8952-862114eee17c" >
-		<ee:transform doc:name="set silice notifications request" doc:id="b8bfba44-cb93-4c90-8860-3e7fa32858c7">
+	<sub-flow name="pau-send-notification"
+		doc:id="7437653a-1ac9-480c-8952-862114eee17c">
+		<ee:transform doc:name="set silice notifications request"
+			doc:id="b8bfba44-cb93-4c90-8860-3e7fa32858c7">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
+var templateVariablesByName = vars.inputPayload.templateVariables reduce ((item, acc = {}) -> acc ++ {
+    (item.name): item.value
+  })
 ---
 {
-	"notification": {
-		"message": payload.messageContent,
-		"messageChannel": payload.messageChannel,
-		"templateId": payload.templateId,
-		"templateName": payload.templateName,
-		"templateSubject": payload.templateSubject,
-		"receiverName": payload.receiver.name,
-		"receiverPhoneNumber": payload.receiver.phoneNumber
-	}
+  notification: {
+    messageChannel: vars.inputPayload.messageChannel default vars.relatedCampaign[0].channel,
+    templateName: vars.relatedCampaign[0].pauConfig.templateName default vars.relatedCampaign[0].campaignName,
+    receiverPhoneNumber: vars.inputPayload.receiver.phoneNumber,
+    templateVariables: (vars.relatedCampaign[0].defaultVariables map (defaultVar) -> do {
+        var templateValue = templateVariablesByName[defaultVar.name]
+        var finalValue = if ((templateValue != null) and (defaultVar.overridable default false))
+          templateValue
+        else
+          defaultVar.value
+        ---
+        defaultVar - "value" ++ {
+          value: finalValue
+        }
+      }).value
+  }
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="post-notification-silice-sapi-client" doc:id="d2c6db4a-d5ad-4729-a596-dfc623aef851" name="post-notification-silice-sapi-client" />
-		<ee:transform doc:name="set response" doc:id="973cc33e-dbe7-4e4c-9efb-512e0152ba9c">
-				<ee:message>
-					<ee:set-payload><![CDATA[%dw 2.0
+		<flow-ref doc:name="post-notification-silice-sapi-client"
+			doc:id="d2c6db4a-d5ad-4729-a596-dfc623aef851"
+			name="post-notification-silice-sapi-client" />
+		<ee:transform doc:name="set response"
+			doc:id="973cc33e-dbe7-4e4c-9efb-512e0152ba9c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -59,15 +113,94 @@ output application/json
     "notificationId": payload.result.notificationId
   }
 }]]></ee:set-payload>
-				</ee:message>
-			</ee:transform>
-		<flow-ref doc:name="save-message-audit" doc:id="8e1f3526-cd1b-4835-94c7-1ce25620b14d" name="save-message-audit" />
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="save-message-audit"
+			doc:id="8e1f3526-cd1b-4835-94c7-1ce25620b14d"
+			name="save-message-audit" />
 	</sub-flow>
-	<sub-flow name="responsys-send-notification" doc:id="6f41b7eb-e3ed-4256-b89f-35be6b29e936" >
-		<logger level="INFO" doc:name="set oracle sapi notifications request" doc:id="db490370-7f52-4451-9f75-2008336d3c43" />
-		<logger level="INFO" doc:name="post notification oracle sapi client" doc:id="3c8ca204-7a3e-4ba8-97d5-76f6146a352c" />
-		<logger level="INFO" doc:name="set response" doc:id="bd7f9079-6d0a-4e6f-a141-ac759d31d508" />
+	<sub-flow name="responsys-send-notification"
+		doc:id="6f41b7eb-e3ed-4256-b89f-35be6b29e936">
+		<ee:transform doc:name="set oracle notifications request"
+			doc:id="d5da953d-b905-4278-b140-12b5e2ecd0a3">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json  
+var templateVariablesByName = vars.initialPayload.templateVariables reduce ((item, acc = {}) -> acc ++ {
+    (item.name): item
+  })
+
+---
+{
+  "correlationId": correlationId,
+  "channel": vars.initialPayload.messageChannel default vars.relatedCampaign[0].channel,
+  "campaignName": vars.relatedCampaign[0].responsysConfig.campaignName default vars.relatedCampaign[0].campaignName,
+  "recipients": [
+    {
+      "customerId": vars.initialPayload.receiver.documentNumber,
+      ("emailAddress": vars.initialPayload.receiver.email) if (vars.initialPayload.messageChannel == "EMAIL"),
+      ("mobileNumber": vars.initialPayload.receiver.phoneNumber) if (vars.initialPayload.messageChannel == "SMS"),
+      "listFolderName": vars.relatedCampaign[0].responsysConfig.folderName,
+      "listObjectName": vars.relatedCampaign[0].responsysConfig.listObjectName,
+      "optionalData": (vars.relatedCampaign[0].defaultVariables map (defaultVar) -> do {
+          var templateVar = templateVariablesByName[defaultVar.name]
+          ---
+          if ((templateVar != null) and (defaultVar.overridable default false))
+            templateVar
+          else
+            defaultVar - "overridable"
+        })
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-notification-oracle-sapi-client" doc:id="7768cf6d-9ba7-44eb-9548-e193ec75ded5" name="post-notification-oracle-sapi-client"/>
+		<ee:transform doc:name="set response" doc:id="0040a3dc-2eab-4781-90e5-ce14699421bc">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": "201",
+  "message": "Notification Sent Successfully",
+  "result": {
+    "state": vars.initialPayload.state,
+    "messageChannel": vars.initialPayload.messageChannel,
+    "provider": vars.provider,
+    "notificationSendingDate": (now() >> "UTC") as String {format: "YYYY-MM-dd'T'HH:mm:ss"},
+    "notificationId": payload.result.recipientId
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 		<flow-ref doc:name="save-message-audit" doc:id="6cb4e06d-bd26-499b-a4fd-f6ee77faa608" name="save-message-audit" />
+	</sub-flow>
+	<sub-flow name="retrieve-campaigns-cache" doc:id="7571582c-c828-4acf-a831-a00264a4269e" >
+		<ee:cache doc:name="Cache" doc:id="6f521a6c-24ab-4de5-8f4f-a3d62c25de9d" cachingStrategy-ref="campaigns-cache-strategy">
+			<http:request method="${mongoDbSapi.notificationsCampaigns.get.method}" doc:name="GET /notifications/campaigns" doc:id="a85885cc-e8de-42fe-b8a4-d3c5054d8dd7" config-ref="HTTP_Mongo_SAPI_Request_Config" path="${mongoDbSapi.notificationsCampaigns.path}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+			</http:request>
+		</ee:cache>
+		<ee:transform doc:name="set campaignsCache" doc:id="442a3a98-7609-4151-b0de-07834948ce52" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="campaignsCache" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.result]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
 	</sub-flow>
 	<sub-flow name="save-message-audit" doc:id="7ce1facc-b7f1-49a9-97a0-b9a8cacd8c59" >
 		<async doc:name="Async" doc:id="e4d543b2-4f97-4e1a-b7e0-f40e0568862b" >
