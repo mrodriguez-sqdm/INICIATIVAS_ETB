@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	
+	<sub-flow name="consecutive-subflow" doc:id="90cc3f3b-cc54-42c3-a994-643a383d65f2" >
+		<flow-ref doc:name="Get Consecutive SR" doc:id="e4531e2c-f109-4ac1-b5ce-45485d2b07cf" name="generic-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="Concatenar Prefijo-secuencia" doc:id="fadd1d9b-4a43-43b1-aef4-a697d9b0b44a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+"consecutivo": (payload.result.value.Prefijo default "") ++ (payload.result.value.Secuencia as String default "")
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="generate-OrderNumber-Sub_Flow" doc:id="a21a32f7-317b-44ce-a0cb-1cf5fcd4500b" >
+		<ee:transform doc:name="Transform Message" doc:id="b623c732-dc29-41a6-8e96-b1e9c30f2df9">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+		"query" :{
+ 			findAndModify: "MDM_CD_CONSECUTIVO",
+ 			query: { Serie: "SecuenciaOrden"
+  			},
+  		update: { "\$inc": { Secuencia: 1 } },
+  		new: true
+		}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+ ]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+						<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+						<flow-ref doc:name="Get Consecutive" doc:id="7c2899bb-36de-45e4-af0d-3d4b3f69438a" name="consecutive-subflow" target="consecutivoOrden" />
+		<ee:transform doc:name="Set OrderNumber" doc:id="c3172df3-f14b-4c7f-a737-7f825d2db49e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+
+
+fun ajustarConsecutivo(valor: String) = do {
+    var partes = valor splitBy "-"
+    // El número es el último elemento
+    var numero = partes[-1] default ""
+    // El prefijo es todo excepto el último elemento
+    var prefijoPartes = partes[0 to -2] 
+    ---
+    if (isEmpty(prefijoPartes)) 
+        leftPad(numero, 9, "0")
+    else 
+        (prefijoPartes joinBy "-") ++ "-" ++ leftPad(numero, 9, "0")
+}
+
+---
+ajustarConsecutivo(vars.consecutivoOrden.consecutivo default "")]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+						
+	</sub-flow>
+	<sub-flow name="consecutive-products-orchestratorSub_Flow" doc:id="c7b0ff03-3c29-43ed-9491-97ec01bfc552" >
+		<ee:transform doc:name="Inicializacion de Variables" doc:id="272a0f89-e9af-41f3-a89d-b476ae35207b">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="consecutivosPrimarios" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+				<ee:set-variable variableName="consecutivosSecundarios" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+				<ee:set-variable variableName="consecutivoBundle" ><![CDATA[%dw 2.0
+output application/java
+---
+{}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="d4870b19-5c08-4ec0-a5f8-71e39dc9fe1a" >
+			<route >
+				<foreach doc:name="For Each" doc:id="f24d3647-ef46-4fb9-b175-3b03444aa56e" collection="#[payload.result[0].bundle.primarios default []]">
+					<scatter-gather doc:name="Scatter-Gather" doc:id="2eafedde-9fef-4744-a108-b7f3666dfbd3" >
+						<route >
+							<set-variable value="#[payload]" doc:name="Set Variable productoPrimario" doc:id="4edf113c-ec6a-49dc-b56d-47280f667830" variableName="productoPrimario" />
+							<ee:transform doc:name="request consecutivo SR" doc:id="384adb10-6df2-435e-b095-cba4273be76e">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+		"query" :{
+ 			findAndModify: "MDM_CD_CONSECUTIVO",
+ 			query: { Serie: "SecuenciaIdServicio"
+  			},
+  		update: { "\$inc": { Secuencia: 1 } },
+  		new: true
+		}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+ ]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+							<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+							<flow-ref doc:name="Generate SR Primarios" doc:id="350500d9-0fb9-4919-b61e-2aff6b3a9f53" name="consecutive-subflow" />
+							<ee:transform doc:name="Arrays consecutivos Primarios" doc:id="79f2872d-7f77-44d3-99d6-0366ac5974e6">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="consecutivosPrimarios"><![CDATA[%dw 2.0
+output application/json
+---
+do {
+    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
+    var acumulado = vars.consecutivosPrimarios default []
+    
+    // 2. Creamos el objeto del consecutivo actual
+    var resultadoActual = {
+		idProducto: vars.productoPrimario."_id"."\$oid",
+		consecutivo: payload.consecutivo
+		}
+    ---
+    // 3. Retornamos la lista con el nuevo elemento al final
+    acumulado ++ [resultadoActual]
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+						</route>
+						<route >
+							<foreach doc:name="For Each" doc:id="1548bfbf-9886-4432-af50-07623ca3a1da" collection="#[payload.secundarios]">
+								<set-variable value="#[payload]" doc:name="Set Variable productoSecundario" doc:id="6a7473f2-3c74-487b-a2a9-fe71e6f82b2e" variableName="productoSecundario"/>
+								<ee:transform doc:name="request consecutivo SR secundarios" doc:id="9924006b-f9ec-4aaa-83a9-80e1374d6b33">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+		"query" :{
+ 			findAndModify: "MDM_CD_CONSECUTIVO",
+ 			query: { Serie: "SecuenciaIdServicio"
+  			},
+  		update: { "\$inc": { Secuencia: 1 } },
+  		new: true
+		}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+ ]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+									<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+								<flow-ref doc:name="Generate SR Secundarios" doc:id="78e4631e-6f34-4270-838c-f37cd1fbbb3d" name="consecutive-subflow"/>
+								<ee:transform doc:name="Arrays consecutivos Secundarios" doc:id="f9fe34b6-ef9f-48de-96a8-977332f1ab05">
+								<ee:message />
+								<ee:variables>
+										<ee:set-variable variableName="consecutivosSecundarios" ><![CDATA[%dw 2.0
+output application/json
+---
+do {
+    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
+    var acumulado = vars.consecutivosSecundarios default []
+    
+    // 2. Creamos el objeto del consecutivo actual
+    var resultadoActual = {
+		idProducto: vars.productoSecundario."_id"."\$oid",
+		consecutivo: payload.consecutivo
+		}
+    ---
+    // 3. Retornamos la lista con el nuevo elemento al final
+    acumulado ++ [resultadoActual]
+}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+							</foreach>
+						</route>
+					</scatter-gather>
+				</foreach>
+			</route>
+			<route >
+				<set-variable value="#[payload.result[0].bundle]" doc:name="Set Variable productoBundle" doc:id="98816a24-2a72-4528-9b86-58cf79e892ba" variableName="bundle"/>
+				<ee:transform doc:name="request consecutivo CS" doc:id="bc51e6d9-548e-49d9-a58c-e87a62aff6db">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+		"query" :{
+ 			findAndModify: "MDM_CD_CONSECUTIVO",
+ 			query: { Serie: "SecuenciaCuentaServicio"
+  			},
+  		update: { "\$inc": { Secuencia: 1 } },
+  		new: true
+		}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+ ]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+				<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="Generate CS" doc:id="11a8637f-a1d6-4d79-8005-aafedd2e9bf1" name="consecutive-subflow" />
+				<ee:transform doc:name="consecutivo Bundle" doc:id="1be4e334-a67c-44db-a596-c37b5b21d1c8" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="consecutivoBundle" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+		idProducto: vars.bundle."_id"."\$oid",
+		consecutivo: payload.consecutivo
+}
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Agrupacion de consecutivos" doc:id="da208f64-3870-4474-a893-eac8d3896c7f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"bundle": vars.consecutivoBundle,
+	"primarios": vars.consecutivosPrimarios,
+	"secundarios": vars.consecutivosSecundarios
+}
+
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	
+	
+</mule>
