@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="configurations-orchestratorSub_Flow" doc:id="d3e678a8-af24-42df-9ad7-fe98db36d884" >
+		<ee:transform doc:name="Transform Message" doc:id="386b8a92-7947-4fd7-a062-480a5aa22931" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="queryParams" ><![CDATA[attributes.queryParams]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Configurations Client" doc:id="d071e7c7-98f7-4c71-8e5a-7623ba727235" name="configurations-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message" doc:id="4220c280-69ec-4a0f-a2fb-3db156804ae7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var src = payload.objConfiguracionInventario
+var code = payload.cod_res as Number
+---
+{
+	status: code,
+	code: if ( code == 200 ) "OK" else "Error",
+	message: {
+		message: if ( code == 200 ) "Successful Transaction." else "Error Transaction."
+	},
+	inventoryConfiguration: {
+		serviceAccount: (src.serviceAccounts default []) map (sa) -> {
+			id: sa.serviceAccountId,
+			place: (sa.addresses default []) map (addr) -> {
+				resourceAccess: (addr.accesses default []) map (acc) -> {
+					id: acc.accessId,
+					technology: acc.technologyName,
+					resourceRoute: {
+						resource: (acc.detailedRoute.elements default []) map (el) -> {
+							id: el.elementId,
+							"type": el.elementType,
+							name: el.hostName,
+							port: el.port,
+							vendor: el.vendor,
+							location: el.networkLocation,
+							characteristic: (el.attributes default []) map (att) -> {
+								name: att.name,
+								value: att.value
+							}
+						}
+					},
+					characteristic: (acc.attributes default []) map (att) -> {
+						name: att.name,
+						value: att.value
+					}
+				},
+				service: (addr.services default []) map (srv) -> {
+					id: srv.serviceId,
+					rootServiceId: srv.rootServiceId,
+					parentServiceId: srv.parentServiceId,
+					name: srv.serviceName,
+					state: srv.serviceStatus,
+					characteristic: (srv.attributes default []) map (att) -> {
+						name: att.name,
+						value: att.value,
+						action: att.action
+					}
+				},
+				policy: (addr.policies default []) map (pol) -> {
+					resourcePolicy: (pol.equipmentPolicies default []) map (eq) -> {
+						resourceType: eq.equipmentType,
+						brand: eq.brand,
+						model: eq.model,
+						minQuantity: eq.minimumQuantity,
+						characteristic: (eq.attributes default []) map (att) -> {
+							name: att.name,
+							value: att.value
+						}
+					}
+				}
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

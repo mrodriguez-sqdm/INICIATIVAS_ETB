@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="availability-orchestratorSub_Flow" doc:id="d3e678a8-af24-42df-9ad7-fe98db36d884" >
+		<ee:transform doc:name="Transform Message" doc:id="ec5aca2d-5d9c-444d-8d24-8533a0372f99" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var header = payload.availabilityRequest.header
+var detail = payload.availabilityRequest.detail
+---
+{
+	peticionConsultaDisponibilidad: {
+		encabezadoMensaje: {
+			idDisponibilidad: header.availabilityId,
+			numeroOrdenAprovisionador: header.provisioningOrderNumber,
+			numeroRevision: header.revisionNumber,
+			tecnologiaETB: header.technology,
+			fechaPeticionOrden: header.requestDate
+		},
+		detalleMensaje: {
+			modoConsulta: detail.queryMode,
+			tipoDisponibilidad: detail.availabilityType,
+			orderItems: detail.orderItem map (item) -> {
+				idProductoTecnico: item.technicalProductId,
+				idServicio: item.serviceId,
+				idServicioPadre: item.parentServiceId,
+				idServicioRaiz: item.rootServiceId,
+				accion: item.action,
+				usoServicio: item.serviceUsage,
+				idProductoTecnicoPadre: item.parentTechnicalProductId,
+				idProductoTecnicoRaiz: item.rootTechnicalProductId,
+				cuentaServicio: {
+					idCuentaServicio: item.serviceAccount.id,
+					direccionServicio: item.serviceAccount.place map (place) -> {
+						codigoUnicoDireccion: place.id,
+						codigoDepartamento: place.stateOrProvince,
+						codigoMunicipio: place.cityCode,
+						codigoPais: place.country,
+						direccionNormalizada: place.formattedAddress,
+						latitud: place.geographicLocation.latitude,
+						longitud: place.geographicLocation.longitude,
+						tecnologias: place.technology map (tech) -> {
+							nombreTecnologia: tech.name,
+							prioridadTecnologia: tech.priority,
+							zona: tech.zone,
+							cobertura: {
+								tipoCobertura: tech.coverage.'type',
+								nombreCobertura: tech.coverage.name
+							}
+						}
+					}
+				},
+				atributos: item.characteristic map (att) -> {
+					atributo: att.name,
+					valor: att.value,
+					accion: att.action
+				}
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Availability Client" doc:id="a7a60eef-2c80-49ca-a036-7563f464c0c8" name="availability-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="51905c12-669a-4a53-83ff-463464d31e45" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var src = payload.respuestaConsultaDisponibilidad
+var header = src.encabezadoMensaje
+var detail = src.detalleMensaje
+---
+{
+	status: if ( (detail.resultado.resultado) == "OK" ) 200 
+    else 400,
+	code: detail.resultado.resultado,
+	message: {
+		message: if ( (detail.resultado.resultado) == "OK" ) "Successful Transaction." 
+      else 
+        (detail.resultado.descripcionErrorResultado default "Error")
+	},
+	availabilityResponse: {
+		header: {
+			availabilityId: header.idDisponibilidad,
+			provisioningOrderNumber: header.numeroOrdenAprovisionador,
+			revisionNumber: header.numeroRevision,
+			technology: header.tecnologiaETB,
+			requestDate: header.fechaPeticionOrden
+		},
+		detail: {
+			overall: {
+				qualificationResult: if ( (detail.global.disponibilidad default "") == "FACTIBLE" ) "FEASIBLE" 
+          else 
+            detail.global.disponibilidad,
+				reason: {
+					parentServiceId: detail.global.motivo.idServicioPadre,
+					resource: detail.global.motivo.recurso,
+					description: detail.global.motivo.descripcion
+				}
+			},
+			orderItem: (detail.orderItems default []) map (item) -> {
+				serviceId: item.idServicio default null
+			},
+			result: {
+				status: detail.resultado.resultado,
+				errorCode: detail.resultado.codigoErrorResultado,
+				errorMessage: detail.resultado.descripcionErrorResultado
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
