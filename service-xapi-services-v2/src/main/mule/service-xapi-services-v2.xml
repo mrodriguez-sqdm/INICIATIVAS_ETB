@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="service-xapi-services-v2-main" doc:id="a2b7545f-96ad-404d-a312-f864fc751d48" >
+		<http:listener doc:name="Listener" doc:id="971549fe-00e6-47e3-b9f0-46785b777bcb" config-ref="service-xapi-services-v2-httpListenerConfig" path="/v2/*" >
+			<http:response statusCode="#[vars.httpStatus default 200]" >
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="#[vars.httpStatus default 500]" >
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<flow-ref doc:name="Call initial Logger" doc:id="e9e8aceb-b18f-4fe8-a0e9-44e10f28e2ef" name="initial-loggin-Sub_Flow" />
+		<apikit:router doc:id="3886b617-9aa9-44a8-b63f-a66d2fa69e28" config-ref="service-xapi-services-config" doc:name="APIkit Router" />
+		<async doc:name="Async" doc:id="5a415b10-8955-4cab-bd33-0995079a8674" >
+			<flow-ref doc:name="Call logger" doc:id="19238b31-bde9-4309-b9ff-28c73f9675bb" name="loggin-client-call" />
+		</async>
+		<error-handler ref="error-handlerError_Handler" />
+	</flow>
+	<flow name="service-xapi-services-v2-console" doc:id="585fe370-96b7-4305-899c-e1a53a220df0" >
+		<http:listener doc:name="Listener" doc:id="3ef9b501-ef28-401e-91b8-3f91c6d81f72" config-ref="service-xapi-services-v2-httpListenerConfig" path="/console/*" >
+			<http:response statusCode="#[vars.httpStatus default 200]" >
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="#[vars.httpStatus default 500]" >
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<apikit:console doc:id="390672fb-490b-4eee-92c1-a879b486a053" config-ref="service-xapi-services-config" doc:name="APIkit Console" />
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="84b6d42b-d5ea-45f6-a7b6-037045c7ec1d" type="APIKIT:NOT_FOUND" >
+				<ee:transform doc:name="Transform Message" doc:id="c480f540-581a-4b97-84d2-c794a8ed157d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="get:\service:service-xapi-services-config" doc:id="b030c8e1-cfd2-4563-89e5-45e5c3941450" >
+		<flow-ref doc:name="Flow Reference" doc:id="f3bdeb0b-f815-4480-86d9-b772bb78c571" name="service-get-service-papi-v2-clientSub_Flow"/>
+	</flow>
+	<flow name="post:\service:service-xapi-services-config" doc:id="b2b7f8af-4db6-46c7-9e4f-5a6cb2ddc6f7" >
+		<set-variable value="#[payload]" doc:name="Set inputPayload" variableName="inputPayload" />
+		<flow-ref doc:name="Go to PAPI client" name="service-post-service-activate-papi-v2-clientSub_Flow" />
+	</flow>
+	<flow name="post:\order:application\json:service-xapi-services-config" doc:id="e4f5a6b7-order-mod-xapi" >
+		<set-variable value="#[payload]" doc:name="Set inputPayload crear orden" variableName="inputPayload" />
+		<flow-ref doc:name="POST PAPI crear orden" name="service-post-order-papi-v2-clientSub_Flow" />
+	</flow>
+</mule>
