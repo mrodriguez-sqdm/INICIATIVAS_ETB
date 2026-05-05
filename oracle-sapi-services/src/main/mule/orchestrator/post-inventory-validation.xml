@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-inventory-validation-orchestrator-Sub_Flow" doc:id="2df9b419-4fe8-4836-9607-c2348f825bc9" >
+		<ee:transform doc:name="Transform Message" doc:id="16860b83-cc0a-406e-ba51-cbb7b1d75d6a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml skipNullOn="everywhere"
+
+ns open http://www.openuri.org/
+ns tec http://com/tecnocom
+
+var req = payload.doValidarEquiposPremisaInstalar.PeticionValidarEquiposPremisaInstalar
+var encabezado = req.EncabezadoMensaje
+var direccion = req.DetalleMensaje.Direccion
+
+---
+{
+  open#doValidarEquiposPremisaInstalar: {
+    tec#PeticionValidarEquiposPremisaInstalar: {
+      tec#EncabezadoMensaje: {
+        tec#IdDisponibilidad: encabezado.IdDisponibilidad default "",
+        tec#NumeroOrdenAprovisionador: encabezado.NumeroOrdenAprovisionador default "",
+        tec#NumeroRevision: encabezado.NumeroRevision default "",
+        tec#FechaPeticionOrden: encabezado.FechaPeticionOrden default "",
+        tec#TecnologiaETB: encabezado.TecnologiaETB default ""
+      },
+      tec#DetalleMensaje: {
+        tec#Direccion: {
+          tec#CodigoUnicoDireccion: direccion.CodigoUnicoDireccion default "",
+          tec#IdCuentaServicio: direccion.IdCuentaServicio default "",
+          tec#Equipos: {
+            tec#Equipo: (direccion.Equipos default []) map (equipo) -> {
+              tec#IdServicio: equipo.IdServicio default "",
+              tec#SerialEquipo: equipo.SerialEquipo default "",
+              tec#MacEquipo: equipo.MacEquipo default "",
+              tec#Puertos: {
+                tec#Puerto: (equipo.Puertos default []) map (puerto) -> {
+                  tec#NombrePuerto: puerto.NombrePuerto default "",
+                  tec#ServiciosPuerto: {
+                    tec#IdServicioPuerto: puerto.ServiciosPuerto.IdServicioPuerto default ""
+                  }
+                }
+              },
+              tec#EquipoInstalado: equipo.EquipoInstalado default ""
+            }
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="8bed439d-0d8b-4ef8-a843-ec2192ddbbbd" name="post-inventory-validation-client-Sub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="1fd7c252-4990-4e78-8cfb-9dd4dbf79ef7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+ns open http://www.openuri.org/
+ns tec http://com/tecnocom
+
+var body =
+  payload.body.open#doValidarEquiposPremisaInstalarResponse.tec#RespuestaPeticionValidarEquiposPremisaInstalar
+
+var encabezado = body.tec#EncabezadoMensaje
+var equipo = body.tec#DetalleMensaje.tec#Equipo
+var resultado = body.tec#DetalleMensaje.tec#Resultado
+
+---
+{
+  cod_res:
+    if ((resultado.tec#Resultado default "") == "OK")
+      "200"
+    else
+      resultado.tec#CodigoErrorResultado default "",
+
+  res:
+    if ((resultado.tec#Resultado default "") == "OK")
+      "Consulta exitosa."
+    else
+      resultado.tec#DescripcionErrorResultado default "",
+
+  doValidarEquiposPremisaInstalarResponse: {
+    RespuestaPeticionValidarEquiposPremisaInstalar: {
+      EncabezadoMensaje: {
+        IdDisponibilidad: encabezado.tec#IdDisponibilidad default "",
+        NumeroOrdenAprovisionador: encabezado.tec#NumeroOrdenAprovisionador default "",
+        NumeroRevision: (encabezado.tec#NumeroRevision default 0) as Number,
+        FechaPeticionOrden: encabezado.tec#FechaPeticionOrden default ""
+      },
+
+      DetalleMensaje: {
+        Equipo: {
+          MarcaEquipo: equipo.tec#MarcaEquipo default "",
+          IdServicio: equipo.tec#IdServicio default "",
+          IndicadorObsolescencia: equipo.tec#IndicadorObsolescencia default "",
+          SerialEquipo: equipo.tec#SerialEquipo default "",
+          MacEquipo: equipo.tec#MacEquipo default "",
+          TipoEquipo: equipo.tec#TipoEquipo default "",
+          ModeloEquipo: equipo.tec#ModeloEquipo default "",
+          IndicadorCompatibilidad: equipo.tec#IndicadorCompatibilidad default "",
+          RespuestaCompatibilidad: equipo.tec#RespuestaCompatibilidad default "",
+
+          Atributos: equipo.tec#Atributos.*tec#Atributo map ((atributo) -> {
+            Atributo: atributo.tec#Atributo default "",
+            Valor: atributo.tec#Valor default ""
+          })
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+
+ns open http://www.openuri.org/
+ns tec http://com/tecnocom
+
+var body =
+  payload.body.open#doValidarEquiposPremisaInstalarResponse.tec#RespuestaPeticionValidarEquiposPremisaInstalar
+
+var resultado = body.tec#DetalleMensaje.tec#Resultado
+
+---
+if (resultado.tec#Resultado == "OK") 200
+else 400]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>
