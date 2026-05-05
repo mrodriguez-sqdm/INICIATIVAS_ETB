@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="reservations-orchestratorSub_Flow" doc:id="dce4f5f1-1f7b-4a43-8561-0897921d319a" >
+		<ee:transform doc:name="Transform Message" doc:id="970c583d-4c31-4320-9430-e907b1ecb5b5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	doCompletarOrdenInventario: {
+		PeticionCompletarOrdenInventario: {
+			EncabezadoMensaje: {
+				IdDisponibilidad: payload.completeInventoryOrder.messageHeader.availabilityId,
+				NumeroOrdenAprovisionador: payload.completeInventoryOrder.messageHeader.provisioningOrderNumber,
+				NumeroRevision: payload.completeInventoryOrder.messageHeader.revisionNumber,
+				FechaPeticionOrden: payload.completeInventoryOrder.messageHeader.orderRequestDate,
+				TecnologiaETB: payload.completeInventoryOrder.messageHeader.etbTechnology
+			},
+			DetalleMensaje: {
+				CuentasServicio: {
+					CuentaServicio: payload.completeInventoryOrder.detail.serviceAccounts.serviceAccount map (sa) -> {
+						IdCuentaServicio: sa.serviceAccountId,
+						ServiciosCompletar: sa.servicesToComplete map (svc) -> {
+							IdServicio: svc.serviceId,
+							Accion: svc.action,
+							Equipos: svc.equipments map (eq) -> {
+								IdServicio: eq.serviceId,
+								SerialEquipo: eq.equipmentSerial,
+								MacEquipo: eq.equipmentMac,
+								EstadoEquipo: eq.equipmentStatus,
+								Accion: eq.action,
+								Puertos: eq.ports map (p) -> {
+									NombrePuerto: p.portName,
+									ServiciosPuerto: {
+										IdServicioPuerto: p.portServices.portServiceId
+									}
+								}
+							}
+						}
+					},
+					Origen: payload.completeInventoryOrder.detail.serviceAccounts.source
+				}
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="queryParams" ><![CDATA[attributes.queryParams]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Reservations Client" doc:id="18d30f3e-98d3-4250-929f-f8073ea4be16" name="reservations-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message" doc:id="331eabc4-6bb8-4677-a39e-02a4ea41ae39" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var src = payload.objConfiguracionInventario
+var code = payload.cod_res as Number
+---
+{
+	status: code,
+	code: if ( code == 200 ) "OK" else "Error",
+	message: {
+		message: if ( code == 200 ) "Successful Transaction." else "Error Transaction."
+	},
+	completeInventoryOrderResponse: {
+		messageHeader: {
+			availabilityId: payload.doCompletarOrdenInventarioResponse.RespuestaPeticionCompletarOrdenInventario.EncabezadoMensaje.IdDisponibilidad,
+			provisioningOrderNumber: payload.doCompletarOrdenInventarioResponse.RespuestaPeticionCompletarOrdenInventario.EncabezadoMensaje.NumeroOrdenAprovisionador,
+			revisionNumber: payload.doCompletarOrdenInventarioResponse.RespuestaPeticionCompletarOrdenInventario.EncabezadoMensaje.NumeroRevision,
+			orderRequestDate: payload.doCompletarOrdenInventarioResponse.RespuestaPeticionCompletarOrdenInventario.EncabezadoMensaje.FechaPeticionOrden,
+			etbTechnology: payload.doCompletarOrdenInventarioResponse.RespuestaPeticionCompletarOrdenInventario.EncabezadoMensaje.TecnologiaETB
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

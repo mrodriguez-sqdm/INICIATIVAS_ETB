@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="eligibility-orchestratorSub_Flow" doc:id="34190598-5d73-4d49-aced-b3b94a38e8fa" >
+		<ee:transform doc:name="Transform Message" doc:id="4313f7f0-58e1-4e4a-b18c-05847e4e694d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	doValidarEquiposPremisaInstalar: {
+		PeticionValidarEquiposPremisaInstalar: {
+			EncabezadoMensaje: {
+				IdDisponibilidad: payload.validatePremiseEquipmentInstall.messageHeader.availabilityId,
+				NumeroOrdenAprovisionador: payload.validatePremiseEquipmentInstall.messageHeader.provisioningOrderNumber,
+				NumeroRevision: payload.validatePremiseEquipmentInstall.messageHeader.revisionNumber,
+				FechaPeticionOrden: payload.validatePremiseEquipmentInstall.messageHeader.orderRequestDate,
+				TecnologiaETB: payload.validatePremiseEquipmentInstall.messageHeader.etbTechnology
+			},
+			DetalleMensaje: {
+				Direccion: {
+					CodigoUnicoDireccion: payload.validatePremiseEquipmentInstall.detail.address.uniqueAddressCode,
+					IdCuentaServicio: payload.validatePremiseEquipmentInstall.detail.address.serviceAccountId,
+					Equipos: payload.validatePremiseEquipmentInstall.detail.address.equipments map (eq) -> {
+						IdServicio: eq.serviceId,
+						SerialEquipo: eq.equipmentSerial,
+						MacEquipo: eq.equipmentMac,
+						Puertos: eq.ports map (p) -> {
+							NombrePuerto: p.portName,
+							ServiciosPuerto: {
+								IdServicioPuerto: p.portServices.portServiceId
+							}
+						},
+						EquipoInstalado: eq.installedEquipment
+					}
+				}
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="queryParams" ><![CDATA[attributes.queryParams]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Eligibility Client" doc:id="61abe696-9f52-4940-b77d-66acc3d3a088" name="eligibility-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message" doc:id="ac34c55a-8bfc-424f-83d3-751de49d2bb3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var src = payload.objConfiguracionInventario
+var code = payload.cod_res as Number
+---
+{
+	status: code,
+	code: if ( code == 200 ) "OK" else "Error",
+	message: {
+		message: if ( code == 200 ) "Successful Transaction." else "Error Transaction."
+	},
+	validatePremiseEquipmentInstall: {
+		messageHeader: {
+			availabilityId: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.EncabezadoMensaje.IdDisponibilidad,
+			provisioningOrderNumber: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.EncabezadoMensaje.NumeroOrdenAprovisionador,
+			revisionNumber: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.EncabezadoMensaje.NumeroRevision,
+			orderRequestDate: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.EncabezadoMensaje.FechaPeticionOrden
+		},
+		detail: {
+			equipment: {
+				equipmentBrand: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.MarcaEquipo,
+				serviceId: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.IdServicio,
+				obsolescenceIndicator: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.IndicadorObsolescencia,
+				equipmentSerial: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.SerialEquipo,
+				equipmentMac: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.MacEquipo,
+				equipmentType: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.TipoEquipo,
+				equipmentModel: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.ModeloEquipo,
+				compatibilityIndicator: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.IndicadorCompatibilidad,
+				compatibilityResponse: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.RespuestaCompatibilidad,
+				attributes: payload.doValidarEquiposPremisaInstalarResponse.RespuestaPeticionValidarEquiposPremisaInstalar.DetalleMensaje.Equipo.Atributos map (att) -> {
+					attribute: att.Atributo,
+					value: att.Valor
+				}
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
