@@ -1,0 +1,730 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="service-get-orchestadorSub_Flow" doc:id="d0089800-8035-4474-9b3e-5900e979115d" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="cab6be7b-d0a7-4783-8568-2c94c0a8293a" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="f8bc00f0-0e11-4f42-9377-5b5fd1c61d88" variableName="headers" />
+		<choice doc:name="Choice" doc:id="af2454da-447d-4532-8ae7-24bb37095496" >
+			<when expression="#[vars.parameters.OPERATION == 'LTE']">
+				<flow-ref doc:name="Flow Reference" doc:id="4a37ac27-0422-4f3c-9a29-d7e52809db77" name="mongo-db-sapi-get-service-clientSub_Flow"/>
+				<ee:transform doc:name="Transform Message" doc:id="ddbb7ad3-88df-4ad1-872a-d3f5a67e16b2" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+fun unwrap(v) =
+    if (v is Object) (v pluck ((val,key) -> val))[0]
+    else v
+
+---
+{
+  code: payload.code,
+  message: payload.message,
+  services: payload.services map (s) -> {
+    id: unwrap(s."_id"),
+    integrationId: s.Integration_Id,
+    bundles: s.Bundles map (b) -> {
+      id: b."_id",
+      catalogId: b.id_catalogo,
+      name: b.nombre,
+      primary: b.primarios map (p) -> {
+        id: p."_id",
+        primaryId: p.id_primario,
+        name: p.nombre,
+        secondary: p.secundarios map (sec) -> {
+          id: sec."_id",
+          secondaryId: sec.id_secundario,
+          name: sec.nombre
+        }
+      },
+      optional: b.opcionales map (o) -> {
+        id: o."_id",
+        optionalId: o.id_opcional,
+        name: o.nombre,
+        activationDate: {
+          date: unwrap(o.fecha_activacion)
+        }
+      }
+    },
+    serviceCharacteristic: s.Caracteristica_Servicio map (c) -> {
+      characteristic: c.Caracteristica,
+      value: c.Valor
+    },
+    productServiceCode: s.Codigo_Producto_Servicio,
+    billingAccount: s.Cuenta_Facturacion,
+    packaging: s.Empaquetado,
+    status: s.Estado,
+    fraudStatus: s.Estado_Fraude,
+    paymentStatus: s.Estado_Pago,
+    lossTheftStatus: s.Estado_Robo_Perdida,
+    voluntaryStatus: s.Estado_Voluntaria,
+    activationDate: {
+      date: unwrap(s.Fecha_Activacion)
+    },
+    creationDate: {
+      date: unwrap(s.Fecha_Creacion)
+    },
+    iccid: s.ICCID,
+    imei: s.IMEI,
+    parentAssetId: s.Id_Activo_Padre,
+    rootAssetId: s.Id_Activo_Raiz,
+    sourceSystemAssetId: s.Id_Activo_Sistema_Origen,
+    relatedOrderId: s.Id_Orden_Relacionada,
+    serviceMode: s.Modalidad_Servicio,
+    connectionNumber: s.Numero_Conexion,
+    identificationNumber: s.Numero_Identificacion,
+    planOffer: s.Oferta_Plan,
+    country: s.Pais,
+    product: s.Producto,
+    sourceSystem: s.Sistema_Origen,
+    technology: s.Tecnologia,
+    documentType: s.Tipo_Documento,
+    lineType: s.Tipo_Linea,
+    productType: s.Tipo_Producto,
+    createdByUser: s.Usuario_Creador,
+    offerValue: s.Valor_Oferta,
+    extractorUpdate: s.actualizacion_extractor
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[vars.parameters.OPERATION == 'FTTH']">
+				<flow-ref doc:name="Flow Reference" doc:id="3b9f562c-8022-480f-bf63-36fbf40341b7" name="mongo-db-sapi-get-service-ftth-clientSub_Flow"/>
+				<ee:transform doc:name="Transform Message" doc:id="797665f6-2129-4f0f-a661-4ab3bb3994af" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var service = payload.servicios
+
+---
+{
+  code: payload.codigo,
+  message: if(payload.codigo == "200") "Servicios consultados con exito" else "No se obtuvieron resultados con los parametros enviados",
+  serviceftth: 
+        service map (s) -> {
+                id: s."_id"."\$oid",
+                extractorUpdate: s.Actualizacion_Extractor,
+                customerAttachments: s.Adjuntos_Cliente,
+                listAttributes: s.AtributosLista,
+                authorizationCentralCheck: s.Autoriza_Consulta_Centrales,
+                authorizationPersonalDataHandling: s.Autoriza_Manejo_Datos_Personales,
+                creditDataAuthorization: s.Autorizacion_Datacredito,
+                neighborhood: s.Barrio,
+                bundlePermanenceClause: s.Bundle_Clausula_Permanencia,
+                technologyMigrationChange: if(s.Cambio_Tecnologia_Migrado default false) 1 else 0,
+                category: s.Categoria,
+                city: s.Ciudad,
+                documentCity: s.Ciudad_Exp_Documento,
+                scoringClassification: s.Clasificacion_Scoring,
+                permanenceClause: s.Clausula_Permanencia,
+                customerValue: s.Cliente_Valor,
+                coverage: s.Cobertura,
+                email: s.Correo_Electronico,
+                companyData: s.Datos_Empresa,
+                department: s.Departamento,
+                documentDepartment: s.Depto_Exp_Documento,
+                discount: s.Descuento,
+                address: s.Direccion,
+                experienceExecutive: s.Ejecutivo_Experiencia,
+                attentionScheme: s.EsquemaAtencion,
+                maritalStatus: s.Estado_Civil,
+                stratum: s.Estrato,
+                extension: s.Extension,
+                activationDate: s.Fecha_Activacion,
+                updateDate: s.Fecha_Actualizacion,
+                creationDate: s.Fecha_Creacion,
+                documentIssueDate: s.Fecha_Expedicion_Documento,
+                modificationDate: s.Fecha_Modificacion,
+                birthDate: s.Fecha_Nacimiento,
+                scoringDate: s.Fecha_Scoring,
+                identityValidationDate: s.Fecha_Validacion_Identidad,
+                gender: s.Genero,
+                customerAccountId: s.Id_Cuenta_Cliente,
+                billingAccountId: s.IdCuentaFacturacion,
+                salesforceBillingAccountId: s.Id_Cuenta_Facturacion_Salesforce,
+                serviceAccountId: s.Id_Cuenta_Servicio,
+                installationAddressId: s.Id_Direccion_Instalacion,
+                orderTransactionId: s.Id_Orden_Tramite,
+                salesforceId: s.Id_SalesForce,
+                integrationId: s.IntegrationId,
+                isRecurringPayment: if(s.Is_Pago_Recurrente) 1 else 0,
+                locality: s.Localidad,
+                paymentMethod: s.Medio_De_Pago,
+                modifiedInMDM: s.Modificado_MDM,
+                customerName: s.Nombre_Cliente,
+                shortCompanyName: s.Nombre_Corto_Empresa,
+                names: s.Nombres,
+                previousConnectionNumber: s.Numero_Conexion_Anterior,
+                identificationNumber: s.Numero_Identificacion,
+                country: s.Pais,
+                finalPrice: s.PrecioFinal,
+                firstSurname: s.Primer_Apellido,
+                promotions: if(s.Promociones != []) s.Promociones else [],
+                ageRange: s.Rango_Edad,
+                scoring: s.Scoring,
+                fixedScoring: s.Scoring_Fija,
+                segment: s.Segmento,
+                uenSegment: s.Segmento_UEN,
+                secondSurname: s.Segundo_Apellido,
+                psServices: s.ServiciosPS,
+                landlinePhone: s.Telefono_Fijo,
+                mobilePhone: s.Telefono_Movil,
+                mobilePhone2: s.Telefono_Movil2,
+                customerType: s.Tipo_Cliente,
+                documentType: s.Tipo_Documento,
+                scoringType: s.Tipo_Scoring,
+                serviceType: s.TipoServicio,
+                uen: s.UEN,
+                createdBy: s.Usuario_Creacion,
+                creatorUser: s.Usuario_Creador,
+                modifiedBy: s.Usuario_Modificacion,
+                modifierUser: s.Usuario_Modificador,
+                validateLisimCode: s.ValidaCodigoLISIM,
+	            atdp: {
+	            channel: s.ATDP.CANAL,
+	            date: s.ATDP.FECHA,
+	            habeasData: s.ATDP.HABEAS_DATA
+	            },
+	            stringAttributes: (s.AtributosCadena default []) map (a) -> {
+	                subscriptionDate: a.FechaSuscripcion,
+	                key: a.Llave,
+	                value: a.Valor
+	            },
+	            dateAttributes: s.AtributosFecha default [],
+	            numericAttributes: s.AtributosNumerico default [],
+	            bundle: {
+	                id: s.Bundle."_id"."\$oid",
+	                action: s.Bundle.Accion,
+	                scheduling: if (s.Bundle.Agendamiento default false) 1 else 0,
+	                provisioning: if (s.Bundle.Aprovisionamiento default false) 1 else 0,
+	                maxQuantity: s.Bundle.Cantidad_Maxima,
+	                minQuantity: s.Bundle.Cantidad_Minima,
+	                productOfferCharacteristics: (s.Bundle.Caracteristicas_Producto_Oferta default []) map (c) -> {
+	                    characteristic: c.Caracteristica,
+	                    value: c.Valor,
+	                    offerCharacteristicAction: (c.Accion_caracteristica_oferta default []) map (a) -> {
+	                        action: a.Accion
+	                    }
+	                },
+	                classification: s.Bundle.Clasificacion,
+	                configurationCode: s.Bundle.Codigo_Configuracion,
+	                dependency: s.Bundle.Dependencia,
+	                disabled: if (s.Bundle.deshabilitado default false) 1 else 0,
+	                display: s.Bundle.Display,
+	                availability: if (s.Bundle.Disponibilidad default false) 1 else 0,
+	                status: s.Bundle.Estado,
+	                billing: if (s.Bundle.Facturacion default false) 1 else 0,
+	                icon: s.Bundle.Icono,
+	                serviceClassId: s.Bundle.Id_Clase_Servicio,
+	                itemId: s.Bundle.Id_Item,
+	                parentItemId: s.Bundle.Id_Item_Padre,
+	                optionalAuxId: s.Bundle.id_opcional_auxiliar,
+	                serviceId: s.Bundle.Id_Servicio,
+	                productSubtypeId: s.Bundle.Id_Subtipo_Producto,
+	                serviceSubtypeId: s.Bundle.Id_Subtipo_Servicio,
+	                productTypeId: s.Bundle.Id_Tipo_Producto,
+	                serviceTypeId: s.Bundle.Id_Tipo_Servicio,
+	                name: s.Bundle.Nombre,
+                	groupNumber: s.Bundle.Numero_Agrupacion,
+	                bundleParameters: (s.Bundle.Parametros_bundle default []) map (p) -> {
+	                    parameter: p.Parametro,
+	                    parameterType: p.Tipo_Parametro,
+	                    value: p.Valor
+	                },
+	                productParameters: s.Bundle.Parametros_Producto,
+	                offerPrice: (s.Bundle.Precio_Oferta default []) map (o) -> {
+	                    salesChannel: o.Canal_Venta,
+	                    tax: o.Iva,
+	                    priceWithTax: o.Precio_Con_Iva,
+	                    priceWithoutTax: o.Precio_Sin_Iva
+	                },
+	                primary: (s.Bundle.Primarios default []) map ((p) -> {
+                    id: p."_id"."\$oid",
+                    action: p.Accion,
+                    scheduling: p.Agendamiento,
+                    provisioning: p.Aprovisionamiento,
+                    attributes: p.Atributos,
+                    configurationCode: p.Codigo_Configuracion,
+                    state: p.Estado,
+                    billing: p.Facturacion,
+                    disabled: p.deshabilitado,
+                    display: p.Display,
+                    availability: p.Disponibilidad,
+                    name: p.Nombre,
+                    serviceId: p.Id_Servicio,
+                    productType: p.Tipo_Producto,
+                    serviceType: p.Tipo_Servicio,
+                    subServiceType: p.Subtipo_Servicio,
+                    gold: p.Gold,
+                    price: p.PrecioFinal,
+                    discount: p.Descuento,
+
+                    secondary: (p.Secundarios default []) map ((sec) -> {
+	                    id: sec."_id"."\$oid",
+	                    action: sec.Accion,
+	                    scheduling: sec.Agendamiento,
+	                    provisioning: sec.Aprovisionamiento,
+	                    attributes: sec.Atributos,
+	                    configurationCode: sec.Codigo_Configuracion,
+	                    state: sec.Estado,
+	                    billing: sec.Facturacion,
+	                    disabled: sec.deshabilitado,
+	                    display: sec.Display,
+	                    availability: sec.Disponibilidad,
+	                    name: sec.Nombre,
+	                    serviceId: sec.Id_Servicio,
+	                    productType: sec.Tipo_Producto,
+	                    serviceType: sec.Tipo_Servicio,
+	                    subServiceType: sec.Subtipo_Servicio,
+	                    price: sec.PrecioFinal,
+	                    discount: sec.Descuento
+	                    }),
+	
+	                    additional: (p.Adicionales default []) map ((add) -> {
+	                    id: add."_id"."\$oid",
+	                    action: add.Accion,
+	                    scheduling: add.Agendamiento,
+	                    provisioning: add.Aprovisionamiento,
+	                    attributes: add.Atributos,
+	                    configurationCode: add.Codigo_Configuracion,
+	                    state: add.Estado,
+	                    billing: add.Facturacion,
+	                    disabled: add.deshabilitado,
+	                    display: add.Display,
+	                    availability: add.Disponibilidad,
+	                    name: add.Nombre,
+	                    serviceId: add.Id_Servicio,
+	                    productType: add.Tipo_Producto,
+	                    serviceType: add.Tipo_Servicio,
+	                    subServiceType: add.Subtipo_Servicio,
+	                    price: add.PrecioFinal,
+	                    discount: add.Descuento
+	                    })
+                }),
+						sequence: s.Bundle.Secuencia,
+						selected: s.Bundle.seleccionado,
+						productSubtype: s.Bundle.Subtipo_Producto,
+						serviceSubtype: s.Bundle.Subtipo_Servicio,
+						additionalType: s.Bundle.tipo_adicional,
+						productType: s.Bundle.Tipo_Producto,
+						serviceType: s.Bundle.Tipo_Servicio,
+						extractorUpdate: s.Bundle.Actualizacion_Extractor,
+						offerFilterGroup: s.Bundle.Agrupa_filtros_oferta,
+						attributes: s.Bundle.Atributos,
+						discount: s.Bundle.Descuento,
+						assignmentDate: s.Bundle.Fecha_Asignacion,
+						creationDate: s.Bundle.Fecha_Creacion,
+						modificationDate: s.Bundle.Fecha_Modificacion,
+						finalPrice: s.Bundle.PrecioFinal,
+						creationUser: s.Bundle.Usuario_Creacion,
+						modificationUser: s.Bundle.Usuario_Modificacion,
+						offerTechnicalSpecValue: s.Bundle.Valor_Especificacion_Tecnica_Oferta	
+	            },
+				status: {
+					main: {
+						code: s.Estado.Principal.Codigo,
+						description: s.Estado.Principal.Descripcion,
+						date: s.Estado.Principal.Fecha
+					},
+					payment: {
+						code: s.Estado.Pago.Codigo,
+						description: s.Estado.Pago.Descripcion,
+						date: s.Estado.Pago.Fecha
+					},
+					fraud: {
+						code: s.Estado.Fraude.Codigo,
+						description: s.Estado.Fraude.Descripcion,
+						date: s.Estado.Fraude.Fecha
+					},
+					procedure: {
+						code: s.Estado.Tramite.Codigo,
+						description: s.Estado.Tramite.Descripcion,
+						date: s.Estado.Tramite.Fecha
+					},
+					voluntary: {
+						code: s.Estado.Voluntaria.Codigo,
+						description: s.Estado.Voluntaria.Descripcion,
+						date: s.Estado.Voluntaria.Fecha
+					},
+					theftLoss: {
+						code: s.Estado.RoboPerdida.Codigo,
+						description: s.Estado.RoboPerdida.Descripcion,
+						date: s.Estado.RoboPerdida.Fecha
+					}
+				},				
+					 customerCharacteristics: (s.Caracteristica_Cliente default []) map (c) -> {
+					    characteristic: c.Caracteristica,
+					    value: c.Valor
+						},
+					 serviceCharacteristics: (s.Caracteristica_Servicio default []) map (c) -> {
+					    characteristic: c.Caracteristica,
+					    value: c.Valor
+					  },
+				      customer: {
+			                id: s.Cliente."_id"."\$oid" default "",
+			                creationDate: s.Cliente.Fecha_Creacion default "",
+			                customerAccountId: s.Cliente.Id_Cuenta_Cliente default "",
+			                documentNumber: s.Cliente.Numero_Documento default "",
+			                documentType: s.Cliente.Tipo_Documento default "",
+			                createdBy: s.Cliente.Usuario_Creacion default "",
+			                extractorUpdate: s.Cliente.Actualizacion_Extractor default "",
+			                customerAttachments: s.Cliente.Adjuntos_Cliente default "",
+			                authorizationCentralCheck: s.Cliente.Autoriza_Consulta_Centrales default "",
+			                authorizationPersonalDataHandling: s.Cliente.Autoriza_Manejo_Datos_Personales default "",
+			                contacts: s.Cliente.Contactos default "",
+			                billingAccounts: s.Cliente.Cuentas_Facturacion default "",
+			                serviceAccounts: s.Cliente.Cuentas_Servicio default "",
+			                companyData: s.Cliente.Datos_Empresa default "",
+			                addresses: s.Cliente.Direcciones default "",
+			                email: s.Cliente.Email default "",
+			                documentIssueDate: s.Cliente.Fecha_Expedicion default "",
+			                modificationDate: s.Cliente.Fecha_Modificacion default "",
+			                identityValidationDate: s.Cliente.Fecha_Validacion_Identidad default "",
+			                names: s.Cliente.Nombres default "",
+			                firstSurname: s.Cliente.Primer_Apellido default "",
+			                fixedScoring: s.Cliente.Scoring_Fija default "",
+			                uenSegment: s.Cliente.Segmento_UEN default "",
+			                secondSurname: s.Cliente.Segundo_Apellido default "",
+			                originSystem: s.Cliente.Sistema_Origen default "",
+			                landlinePhone: s.Cliente.Telefono_Fijo default "",
+			                mobilePhone: s.Cliente.Telefono_Movil default "",
+			                uen: s.Cliente.UEN default "",
+			                modifiedBy: s.Cliente.Usuario_Modificacion default ""
+			            },
+						  contacts: s.Contacto map (c) -> {
+			                id: c."_id"."\$oid",
+			                extractorUpdate: c.actualizacion_extractor,
+			                mobileUpdate: c.ActualizaMovil,
+			                contactAttachments: c.Adjuntos_Contacto,
+			                atdp: {
+			                    channel: c.ATDP.CANAL,
+			                    date: c.ATDP.FECHA,
+			                    habeasData: c.ATDP.HABEAS_DATA,
+			                    associatedPqr: c.ATDP.PQR_ASOCIADA,
+			                    user: c.ATDP.USUARIO
+			                },
+			                authorized: if(c.Autorizado) 1 else 0,
+			                neighborhood: c.Barrio,
+			                city: c.Ciudad,
+			                daneCode: c.Codigo_DANE,
+			                department: c.Departamento,
+			                associatedAddress: c.Direccion_Asociada,
+			                contactEmail: c.Email_Contacto,
+			                status: if(c.Estado) 1 else 0,
+			                stratum: c.Estrato,
+			                contactFax: c.Fax_Contacto,
+			                modificationDate: c.Fecha_Modificacion,
+			                mobileModificationDate: c.Fecha_Modificacion_Movil,
+			                locality: c.Localidad,
+			                mobilePhone: c.Movil_Contacto,
+			                mobilePhone2: c.Movil_Contacto2,
+			                contactName: c.Nombre_Contacto,
+			                individualName: c.Nombre_Individual,
+			                documentNumber: c.Numero_Documento,
+			                country: c.Pais,
+			                firstSurname: c.Primer_Apellido,
+			                secondSurname: c.Segundo_Apellido,
+			                contactPhone: c.Telefono_Contacto,
+			                contactPhone2: c.Telefono_Contacto2,
+			                contactType: c.Tipo_Contacto,
+			                documentType: c.Tipo_Documento
+			            },
+						  addresses: s.Direcciones map (d) -> {
+			                coverage: {
+			                stratum: d.Cobertura.Estrato,
+			                latitude: d.Cobertura.Latitud,
+			                longitude: d.Cobertura.Longitud default 0,
+			                lotCode: d.Cobertura.Codigo_Lote,
+			                gisAddress: d.Cobertura.Direccion_GIS,
+			                district: d.Cobertura.Distrito,
+			                locality: d.Cobertura.Localidad,
+			                molecule: d.Cobertura.Molecula,
+			                coverageName: d.Cobertura.NombreCobertura,
+			                olt: d.Cobertura.Olt,
+			                purpose: d.Cobertura.Proposito,
+			                technology: d.Cobertura.Tecnologia,
+			                coverageType: d.Cobertura.Tipo_Cobertura,
+			                distanceType: d.Cobertura.TipoDistancia,
+			                distanceType2: d.Cobertura.TipoDistancia2,
+			                zone: d.Cobertura.Zona
+			                },
+			                departmentCode: d.Codigo_Departamento,
+			                municipalityCode: d.Codigo_Municipio,
+			                countryCode: d.Codigo_Pais,
+			                department: d.Departamento,
+			                normalizedAddress: d.Direccion_Normalizada,
+			                status: d.Estado,
+			                addressId: d.Id_Direccion,
+			                municipality: d.Municipio,
+			                selected: if(d.Seleccionada) 1 else 0,
+			                addressType: d.Tipo_Direccion,
+			                availableCoverages: d.CoberturasDisponibles map (c) -> {
+			                lotCode: c.Codigo_Lote,
+			                gisAddress: c.Direccion_GIS,
+			                district: c.Distrito,
+			                stratum: c.Estrato,
+			                latitude: c.Latitud,
+			                locality: c.Localidad,
+			                longitude: c.Longitud default 0,
+			                molecule: c.Molecula,
+			                coverageName: c.NombreCobertura,
+			                olt: c.Olt,
+			                purpose: c.Proposito,
+			                technology: c.Tecnologia,
+			                coverageType: c.Tipo_Cobertura,
+			                distanceType: c.TipoDistancia,
+			                distanceType2: c.TipoDistancia2,
+			                viable: if(c.Viable) 1 else 0,
+			                zone: c.Zona
+			                },
+			                daneCode: d.Codigo_DANE,
+			                addressCode: d.Codigo_Direccion,
+			                addressName: d.Nombre_Direccion
+			            },
+						optionals: s.Opcionales map (o) -> {
+						    id: o."_id"."\$oid",
+						    action: o.Accion,
+						    scheduling: if(o.Agendamiento) 1 else 0,
+						    provisioning: if(o.Aprovisionamiento) 1 else 0,
+						    attributes: o.Atributos map (a) -> {
+						        name: a.Nombre,
+						        "type": a.Tipo,
+						        value: a.Valor
+						    },
+						    maxQuantity: o.Cantidad_Maxima,
+						    minQuantity: o.Cantidad_Minima,
+						    productOfferCharacteristics: o.Caracteristicas_Producto_Oferta map (c) -> {
+						        characteristic: c.Caracteristica,
+						        value: c.Valor,
+						        productOfferCharacteristicAction: c.Accion_caracteristica_oferta map (ca) -> {
+						            action: ca.Accion
+						        }
+						    },
+						    classification: o.Clasificacion,
+						    configurationCode: o.Codigo_Configuracion,
+						    dependency: o.Dependencia,
+						    disabled: if(o.deshabilitado) 1 else 0,
+						    display: o.Display,
+						    availability: if(o.Disponibilidad) 1 else 0,
+						    status: o.Estado,
+						    billing: if(o.Facturacion) 1 else 0,
+						    icon: o.Icono,
+						    serviceClassId: o.Id_Clase_Servicio,
+						    itemId: o.Id_Item,
+						    parentItemId: o.Id_Item_Padre,
+						    optionalAuxId: o.id_opcional_auxiliar,
+						    serviceId: o.Id_Servicio,
+						    productSubtypeId: o.Id_Subtipo_Producto,
+						    serviceSubtypeId: o.Id_Subtipo_Servicio,
+						    productTypeId: o.Id_Tipo_Producto,
+						    serviceTypeId: o.Id_Tipo_Servicio,
+						    name: o.Nombre,
+						    groupNumber: o.Numero_Agrupacion,
+						    productParameters: o.Parametros_Producto map (p) -> {
+						        parameter: p.Parametro,
+						        parameterType: p.TipoParametro,
+						        value: p.Valor
+						    },
+						    offerPrice: o.Precio_Oferta map (p) -> {
+						        salesChannel: p.Canal_Venta,
+						        vat: p.Iva,
+						        priceWithVat: p.Precio_Con_Iva,
+						        priceWithoutVat: p.Precio_Sin_Iva
+						    },
+						    sequence: o.Secuencia,
+						    selected: if(o.seleccionado) 1 else 0,
+						    productSubtype: o.Subtipo_Producto,
+						    serviceSubtype: o.Subtipo_Servicio,
+						    additionalType: o.tipo_adicional,
+						    productType: o.Tipo_Producto,
+						    serviceType: o.Tipo_Servicio,
+						    extractorUpdate: o.Actualizacion_Extractor,
+						    offerFilterGrouping: o.Agrupa_filtros_oferta,
+						    discount: o.Descuento,
+						    assignmentDate: o.Fecha_Asignacion,
+						    creationDate: o.Fecha_Creacion,
+						    modificationDate: o.Fecha_Modificacion,
+						    finalPrice: o.PrecioFinal,
+						    createdBy: o.Usuario_Creacion,
+						    modifiedBy: o.Usuario_Modificacion,
+						    technicalSpecificationValue: o.Valor_Especificacion_Tecnica_Oferta
+						},
+						conditionalPromotions: s.Promociones_Condicionadas,
+						project: {
+							dialing: s.Proyecto.Marcacion,
+							"type": s.Proyecto.Tipo,
+							 section: s.Proyecto.Tramo,
+							 technology: s.Proyecto.Tecnologia
+							},
+							churnRisk: {
+							    suggestedAction: s.Riesgo_Churn.Accion_Sugerida,
+							    riskLevel: s.Riesgo_Churn.Nivel_Riesgo,
+							    impactVariable: s.Riesgo_Churn.Variable_Impacto
+							},
+							
+							auxiliaryServices: s.Servicios_Auxiliares map (aux) -> {
+							    id: aux."_id"."\$oid",
+							    bundle: {
+							        id: aux.Bundle."_id"."\$oid",
+							        action: aux.Bundle.Accion,
+							        scheduling: aux.Bundle.Agendamiento as Number default 0,
+							        provisioning: aux.Bundle.Aprovisionamiento as Number default 0,
+							        attributes: aux.Bundle.Atributos default [],
+							        maxQuantity: aux.Bundle.Cantidad_Maxima,
+							        minQuantity: aux.Bundle.Cantidad_Minima,
+							        productOfferCharacteristics: aux.Bundle.Caracteristicas_Producto_Oferta map (c) -> {
+							            productOfferCharacteristicAction: c.Accion_caracteristica_oferta map (a) -> {
+							                action: a.Accion
+							            },
+							            characteristic: c.Caracteristica,
+							            value: c.Valor
+							        },
+							        classification: aux.Bundle.Clasificacion,
+							        configurationCode: aux.Bundle.Codigo_Configuracion,
+							        dependency: aux.Bundle.Dependencia,
+							        disabled: aux.Bundle.deshabilitado as Number default 0,
+							        display: aux.Bundle.Display,
+							        availability: aux.Bundle.Disponibilidad as Number default 0,
+							        status: aux.Bundle.Estado,
+							        billing: aux.Bundle.Facturacion as Number default 0,
+							        icon: aux.Bundle.Icono,
+							        serviceClassId: aux.Bundle.Id_Clase_Servicio,
+							        itemId: aux.Bundle.Id_Item,
+							        parentItemId: aux.Bundle.Id_Item_Padre,
+							        optionalAuxId: aux.Bundle.id_opcional_auxiliar,
+							        serviceId: aux.Bundle.Id_Servicio,
+							        productSubtypeId: aux.Bundle.Id_Subtipo_Producto,
+							        serviceSubtypeId: aux.Bundle.Id_Subtipo_Servicio,
+							        productTypeId: aux.Bundle.Id_Tipo_Producto,
+							        serviceTypeId: aux.Bundle.Id_Tipo_Servicio,
+							        name: aux.Bundle.Nombre,
+							        groupNumber: aux.Bundle.Numero_Agrupacion,
+							        bundleParameters: aux.Bundle.Parametros_bundle map (p) -> {
+							            parameter: p.Parametro,
+							            parameterType: p.Tipo_Parametro,
+							            value: p.Valor
+							        },
+							        productParameters: aux.Bundle.Parametros_Producto default [],
+							        offerPrice: aux.Bundle.Precio_Oferta default [],
+							        primaries: aux.Bundle.Primarios default [],
+							        sequence: aux.Bundle.Secuencia,
+							        selected: aux.Bundle.seleccionado as Number default 0,
+							        productSubtype: aux.Bundle.Subtipo_Producto,
+							        serviceSubtype: aux.Bundle.Subtipo_Servicio,
+							        additionalType: aux.Bundle.tipo_adicional,
+							        productType: aux.Bundle.Tipo_Producto,
+							        serviceType: aux.Bundle.Tipo_Servicio,
+							        assignmentDate: aux.Bundle.Fecha_Asignacion default ""
+							    },
+							    serviceCharacteristics: aux.Caracteristica_Servicio map (c) -> {
+							        characteristic: c.Caracteristica,
+							        value: c.Valor
+							    },
+							    creationDate: aux.Fecha_Creacion,
+							    modificationDate: aux.Fecha_Modificacion default "",
+							    billingAccountId: aux.Id_Cuenta_Facturacion,
+							    serviceAccountId: aux.Id_Cuenta_Servicio,
+							    installationAddressId: aux.Id_Direccion_Instalacion,
+							    salesforceId: aux.Id_SalesForce,
+							    isRecurringPayment: aux.Is_Pago_Recurrente as Number default 0,
+							    previousConnectionNumber: aux.Numero_Conexion_Anterior,
+							    optionals: aux.Opcionales map (o) -> {
+							        id: o."_id"."\$oid",
+							        action: o.Accion,
+							        scheduling: o.Agendamiento as Number default 0,
+							        provisioning: o.Aprovisionamiento as Number default 0,
+							        attributes: o.Atributos map (a) -> {
+							            name: a.Nombre,
+							            "type": a.Tipo,
+							            value: a.Valor
+							        },
+							        maxQuantity: o.Cantidad_Maxima,
+							        minQuantity: o.Cantidad_Minima,
+							        productOfferCharacteristics: o.Caracteristicas_Producto_Oferta map (c) -> {
+							            productOfferCharacteristicAction: c.Accion_caracteristica_oferta map (a) -> {
+							                action: a.Accion
+							            },
+							            characteristic: c.Caracteristica,
+							            value: c.Valor
+							        },
+							        classification: o.Clasificacion,
+							        configurationCode: o.Codigo_Configuracion,
+							        dependency: o.Dependencia,
+							        disabled: o.deshabilitado as Number default 0,
+							        display: o.Display,
+							        availability: o.Disponibilidad as Number default 0,
+							        status: o.Estado,
+							        billing: o.Facturacion as Number default 0,
+							        icon: o.Icono,
+							        serviceClassId: o.Id_Clase_Servicio,
+							        itemId: o.Id_Item,
+							        parentItemId: o.Id_Item_Padre,
+							        optionalAuxId: o.id_opcional_auxiliar,
+							        serviceId: o.Id_Servicio,
+							        productSubtypeId: o.Id_Subtipo_Producto,
+							        serviceSubtypeId: o.Id_Subtipo_Servicio,
+							        productTypeId: o.Id_Tipo_Producto,
+							        serviceTypeId: o.Id_Tipo_Servicio,
+							        name: o.Nombre,
+							        groupNumber: o.Numero_Agrupacion,
+							        productParameters: o.Parametros_Producto map (p) -> {
+							            parameter: p.Parametro,
+							            parameterType: p.TipoParametro,
+							            value: p.Valor
+							        },
+							        offerPrice: o.Precio_Oferta default [],
+							        sequence: o.Secuencia,
+							        selected: o.seleccionado as Number default 0,
+							        productSubtype: o.Subtipo_Producto,
+							        serviceSubtype: o.Subtipo_Servicio,
+							        additionalType: o.tipo_adicional,
+							        productType: o.Tipo_Producto,
+							        serviceType: o.Tipo_Servicio,
+							        assignmentDate: o.Fecha_Asignacion default ""
+							    },
+							    promotions: aux.Promociones default [],
+							    conditionalPromotions: aux.Promociones_Condicionadas default [],
+							    auxiliaryServices: aux.Servicios_Auxiliares default [],
+							    createdBy: aux.Usuario_Creacion,
+							    integrationId: aux.Integration_Id
+							},
+							
+							originSystem: {
+							    originSystemId: s.Sistema_Origen.Id_Sistema_Origen,
+							    originSystemName: s.Sistema_Origen.Sistema_Origen_Nombre
+							},
+							
+							attachments: s.Adjuntos map (a) -> {
+							    fileName: a.Nombre_Archivo,
+							    path: a.Ruta,
+							    description: a.Descripcion,
+							    size: a.Tamano,
+							    send: a.Enviar
+							}
+        }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="ca7e5cf4-a07a-43cd-ae15-e001672800b5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codeResponse: 500 ,
+  messageResponse: "Operación no definida"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

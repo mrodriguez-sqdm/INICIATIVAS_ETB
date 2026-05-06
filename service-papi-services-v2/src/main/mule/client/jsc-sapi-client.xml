@@ -1,0 +1,1070 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-msisdn-status-client" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="Update msisdn status" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.msisdn.path.patch-msisdn-status}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	msisdn : vars.request.msisdn
+}]]]></http:uri-params>
+				<http:query-params><![CDATA[#[output application/java
+---
+{
+	action : vars.request.action
+}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.balance-structured.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-balance-structured-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get balance" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.balance-structured.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"SID" : vars.request.subscription,
+	"size" : vars.request.size,
+	"status" : vars.request.status
+}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.balance-structured.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="transferbalance-client" >
+		<try doc:name="Try" >
+			<http:request method="POST" doc:name="Transfer balance" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.transferbalance.path}">
+			<http:body ><![CDATA[#[vars.request]]]></http:body>
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	subscription : vars.sidOrigin
+}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.transferbalance.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-subscriber-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get subscriber" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.subscriber.path}" target="subscriberObject">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"externalID" : vars.inputPayload.documentType ++ vars.inputPayload.documentNumber
+}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.subscriber.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-subscriber-client" >
+		<http:request method="POST" doc:name="Post subscriber" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.subscriber.path}" target="subscriberObject">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="post-order-client" >
+		<try doc:name="Try" >
+			<http:request method="POST" doc:name="Post order" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.order.path}" target="orderObject">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.order.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	
+</sub-flow>
+	<sub-flow name="patch-msisdn-client" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="Update msisdn" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.msisdn.path.post-activateLine}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"order_id" : vars.orderObject.id,
+	"msisdn" : vars.inputPayload.MSISDN
+}]]]></http:uri-params>
+		
+</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.msisdn.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	
+</sub-flow>
+<sub-flow name="post-msisdn-client" >
+		<try doc:name="Try" >
+			<http:request method="POST" doc:name="Post msisdn" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.msisdn.path.post-msisdn}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+		
+</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.msisdn.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	
+</sub-flow>
+	<sub-flow name="patch-simCard-client" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="Update simCard" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.simcard.path.post-activateLine}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"iccid" : vars.ICCID,
+	"order_id" : vars.orderObject.id
+}]]]></http:uri-params>
+		
+</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.simcard.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	
+</sub-flow>
+	<sub-flow name="patch-endOrder-client" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="End order" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.order.endOrder.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"id" : vars.orderObject.id
+}]]]></http:uri-params>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"action" : p('jsc-sapi.order.endOrder.action')
+}]]]></http:query-params>
+		
+
+</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.order.endOrder.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	
+</sub-flow>
+	<sub-flow name="patch-billingSubscription-client" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="Billing Subscription" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.createBillingAccount.subscription.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"subscription_id" : vars.orderObject.subscription.id
+}]]]></http:uri-params>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	("action" : vars.subscriptionAction) if (!isEmpty(vars.subscriptionAction)) 
+}]]]></http:query-params>
+		
+
+</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.createBillingAccount.subscription.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	
+</sub-flow>
+	<sub-flow name="post-billingBA-client" >
+		<try doc:name="Try" >
+			<http:request method="POST" doc:name="Billing BA" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.createBillingAccount.ba.path}" target="billingAccountObject">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.createBillingAccount.ba.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	
+</sub-flow>
+	<sub-flow name="get-disponibilidad-msisdn-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get MSISDN" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.msisdn.path.get-disponibilidad}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"msisdn" : vars.msisdn
+}]]]></http:uri-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" >
+					<logger level="INFO" doc:name="Logger" message="#[output application/json
+---
+payload]"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+<sub-flow name="get-disponibilidad-simcard-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get SIMCARD" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.simcard.path.get-disponibilidad}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"iccid" : vars.sim
+}]]]></http:uri-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" >
+					<ee:transform doc:name="Set error" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+read(error.muleMessage.typedValue.message.message, 'application/json')
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<logger level="INFO" doc:name="Logger" message="#[output application/json
+---
+payload]"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-rechargeLine-client" >
+		<try doc:name="Try" >
+			<http:request method="POST" doc:name="Recharge Line Balance" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.recharge.path}" target="billingAccountObject">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.recharge.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-SubscriptionMVNE-client" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="Billing Subscription" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.createBillingAccount.subscription.path}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"subscription_id" : vars.subscription_id
+}]]]></http:uri-params>
+				<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"action": p('subscriberCancel.action')
+}]]]></http:query-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.createBillingAccount.subscription.errorMessage2')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-subscription-client-by-msisdn" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get subscription" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.subscription.path}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"msisdn" : vars.connectionNumber
+}]]]></http:query-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.subscription.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-billingBA-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Billing BA" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.createBillingAccount.ba.path}" target="billingAccountInfo" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"externalID" : vars.inputPayload.billingAccountNumber
+}]]]></http:query-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.createBillingAccount.ba.errorMessage2')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-pkgi-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get PKGI" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.pkgi.path}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"pkgi_id" : vars.parentPkgInstanceId
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.pkgi.errorMessage-get')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-subcriptionBySID-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get subscription by SID" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.subscription.getBySID}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"SID" : vars.pkgSID
+}]]]></http:uri-params>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.subscription.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-groupinstance-client" >
+		<try doc:name="Try" >
+			<http:request method="POST" doc:name="Link to group" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.groupInstance.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"groupInstanceId" : vars.groupInstanceId
+}]]]></http:uri-params>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.groupInstance.errorMessage-post')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-pkgibySID-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get PKGI by SID" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.pkgi.getbySID}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"correlationId" : correlationId,
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"SID" : vars.subscriptionId,
+	"packageType" : "CHANGEPKG"
+}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.pkgi.errorMessage-get')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-pkgi" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="Patch pkgi by pkgID" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.pkgi.patch-pkgi}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"correlationId" : correlationId,
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"pkgi_id" :  vars.idInstanceJSC
+}]]]></http:uri-params>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.pkgi.errorMessage-patch')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-consumption-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get consumption" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.consumption.path}" target="subscriberObject" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : correlationId,
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	id : vars.id
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.consumption.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="terminate-subscription-client" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="Terminate Subscription" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.createBillingAccount.subscription.path}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"subscription_id" : vars.subscription_id
+}]]]></http:uri-params>
+				<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"action": p('subscriberCancel.actionTerminate')
+}]]]></http:query-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.createBillingAccount.subscription.errorMessage3')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-pkg-withStatus" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="Patch pkgi by pkgID with status" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.pkgi.patch-pkgi}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"correlationId" : correlationId,
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"logs" : vars.logs,
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"systemId" : vars.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"pkgi_id" : vars.pkg_id
+}]]]></http:uri-params>
+				<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"action" : p("variable.terminate")
+}]]]></http:query-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.pkgi.errorMessage-patch')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-pkgibySID-withStatus-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get PKGI by SID with status" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.pkgi.getbySID}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"correlationId" : correlationId,
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"logs" : vars.logs,
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"systemId" : vars.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+				<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"SID" : vars.subscriptionId,
+	"status" : p('variable.active')
+}]]]></http:query-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.pkgi.errorMessage-get')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-groupInstanceMember-client" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Consultar member del group" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.groupInstance.getById}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"logs" : vars.logs,
+	"systemId" : vars.systemId,
+	
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+				<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"groupInstanceEq": vars.groupInstanceId,
+	"subscriptionEq" : vars.subscriptionId
+}]]]></http:query-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.groupInstance.errorMessage-get')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="delete-groupInstanceMember-client" >
+		<try doc:name="Try" >
+			<http:request method="DELETE" doc:name="Eliminar linea hija del grupo" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.groupInstance.deleteById}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"logs" : vars.logs,
+	"systemId" : vars.systemId,
+	
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"memberId" : vars.memberId,
+	"groupInstanceId" : vars.groupInstanceId
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.groupInstance.errorMessage-delete')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-assignSubscriptionToSubscriber-client" >
+		<try doc:name="Try" >
+			<http:request method="POST" doc:name="Assign subscription to subscriber" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.assignSubscriptionToSubscriber.path}" target="assignSubscriptionToSubscriberResp" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"subscription_id" : vars.subscriptionResp.content[0].id,
+	"subscriber_id" : if(vars.subscriberObject.content[0].id == null) vars.postSubscriberResp.externalID else vars.subscriberObject.content[0].id
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.createBillingAccount.ba.errorMessage2')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-change-owner-jsc-client" doc:name="post-change-owner-jsc-client">
+		<try doc:name="Try">
+			<http:request method="POST" doc:name="Change owner" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.assignSubscriptionToSubscriber.path}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"subscription_id" : vars.subscriptionId,
+	"subscriber_id" : vars.newSubscriberId
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate">
+					<set-variable value="#[p('jsc-sapi.assignSubscriptionToSubscriber.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-billing-ba-id-client" doc:name="patch-billing-ba-id-client">
+		<try doc:name="Try">
+			<http:request method="PATCH" doc:name="Patch billing BA" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.billing.ba.patchById}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"id" : vars.billingAccountId
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate">
+					<set-variable value="#[p('jsc-sapi.billing.ba.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-subscription-by-id-client" doc:name="patch-subscription-by-id-client">
+		<try doc:name="Try">
+			<http:request method="PATCH" doc:name="Patch subscription by id" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.createBillingAccount.subscription.path}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"subscription_id" : vars.subscriptionId
+}]]]></http:uri-params>
+				<http:query-params><![CDATA[#[output application/java
+---
+{
+	("action" : vars.subscriptionPatchAction) if (!isEmpty(vars.subscriptionPatchAction default ""))
+}]]]></http:query-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate">
+					<set-variable value="#[p('jsc-sapi.createBillingAccount.subscription.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="delete-msisdn-by-id-client" doc:name="delete-msisdn-by-id-client">
+		<try doc:name="Try">
+			<http:request method="DELETE" doc:name="Delete MSISDN" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.msisdn.path.delete-msisdn}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"msisdn" : vars.msisdnToDelete
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate">
+					<set-variable value="#[p('jsc-sapi.msisdn.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-msisdn-link-order-client" doc:name="patch-msisdn-link-order-client">
+		<try doc:name="Try">
+			<http:request method="PATCH" doc:name="Link MSISDN to order" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.msisdn.path.post-activateLine}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"order_id" : vars.orderObject.id,
+	"msisdn" : vars.msisdnForLink
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate">
+					<set-variable value="#[p('jsc-sapi.msisdn.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-subscription-id-features" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get Subscription Id Features" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.subscription-id-feature.path}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	subscription_id : vars.subscription_id
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.subscription-id-feature.errorMessage-get')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-subscription-id-features" >
+		<try doc:name="Try" >
+			<http:request method="PATCH" doc:name="Patch Subscription Id Features" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.subscription-id-feature.path}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	subscription_id : vars.subscription_id
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.subscription-id-feature.errorMessage-patch')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-jsc-sapi-clientSub_Flow" >
+		<http:request method="POST" doc:name="Send Message SMPP to Client" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.smpp.path}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" :  p('jsc-sapi.client_secret'),
+	"client_id" :  p('jsc-sapi.client_id')
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="get-subscription-msisdn-imei" >
+		<try doc:name="Try" >
+			<http:request method="GET" doc:name="Get IMEI by msisdn" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.subscription.path}${jsc-sapi.subscription.msisdn}" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	msisdn : vars.parameters.RESOURCE_ID
+}]]]></http:uri-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+					<set-variable value="#[p('jsc-sapi.subscription-id-feature.errorMessage-get')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-subscriber-client" >
+		<http:request method="PATCH" doc:name="Patch subscriber" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.subscriber.patch-resource}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"id" : vars.uriParams.suscriberId
+}]]]></http:uri-params>
+		</http:request>
+	</sub-flow>
+</mule>
