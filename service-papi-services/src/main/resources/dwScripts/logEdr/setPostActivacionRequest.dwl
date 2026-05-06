@@ -10,7 +10,7 @@ var creationDate = responseJSC.creationDate default null
   ID_Tpo_Xdr: "ACTIVACION",
   Fecha_Ini: if (creationDate != null) (creationDate as DateTime) as String {format: "yyyyMMdd"} else "",
   Hora_Ini: if (creationDate != null) (creationDate as DateTime) as String {format: "HH:mm:ss"} else "",
-  Abonado_A: responseJSC.subscription.id default "",
+  Abonado_A: vars.MSISDN default "",
   Fch_Vigencia_Ini: if (creationDate != null) (creationDate as DateTime) as String {format: "yyyyMMdd"} else "",
   Hora_Vigencia_Ini: if (creationDate != null) (creationDate as DateTime) as String {format: "HH:mm:ss"} else "",
   Fch_Vigencia_Fin: "",
