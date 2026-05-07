@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="service-papi-services-v2-main" >
+		<http:listener doc:name="Listener" config-ref="service-papi-services-v2-httpListenerConfig" path="/v2/*" >
+			<http:response statusCode="#[vars.httpStatus default 200]" >
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="#[vars.httpStatus default 500]" >
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<flow-ref doc:name="Call initial Logger" name="initial-loggin-Sub_Flow" />
+		<apikit:router config-ref="service-papi-services-v2-config" doc:name="APIkit Router" />
+		<async doc:name="Async" >
+			<flow-ref doc:name="Call logger" name="loggin-client-call" />
+		</async>
+		<error-handler ref="error-handlerError_Handler" />
+	</flow>
+	<flow name="service-papi-services-v2-console" >
+		<http:listener doc:name="Listener" config-ref="service-papi-services-v2-httpListenerConfig" path="/console/*" >
+			<http:response statusCode="#[vars.httpStatus default 200]" >
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="#[vars.httpStatus default 500]" >
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<apikit:console config-ref="service-papi-services-v2-config" doc:name="APIkit Console" />
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" type="APIKIT:NOT_FOUND" >
+				<ee:transform doc:name="Transform Message" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="get:\service:service-papi-services-v2-config" >
+		<flow-ref doc:name="Flow Reference" name="service-get-orchestadorSub_Flow"/>
+	</flow>
+	<flow name="post:\service:service-papi-services-v2-config" >
+		<set-variable value="#[payload]" doc:name="Set inputPayload" variableName="inputPayload" />
+		<flow-ref doc:name="Go to product orchestrator" name="product-orchestratorSub_Flow" />
+		<ee:transform doc:name="Normalize response (code/description)">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: payload.code default payload.codigo default payload.status default 0,
+  description: payload.description default payload.descripcion default (if (payload.message is Object) (payload.message as Object).message default "" else payload.message as String default "")
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="post:\order:application\json:service-papi-services-v2-config" >
+		<set-variable value="#[payload]" doc:name="Set inputPayload crear orden" variableName="inputPayload" />
+		<flow-ref doc:name="Crear orden orchestrator" name="order-create-orchestratorSub_Flow" />
+		<ee:transform doc:name="Normalize response (code/description)">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: payload.code default payload.codigo default payload.status default 0,
+  description: payload.description default payload.descripcion default (if (payload.message is Object) (payload.message as Object).message default "" else payload.message as String default ""),
+  (orderId: payload.orderId) if (payload.orderId != null),
+  (subscriptionId: payload.subscriptionId) if (payload.subscriptionId != null)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
