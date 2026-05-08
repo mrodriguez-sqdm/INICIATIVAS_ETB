@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:azure-storage="http://www.mulesoft.org/schema/mule/azure-storage"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/azure-storage http://www.mulesoft.org/schema/mule/azure-storage/current/mule-azure-storage.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="post-pqr-attachments-client"
+		doc:id="e633aec6-5548-457e-a95b-fe0bff5b62ad">
+		<async doc:name="Async"
+			doc:id="6023dc7f-5b40-44df-8344-159bf7223dad">
+			<flow-ref doc:name="Call logger"
+				doc:id="b6ef47b5-12d6-4fff-97f3-980cda54308d"
+				name="loggin-client-call" />
+		</async>
+		<try doc:name="Try" doc:id="b8126251-6e00-40b8-941a-9ed33ca766a8">
+			<azure-storage:upload-blob doc:name="Upload blob" doc:id="beb4e270-b3e2-4f13-857e-cdcff3a29855" config-ref="Azure_Storage_Config">
+				<azure-storage:storblob container="#[vars.container]" fileName="#[vars.fileName]" fileStream="#[vars.fileContent]" />
+			</azure-storage:upload-blob>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="2ad66c6b-679e-41c7-bd9d-81c23fa551b5" type="AZURE-STORAGE:CONTAINER_NOT_FOUND">
+					<azure-storage:create-container doc:name="Create container" doc:id="5310a115-ec35-4b19-a066-ce20305eacd7" config-ref="Azure_Storage_Config" containerName="#[vars.container]" />
+					<azure-storage:upload-blob doc:name="Retry upload" doc:id="38c38730-6e87-46d6-824e-35a8f81317e6" config-ref="Azure_Storage_Config">
+						<azure-storage:storblob container="#[vars.container]" fileName="#[vars.fileName]" fileStream="#[vars.fileContent]" />
+					</azure-storage:upload-blob>
+					<java:invoke-static doc:id="a40ddc75-9d91-4b26-9bb3-ee22d1335904" class="com.etb.AzureHandler" method="makePublic(String, String, String)">
+						<java:args><![CDATA[#[{
+	"accountName": p('azureStorage.accountName'),
+	"accountKey": p('azureStorage.accountKey'),
+	"containerName": vars.container,
+}]]]></java:args>
+					</java:invoke-static>
+
+				</on-error-continue>
+
+			</error-handler>
+		
+</try>
+		<async doc:name="Async"
+			doc:id="eb9102a4-b1ee-4083-bcda-97d772e6f024">
+			<flow-ref doc:name="Call logger"
+				doc:id="a81c3ad3-0458-4e62-b090-161f5ccba805"
+				name="loggin-client-call" />
+		</async>
+
+	</sub-flow>
+</mule>
