@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="directv-get-customer-orchestratorSub_Flow" doc:id="8ea9e8c1-212b-4027-8db4-4f34750f055d" >
+		<ee:transform doc:name="Set Variables Headers, UriParams" doc:id="aa4820e9-7315-4683-a700-50dcc4630f60" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="33a6d4d4-bb05-490e-be79-7ae9577c59f2" name="get-customer-directv-sapi-clientSub_Flow" target="vRespuesta"/>
+		<ee:transform doc:name="Transform Message" doc:id="57cdf302-1584-4823-bc57-8be5aa34a455" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Guardamos el status en una variable local para que sea más fácil de leer
+var statusCode = vars.vRespuesta.status
+var responseBody = vars.vRespuesta.payload
+var customerData = responseBody.GetPartnerViewResponse.GetPartnerViewResult.Customer
+var individualRole = customerData.IndividualRole
+---
+{
+  "code": statusCode as String,
+  
+  // Validación del mensaje
+  "message": if (statusCode == 200) "Subscriber retrieved successfully" 
+             else "Not Subscriber retrieved",
+  
+  // Validación de la data: si es 200 mapea, si no, devuelve objeto vacío o null
+  "data": if (statusCode == 200) {
+    "id": customerData.ID,
+    "serviceSpecification": {
+      "name": "OTT"
+    },
+    "state": {
+      "id": customerData.status.id,
+      "name": customerData.status.name
+    },
+    "customer": [
+      {
+        "id": customerData.ID,
+        "name": individualRole.NameUsing.IndividualNames.formattedName,
+        "givenNames": individualRole.NameUsing.IndividualNames.givenNames,
+        "familyNames": individualRole.NameUsing.IndividualNames.familyNames,
+        "middleNames": individualRole.NameUsing.IndividualNames.middleNames default "",
+        "aristocraticTitle": individualRole.NameUsing.IndividualNames.aristocraticTitle,
+        "aliveDuring": {
+          "startDateTime": individualRole.aliveDuring.startDateTime
+        },
+        "identifiedBy": individualRole.IdentifiedBy.IndividualIdentifications map (item) -> {
+          "scan": item.scan,
+          "cardNr": item.cardNr
+        },
+        "contactMedium": customerData.ContactableVia.ContactMedium map (item) -> {
+          "eMailAddress": item.eMailAddress,
+          "addressId": item.AddressId,
+          "eMailProtocol": item.eMailProtocol
+        },
+        "address": customerData.AddressList.UrbanPropertyAddress map (item) -> {
+          "addressCode": item.addressCode default "",
+          "city": item.city,
+          "streetNrFirst": item.streetNrFirst,
+          "locality": item.locality,
+          "streetName": item.streetName,
+          "postCode": item.postCode
+        }
+      }
+    ],
+    "serviceCharacteristic": [
+      {
+        "name": "customerInquiryList",
+        "value": responseBody.GetPartnerViewResponse.GetPartnerViewResult.CustomerInquiryList.CustomerInquiry filter ($ != "") map (item) -> {
+            "description": item.description,
+            "id": item.id
+        }
+      },
+      {
+        "name": "customerProductList",
+        "value": responseBody.GetPartnerViewResponse.GetPartnerViewResult.CustomerProductList.Product filter ($ != "") map (item) -> {
+            "productStatus": {
+                "name": item.statusName,
+                "id": item.statusId
+            },
+            "productCategory": {
+                "description": item.description,
+                "id": item.categoryId
+            }
+        }
+      }
+    ]
+  } else {} // Aquí devuelve un objeto vacío si no es 200
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<!-- [STUDIO:"Transform Message"]<ee:transform doc:name="Transform Message" doc:id="2e35b202-6a67-46e6-899c-506f1cfad46e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+{
+	c : vars.vRespuesta.status
+}&#93;&#93;></ee:set-payload>
+			</ee:message>
+		</ee:transform> [STUDIO] -->
+	</sub-flow>
+</mule>
