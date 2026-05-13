@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="directv-get-customer-orchestratorSub_Flow" doc:id="8ea9e8c1-212b-4027-8db4-4f34750f055d" >
+		<ee:transform doc:name="Set Variable Headers y request body http" doc:id="aa4820e9-7315-4683-a700-50dcc4630f60" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var source = payload
+var cust = source.customer
+var person = cust.person
+---
+{
+  "CaptureCustomerAndProducts": {
+    "CaptureType": "External",
+    "Customer": {
+      "AddressList": {
+        "UrbanPropertyAddress": {
+          "city": cust.address.city,
+          "streetNrFirst": cust.address.streetNumber,
+          "streetName": cust.address.streetName,
+          "locality": cust.address.locality,
+          "postCode": cust.address.postalCode
+        }
+      },
+      "ContactableVia": {
+        "ContactMedium": [
+          {
+            "number": cust.contact.phone,
+            "type": "HOME_PHONE"
+          }
+        ]
+      },
+      "IndividualRole": {
+        "aliveDuring": {
+          "startDateTime": person.birthDate
+        },
+        "partyId": source.product.partyId,
+        "IdentifiedBy": {
+          "IndividualIdentifications": [
+            {
+              "scan": if(upper(person.identification."type") == "CC") "1" else "1",
+              "cardNr": person.identification.number
+            },
+            {
+              "scan": source.credentials.username,
+              "password": source.credentials.password
+            }
+          ]
+        },
+        "NameUsing": {
+          "IndividualNames": {
+            "givenNames": person.firstName,
+            "familyNames": person.lastName
+          }
+        }
+      }
+    },
+    "CustomerOrder": {
+      "Items": [
+        {
+          "CustomerProduct": {
+            "productKey": source.product.id
+          }
+        },
+        {
+          "CustomerProduct": {
+            "productKey": 338
+          }
+        }
+      ]
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="33a6d4d4-bb05-490e-be79-7ae9577c59f2" name="post-customer-directv-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="Set Response Direectv Sapi" doc:id="57cdf302-1584-4823-bc57-8be5aa34a455" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Variables de control para facilitar el acceso
+var response = payload.CaptureCustomerAndProductsResponse
+var result = response.CaptureCustomerAndProductsResult
+var metadata = response.ResponseMetadata
+var requestMeta = metadata.requestMetadata
+---
+{
+  // El código lo manejamos como String según tu destino
+  "code": if (metadata.returnCode == "0") "200" else "500",
+  
+  "message": if (metadata.returnCode == "0") "Subscriber created successfully" 
+             else (metadata.returnMessage default "Error creating subscriber"),
+  
+  "data": {
+    "customerId": result.Customer.ID,
+    "partyRoleId": result.Customer.partyRoleId
+  },
+  
+  "responseMetadata": {
+    "requestMetadata": {
+      "systemId": requestMeta.systemID,
+      "sender": {
+        "country": requestMeta.sender.country,
+        "milestone": requestMeta.sender.milestone
+      },
+      "requestId": requestMeta.requestID,
+      "userId": requestMeta.userID
+    },
+    "returnCode": metadata.returnCode,
+    "returnMessage": metadata.returnMessage
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
