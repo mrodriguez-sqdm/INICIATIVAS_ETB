@@ -12,7 +12,47 @@ output application/json
 
 var source = payload
 var cust = source.customer
-var person = cust.person
+var person = cust.person// 1. Diccionario de códigos postales para una búsqueda rápida y limpia
+var codigoPostalMap = {
+    "BOGOTA D.C.": "F00100001",
+    "BOGOTA":      "F00100001",
+    "CHIA":        "F01800001",
+    "SOACHA":      "F08600001",
+    "TOCANCIPA":   "F10000001",
+    "MADRID":      "F05600001",
+    "MOSQUERA":    "F05900001",
+    "FACATATIVA":  "F02700001",
+    "LA CALERA":   "F04900001",
+    "FUNZA":       "F03001001"
+}
+
+// 2. Función para obtener la Localidad
+fun obtenerLocalidad(ciudad: String) = 
+    ciudad match {
+        case "BOGOTA D.C." -> "BOGOTA"
+        else               -> upper(ciudad) // Para CHIA, SOACHA, etc., devuelve el mismo nombre
+    }
+
+// 3. Función para obtener el Código Postal
+fun obtenerCodigoPostal(ciudad: String) = 
+    codigoPostalMap[upper(ciudad)] default "F00000000" // Código por defecto si la ciudad no existe
+
+
+fun homologarTipoDocumento(tipo: String) = 
+    tipo match {
+        case "CC"      -> "1"
+        case "NIT"     -> "2"
+        case "NIT_EXT" -> "3"
+        case "CE"      -> "4"
+        case "TI"      -> "5"
+        case "N/A"     -> "6"
+        case "PP"      -> "7"
+        case "PEP"     -> "8"
+        case "PPT"     -> "9"
+        else           -> "0" // Valor por defecto si no coincide ninguno
+    }
+
+
 ---
 {
   "CaptureCustomerAndProducts": {
@@ -23,8 +63,8 @@ var person = cust.person
           "city": cust.address.city,
           "streetNrFirst": cust.address.streetNumber,
           "streetName": cust.address.streetName,
-          "locality": cust.address.locality,
-          "postCode": cust.address.postalCode
+          "locality": obtenerLocalidad(upper(cust.address.city)),
+          "postCode": obtenerCodigoPostal(cust.address.city)
         }
       },
       "ContactableVia": {
@@ -43,7 +83,7 @@ var person = cust.person
         "IdentifiedBy": {
           "IndividualIdentifications": [
             {
-              "scan": if(upper(person.identification."type") == "CC") "1" else "1",
+              "scan": homologarTipoDocumento(upper(person.identification."type")),
               "cardNr": person.identification.number
             },
             {
