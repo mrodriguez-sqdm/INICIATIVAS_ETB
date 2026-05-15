@@ -19,9 +19,8 @@ output application/java
 attributes.headers]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="Flow Reference" doc:id="33a6d4d4-bb05-490e-be79-7ae9577c59f2" name="get-customer-directv-sapi-clientSub_Flow" target="vRespuesta"/>
-		<logger level="INFO" doc:name="Logger" doc:id="ae4dd3e3-f917-449d-b1d5-e08badfc3577" message="#[vars.vRespuesta]"/>
-		<ee:transform doc:name="Transform Message" doc:id="57cdf302-1584-4823-bc57-8be5aa34a455" >
+		<flow-ref doc:name="call get-customer-directv client" doc:id="33a6d4d4-bb05-490e-be79-7ae9577c59f2" name="get-customer-directv-sapi-clientSub_Flow" target="vRespuesta"/>
+		<ee:transform doc:name="Set Response Transform" doc:id="57cdf302-1584-4823-bc57-8be5aa34a455" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
@@ -103,15 +102,83 @@ var hasCustomer = responseBody.GetPartnerViewResponse != null
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<!-- [STUDIO:"Transform Message"]<ee:transform doc:name="Transform Message" doc:id="2e35b202-6a67-46e6-899c-506f1cfad46e" >
+	</sub-flow>
+	<sub-flow name="directv-activation-orchestratorSub_Flow" doc:id="62f18daf-d195-48a1-9898-6a25bc94dc88" >
+		<ee:transform doc:name="Set Variables Headers, UriParams" doc:id="5d83b791-6fa4-463e-b577-3ce3f3dc807c" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
-&#45;&#45;-
+
+var source = payload
+var prod = source.product
+---
 {
-	c : vars.vRespuesta.status
-}&#93;&#93;></ee:set-payload>
+  "CaptureCustomerProductRequest": {
+    "CaptureCustomerProduct": {
+      "DeleteOffer": "false",
+      "ActivateInAllDevices": "true",
+      "ProductsCollection": [
+        {
+          "CustomerProductOffer": {
+            "Product": {
+              // Convertimos a String para asegurar que coincida con el destino
+              "productKey": prod.productKey as String default "",
+              "ID": prod.id as String default "",
+              "productCategory": {
+                "type": {
+                  "code": prod.productCategory."type".code
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}]]></ee:set-payload>
 			</ee:message>
-		</ee:transform> [STUDIO] -->
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="call activacion-directv client" doc:id="4e0df49e-bdd9-44ed-a7a0-7c917fd695a5" name="activacion-directv-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="Set Resposne Transform" doc:id="2c57ef31-c7c5-4f4c-b65d-357fa98441c4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Acceso rápido a la oferta y al producto
+var offer = payload.ProductsCollection.CustomerProductOffer
+var prod = offer.Product
+---
+{
+  "code": "200",
+  "message": "Product activated successfully",
+  "result": {
+    "action": "activation",
+    "customer": {
+      "customerKey": offer.CustomerKey
+    },
+    "product": {
+      // Convertimos a número para mantener consistencia con el origen inicial
+      "id": prod.ID as Number,
+      "productKey": prod.productKey as Number,
+      "productCategory": {
+        "type": {
+          "code": prod.productCategory."type".code
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 	</sub-flow>
 </mule>
