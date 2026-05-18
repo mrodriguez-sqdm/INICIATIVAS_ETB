@@ -247,6 +247,13 @@ var bundleSource = payload.result[0].bundle
             "Caracteristicas_Producto_Oferta": bundleSource.caracteristicas_producto_oferta default [],
             "Agrupa_filtros_oferta": bundleSource.agrupa_filtros_oferta,
             "Valor_Especificacion_Tecnica_Oferta": bundleSource.valor_espec_tecnica_oferta,
+			"Disponibilidad": false,
+			  "Agendamiento": false,
+			  "Aprovisionamiento": false,
+			  "Facturacion": false,
+			  "Accion": null,
+			  "tipo_adicional": null,
+			  "Parametros_Producto": [],
             "Parametros_bundle": bundleSource.parametros_bundle map (param) -> {
                 "Parametro": param.parametro,
                 "Tipo_Parametro": param.tipo_parametro,
@@ -606,7 +613,7 @@ fun homologarTecnologia(tipo: String) = (
     }
     )
 
-var fechaActual = (now() >> "UTC") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+var fechaActual = (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
 
 var direccion = obtenerDireccionPorId(vars.resultadoProductos.Servicio_Tramite.Id_Direccion_Instalacion)
 
@@ -728,6 +735,8 @@ var descEstado = if(upper(resultDisponibilidad.detalleMensaje.global.disponibili
 var fechaActual = {
     "\$date": (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
 }
+
+var ordenConcat = "OS-" ++ (vars.orderNumber default "")
 ---
 {
     "Orden_Servicio": {
@@ -738,7 +747,7 @@ var fechaActual = {
             "Fecha": fechaActual,
             "Reintentos": 0
         },
-        "Numero_Orden": vars.orderNumber,
+        "Numero_Orden": ordenConcat,
         "Servicios": vars.serviciosPrimarios
     },
     "Factibilidad": if(upper(resultDisponibilidad.detalleMensaje.global.disponibilidad) == "FACTIBLE") true else false
@@ -763,6 +772,9 @@ var descEstado = p('estado-orden-servicio.disponibilidad-no-factible.descripcion
 var fechaActual = {
     "\$date": (now() >> "UTC") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
 }
+
+var ordenConcat = "OS-" ++ (vars.orderNumber default "")
+
 ---
 {
     "Orden_Servicio": {
@@ -773,7 +785,7 @@ var fechaActual = {
             "Fecha": fechaActual,
             "Reintentos": 0
         },
-        "Numero_Orden": vars.orderNumber,
+        "Numero_Orden": ordenConcat,
         "Servicios": vars.serviciosPrimarios
     },
     "Factibilidad": false
@@ -853,5 +865,179 @@ output application/json
 				</on-error-continue>
 			</error-handler>
 		</try>
+	</sub-flow>
+	<sub-flow name="build-agendamiento-orderSub_Flow" doc:id="339ad00d-1191-444c-9369-60d18d4a1b11" >
+		<ee:transform doc:name="Set Varaibles" doc:id="6bee24f0-3e93-457d-99a2-b96a18197514">
+					<ee:message>
+					</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="fechaActual" ><![CDATA[%dw 2.0
+output application/json
+
+var fechaActual = (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+
+var fecha_diaSiguiente = (fechaActual as DateTime + |P1D|) as String {format: "yyyy-MM-dd"}
+var fecha_HoraAdicional = (fechaActual as DateTime + |PT1H|) as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+
+---
+{
+	fechaActual: fechaActual,
+	fecha_diaSiguiente: fecha_diaSiguiente,
+	fecha_HoraAdicional: fecha_HoraAdicional
+	
+}]]></ee:set-variable>
+				<ee:set-variable variableName="categoria" ><![CDATA[%dw 2.0
+import capitalize from dw::core::Strings
+output application/json
+
+---
+"MPPFTTH_" ++ capitalize(lower(vars.clienteTramite.Cliente_Tramite.Categoria default ""))]]></ee:set-variable>
+				<ee:set-variable variableName="direccion" ><![CDATA[%dw 2.0
+output application/java
+
+fun obtenerDireccionPorId(idBuscado) = (
+    (vars.clienteTramite.Cliente_Tramite.Direcciones filter ($.Id_Direccion == idBuscado))[0] default null
+)
+---
+obtenerDireccionPorId(vars.resultadoProductos.Servicio_Tramite.Id_Direccion_Instalacion)]]></ee:set-variable>
+			</ee:variables>
+				</ee:transform>
+		<choice doc:name="Choice" doc:id="2e5c564c-fff0-4acd-9573-2dd69cae61e7" >
+			<when expression="#[vars.ordenServicio.Factibilidad]">
+				<ee:transform doc:name="Build Requests" doc:id="8507b08f-cce4-4a3d-876e-fe3639e0f765">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+import trim from dw::core::Strings
+import capitalize from dw::core::Strings
+output application/json
+
+
+
+var numDays = "7"
+var area = vars.direccion.Cobertura.Zona
+var date = vars.fechaActual.fecha_diaSiguiente
+var rawCategories = vars.categoria default ""
+
+var categoriesText = rawCategories as String replace "%2C" with ","
+var categories = categoriesText splitBy "," map (c) -> trim(c)
+
+---
+categories map (cat) -> {
+  numDays: numDays as String,
+  location: area,
+  timeSlot: "",
+  skill: cat,
+  date: date
+}
+				]]></ee:set-payload>
+							</ee:message>
+					<ee:variables >
+					</ee:variables>
+						
+</ee:transform>
+			
+				<logger level="INFO" doc:name="Logger" doc:id="0f732347-3cd6-4cad-8409-c004aad52e8b" message="#[payload]"/>
+				<flow-ref doc:name="Go searchTimeSlot" doc:id="94d6bce5-20c5-41c2-af4f-17934c94b9e9" name="get-searchTimeSlot-orchestador" />
+				<ee:transform doc:name="set Agendamiento" doc:id="97833b44-e8ac-45cb-a1c4-8e68319e5bdd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+
+var fechaAgenda = {
+	"\$date": (payload.items[0].date as Date) as String {format: "yyyy-MM-dd'T00:00:00.000Z'"}
+}
+
+// --- FUNCIÓN REPLANTEADA CON ENFOQUE ACUMULADOR (REDUCE) ---
+fun obtenerFormatoFO() = do {
+    // 1. Mapeamos los servicios para extraer SOLO el string de la familia de cada uno
+    var listaDeFamilias = (vars.resultadoProductos.Servicio_Tramite.Bundle.Primarios default []) map (servicio) -> do {
+        // Buscamos el atributo "FAMILIA" dentro de ESTE servicio específico
+        var atributoFamilia = (servicio.Atributos default []) filter ($.Nombre == "FAMILIA")
+        ---
+        // Retornamos el Valor (ej: "HSI") o null si este servicio no tiene esa familia
+        atributoFamilia[0].Valor default null
+    }
+    
+    // 2. Quitamos los nulos y los duplicados de la lista de strings antes de acumular
+    var familiasLimpia = (listaDeFamilias filter ($ != null)) distinctBy $
+
+    // 3. AQUÍ ESTÁ TU LÓGICA: Pasa el primero guarda, pasa el segundo concatena
+    // 'acumulador' empieza vacío (""). 'item' es la familia actual en el ciclo.
+    var textoConcatenado = familiasLimpia reduce (item, acumulador = "") -> (
+        if (acumulador == "") item 
+        else acumulador ++ "/" ++ item
+    )
+    ---
+    // 4. Formato final
+    if (textoConcatenado != "") "F.O. ($(textoConcatenado))" else "F.O."
+}
+
+var misTimeSlots = payload.items[0].areas[0].timeSlots
+
+// 2. Limpieza de duplicados 
+var slotsLimpios = do {
+    var agrupados = misTimeSlots groupBy $.timeslot_user
+    ---
+    (agrupados pluck (listaSlots, horario) -> do {
+        if (sizeOf(listaSlots) > 1)
+            listaSlots filter ($.label matches /.*\d+/)
+        else
+            listaSlots
+    }) flatMap ($)
+}
+
+
+---
+ {
+ 	"agendamiento": if (sizeOf(payload.items default []) > 0){	
+    "Fecha_Agenda" : fechaAgenda,
+    "Tipo_Actuacion" : obtenerFormatoFO(), // F.O. (VOIP) Voz  // F.O. (VOIP) Voz // "F.O. (HSI/VOIP)" Internet+VozoTV
+    "Habilidad_Trabajo" : "MPPFTTH", // CONSTANTE
+    "Duracion" : "120", // CONSTANTE
+    "Codigo_Instalador" : "", // CONSTANTE
+    "Enriquecida" : false, // CONSTANTE
+    "Agenda" : false, // CONSTANTE
+    "Fecha_Vigencia_Capacidad" : {
+        "\$date": vars.fechaActual.fecha_HoraAdicional
+     },
+    "ListaCuotas": slotsLimpios map (slot, index) -> do {
+        var categoria = slot.categories[0] default {}
+        
+        var timeSlotFormateado = slot.label replace /([a-zA-Z]+)(\d+)/ with ((match) -> 
+            match[1] ++ "_" ++ match[2]
+        )
+        ---
+        {
+            "Fecha": fechaAgenda,
+            "TimeSlot": timeSlotFormateado,
+            "Skill": categoria.label default "",
+            "Capacidad": categoria.quota as String default "0",
+            "Disponibilidad": ((categoria.quota default 0) - (categoria.used default 0)) as String,
+            "Descripcion": slot.timeslot_user
+        }
+    }
+ }else {},
+    "confirmaAgendamiento": if (sizeOf(payload.items default []) > 0) true else false
+ }]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set agendamiento vacio" doc:id="fad210cd-30b7-4938-8b39-96a210a4d7ba" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	agendamiento: {},
+	confirmaAgendamiento: false
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 </mule>

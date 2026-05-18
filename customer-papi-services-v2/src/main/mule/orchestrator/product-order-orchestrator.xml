@@ -113,8 +113,8 @@ var objectCustomer = findObject("MDM_CLIENTE")
     Segmento: objectCustomer.Segmento,
     Segmento_UEN: objectCustomer.Segmento_UEN,
     UEN: objectCustomer.UEN,
-    Cliente_Valor: objectCustomer.Cliente_Valor,
     Categoria: objectCustomer.Categoria,
+    Cliente_Valor: objectCustomer.Cliente_Valor,
     EsquemaAtencion: objectCustomer.EsquemaAtencion,
     ServiciosPS: objectCustomer.ServiciosPS,
     Telefono_Fijo: objectCustomer.Telefono_Fijo,
@@ -198,6 +198,8 @@ var objectCustomer = findObject("MDM_CLIENTE")
 						<flow-ref doc:name="Build code CUN" doc:id="6b6c6c5a-4097-4710-9f0b-4da15b4b08a5" name="build-CUN-orderSub_Flow" target="cun" />
 					</route>
 				</scatter-gather>
+				<flow-ref doc:name="Build Agendamiento" doc:id="6ae586c3-26a9-4edc-9a1a-9edb2a77f03d" name="build-agendamiento-orderSub_Flow" target="agendamiento"/>
+				<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="a996a268-4315-479c-9618-d02b3a3395a0" message="#[vars.agendamiento&#93;"/> [STUDIO] -->
 				<scatter-gather doc:name="Scatter-Gather" doc:id="f83dafd0-59b5-43bf-83ef-9615f29aeb95" >
 					<route >
 						<ee:transform doc:name="Set Body Insert MDM_CD_ORDEN" doc:id="9b9d81c8-5378-427c-a08a-20a71f3dba7c">
@@ -260,6 +262,26 @@ fun calcularEstadoComercial(reglas) = do {
         } default {})
 }
 
+fun reBuildOrdenServicio(orden: Object, confirmaAgendamiento: Boolean) = do {
+	
+	if(confirmaAgendamiento)
+		orden update {
+	    	case estado at .Estado_Orden -> {
+		        "Codigo": p('estado-orden-servicio.ejecutar-agenda.codigo'),
+		        "CodigoExcepcion": estado.CodigoExcepcion,
+		        "Descripcion": p('estado-orden-servicio.ejecutar-agenda.descripcion'),
+		        "Excepcion": estado.Excepcion,
+		        "Fecha": estado.Fecha,
+		        "Reintentos": estado.Reintentos,
+	     	}
+		}
+	else
+		orden
+	
+}
+
+ 
+
 ---
 {
 	basePath: p("mongo-db-sapi.base-path"),
@@ -304,8 +326,8 @@ fun calcularEstadoComercial(reglas) = do {
         "Cliente_Tramite": vars.clienteTramite.Cliente_Tramite,
 		"Servicio_Anterior": null,
         "Servicio_Tramite": vars.resultadoProductos.Servicio_Tramite,
-        "Orden_Servicio": vars.ordenServicio.Orden_Servicio,
-        "Agendamiento":{},
+        "Orden_Servicio": reBuildOrdenServicio(vars.ordenServicio.Orden_Servicio as Object,vars.agendamiento.confirmaAgendamiento),
+        "Agendamiento": vars.agendamiento.agendamiento,
         "Orden_Activacion": null,
   		"Cuenta_Facturacion_Anterior": null,
 		"Cuenta_Facturacion_Tramite": {
@@ -336,8 +358,8 @@ fun calcularEstadoComercial(reglas) = do {
 		    "Cuentas_Servicio": null,
 		    "Fecha_Corte_Facturacion": null
 		  },
-  		"Orden_Requiere_Disponibilidad": null,
-	  	"Orden_Requiere_Agendamiento": null,
+  		"Orden_Requiere_Disponibilidad": if(vars.ordenServicio.Factibilidad default false) true else null,
+	  	"Orden_Requiere_Agendamiento": if(vars.ordenServicio.Factibilidad default false) false else null,
 	  	"Precio_Total_Orden": "",
 	  	"Adjuntos": {
         "Servicio": (inputData.attachments.service default []) map (item) -> {
@@ -383,6 +405,7 @@ fun calcularEstadoComercial(reglas) = do {
 					<ee:variables>
 					</ee:variables>
 				</ee:transform>
+						<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="ee0f98ed-c50f-4ad3-91f2-ae34b3189eb0" message="#[payload&#93;"/> [STUDIO] -->
 						<flow-ref doc:name="InsertOrder" doc:id="4e44b7c5-a077-40b5-bdf5-dddcc54d43ec" name="generic-sapi-clientSub_Flow" />
 					</route>
 					<route >
