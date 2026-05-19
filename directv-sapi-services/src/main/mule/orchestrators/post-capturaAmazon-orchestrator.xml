@@ -8,29 +8,41 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="post-capturaAmazon-directv-orchestrator" doc:id="9b510811-91e4-4dee-ab3d-3bd2b1ba3e56" >
 		<logger level="INFO" doc:name="Log Orchestration Start" doc:id="d3927d2e-bb54-4d24-bded-7bdb5719013d" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /capturaAmazon"]' />
-		<flow-ref doc:name="post-token-directv-client" doc:id="9482de1a-bc55-4e21-9c4e-48595e0f00c9" name="post-token-directv-client" target="responseToken" />
 		<ee:transform doc:name="Transform Message" doc:id="dcdb81aa-2319-4c76-9e92-be784e4cf952">
 			<ee:variables>
 				<ee:set-variable variableName="customerId"><![CDATA[attributes.uriParams.'customerId']]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
+		<flow-ref doc:name="post-token-directv-client" doc:id="9482de1a-bc55-4e21-9c4e-48595e0f00c9" name="post-token-directv-client" target="responseToken" />
 		<ee:transform doc:name="Transform Message" doc:id="ff1cf936-7284-4193-bb99-3ec2fcad0ad5" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+
+var request =
+    if (payload.CaptureCustomerProductRequest? and payload.CaptureCustomerProductRequest.CaptureCustomerProduct?)
+        payload.CaptureCustomerProductRequest.CaptureCustomerProduct
+    else
+        payload
+
 ---
 {
     CaptureCustomerProductRequest: {
         CaptureCustomerProduct: {
-            DeleteOffer: payload.CaptureCustomerProductRequest.CaptureCustomerProduct.DeleteOffer,
-            ActivateInAllDevices: payload.CaptureCustomerProductRequest.CaptureCustomerProduct.ActivateInAllDevices,
-            ProductsCollection: payload.CaptureCustomerProductRequest.CaptureCustomerProduct.ProductsCollection map (item) -> {
-                CustomerProductOffer: {
-                    Product: item.CustomerProductOffer.Product ++ {
-                        CustomerKey: vars.customerId
+            DeleteOffer: request.DeleteOffer,
+            ActivateInAllDevices: request.ActivateInAllDevices,
+            ProductsCollection:
+                (
+                    request.ProductsCollection default []
+                ) map (item) -> {
+                    CustomerProductOffer: {
+                        Product:
+                            item.CustomerProductOffer.Product
+                            ++ {
+                                CustomerKey: vars.customerId
+                            }
                     }
                 }
-            }
         }
     }
 }]]></ee:set-payload>
