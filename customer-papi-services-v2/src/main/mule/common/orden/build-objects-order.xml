@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<!-- [STUDIO:"Try"] [STUDIO] --><?xml version="1.0" encoding="UTF-8"?>
 
 <mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
 	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
@@ -937,10 +937,11 @@ categories map (cat) -> {
 </ee:transform>
 			
 				<logger level="INFO" doc:name="Logger" doc:id="0f732347-3cd6-4cad-8409-c004aad52e8b" message="#[payload]"/>
-				<flow-ref doc:name="Go searchTimeSlot" doc:id="94d6bce5-20c5-41c2-af4f-17934c94b9e9" name="get-searchTimeSlot-orchestador" />
-				<ee:transform doc:name="set Agendamiento" doc:id="97833b44-e8ac-45cb-a1c4-8e68319e5bdd" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
+				<try doc:name="Try" doc:id="a2e4d5ec-14bf-4843-9f0a-28a1e33cd97a" >
+					<flow-ref doc:name="Go searchTimeSlot" doc:id="94d6bce5-20c5-41c2-af4f-17934c94b9e9" name="get-searchTimeSlot-orchestador" />
+					<ee:transform doc:name="set Agendamiento" doc:id="97833b44-e8ac-45cb-a1c4-8e68319e5bdd">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
 
@@ -1021,9 +1022,26 @@ var slotsLimpios = do {
     "confirmaAgendamiento": if (sizeOf(payload.items default []) > 0) true else false
  }]]></ee:set-payload>
 					</ee:message>
-					<ee:variables >
+					<ee:variables>
 					</ee:variables>
 				</ee:transform>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e419225d-3c52-44e8-9c35-8ab088ba4e3f" type="ANY">
+							<logger level="INFO" doc:name="Logger" doc:id="13e002d1-dbce-4e83-951c-7f0224fdf8e9" message='#["Agendamiento no disponible: " ++ error.detailedDescription]'/>
+							<ee:transform doc:name="Set agendamiento fallido" doc:id="569f7820-c00e-445d-b489-f74870d3b06e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	agendamiento: {},
+	confirmaAgendamiento: false
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
 			</when>
 			<otherwise >
 				<ee:transform doc:name="Set agendamiento vacio" doc:id="fad210cd-30b7-4938-8b39-96a210a4d7ba" >
