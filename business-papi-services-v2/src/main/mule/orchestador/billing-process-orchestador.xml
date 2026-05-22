@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-billing-process-orchestadorSub_Flow"
+		doc:id="625b7fa5-b990-481b-afa5-23446a036ec4">
+		<ee:transform doc:name="set  variables"
+			doc:id="fb4514e8-9e18-4246-bf2e-1c2fd28b7e95">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="processCode"><![CDATA[%dw 2.0
+output application/json
+---
+payload.processCode default ""]]></ee:set-variable>
+				<ee:set-variable variableName="serviceId"><![CDATA[%dw 2.0
+output application/json
+---
+payload.service.externalId]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="start billing process creation" doc:id="94358145-0fc1-4641-afb8-da8e1361f5dd" message='#["Starting Billing Process Creation: " ++ vars.processCode default "UNKNOWN" ++ ", Service ID: " ++ vars.serviceId default "0"]' />
+		<ee:transform doc:name="set post billing process request" doc:id="7749b2fe-372f-46d0-9c38-7f0407febea8" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="zsmartRequest" ><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json
+var processCode = vars.processCode match {
+	case "SALE" -> "postSale"
+	case "SERVICE_ADDITION" -> "postServiceAddition"
+	else -> fail("Invalid Process Code")
+}
+var requestHeaders = attributes.headers
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.' ++ processCode ++ ".path"),
+	method: p('zsmart-sapi.' ++ processCode ++ ".method"),
+	headers: {
+		"client_secret": p('zsmart-sapi.security.client_secret'),
+		"client_id": p('zsmart-sapi.security.client_id'),
+		"name": requestHeaders.name,
+		"X-CORRELATION-ID": requestHeaders."X-CORRELATION-ID",
+		"source": requestHeaders.source,
+		"systemId": requestHeaders.systemId
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+				<ee:set-variable variableName="billingProcessPath" ><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/java
+---
+(vars.processCode) match {
+	case "SALE" -> readUrl('classpath://dwScripts/postBillingProcess/saleMapping.dwl', 'text/plain')
+	case "SERVICE_ADDITION" -> readUrl('classpath://dwScripts/postBillingProcess/serviceAddMapping.dwl', 'text/plain')
+	else -> fail("Invalid Process Code")
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:dynamic-evaluate doc:name="dynamic post billing mapping" doc:id="28833900-6528-4a9a-944d-ce58b7ddb482" expression="#[vars.billingProcessPath]"/>
+		<flow-ref doc:name="zsmart-sapi-clientSub_Flow" doc:id="61bc7f0b-ae39-4e9a-8286-06dbd2f99526" name="zsmart-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="set response" doc:id="65232d73-e367-488c-b37b-7a234756eaa4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "transactionId": "correlationId",
+  "status": upper(payload.message) default "SUCCESS",
+  "createdAt": now() as String {format: "YYYY-MM-dd HH:mm:ss"},
+  "result": {
+    "customerId": payload.result.custId,
+    "accountId": payload.result.acctId,
+    "serviceId": vars.serviceId,
+    "zsmartResponseCode": payload.result.responseCode,
+    "zsmartMessage": payload.result.responseMessage
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="end billing process creation" doc:id="79228962-dd1e-4354-8dc7-1eafc7c8401a" message='#["Ended Billing Process Creation: " ++ vars.processCode default "UNKNOWN" ++ ", Service ID: " ++ vars.serviceId default "0"]'/>
+	</sub-flow>
+	<sub-flow name="patch-billing-process-orchestadorSub_Flow" doc:id="9b20fb2d-66a6-4c9b-b79c-294dfd3ede5e" >
+		<ee:transform doc:name="set  variables" doc:id="9cfd3fc3-da2d-44ec-a5a2-8c0cb7a4f784">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="processCode"><![CDATA[%dw 2.0
+output application/json
+---
+payload.processCode default ""]]></ee:set-variable>
+				<ee:set-variable variableName="serviceId"><![CDATA[%dw 2.0
+output application/json
+---
+payload.service.externalId]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="start billing process update" doc:id="f66d8477-e7e4-4d7e-a61f-2454cec2f1c6" message='#["Starting Billing Process Update: " ++ payload.processCode default "NO CODE"]' />
+		<ee:transform doc:name="set patch billing process request" doc:id="bc2d0ff6-3a0b-4b22-ae09-26c60c8d7f51">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="zsmartRequest"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	
+}]]></ee:set-variable>
+				<ee:set-variable variableName="billingProcessPath"><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/java
+---
+(vars.processCode) match {
+	case "PLAN_CHANGE" -> readUrl('classpath://dwScripts/patchBillingProcess/setPlanChangeMapping.dwl', 'text/plain')
+	case "SVA" -> readUrl('classpath://dwScripts/patchBillingProcess/setSvaMapping.dwl', 'text/plain')
+	case "SUSPENSION" -> readUrl('classpath://dwScripts/patchBillingProcess/setSuspensionMapping.dwl', 'text/plain')
+	case "RESTORATION" -> readUrl('classpath://dwScripts/patchBillingProcess/setRestorationMapping.dwl', 'text/plain')
+	case "NUMBER_CHANGE" -> readUrl('classpath://dwScripts/patchBillingProcess/setNumberChangeMapping.dwl', 'text/plain')
+	case "VOLUNTARY_CANCELLATION" -> readUrl('classpath://dwScripts/patchBillingProcess/setVoluntaryCancelMapping.dwl', 'text/plain')
+	case "ADD_CHARGE" -> readUrl('classpath://dwScripts/patchBillingProcess/setAddChargeMapping.dwl', 'text/plain')
+	case "SERVICE_REMOVAL" -> readUrl('classpath://dwScripts/patchBillingProcess/setServiceRemovalMapping.dwl', 'text/plain')
+	case "STRATUM_CHANGE" -> readUrl('classpath://dwScripts/patchBillingProcess/setStratumChangeMapping.dwl', 'text/plain')
+	case "OWNERSHIP_TRANSFER" -> readUrl('classpath://dwScripts/patchBillingProcess/setOwnershipTransferMapping.dwl', 'text/plain')
+	case "BILLING_CYCLE_CHANGE" -> readUrl('classpath://dwScripts/patchBillingProcess/setBillingCycleChangeMapping.dwl', 'text/plain')
+	case "CUSTOMER_UPDATE" -> readUrl('classpath://dwScripts/patchBillingProcess/setCustomerUpdateMapping.dwl', 'text/plain')
+	case "ACCOUNT_UPDATE" -> readUrl('classpath://dwScripts/patchBillingProcess/setAccountUpdateMapping.dwl', 'text/plain')
+	case "ADDRESS_CHANGE" -> readUrl('classpath://dwScripts/patchBillingProcess/setAddressChangeMapping.dwl', 'text/plain')
+	else -> fail("Invalid Process Code")
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:dynamic-evaluate doc:name="dynamic patch billing mapping" doc:id="db5505e8-f3b4-47db-8216-271907ac703d" expression="#[vars.billingProcessPath]"/>
+		<flow-ref doc:name="zsmart-sapi-clientSub_Flow" doc:id="bc9552a7-5953-4574-89f4-95b72fae3418" name="zsmart-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="set response" doc:id="f6fd0204-b3b5-4c45-8874-c45902725d8c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  transactionId: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  status: "SUCCESS",
+  createdAt: "2026-03-16T10:30:05Z",
+  result: {
+    customerId: "12345678",
+    accountId: "ACC-001-2026",
+    serviceId: "98765",
+    zsmartResponseCode: "0",
+    zsmartMessage: "Success"
+  }
+} as Object {encoding: "UTF-8", mediaType: "application/json"}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="end billing process update" doc:id="2119977b-dbea-45a8-b96e-678c324ad9d7" />
+	</sub-flow>
+</mule>
