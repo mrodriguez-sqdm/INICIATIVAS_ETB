@@ -42,6 +42,12 @@ var sapi = vars.sapiResponse default {}
 					map (t) -> {
 						tipo: t."type" default "",
 						valor: (t.value default 0) as String
+					},
+				atributos:
+					(r.attributes default [])
+					map (a) -> {
+						atributo: a.attribute default "",
+						valor: a.value default ""
 					}
 			}
 	},

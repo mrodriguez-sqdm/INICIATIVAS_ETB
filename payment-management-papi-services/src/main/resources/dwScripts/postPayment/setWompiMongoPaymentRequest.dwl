@@ -45,7 +45,13 @@ var descripcionConcatenada =
 				descripcion: r.description default "",
 				moneda: r.currency default "",
 				valor_pagar: (r.totalAmount default 0) as String,
-				impuestos: []
+				impuestos: [],
+				atributos:
+					(r.attributes default [])
+					map (a) -> {
+						atributo: a.attribute default "",
+						valor: a.value default ""
+					}
 			}
 	},
 

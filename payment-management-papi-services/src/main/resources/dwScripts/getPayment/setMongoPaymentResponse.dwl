@@ -31,6 +31,10 @@ var ref = payload.referencias
                     taxes: (d.impuestos default []) map (tx) -> {
                         "type": tx.tipo,
                         value: tx.valor
+                    },
+                    attributes: (d.atributos default []) map (a) -> {
+                        attribute: a.atributo,
+                        value: a.valor
                     }
                 }
         },

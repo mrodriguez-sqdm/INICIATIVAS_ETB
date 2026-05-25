@@ -44,6 +44,12 @@ var firstDetailRef = (vars.payloadOri.references default [])[0]
 					map (t) -> {
 						tipo: t."type",
 						valor: (t.value default 0) as String
+					},
+				atributos:
+					(r.attributes default [])
+					map (a) -> {
+						atributo: a.attribute default "",
+						valor: a.value default ""
 					}
 			}
 	},
