@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule
+	xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:azure-storage="http://www.mulesoft.org/schema/mule/azure-storage"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/azure-storage http://www.mulesoft.org/schema/mule/azure-storage/current/mule-azure-storage.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="get-esim-qrcode-clientSub_Flow" doc:id="ee13b48f-bdf8-4480-a921-34f1c693461d">
+	    <azure-storage:download-blob doc:name="Download blob" config-ref="Azure_Storage_Config_esim">
+	        <azure-storage:blob container="#[vars.container]" fileName="#[vars.filename]"/>
+	    </azure-storage:download-blob>
+	    
+	    <java:invoke-static doc:name="Invoke static" class="com.etb.PdfConverter" method="convertPdfToPngBytes(InputStream, int)">
+	        <java:args>
+	            <![CDATA[#[output application/java --- {
+	    "pdfStream": payload,
+	    "dpi": vars.dpi as Number
+	}]]]>
+	        </java:args>
+	    </java:invoke-static>
+	    
+	    <set-payload value="#[payload[0]]" doc:name="Set Payload"/>
+	    <async doc:name="Async">
+	        <flow-ref doc:name="Flow Reference" name="get-push-esim-qrcode-clientFlow"/>
+	    </async>
+	</sub-flow>
+	<flow name="get-push-esim-qrcode-clientFlow" doc:id="4e6ae8ba-3eae-4898-acf0-6d75fd4a19f0">
+		<logger level="INFO" doc:name="Logger" doc:id="690d2025-feab-4082-82e2-8ddb99311984" message="#[vars.filenamepng]"/>
+		<azure-storage:upload-blob doc:name="Upload blob" doc:id="f4e44783-3a63-417d-839d-275009f8c7a4" config-ref="Azure_Storage_Config_agreements" contentType="image/png">
+			<azure-storage:storblob fileStream="#[payload]" container="${azureStorage-agreements.container}" fileName="#[vars.filenamepng]" />
+		</azure-storage:upload-blob>
+		<logger level="INFO" doc:name="Logger" doc:id="152bbda4-591b-43d6-951e-083c7ba32496" message="#[p('azureStorage-agreements.container') ++ &quot;/&quot; ++ vars.filenamepng]"/>
+	</flow>
+</mule>

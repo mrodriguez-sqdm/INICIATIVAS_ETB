@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:azure-storage="http://www.mulesoft.org/schema/mule/azure-storage" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd  http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd http://www.mulesoft.org/schema/mule/azure-storage http://www.mulesoft.org/schema/mule/azure-storage/current/mule-azure-storage.xsd http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+    <flow name="azure-sapi-services-main">
+        <http:listener path="/azure/*" config-ref="azure-sapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Get systemId" doc:id="c508298a-549a-4c8c-8791-03afd790eb3a" name="processAndSystem-logginSub_Flow" />
+        <apikit:router config-ref="azure-sapi-services-config" />
+        <error-handler ref="common-error-handler-v2" />
+    </flow>
+    <flow name="azure-sapi-services-console">
+        <http:listener path="/console/*" config-ref="azure-sapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="azure-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="post:\v1\bills\duplicate:multipart\form-data:azure-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="7870de8c-39e4-4991-b7ea-1c0b3de0df2d" name="post-duplicateBill-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\workItems\(requestApp)\(id):application\json:azure-sapi-services-config">
+        <flow-ref doc:name="patch-workItems-handlerSub_Flow" doc:id="8907cb55-1879-499d-b2c3-8d7d4acaf961" name="patch-workItems-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\workItems\(requestApp)\(id):azure-sapi-services-config">
+        <flow-ref doc:name="get-workItems-handlerSub_Flow" doc:id="b5bee0ac-9190-4c3a-a6a8-74c8165f5591" name="get-workItems-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\workItems\(requestApp):application\json:azure-sapi-services-config">
+        <flow-ref doc:name="post-workItems-handlerSub_Flow" doc:id="10ce6a76-68f4-4a2a-a395-95488c0a3f7a" name="post-workItems-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\accountState:multipart\form-data:azure-sapi-services-config" doc:id="7eb5f92a-07ac-4f67-af69-58c225fd1879">
+        <flow-ref doc:name="Go to Handler" doc:id="340d508d-0df9-4eab-962f-dbb785341b06" name="post-accountState-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\keyVault\(key):azure-sapi-services-config" doc:id="0e207ad4-448c-47ed-88b0-cd3812e3fe2a">
+        <flow-ref doc:name="Go To Handler" doc:id="596f8d1f-1502-48cb-a2fe-2523b220f10b" name="get-keyvault-handlerSub_Flow" />
+    </flow>
+    <flow name="OS-keepAlive" doc:id="b9a0697d-2a31-4d9c-a65d-ead8f917e333">
+        <scheduler doc:name="Call every 3 days" doc:id="cdc65298-8f32-4c8e-8951-8007321905f2">
+            <scheduling-strategy>
+                <fixed-frequency frequency="3" timeUnit="DAYS" />
+            </scheduling-strategy>
+        </scheduler>
+        <os:retrieve-all-keys doc:name="Retrieve all keys" doc:id="c777e79f-0671-4ca2-8b93-ae4e20f4c77a" objectStore="keyVault_Object_store" />
+        <ee:transform doc:name="Prepare output" doc:id="3e2c1d80-986f-405e-8ad2-5c6790f03f43">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json 
+--- 
+payload]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="systemId"><![CDATA[%dw 2.0
+output application/java
+---
+"MIGRACION"]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+    </flow>
+    <flow name="get:\v1\agreements:azure-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="004c142a-f43e-4445-841e-170fa07bd3bb" name="get-agreements-handlerSub_Flow"/>
+    </flow>
+    <flow name="post:\v1\agreements:multipart\form-data:azure-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="6c376d60-9a21-4a74-b37b-392d65ccb2f9" name="post-agreements-handlerSub_Flow"/>
+    </flow>
+	<flow name="get:\v1\esim\QRCode:azure-sapi-services-config" doc:id="93572558-e2ba-42d4-bb48-e7515088e58b" >
+		<flow-ref doc:name="Go to handler" doc:id="56a58efe-3ce1-4fea-9b9e-3bdd74374f9d" name="get-esim-qrcode-handlerSub_Flow"/>
+	</flow>
+
+</mule>
