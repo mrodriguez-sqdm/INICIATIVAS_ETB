@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="m6-PCrearAsociarProcesoDisponibilidad-orchestadorSub_Flow" doc:id="a7b462d0-3a0c-4384-808b-8985ae7789ac" >
+		<ee:transform doc:name="Transform Message" doc:id="ab3fe37e-fdc1-4c1a-8c43-957fd54d0cd9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/xml skipNullOn="everywhere"
+
+ns open http://www.openuri.org/
+ns tec http://com/tecnocom
+
+var req = payload.peticionConsultaDisponibilidad
+
+---
+{
+  open#doCrearAsociarProcesoDisponibilidad: {
+    tec#PeticionConsultaDisponibilidad: {
+      
+      tec#EncabezadoMensaje: {
+        tec#IdDisponibilidad: req.encabezadoMensaje.idDisponibilidad default "",
+        tec#NumeroOrdenAprovisionador: req.encabezadoMensaje.numeroOrdenAprovisionador default "",
+        tec#NumeroRevision: req.encabezadoMensaje.numeroRevision default "",
+        tec#TecnologiaETB: req.encabezadoMensaje.tecnologiaETB default "",
+        tec#FechaPeticionOrden: req.encabezadoMensaje.fechaPeticionOrden default ""
+      },
+
+      tec#DetalleMensaje: {
+        tec#ModoConsulta: req.detalleMensaje.modoConsulta default "",
+        tec#TipoDisponibilidad: req.detalleMensaje.tipoDisponibilidad default "",
+
+        tec#OrderItems: {
+          tec#OrderItem: (req.detalleMensaje.orderItems default []) map (item) -> {
+
+            tec#IdProductoTecnico: item.idProductoTecnico default "",
+            tec#IdServicio: item.idServicio default "",
+            tec#IdServicioPadre: item.idServicioPadre default "",
+            tec#IdServicioRaiz: item.idServicioRaiz default "",
+            tec#Accion: item.accion default "",
+            tec#UsoServicio: item.usoServicio default "",
+            tec#IdProductoTecnicoPadre: item.idProductoTecnicoPadre default "",
+            tec#IdProductoTecnicoRaiz: item.idProductoTecnicoRaiz default "",
+
+            tec#CuentaServicio: {
+              tec#IdCuentaServicio: item.cuentaServicio.idCuentaServicio default "",
+
+              tec#DireccionServicio: (item.cuentaServicio.direccionServicio default []) map (dir) -> {
+                tec#CodigoUnicoDireccion: dir.codigoUnicoDireccion default "",
+                tec#CodigoDepartamento: dir.codigoDepartamento default "",
+                tec#CodigoMunicipio: dir.codigoMunicipio default "",
+                tec#CodigoPais: dir.codigoPais default "",
+                tec#DireccionNormalizada: dir.direccionNormalizada default "",
+                tec#Latitud: dir.latitud default "",
+                tec#Longitud: dir.longitud default "",
+
+                tec#Tecnologias: {
+                  tec#Tecnologia: (dir.tecnologias default []) map (tecno) -> {
+                    tec#NombreTecnologia: tecno.nombreTecnologia default "",
+                    tec#PrioridadTecnologia: tecno.prioridadTecnologia default "",
+                    tec#Zona: tecno.zona default "",
+                    tec#Cobertura: {
+                      tec#TipoCobertura: tecno.cobertura.tipoCobertura default "",
+                      tec#NombreCobertura: tecno.cobertura.nombreCobertura default ""
+                    }
+                  }
+                }
+              }
+            },
+
+            tec#Atributos:
+              if (sizeOf(item.atributos default []) > 0)
+              {
+                tec#Atributo: (item.atributos) map (att) -> {
+                  tec#Atributo: att.atributo default "",
+                  tec#Valor: att.valor default "",
+                  tec#Accion: att.accion default ""
+                }
+              }
+              else null
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="5f6cf8b4-bed9-4709-b376-44941268e627" name="m6-PCrearAsociarProcesoDisponibilidad-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="942c35f4-e4a4-4590-8c2f-e57234e86ac2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+ns open http://www.openuri.org/
+ns tec http://com/tecnocom
+
+var body = payload.body.open#doCrearAsociarProcesoDisponibilidadResponse.tec#RespuestaConsultaDisponibilidad
+
+---
+{
+  respuestaConsultaDisponibilidad: {
+
+    encabezadoMensaje: {
+      idDisponibilidad: body.tec#EncabezadoMensaje.tec#IdDisponibilidad default "",
+      numeroOrdenAprovisionador: body.tec#EncabezadoMensaje.tec#NumeroOrdenAprovisionador default "",
+      numeroRevision: body.tec#EncabezadoMensaje.tec#NumeroRevision default "",
+      tecnologiaETB: body.tec#EncabezadoMensaje.tec#TecnologiaETB default "",
+      fechaPeticionOrden: body.tec#EncabezadoMensaje.tec#FechaPeticionOrden default ""
+    },
+
+    detalleMensaje: {
+      global: {
+        disponibilidad: body.tec#DetalleMensaje.tec#Global.tec#Disponibilidad default "",
+        motivo: {
+          idServicioPadre: body.tec#DetalleMensaje.tec#Global.tec#Motivo.tec#IdServicioPadre default "",
+          recurso: "",
+          descripcion: body.tec#DetalleMensaje.tec#Global.tec#Motivo.tec#Descripcion default ""
+        }
+      },
+
+      orderItems: [],
+
+      resultado: {
+        resultado: body.tec#DetalleMensaje.tec#Resultado.tec#Resultado default "",
+        codigoErrorResultado: body.tec#DetalleMensaje.tec#Resultado.tec#CodigoErrorResultado default "",
+        descripcionErrorResultado: body.tec#DetalleMensaje.tec#Resultado.tec#DescripcionErrorResultado default ""
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
