@@ -1,8 +1,9 @@
 %dw 2.0
-output application/json skipNullOn = "everywhere"
 var operateAdd = "A"
 var serviceEventId = "1"
 var currency = "1"
+var serviceInstanceId = payload.service.externalId as Number
+output application/json skipNullOn = "everywhere"
 ---
 {
 	header: {
@@ -10,8 +11,8 @@ var currency = "1"
 		createdDate: payload.transaction.timestamp,
 		orderItemId: payload.transaction.orderItemId,
 		serviceEventId: serviceEventId,
-		prodInstId: payload.service.externalId,
-		salesChannel: payload.transaction.contactChannel,
+		prodInstId: serviceInstanceId,
+		salesChannel: payload.transaction.contactChannel as Number,
 		salesDepartment: payload.transaction.salesDepartment,
 		salesCity: payload.transaction.salesCity
 	},
@@ -46,10 +47,11 @@ var currency = "1"
 	},
 	(chargeList: payload.service.charges map ((item, index) -> {
 		charge: {
-			prodInstId: payload.service.externalId as Number,
-			acctId: payload.account.externalId as Number,
-			chargeType: item."type"  match {
+			prodInstId: serviceInstanceId,
+			(acctId: payload.account.externalId as Number) if(payload.account.externalId?),
+			chargeType: item."type"   match {
 				case "ONE_OFF" -> "1"
+                case "INSTALLMENT" -> "5"
                 case "ADVANCE" -> "7"
                 else -> "1"
 			},
@@ -62,7 +64,7 @@ var currency = "1"
 	billProdInstList: [{
 		billProdInst: {
 			operate: operateAdd,
-			prodInstId: payload.service.externalId as Number,
+			prodInstId: serviceInstanceId,
 			areaCode: payload.service.areaCode,
 			serviceNumber: payload.service.serviceNumber,
 			effDate: payload.service.effectiveDate,
@@ -79,7 +81,7 @@ var currency = "1"
 			offerCode: payload.service.offerCode,
 			effDate: payload.service.effectiveDate,
 			expDate: payload.service.offerExpirationDate,
-			instanceId: payload.service.externalId as Number
+			instanceId: serviceInstanceId
 		}
 	}]
 }
