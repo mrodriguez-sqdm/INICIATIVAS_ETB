@@ -36,6 +36,6 @@ output application/json  skipNullOn = "everywhere"
 			lastName: item.lastName,
 			email: item.email,
 			mobilePhone: item.mobilePhone
-		})) if (!isEmpty(payload.customer.ccontacts default []))
+		})) if (!isEmpty(payload.customer.contacts default []))
 	}
 }

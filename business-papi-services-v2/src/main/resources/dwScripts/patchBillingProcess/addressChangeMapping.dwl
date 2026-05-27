@@ -33,7 +33,7 @@ output application/json  skipNullOn = "everywhere"
 	billOfferInstList: [{
 		billOfferInst: {
 			operate: operateDelete,
-			offerInstId: payload.service.currentOfferInstanceId,
+			offerInstId: payload.service.currentOfferInstanceId as Number,
 			offerCode: payload.service.currentOfferCode,
 			instanceId: serviceInstanceId
 		}
@@ -41,7 +41,7 @@ output application/json  skipNullOn = "everywhere"
     {
 		billOfferInst: {
 			operate: operateAdd,
-			offerInstId: payload.service.newOfferinstanceId,
+			offerInstId: payload.service.newOfferinstanceId as Number,
 			offerCode: payload.service.newOfferCode,
 			effDate: payload.service.effectiveDate,
 			expDate: payload.service.offerExpirationDate,
