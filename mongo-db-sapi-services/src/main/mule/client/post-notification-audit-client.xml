@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-notification-audit-client" doc:id="84f8e4d3-a863-49dc-a6b1-33ea7fbd8fed" >
+		<try doc:name="Try" doc:id="2ddce6f7-e71d-4357-a711-74077229ea83" >
+			<mongo:insert-document collectionName="${mongoDb-mdm.collection-notification-audit}" doc:name="insert document MDM_ENVIO_MENSAJE" doc:id="1b069572-bd55-45f4-90cc-5dd0ad097cdd" config-ref="mdm_db_Config" />
+			<ee:transform doc:name="set response" doc:id="70254d95-f570-474d-a2c8-ca7112ebd6d4" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "201",
+	"message": "Notification Audit Record Created",
+	"result": payload
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="bf67bbfb-45a2-4855-b8ef-337d0780e2c5" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="81c068f4-381d-4a3c-8d4d-e836f5fb950e" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 500,
+	code: "INTERNAL SERVER ERROR",
+	message: error.description,
+	messageServer: error.detailedDescription
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="0b75a934-a878-4c2d-a320-c10b7c78dbfd" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
