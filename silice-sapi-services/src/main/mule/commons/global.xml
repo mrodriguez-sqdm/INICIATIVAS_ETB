@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+
+	<!-- ================================================================== -->
+	<!-- PROPERTY SOURCES -->
+	<!-- order: secure props → environment → common -->
+	<!-- ================================================================== -->
+
+	<!-- Secure Properties (Blowfish/CBC encrypted) -->
+	<secure-properties:config
+		name="Secure_Properties_Config" doc:name="Secure Properties"
+		doc:id="9f71883f-8f1c-464c-b025-34fd47ab4119"
+		file="secureProperties/${env}-secure-properties.yaml"
+		key="${secure.key}">
+		<secure-properties:encrypt
+			algorithm="Blowfish" />
+	</secure-properties:config>
+	
+	<!-- Environment-specific properties -->
+	<configuration-properties
+		doc:name="Environment properties"
+		doc:id="a24ed7fa-9fec-44f3-bbac-abae74f702ce"
+		file="properties/${env}-properties.yaml" />
+		
+	<!-- Common properties (shared across all environments) -->
+	<configuration-properties
+		doc:name="Configuration properties"
+		doc:id="26a8eed0-dd9b-45df-8d7c-8acccdad1bee"
+		file="properties/common-properties.yaml" />
+		
+	<!-- ================================================================== -->
+	<!-- API AUTODISCOVERY -->
+	<!-- ================================================================== -->
+	<api-gateway:autodiscovery apiId="${api.id}"
+		ignoreBasePath="true" doc:name="API Autodiscovery"
+		doc:id="7f319fd7-669a-430b-b3c5-c6532abd2593"
+		flowRef="silice-sapi-services-main" />
+		
+	<!-- ================================================================== -->
+	<!-- ETB COMMON LIB Imports -->
+	<!-- ================================================================== -->
+	<import doc:name="Error Handler v2"
+		doc:id="e4d2ff34-b8c9-42cd-b0a5-08590f43668a"
+		file="error-handler-v2.xml" />
+	<import doc:name="ETB Common Lib"
+		doc:id="b29290a0-c795-4e31-8fdd-7830960cfcc2"
+		file="etb-common-lib.xml" />
+	<import doc:name="Logging"
+		doc:id="66022574-eb7e-4593-9002-96ce0071c060" file="loggin.xml" />
+	<import doc:name="Audits SAPI Client"
+		doc:id="c4161f99-69d0-4f27-9ffa-41d7942420d3"
+		file="audits-sapi-client.xml" />
+
+	<!-- ================================================================== -->
+	<!-- HTTP LISTENER -->
+	<!-- ================================================================== -->
+	<http:listener-config name="HTTP_Listener_Config"
+		doc:name="HTTP Listener Config">
+		<http:listener-connection
+			host="${http.private.host}" port="${http.private.port}" />
+	</http:listener-config>
+
+
+	<!-- ================================================================== -->
+	<!-- HTTP REQUESTER -->
+	<!-- ================================================================== -->
+	<http:request-config name="HTTP_Pau_Request_Config"
+		doc:name="HTTP Pau Request Config" basePath="${pau.basePath}">
+		<http:request-connection host="${pau.host}"
+			connectionIdleTimeout="${pau.connectionIdleTimeout}"
+			protocol="${pau.protocol}" port="${pau.port}">
+			<reconnection>
+				<reconnect frequency="${pau.reconnection.frequency}"
+					count="${pau.reconnection.count}" />
+			</reconnection>
+		</http:request-connection>
+	</http:request-config>
+
+	<!-- ================================================================== -->
+	<!-- OBJECT STORE -->
+	<!-- ================================================================== -->
+	<os:object-store name="Token_Object_Store"
+		doc:name="Object store" doc:id="2e1e1257-eb47-451c-a961-ebae5c71a3c3"
+		entryTtl="710" entryTtlUnit="MINUTES" expirationInterval="5" />
+</mule>
