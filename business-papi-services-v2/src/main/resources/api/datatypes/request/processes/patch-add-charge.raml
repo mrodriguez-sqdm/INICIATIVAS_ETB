@@ -1,0 +1,123 @@
+#%RAML 1.0 DataType
+type: !include ../billing-process-base.raml
+discriminatorValue: ADD_CHARGE
+description: |
+  Add ad-hoc charge to a subscriber account. ZSmart: serviceEventId=804 (Charge additional fee).
+  Covers: generic ad-hoc charges AND Retoma de Equipos (equipment retrieval fee).
+  For Retoma de Equipos use itemTypeCode=EQUIP_CHANGE_FEE with a positive basicCharge.
+  billing-papi resolves: serviceEventId=804, chargeList.custId from customer.externalId,
+  chargeList.prodInstId from service.externalId, chargeList.acctId and chargeList.paymentAcctId
+  from account.externalId, currencyId=1.
+  No service status, offer, or subscriber data is modified — only header + chargeList is sent to ZSmart.
+  Fields eliminated in v0.8: billingCycleId, isNewConnection.
+properties:
+  processCode:
+    type: string
+    enum: [ADD_CHARGE]
+    required: true
+  transaction:
+    type: object
+    required: true
+    properties:
+      id:
+        type: string
+        description: "Unique transaction ID. -> header.transactionId"
+        example: TRX20260319008901
+        required: true
+      timestamp:
+        type: string
+        description: "Operation timestamp YYYY-MM-DD HH:MM:SS (v0.8). -> header.createDate"
+        example: '2026-03-19 10:00:00'
+        required: true
+      orderItemId:
+        type: string
+        description: "CRM order item ID. -> header.orderItemId"
+        example: OI20260319008901-001
+        required: true
+      salesChannel:
+        type: integer
+        description: "Channel ID (Mandatory v0.8). 1=POS, 2=WAP, 4=SMS, 5=USSD, 7=IVR, 106=System default. -> header.salesChannel"
+        example: 1
+        required: true
+      salesDepartment:
+        type: string
+        description: "DANE department code of sales agent. Used for tax calculation. -> header.salesDepartment"
+        example: '11'
+        required: false
+      salesCity:
+        type: string
+        description: "DANE city code of sales agent. Used for tax calculation. -> header.salesCity"
+        example: '11001'
+        required: false
+  customer:
+    type: object
+    required: true
+    properties:
+      externalId:
+        type: string
+        description: "ZSmart customer ID. -> header.custId / charge.custId"
+        example: '12345678'
+        required: true
+  account:
+    type: object
+    required: true
+    description: "Required for charge.acctId and charge.paymentAcctId"
+    properties:
+      externalId:
+        type: string
+        description: "ZSmart billing account ID. -> header.acctId / charge.acctId / charge.paymentAcctId"
+        example: '14000001234'
+        required: true
+  service:
+    type: object
+    required: true
+    description: "Service reference for charge.prodInstId. billProdInst is NOT sent to ZSmart."
+    properties:
+      externalId:
+        type: string
+        description: "ZSmart product instance ID. -> header.prodInstId / charge.prodInstId"
+        example: '98765'
+        required: true
+      serviceNumber:
+        type: string
+        description: "Service number with area prefix (e.g. 601-5551234). -> charge.billingNbr"
+        example: '601-5551234'
+        required: false
+  charges:
+    type: array
+    required: true
+    minItems: 1
+    description: "One or more charges to bill. -> chargeList node (root level, not inside service)"
+    items:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [ONE_OFF, INSTALLMENT, ADVANCE]
+          description: "billing-papi maps ONE_OFF->1, INSTALLMENT->5, ADVANCE->7. -> charge.chargeType"
+          example: ONE_OFF
+          required: true
+        amount:
+          type: string
+          description: |
+            Charge amount in PESO. Positive=debit, negative=credit.
+            Send '0' if type=INSTALLMENT (ZSmart calculates remaining installments).
+            -> charge.basicCharge
+          example: '120000'
+          required: true
+        itemTypeCode:
+          type: string
+          description: "Account item type code configured in ZSmart. Use EQUIP_CHANGE_FEE for Retoma de Equipos. -> charge.acctItemTypeCode"
+          example: EQUIP_CHANGE_FEE
+          required: true
+        paidFlag:
+          type: string
+          enum: ['Y', 'N']
+          description: "Y=already paid in CRM, N=collect in ZSmart. -> charge.paidFlag"
+          example: 'N'
+          required: true
+        effectiveDate:
+          type: string
+          description: "Charge effective date YYYY-MM-DD HH:MM:SS. -> charge.effDate"
+          example: '2026-03-19 10:00:00'
+          required: false
