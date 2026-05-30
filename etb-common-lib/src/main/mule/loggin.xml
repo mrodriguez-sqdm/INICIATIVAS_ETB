@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="loggin-client-call" doc:id="1a0ec286-cfbe-4d7c-b2bd-913ab985b28d" >
+		<ee:transform doc:name="Map request log" doc:id="36b972e2-69a8-4c45-b3f7-34bca301d0e6" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="DEBUG" doc:name="Print Log" doc:id="935b3e15-fe5e-48c3-9485-f26c5fc5950b" message="#[payload]"/>
+		<flow-ref doc:name="audits-client_log-audits-information" doc:id="5818e071-dbdd-45da-ace2-c7ec5a2d6884" name="post_log_audits-sapi-clientSub_Flow" />
+	</sub-flow>
+	<sub-flow name="processAndSystem-logginSub_Flow" doc:id="c4e7b6fa-565e-4047-9270-989c93d1bba9" >
+		<set-variable value="#[attributes.headers.systemId]" doc:name="systemId" doc:id="ab88b54c-fc14-47a3-938f-0ac149525aca" variableName="systemId"/>
+		<set-variable value="#[attributes.headers.processname]" doc:name="processname" doc:id="63c4a832-105a-46f9-9ed4-46859a5209eb" variableName="processname"/>
+		<ee:transform doc:name="Set originPayload" doc:id="85d0f019-d627-4cde-b496-1f104a0084dd" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="originPayload" ><![CDATA[%dw 2.0
+output application/java
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+---
+{
+  correlation_id: transactionId,
+  payload: write(payload.^raw, "application/json") as String,
+  attributes: write(attr, 'application/json') as String
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="initial-loggin-Sub_Flow" doc:id="328f5f01-fea3-4e04-b09d-fc9a4ff81a99" >
+		<try doc:name="Try" doc:id="8d49573b-94c5-4467-aebc-b31c90eeb84c" >
+			<flow-ref doc:name="Go to create log variables" doc:id="2b50ef10-8b5d-4eeb-81ff-24d6ed0aaf53" name="create-log-variables-Sub_Flow"/>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="09fbc4aa-941b-45c2-9cfd-278a7fdedb18" >
+					<flow-ref doc:name="Go to clean variables" doc:id="746c4ae7-c6fb-47d6-b167-bd4655dd4843" name="clean-initial-variables-Sub_Flow"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="create-log-variables-Sub_Flow" doc:id="1223e4cc-d23e-47f2-9924-5ab8bc6124af" >
+		<set-variable value="#[payload]" doc:name="Set Payload Cached" doc:id="bb76121c-5d38-4bcd-ad08-8b854ab7fb41" variableName="payloadCached"/>
+		<ee:transform doc:name="Set originPayload" doc:id="6e9ec4df-f828-4d45-a7e9-c1d3cd1b5ae1">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="originPayload"><![CDATA[%dw 2.0
+output application/java
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+---
+{
+  correlation_id: transactionId,
+  payload: write(payload.^raw, "application/json") as String,
+  attributes: write(attr, 'application/json') as String
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value='#[readUrl("classpath://paths.json", "application/json")]' doc:name="Set Paths of JSON file" doc:id="12b4fd4e-bee5-4ca6-a05f-1246c9ee93e5" variableName="paths"/>
+		<set-variable value="#[flatten(vars.paths.data)]" doc:name="Set method and path array" doc:id="72f8b262-c6a3-4e0d-82fa-11b4d161af7e" variableName="methodPathArray"/>
+		<ee:transform doc:name="Set Variables: currentMethod, currentPath and currentPathSections" doc:id="6d298df4-cece-4e70-bba9-3374ee81bc95" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="currentPath" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.relativePath]]></ee:set-variable>
+				<ee:set-variable variableName="currentPathSections" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.relativePath splitBy("/")]]></ee:set-variable>
+				<ee:set-variable variableName="currentMethod" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.method]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Filter by method and quantity of sections in path" doc:id="29839dbb-e053-4bde-b731-6f1b10f03bc9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+vars.methodPathArray filter ((item, index) -> 
+							item.method == vars.currentMethod and 
+							sizeOf(item.path splitBy("/")) == sizeOf(vars.currentPathSections)
+						)]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="2cc1e22b-f21f-4c94-a32a-2e9c4be2e559" >
+			<when expression="#[(payload != null) and (sizeOf(payload) &gt; 0)]">
+				<flow-ref doc:name="Go to find system id" doc:id="57cad0e9-57be-4727-979b-b214d408a6e4" name="find-system-id-Sub_Flow" />
+				<choice doc:name="Choice" doc:id="be6edeb8-4254-4d5e-9120-5e3462db9a01">
+					<when expression='#[(attributes.method == "GET" or attributes.method == "DELETE")]'>
+						<set-payload value="#[null]" doc:name="Restore payload cached" doc:id="02f691bb-0b7f-4f10-9f88-e84233a870cf" />
+					</when>
+					<otherwise >
+						<set-payload value="#[vars.payloadCached]" doc:name="Set payload to null" doc:id="53618750-6114-45ee-a1cf-a6d4f1020b1f" />
+					</otherwise>
+				</choice>
+				<choice doc:name="Choice" doc:id="c3d996bd-d140-4450-acfa-1158b482fdf4" >
+					<when expression="#[vars.systemId != null]">
+						<async doc:name="Async" doc:id="a22483e8-b8e8-4a99-9c23-a35e77103a32">
+			<flow-ref doc:name="Go to log" doc:id="e8e9e710-a875-4035-920c-005e52c5b9cc" name="loggin-client-call" />
+		</async>
+					</when>
+					<otherwise >
+						<logger level="DEBUG" doc:name="Logger" doc:id="95f1b077-6ce6-4bc5-8937-dfecdc94f867" message="#[payload]"/>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<set-payload value="#[vars.payloadCached]" doc:name="Restore payload cached" doc:id="9085b2b2-fd1a-45df-87c7-343198476c11" />
+				<logger level="DEBUG" doc:name="Logger" doc:id="fd2d0f45-e074-4069-bb3b-910a27ede120" message="#[payload]"/>
+			</otherwise>
+		</choice>
+		<flow-ref doc:name="Go to restore variables" doc:id="d1d071d7-ce55-44cd-b1b7-3c9971056114" name="clean-initial-variables-Sub_Flow"/>
+	</sub-flow>
+	<sub-flow name="find-system-id-Sub_Flow" doc:id="f6b60562-8d0b-4283-bbe8-eb345528bc3f" >
+		<foreach doc:name="For Each" doc:id="8604d70e-f5df-4d26-9191-6aca12916c22" collection="payload">
+			<ee:transform doc:name="Sections of Path" doc:id="c01ab205-2c88-4423-bb86-9eac05c8fe52">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload.path splitBy("/")]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<ee:transform doc:name="Get result" doc:id="9d1a18ba-5067-4e02-a287-e6b49945f124">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+var resultados = payload map {
+				    isCorrect:
+				        if(($ == vars.currentPathSections[$$]) or (($ startsWith("(")) and ($ endsWith(")"))))
+				            true
+				        else false
+					}
+var result = if(sizeOf(resultados filter ((item, index) -> item.isCorrect == false)) > 0) false else true
+---
+result]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<choice doc:name="Choice" doc:id="0d75b8bd-c903-4f63-97bc-2b71e2f9fca7">
+				<when expression="#[payload]">
+					<set-variable value="#[vars.rootMessage.payload[vars.counter - 1]]" doc:name="Set correct method and path" doc:id="0c05eb28-dcae-4446-9f0e-3860dbefb78b" variableName="correctMethodPath" />
+				</when>
+			</choice>
+		</foreach>
+		<ee:transform doc:name="Get Name of Collection and set processname" doc:id="66cce258-a902-4f53-9630-3ad01e456e51">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+var collectionObject = (vars.paths filter ((item, index) -> 
+                    sizeOf(item.data filter((it, in) -> it.method == vars.correctMethodPath.method and it.path == vars.correctMethodPath.path)) == 1           
+))[0]
+---
+collectionObject.systemId]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="processname" ><![CDATA[output application/java
+---
+(vars.methodPathArray filter ($.method == vars.correctMethodPath.method and $.path == vars.correctMethodPath.path))[0].processname]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="5bfb388f-f56b-4469-bd33-745949a67b0b" >
+			<when expression="#[payload != null]">
+				<set-variable value="#[payload]" doc:name="Set Current Collection DB" doc:id="57df5173-6202-4714-b824-95e8bc921130" variableName="systemId" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="clean-initial-variables-Sub_Flow" doc:id="cea99050-0213-4242-9f90-607ff4fdd6db" >
+		<try doc:name="Try" doc:id="39711e00-1bdb-4068-9ba5-9b3b04b3dcf2" >
+			<choice doc:name="Choice" doc:id="eabb4016-5789-4717-85d8-f6328d17db58">
+			<when expression="#[vars.correctMethodPath != null]">
+				<remove-variable doc:name="Remove correctMethodPath" doc:id="5bef6e9c-a04c-41f7-b64a-a2e635724792" variableName="correctMethodPath" />
+			</when>
+		</choice>
+			<choice doc:name="Choice" doc:id="ff5734c7-da10-4980-84f8-b96185f2efb2">
+			<when expression="#[vars.currentMethod != null]">
+				<remove-variable doc:name="Remove currentMethod" doc:id="c77ecef5-177c-415a-a709-140130de0f09" variableName="currentMethod" />
+			</when>
+		</choice>
+			<choice doc:name="Choice" doc:id="582fe020-0f99-4e32-a7ce-20d318ebebd7">
+			<when expression="#[vars.currentPath != null]">
+				<remove-variable doc:name="Remove currentPath" doc:id="89b3db75-d4cb-446e-accc-cfe77c3080f7" variableName="currentPath" />
+			</when>
+		</choice>
+			<choice doc:name="Choice" doc:id="b373c557-6a58-4ef5-91fd-3edf9cabd53c">
+			<when expression="#[vars.currentPathSections != null]">
+				<remove-variable doc:name="Remove currentPathSections" doc:id="54c6a0f0-fa64-4033-a967-ab02b9aba0d5" variableName="currentPathSections" />
+			</when>
+		</choice>
+			<choice doc:name="Choice" doc:id="86c55a7c-3cf2-488c-be18-10bdc1e2fa63">
+			<when expression="#[vars.methodPathArray != null]">
+				<remove-variable doc:name="Remove methodPathArray" doc:id="ecebe88c-621b-486d-ab12-851432640b2a" variableName="methodPathArray" />
+			</when>
+		</choice>
+			<choice doc:name="Choice" doc:id="0f1af27f-8e8f-43c7-821e-274a804ea48c">
+			<when expression="#[vars.paths != null]">
+				<remove-variable doc:name="Remove paths" doc:id="ee786a46-b5c6-4f25-859c-9026b1f670cc" variableName="paths" />
+			</when>
+		</choice>
+			<choice doc:name="Choice" doc:id="f6d6bbc9-da30-4c3a-9e83-f0f0383e812b">
+			<when expression="#[vars.payloadCached != null]">
+				<remove-variable doc:name="Remove payloadCached" doc:id="dfb46498-aae8-4028-af6d-76655cec22c1" variableName="payloadCached" />
+			</when>
+		</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="770206c2-57ca-4007-b327-68c988c97745" >
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="final-loggin-migration_Sub_Flow" doc:id="17881fcb-b7b0-44b8-9a7a-ba9caf2c25eb" >
+		<ee:transform doc:name="Set Accepted StatusCode" doc:id="85f38d40-87dd-4b10-9648-121687e1e1cc">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[201]]></ee:set-variable>
+				<ee:set-variable variableName="systemId"><![CDATA["MIGRACION"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="53e58959-f078-4e54-8ec2-d7d35156ad90" name="loggin-client-call" />
+	</sub-flow>
+</mule>
