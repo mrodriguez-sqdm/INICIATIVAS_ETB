@@ -1,0 +1,840 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="product-order-orchestratorSub_Flow" doc:id="029cd525-7d30-4c53-8aae-52fa249a0bc6" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="ee0a56c5-597a-4fa8-a8d8-35ebb4c717ae" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="f282f3d3-62f7-4a96-b4a0-8df1ae4f8597" variableName="headers" />
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="764992e6-28a0-484a-b4e4-1e48c7de8a78" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.ORDER_NUMBER != null and vars.parameters.ORDER_NUMBER != "")&#10;  if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;  false&#10; else&#10;  true&#10;else&#10;	if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;	  true&#10;	else&#10;	  false]' doc:name="Set Variable" doc:id="dc089dcc-e03e-4e9d-808b-9bb16301bf9b" variableName="call_bot"/>
+		<choice doc:name="Choice" doc:id="98707de4-6166-4208-8fb0-8a0f14c91521" >
+			<when expression="#[vars.call_bot]">
+				<ee:transform doc:name="build Payload BOT" doc:id="8b3f6742-dc43-486b-992e-35b3f470fc4c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    /*  "Customer": {
+      "Document_Type": (payload.filtros.DocumentType default ""),
+      "Document_Number": (payload.filtros.DocumentNumber default "")
+    },*/
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+    "Filter": {
+      "Address": true,
+      "Billing_Account": true,
+      "End_Date": "",
+      "New_Offer": true,
+      "Old_Offer": true,
+      "Schedule": true,
+      "Start_Date": "",
+      /*"States": , {
+        "Action": true,
+        "Completed": true,
+        "Cancelled": true,
+        "Pending": true
+      },*/
+      "Technician": true
+    },
+    "Num_Order": (vars.parameters.ORDER_NUMBER default ""),
+     "Phone": (payload.filtros.Phone default "")
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="bd10216b-2039-4ca4-9099-805cf9f45ae7" name="post-orders-clientSub_Flow"/>
+				<ee:transform doc:name="Transform Message" doc:id="4e2710d1-8517-41fe-9ebb-743d2531f199" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: "200",
+    responseMessage: payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    orders: payload.WSResponseBody.Orders map (item) -> {
+      cun: item.CUN default "",
+      cancelationInfo: item.Cancelation_Info default "",
+      channel: item.Channel default "",
+      creatorUser: item.Creator_User default "",
+      modifyingUser: item.Modifying_User default "",
+      promotions: item.Promotions default "",
+      subChannel: item.Sub_Channel default "",
+      technology: item.Technology default "",
+      id: item.Id default "",
+      status: item.Status default "",
+      agenda: {
+        installerId: item.Agenda.Installer_Id default "",
+        isSuspended: item.Agenda.Is_Suspended default "",
+        suspensionInfo: item.Agenda.Suspension_Info default "",
+        trackingMap: item.Agenda.Tracking_Map default "",
+        date: {
+          date: item.Agenda.Date.Date default "",
+          format1: item.Agenda.Date.Format_1 default "",
+          format2: item.Agenda.Date.Format_2 default "",
+          format3: item.Agenda.Date.Format_3 default "",
+          format4: item.Agenda.Date.Format_4 default "",
+          day: {
+            format1: item.Agenda.Date.Day.Format_1 default "",
+            format2: item.Agenda.Date.Day.Format_2 default "",
+            format3: item.Agenda.Date.Day.Format_3 default ""
+          },
+          month: {
+            format1: item.Agenda.Date.Month.Format_1 default "",
+            format2: item.Agenda.Date.Month.Format_2 default "",
+            format3: item.Agenda.Date.Month.Format_3 default ""
+          },
+          year: {
+            format1: item.Agenda.Date.Year.Format_1 default "",
+            format2: item.Agenda.Date.Year.Format_2 default "",
+            format3: item.Agenda.Date.Year.Format_3 default ""
+          },
+          hour: {
+            format1: item.Agenda.Date.Hour.Format_1 default "",
+            format2: item.Agenda.Date.Hour.Format_2 default "",
+            format3: item.Agenda.Date.Hour.Format_3 default "",
+            format4: item.Agenda.Date.Hour.Format_4 default "",
+            format5: item.Agenda.Date.Hour.Format_5 default "",
+            format6: item.Agenda.Date.Hour.Format_6 default ""
+          }
+        },
+        idEta: item.Agenda.Id_ETA default "",
+        idOsm: item.Agenda.Id_OSM default "",
+        isScheduled: item.Agenda.Is_Scheduled default "",
+        state: item.Agenda.State default "",
+        timeSlot: {
+          endTime: item.Agenda.TimeSlot.End_Time default "",
+          initTime: item.Agenda.TimeSlot.Init_Time default "",
+          timeSlotBeauty: item.Agenda.TimeSlot.TimeSlot_Beauty default "",
+          timeSlotTechnical: item.Agenda.TimeSlot.TimeSlot_Technical default "",
+          timeSlotUser: item.Agenda.TimeSlot.TimeSlot_User default ""
+        },
+        zone: item.Agenda.Zone default ""
+      },
+      characteristics: item.Characteristics map (c) -> {
+        action: c.Action default "",
+        name: c.Name default "",
+        value: c.Value default ""
+      },
+      customer: {
+        atdp: item.Customer.ATDP default "",
+        birthday: item.Customer.Birthday default "",
+        business: item.Customer.Business default "",
+        collectionCommunications: item.Customer.Collection_Communications default "",
+        documentNumber: item.Customer.Document_Number default "",
+        documentType: item.Customer.Document_Type default "",
+        email: item.Customer.Email default "",
+        mobilePhone: item.Customer.Mobile_Phone default "",
+        mobilePhone2: item.Customer.Mobile_Phone2 default "",
+        name: {
+          completeName: item.Customer.Name.Complete_Name default "",
+          firstName: item.Customer.Name.First_Name default "",
+          firstSurname: item.Customer.Name.First_Surname default "",
+          names: item.Customer.Name.Names default "",
+          secondName: item.Customer.Name.Second_Name default "",
+          secondSurname: item.Customer.Name.Second_Surname default "",
+          surnames: item.Customer.Name.Surnames default ""
+        },
+        segmentation: {
+          attentionScheme: item.Customer.Segmentation.Attention_Scheme default "",
+          category: item.Customer.Segmentation.Category default "",
+          profile: item.Customer.Segmentation.Profile default "",
+          segment: item.Customer.Segmentation.Segment default "",
+          uen: item.Customer.Segmentation.UEN default "",
+          segmentUen: item.Customer.Segmentation.Segment_UEN default ""
+        },
+        validationCode: item.Customer.Validation_Code default ""
+      },
+             newOffer: {
+        address: {
+          city: {
+            id: item.New_Offer.Address.City.Id default "",
+            name: item.New_Offer.Address.City.Name default ""
+          },
+          department: {
+            id: item.New_Offer.Address.Department.Id default "",
+            name: item.New_Offer.Address.Department.Name default ""
+          },
+          coverage: {
+            distanceType: item.New_Offer.Address.Coverage.Distance_Type default "",
+            gisAddress: item.New_Offer.Address.Coverage.GIS_Address default "",
+            idPlot: item.New_Offer.Address.Coverage.Id_Plot default "",
+            latitude: item.New_Offer.Address.Coverage.Latitude default "",
+            longitude: item.New_Offer.Address.Coverage.Longitude default "",
+            molecule: item.New_Offer.Address.Coverage.Molecule default "",
+            name: item.New_Offer.Address.Coverage.Name default "",
+            olt: item.New_Offer.Address.Coverage.OLT default "",
+            owner: item.New_Offer.Address.Coverage.Owner default "",
+            district: item.New_Offer.Address.Coverage.District default "",
+            locality: item.New_Offer.Address.Coverage.Locality default "",
+            localityId: item.New_Offer.Address.Coverage.Locality_Id default "",
+            stratum: item.New_Offer.Address.Coverage.Stratum default "",
+            technology: item.New_Offer.Address.Coverage.Technology default "",
+            "type": item.New_Offer.Address.Coverage.Type default "",
+            zone: item.New_Offer.Address.Coverage.Zone default ""
+          },
+          country: {
+            id: item.New_Offer.Address.Country.Id default "",
+            name: item.New_Offer.Address.Country.Name default ""
+          },
+          id: item.New_Offer.Address.Id default "",
+          state: item.New_Offer.Address.State default "",
+          streetAddress: item.New_Offer.Address.Street_Address default "",
+          "type": item.New_Offer.Address.Type default ""
+        },
+         billing: {
+          address: item.New_Offer.Billing.Address default "",
+          billingAccount: item.New_Offer.Billing.Billing_Account default "",
+          billingAccountFather: item.New_Offer.Billing.Billing_Account_Father default "",
+          billingDueDay: item.New_Offer.Billing.Billing_Due_Day default "",
+          billingDueOcsDay: item.New_Offer.Billing.Billing_Due_OCS_Day default "",
+          billingDueDayUser: item.New_Offer.Billing.Billing_Due_Day_User default "",
+          canUpdateDeliveryType: item.New_Offer.Billing.Can_Update_Delivery_Type default "",
+          cycle: item.New_Offer.Billing.Cycle default "",
+          deliveryType: item.New_Offer.Billing.Delivery_Type default "",
+          email: item.New_Offer.Billing.Email default "",
+          idSalesforce: item.New_Offer.Billing.Id_Salesforce default "",
+          phone: item.New_Offer.Billing.Phone default "",
+          state: item.New_Offer.Billing.State default "",
+          stratum: item.New_Offer.Billing.Stratum default "",
+          "type": item.New_Offer.Billing.Type default ""
+        },
+        plan: {
+          home: {
+            internet: {
+              capacity: item.New_Offer.Plan.Home.Internet.Capacity default "",
+              descentSpeed: {
+                description: item.New_Offer.Plan.Home.Internet.Descent_Speed.Description default "",
+                unity: item.New_Offer.Plan.Home.Internet.Descent_Speed.Unity default "",
+                value: item.New_Offer.Plan.Home.Internet.Descent_Speed.Value default ""
+              },
+              isTwin: item.New_Offer.Plan.Home.Internet.Is_Twin default "",
+              secundary: item.New_Offer.Plan.Home.Internet.Secundary map (s) -> {
+                count: s.Count default "",
+                desc: s.Desc default "",
+                description: s.Description default "",
+                icon: s.Icon default "",
+                name: s.Name default "",
+                "type": s.Type default ""
+              },
+              sharedCapacity: item.New_Offer.Plan.Home.Internet.Shared_Capacity default "",
+              uploadSpeed: {
+                description: item.New_Offer.Plan.Home.Internet.Upload_Speed.Description default "",
+                unity: item.New_Offer.Plan.Home.Internet.Upload_Speed.Unity default "",
+                value: item.New_Offer.Plan.Home.Internet.Upload_Speed.Value default ""
+              }
+            },
+            tv: item.New_Offer.Plan.Home.TV default "",
+            voice: {
+              capacity: {
+                description: item.New_Offer.Plan.Home.Voice.Capacity.Description default "",
+                unity: item.New_Offer.Plan.Home.Voice.Capacity.Unity default "",
+                value: item.New_Offer.Plan.Home.Voice.Capacity.Value default ""
+              },
+              secundary: item.New_Offer.Plan.Home.Voice.Secundary map (s) -> {
+                count: s.Count default "",
+                desc: s.Desc default "",
+                description: s.Description default "",
+                icon: s.Icon default "",
+                name: s.Name default "",
+                "type": s.Type default ""
+              }
+            }
+          },
+          mobile: item.New_Offer.Plan.Mobile default "",
+          promotions: item.New_Offer.Plan.Promotions default "",
+          available: item.New_Offer.Plan.Available default "",
+          contracted: item.New_Offer.Plan.Contracted default "",
+          description: item.New_Offer.Plan.Description default "",
+          executionPlan: item.New_Offer.Plan.Execution_Plan map (ep) -> {
+            features: ep.Features map (f) -> {
+              description: f.Description default "",
+              differential: f.Differential default "",
+              discount: f.Discount default "",
+              outstanding: f.Outstanding default "",
+              "type": f.Type default ""
+            },
+            month: ep.Month default "",
+            saving: ep.Saving default "",
+            savingStr: ep.Saving_Str default "",
+            state: ep.State default "",
+            value: ep.Value default "",
+            valueStr: ep.Value_Str default ""
+          },
+          id: item.New_Offer.Plan.Id default "",
+          idsPackaging: item.New_Offer.Plan.Ids_Packaging default "",
+          installationCharges: {
+            acceptPermanenceClause: item.New_Offer.Plan.Installation_Charges.Accept_Permanence_Clause default "",
+            installationChargesInternet: item.New_Offer.Plan.Installation_Charges.Installation_Charges_Internet default "",
+            installationChargesTv: item.New_Offer.Plan.Installation_Charges.Installation_Charges_Tv default "",
+            installationChargesVoice: item.New_Offer.Plan.Installation_Charges.Installation_Charges_Voice default "",
+            total: item.New_Offer.Plan.Installation_Charges.Total default ""
+          },
+          isPacking: item.New_Offer.Plan.Is_Packing default "",
+          isZoned: item.New_Offer.Plan.Is_Zoned default "",
+          name: item.New_Offer.Plan.Name default "",
+          nameTechnical: item.New_Offer.Plan.Name_Technical default "",
+          outstanding: item.New_Offer.Plan.Outstanding default "",
+          price: {
+            anticipatedPayment: item.New_Offer.Plan.Price.Anticipated_Payment default "",
+            iva: item.New_Offer.Plan.Price.IVA default "",
+            value: item.New_Offer.Plan.Price.Value default "",
+            valueStr: item.New_Offer.Plan.Price.Value_Str default "",
+            valueWithoutIva: item.New_Offer.Plan.Price.Value_Without_IVA default "",
+            valueWithoutIvaStr: item.New_Offer.Plan.Price.Value_Without_IVA_Str default "",
+            validity: item.New_Offer.Plan.Price.Validity default ""
+          },
+          retencion: item.New_Offer.Plan.Retencion default "",
+          saving: item.New_Offer.Plan.Saving default "",
+          savingStr: item.New_Offer.Plan.Saving_Str default "",
+          stratum: item.New_Offer.Plan.Stratum default "",
+          subType: item.New_Offer.Plan.SubType default "",
+          svasFeatured: item.New_Offer.Plan.SVAs_Featured default "",
+          svasIncluded: item.New_Offer.Plan.SVAs_Included default "",
+          technology: item.New_Offer.Plan.Technology default "",
+          "type": item.New_Offer.Plan.Type default "",
+          value: item.New_Offer.Plan.Value default "",
+          valueStr: item.New_Offer.Plan.Value_Str default "",
+          zoned: item.New_Offer.Plan.Zoned default ""
+        },
+        promotions: item.New_Offer.Promotions default "",
+        svas: item.New_Offer.SVAs map (sva) -> {
+          mobile: sva.Mobile default "",
+          promotions: sva.Promotions default "",
+          subSvas: sva.Sub_SVAs default "",
+          available: sva.Available default "",
+          description: sva.Description default "",
+          characteristics: sva.Characteristics map (ch) -> {
+            characteristic: ch.Characteristic default "",
+            icon: ch.Icon default ""
+          },
+          conflicting: sva.Conflicting default "",
+          contracted: sva.Contracted default "",
+          executionPlan: sva.Execution_Plan map (ep) -> {
+            features: ep.Features map (f) -> {
+              description: f.Description default "",
+              differential: f.Differential default "",
+              discount: f.Discount default "",
+              outstanding: f.Outstanding default "",
+              "type": f.Type default ""
+            },
+            month: ep.Month default "",
+            saving: ep.Saving default "",
+            savingStr: ep.Saving_Str default "",
+            state: ep.State default "",
+            value: ep.Value default "",
+            valueStr: ep.Value_Str default ""
+          },
+          executionPlanDifferential: sva.Execution_Plan_Differential default "",
+          icon: sva.Icon default "",
+          id: sva.Id default "",
+          idsOld: sva.Ids_Old default "",
+          mandatory: sva.Mandatory default "",
+          name: sva.Name default "",
+          price: {
+            anticipatedPayment: sva.Price.Anticipated_Payment default "",
+            iva: sva.Price.IVA default "",
+            value: sva.Price.Value default "",
+            valueStr: sva.Price.Value_Str default "",
+            valueWithoutIva: sva.Price.Value_Without_IVA default "",
+            valueWithoutIvaStr: sva.Price.Value_Without_IVA_Str default "",
+            validity: sva.Price.Validity default ""
+          },
+          quantity: {
+            available: sva.Quantity.Available default "",
+            contracted: sva.Quantity.Contracted default ""
+          },
+          saving: sva.Saving default "",
+          serviceType: sva.Service_Type default "",
+          value: sva.Value default "",
+          visibility: {
+            action: sva.Visibility.Action default "",
+            conditioned: sva.Visibility.Conditioned default "",
+            plans: sva.Visibility.Plans default ""
+          }
+        }
+      },
+       oldOffer: {
+        address: {
+          city: {
+            id: item.Old_Offer.Address.City.Id default "",
+            name: item.Old_Offer.Address.City.Name default ""
+          },
+          department: {
+            id: item.Old_Offer.Address.Department.Id default "",
+            name: item.Old_Offer.Address.Department.Name default ""
+          },
+          coverage: {
+            distanceType: item.Old_Offer.Address.Coverage.Distance_Type default "",
+            gisAddress: item.Old_Offer.Address.Coverage.GIS_Address default "",
+            idPlot: item.Old_Offer.Address.Coverage.Id_Plot default "",
+            latitude: item.Old_Offer.Address.Coverage.Latitude default "",
+            longitude: item.Old_Offer.Address.Coverage.Longitude default "",
+            molecule: item.Old_Offer.Address.Coverage.Molecule default "",
+            name: item.Old_Offer.Address.Coverage.Name default "",
+            olt: item.Old_Offer.Address.Coverage.OLT default "",
+            owner: item.Old_Offer.Address.Coverage.Owner default "",
+            district: item.Old_Offer.Address.Coverage.District default "",
+            locality: item.Old_Offer.Address.Coverage.Locality default "",
+            localityId: item.Old_Offer.Address.Coverage.Locality_Id default "",
+            stratum: item.Old_Offer.Address.Coverage.Stratum default "",
+            technology: item.Old_Offer.Address.Coverage.Technology default "",
+            "type": item.Old_Offer.Address.Coverage.Type default "",
+            zone: item.Old_Offer.Address.Coverage.Zone default ""
+          },
+          country: {
+            id: item.Old_Offer.Address.Country.Id default "",
+            name: item.Old_Offer.Address.Country.Name default ""
+          },
+          id: item.Old_Offer.Address.Id default "",
+          state: item.Old_Offer.Address.State default "",
+          streetAddress: item.Old_Offer.Address.Street_Address default "",
+          "type": item.Old_Offer.Address.Type default ""
+        },
+         billing: {
+          address: item.Old_Offer.Billing.Address default "",
+          billingAccount: item.Old_Offer.Billing.Billing_Account default "",
+          billingAccountFather: item.Old_Offer.Billing.Billing_Account_Father default "",
+          billingDueDay: item.Old_Offer.Billing.Billing_Due_Day default "",
+          billingDueOcsDay: item.Old_Offer.Billing.Billing_Due_OCS_Day default "",
+          billingDueDayUser: item.Old_Offer.Billing.Billing_Due_Day_User default "",
+          canUpdateDeliveryType: item.Old_Offer.Billing.Can_Update_Delivery_Type default "",
+          cycle: item.Old_Offer.Billing.Cycle default "",
+          deliveryType: item.Old_Offer.Billing.Delivery_Type default "",
+          email: item.Old_Offer.Billing.Email default "",
+          idSalesforce: item.Old_Offer.Billing.Id_Salesforce default "",
+          phone: item.Old_Offer.Billing.Phone default "",
+          state: item.Old_Offer.Billing.State default "",
+          stratum: item.Old_Offer.Billing.Stratum default "",
+          "type": item.Old_Offer.Billing.Type default ""
+        },
+        plan: {
+          home: {
+            internet: {
+              capacity: item.Old_Offer.Plan.Home.Internet.Capacity default "",
+              descentSpeed: {
+                description: item.Old_Offer.Plan.Home.Internet.Descent_Speed.Description default "",
+                unity: item.Old_Offer.Plan.Home.Internet.Descent_Speed.Unity default "",
+                value: item.Old_Offer.Plan.Home.Internet.Descent_Speed.Value default ""
+              },
+              isTwin: item.Old_Offer.Plan.Home.Internet.Is_Twin default "",
+              secundary: item.Old_Offer.Plan.Home.Internet.Secundary map (s) -> {
+                count: s.Count default "",
+                desc: s.Desc default "",
+                description: s.Description default "",
+                icon: s.Icon default "",
+                name: s.Name default "",
+                "type": s.Type default ""
+              },
+              sharedCapacity: item.Old_Offer.Plan.Home.Internet.Shared_Capacity default "",
+              uploadSpeed: {
+                description: item.Old_Offer.Plan.Home.Internet.Upload_Speed.Description default "",
+                unity: item.Old_Offer.Plan.Home.Internet.Upload_Speed.Unity default "",
+                value: item.Old_Offer.Plan.Home.Internet.Upload_Speed.Value default ""
+              }
+            },
+            tv: item.Old_Offer.Plan.Home.TV default "",
+            voice: {
+              capacity: {
+                description: item.Old_Offer.Plan.Home.Voice.Capacity.Description default "",
+                unity: item.Old_Offer.Plan.Home.Voice.Capacity.Unity default "",
+                value: item.Old_Offer.Plan.Home.Voice.Capacity.Value default ""
+              },
+              secundary: item.Old_Offer.Plan.Home.Voice.Secundary map (s) -> {
+                count: s.Count default "",
+                desc: s.Desc default "",
+                description: s.Description default "",
+                icon: s.Icon default "",
+                name: s.Name default "",
+                "type": s.Type default ""
+              }
+            }
+          },
+          mobile: item.Old_Offer.Plan.Mobile default "",
+          promotions: item.Old_Offer.Plan.Promotions default "",
+          available: item.Old_Offer.Plan.Available default "",
+          contracted: item.Old_Offer.Plan.Contracted default "",
+          description: item.Old_Offer.Plan.Description default "",
+          executionPlan: item.Old_Offer.Plan.Execution_Plan map (ep) -> {
+            features: ep.Features map (f) -> {
+              description: f.Description default "",
+              differential: f.Differential default "",
+              discount: f.Discount default "",
+              outstanding: f.Outstanding default "",
+              "type": f.Type default ""
+            },
+            month: ep.Month default "",
+            saving: ep.Saving default "",
+            savingStr: ep.Saving_Str default "",
+            state: ep.State default "",
+            value: ep.Value default "",
+            valueStr: ep.Value_Str default ""
+          },
+          id: item.Old_Offer.Plan.Id default "",
+          idsPackaging: item.Old_Offer.Plan.Ids_Packaging default "",
+          installationCharges: {
+            acceptPermanenceClause: item.Old_Offer.Plan.Installation_Charges.Accept_Permanence_Clause default "",
+            installationChargesInternet: item.Old_Offer.Plan.Installation_Charges.Installation_Charges_Internet default "",
+            installationChargesTv: item.Old_Offer.Plan.Installation_Charges.Installation_Charges_Tv default "",
+            installationChargesVoice: item.Old_Offer.Plan.Installation_Charges.Installation_Charges_Voice default "",
+            total: item.Old_Offer.Plan.Installation_Charges.Total default ""
+          },
+          isPacking: item.Old_Offer.Plan.Is_Packing default "",
+          isZoned: item.Old_Offer.Plan.Is_Zoned default "",
+          name: item.Old_Offer.Plan.Name default "",
+          nameTechnical: item.Old_Offer.Plan.Name_Technical default "",
+          outstanding: item.Old_Offer.Plan.Outstanding default "",
+          price: {
+            anticipatedPayment: item.Old_Offer.Plan.Price.Anticipated_Payment default "",
+            iva: item.Old_Offer.Plan.Price.IVA default "",
+            value: item.Old_Offer.Plan.Price.Value default "",
+            valueStr: item.Old_Offer.Plan.Price.Value_Str default "",
+            valueWithoutIva: item.Old_Offer.Plan.Price.Value_Without_IVA default "",
+            valueWithoutIvaStr: item.Old_Offer.Plan.Price.Value_Without_IVA_Str default "",
+            validity: item.Old_Offer.Plan.Price.Validity default ""
+          },
+          retencion: item.Old_Offer.Plan.Retencion default "",
+          saving: item.Old_Offer.Plan.Saving default "",
+          savingStr: item.Old_Offer.Plan.Saving_Str default "",
+          stratum: item.Old_Offer.Plan.Stratum default "",
+          subType: item.Old_Offer.Plan.SubType default "",
+          svasFeatured: item.Old_Offer.Plan.SVAs_Featured default "",
+          svasIncluded: item.Old_Offer.Plan.SVAs_Included default "",
+          technology: item.Old_Offer.Plan.Technology default "",
+          "type": item.Old_Offer.Plan.Type default "",
+          value: item.Old_Offer.Plan.Value default "",
+          valueStr: item.Old_Offer.Plan.Value_Str default "",
+          zoned: item.Old_Offer.Plan.Zoned default ""
+        },
+        promotions: item.Old_Offer.Promotions default "",
+        svas: item.Old_Offer.SVAs map (sva) -> {
+          mobile: sva.Mobile default "",
+          promotions: sva.Promotions default "",
+          subSvas: sva.Sub_SVAs default "",
+          available: sva.Available default "",
+          description: sva.Description default "",
+          characteristics: sva.Characteristics map (ch) -> {
+            characteristic: ch.Characteristic default "",
+            icon: ch.Icon default ""
+          },
+          conflicting: sva.Conflicting default "",
+          contracted: sva.Contracted default "",
+          executionPlan: sva.Execution_Plan map (ep) -> {
+            features: ep.Features map (f) -> {
+              description: f.Description default "",
+              differential: f.Differential default "",
+              discount: f.Discount default "",
+              outstanding: f.Outstanding default "",
+              "type": f.Type default ""
+            },
+            month: ep.Month default "",
+            saving: ep.Saving default "",
+            savingStr: ep.Saving_Str default "",
+            state: ep.State default "",
+            value: ep.Value default "",
+            valueStr: ep.Value_Str default ""
+          },
+          executionPlanDifferential: sva.Execution_Plan_Differential default "",
+          icon: sva.Icon default "",
+          id: sva.Id default "",
+          idsOld: sva.Ids_Old default "",
+          mandatory: sva.Mandatory default "",
+          name: sva.Name default "",
+          price: {
+            anticipatedPayment: sva.Price.Anticipated_Payment default "",
+            iva: sva.Price.IVA default "",
+            value: sva.Price.Value default "",
+            valueStr: sva.Price.Value_Str default "",
+            valueWithoutIva: sva.Price.Value_Without_IVA default "",
+            valueWithoutIvaStr: sva.Price.Value_Without_IVA_Str default "",
+            validity: sva.Price.Validity default ""
+          },
+          quantity: {
+            available: sva.Quantity.Available default "",
+            contracted: sva.Quantity.Contracted default ""
+          },
+          saving: sva.Saving default "",
+          serviceType: sva.Service_Type default "",
+          value: sva.Value default "",
+          visibility: {
+            action: sva.Visibility.Action default "",
+            conditioned: sva.Visibility.Conditioned default "",
+            plans: sva.Visibility.Plans default ""
+          }
+        }
+      },
+      technician: {
+        avatar: item.Technician.Avatar default "",
+        id: item.Technician.Id default "",
+        name: item.Technician.Name default ""
+      },
+      creationTime: {
+        date: item.Creation_Time.Date default "",
+        format1: item.Creation_Time.Format_1 default "",
+        format2: item.Creation_Time.Format_2 default "",
+        format3: item.Creation_Time.Format_3 default "",
+        format4: item.Creation_Time.Format_4 default "",
+        day: {
+          format1: item.Creation_Time.Day.Format_1 default "",
+          format2: item.Creation_Time.Day.Format_2 default "",
+          format3: item.Creation_Time.Day.Format_3 default ""
+        },
+        month: {
+          format1: item.Creation_Time.Month.Format_1 default "",
+          format2: item.Creation_Time.Month.Format_2 default "",
+          format3: item.Creation_Time.Month.Format_3 default ""
+        },
+        year: {
+          format1: item.Creation_Time.Year.Format_1 default "",
+          format2: item.Creation_Time.Year.Format_2 default "",
+          format3: item.Creation_Time.Year.Format_3 default ""
+        },
+        hour: {
+          format1: item.Creation_Time.Hour.Format_1 default "",
+          format2: item.Creation_Time.Hour.Format_2 default "",
+          format3: item.Creation_Time.Hour.Format_3 default "",
+          format4: item.Creation_Time.Hour.Format_4 default "",
+          format5: item.Creation_Time.Hour.Format_5 default "",
+          format6: item.Creation_Time.Hour.Format_6 default ""
+        }
+      },
+      modificationTime: {
+        date: item.Modification_Time.Date default "",
+        format1: item.Modification_Time.Format_1 default "",
+        format2: item.Modification_Time.Format_2 default "",
+        format3: item.Modification_Time.Format_3 default "",
+        format4: item.Modification_Time.Format_4 default "",
+        day: {
+          format1: item.Modification_Time.Day.Format_1 default "",
+          format2: item.Modification_Time.Day.Format_2 default "",
+          format3: item.Modification_Time.Day.Format_3 default ""
+        },
+        month: {
+          format1: item.Modification_Time.Month.Format_1 default "",
+          format2: item.Modification_Time.Month.Format_2 default "",
+          format3: item.Modification_Time.Month.Format_3 default ""
+        },
+        year: {
+          format1: item.Modification_Time.Year.Format_1 default "",
+          format2: item.Modification_Time.Year.Format_2 default "",
+          format3: item.Modification_Time.Year.Format_3 default ""
+        },
+        hour: {
+          format1: item.Modification_Time.Hour.Format_1 default "",
+          format2: item.Modification_Time.Hour.Format_2 default "",
+          format3: item.Modification_Time.Hour.Format_3 default "",
+          format4: item.Modification_Time.Hour.Format_4 default "",
+          format5: item.Modification_Time.Hour.Format_5 default "",
+          format6: item.Modification_Time.Hour.Format_6 default ""
+        }
+      },
+      state: {
+        code: item.State.Code default "",
+        description: item.State.Description default "",
+        phase: item.State.Phase default "",
+        state: item.State.State default "",
+        date: {
+          date: item.State.Date.Date default "",
+          format1: item.State.Date.Format_1 default "",
+          format2: item.State.Date.Format_2 default "",
+          format3: item.State.Date.Format_3 default "",
+          format4: item.State.Date.Format_4 default "",
+          day: {
+            format1: item.State.Date.Day.Format_1 default "",
+            format2: item.State.Date.Day.Format_2 default "",
+            format3: item.State.Date.Day.Format_3 default ""
+          },
+          month: {
+            format1: item.State.Date.Month.Format_1 default "",
+            format2: item.State.Date.Month.Format_2 default "",
+            format3: item.State.Date.Month.Format_3 default ""
+          },
+          year: {
+            format1: item.State.Date.Year.Format_1 default "",
+            format2: item.State.Date.Year.Format_2 default "",
+            format3: item.State.Date.Year.Format_3 default ""
+          },
+          hour: {
+            format1: item.State.Date.Hour.Format_1 default "",
+            format2: item.State.Date.Hour.Format_2 default "",
+            format3: item.State.Date.Hour.Format_3 default "",
+            format4: item.State.Date.Hour.Format_4 default "",
+            format5: item.State.Date.Hour.Format_5 default "",
+            format6: item.State.Date.Hour.Format_6 default ""
+          }
+        }
+      },
+      tramite: {
+        "type": item.Tramite.Type default "",
+        reconection: item.Tramite.Reconection default "",
+        subType: item.Tramite.Sub_Type default "",
+        suspension: item.Tramite.Suspension default "",
+        permanenceClause: item.Tramite.Permanence_Clause default "",
+        execution: {
+          date: item.Tramite.Execution.Date default "",
+          format1: item.Tramite.Execution.Format_1 default "",
+          format2: item.Tramite.Execution.Format_2 default "",
+          format3: item.Tramite.Execution.Format_3 default "",
+          format4: item.Tramite.Execution.Format_4 default "",
+          day: {
+            format1: item.Tramite.Execution.Day.Format_1 default "",
+            format2: item.Tramite.Execution.Day.Format_2 default "",
+            format3: item.Tramite.Execution.Day.Format_3 default ""
+          },
+          month: {
+            format1: item.Tramite.Execution.Month.Format_1 default "",
+            format2: item.Tramite.Execution.Month.Format_2 default "",
+            format3: item.Tramite.Execution.Month.Format_3 default ""
+          },
+          year: {
+            format1: item.Tramite.Execution.Year.Format_1 default "",
+            format2: item.Tramite.Execution.Year.Format_2 default "",
+            format3: item.Tramite.Execution.Year.Format_3 default ""
+          },
+          hour: {
+            format1: item.Tramite.Execution.Hour.Format_1 default "",
+            format2: item.Tramite.Execution.Hour.Format_2 default "",
+            format3: item.Tramite.Execution.Hour.Format_3 default "",
+            format4: item.Tramite.Execution.Hour.Format_4 default "",
+            format5: item.Tramite.Execution.Hour.Format_5 default "",
+            format6: item.Tramite.Execution.Hour.Format_6 default ""
+          }
+        },
+        tramite: {
+          date: item.Tramite.Tramite.Date default "",
+          format1: item.Tramite.Tramite.Format_1 default "",
+          format2: item.Tramite.Tramite.Format_2 default "",
+          format3: item.Tramite.Tramite.Format_3 default "",
+          format4: item.Tramite.Tramite.Format_4 default "",
+          day: {
+            format1: item.Tramite.Tramite.Day.Format_1 default "",
+            format2: item.Tramite.Tramite.Day.Format_2 default "",
+            format3: item.Tramite.Tramite.Day.Format_3 default ""
+          },
+          month: {
+            format1: item.Tramite.Tramite.Month.Format_1 default "",
+            format2: item.Tramite.Tramite.Month.Format_2 default "",
+            format3: item.Tramite.Tramite.Month.Format_3 default ""
+          },
+          year: {
+            format1: item.Tramite.Tramite.Year.Format_1 default "",
+            format2: item.Tramite.Tramite.Year.Format_2 default "",
+            format3: item.Tramite.Tramite.Year.Format_3 default ""
+          },
+          hour: {
+            format1: item.Tramite.Tramite.Hour.Format_1 default "",
+            format2: item.Tramite.Tramite.Hour.Format_2 default "",
+            format3: item.Tramite.Tramite.Hour.Format_3 default "",
+            format4: item.Tramite.Tramite.Hour.Format_4 default "",
+            format5: item.Tramite.Tramite.Hour.Format_5 default "",
+            format6: item.Tramite.Tramite.Hour.Format_6 default ""
+          }
+        }
+      }
+    }
+  }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="0d7a53a9-670b-4ece-a828-dbbf8648db8a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD REQUEST",
+  "message": {
+    "message": "Error processing your consultation request"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable" doc:id="a05a9776-d02d-47ab-adc7-2760974f7138" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-product-order-orchestratorSub_Flow" doc:id="ff6055e1-b47e-4306-afb1-154cf1c82b37" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="4fcfe900-208d-4b49-94ec-8b3f2d6bad0e" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="249179cc-6591-4d20-8f37-854524d51d4a" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="3def3e36-2d83-4a4f-965b-225c5d6975a4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+    "Document_Number": payload.customer.documentNumber default "",
+    "Document_Type": payload.customer.documentType default "",
+    "Phone": payload.customer.phone default "",
+    "Portability": payload.orderData.portability default true,
+    "Portability_Phone": payload.orderData.portabilityPhone default ""
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="faf72155-8b3e-43aa-960a-49ee9d39e5ef" name="post-createchangenumber-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="92aba68e-121f-4a6d-9cdb-97d4755e9235" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="1bccd877-417f-44e0-91be-b8d9761e7505" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var mensaje = payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode
+
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage default "",
+  detail: {
+    newPhone: payload.WSResponseBody.New_Phone default "",
+	newOrder: payload.WSResponseBody.Num_Order default "",
+	cun: payload.WSResponseBody.CUN default ""
+  }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
