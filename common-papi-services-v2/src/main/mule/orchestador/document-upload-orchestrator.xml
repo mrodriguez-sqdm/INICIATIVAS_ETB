@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="document-upload-orchestratorSub_Flow" doc:id="e5f6a7b8-c901-2345-ef01-345678901234">
+		<set-variable value="#[attributes.headers]" doc:name="headers" doc:id="f6a7b8c9-d012-3456-f012-456789012345" variableName="headers" />
+		<set-variable value="#[payload]" doc:name="req" doc:id="a7b8c9d0-e123-4567-0123-567890123456" variableName="req" />
+		<choice doc:name="Route by storage" doc:id="b8c9d0e1-f234-5678-1234-678901234567">
+			<when expression="#[upper(trim(vars.req.file.storage default &quot;&quot;)) == &quot;AZURE&quot;]">
+				<choice doc:name="Validate Azure fields" doc:id="c9d0e1f2-a345-6789-2345-789012345678">
+					<when expression="#[not isEmpty(vars.req.file.container) and not isEmpty(vars.req.file.contentBase64) and not isEmpty(vars.req.file.fileName)]">
+						<ee:transform doc:name="Multipart for Azure agreements" doc:id="d0e1f2a3-b456-789a-3456-890123456789">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output multipart/form-data
+import * from dw::module::Multipart
+import * from dw::core::Binaries
+var fo = vars.req.file
+var bin = fromBase64(fo.contentBase64)
+---
+parts: {
+    container: field({name: "container", value: fo.container as String}),
+    filename: field({name: "filename", value: fo.fileName as String}),
+    file: field({name: "file", value: bin, mime: (fo.mimeType default "application/pdf") as String})
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Azure POST agreements" doc:id="e1f2a3b4-c567-89ab-4567-901234567890" name="azure-sapi-post-agreements-clientSub_Flow" />
+						<set-variable value="#[201]" doc:name="httpStatus 201" doc:id="f2a3b4c5-d678-9abc-5678-012345678901" variableName="httpStatus" />
+						<ee:transform doc:name="Unified response Azure" doc:id="a3b4c5d6-e789-abcd-6789-123456789012">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    responseCode: "201",
+    message: "Document uploaded successfully",
+    response: if (payload is Object) payload else {}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<set-variable value="#[400]" doc:name="httpStatus 400" doc:id="b4c5d6e7-f890-bcde-7890-234567890123" variableName="httpStatus" />
+						<ee:transform doc:name="Error missing Azure fields" doc:id="c5d6e7f8-a901-cdef-8901-345678901234">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "VALIDATION_ERROR",
+  message: { message: "For storage AZURE, file.container, file.contentBase64 and file.fileName are required" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<when expression="#[upper(trim(vars.req.file.storage default &quot;&quot;)) == &quot;SFTP&quot;]">
+				<choice doc:name="Validate SFTP fields" doc:id="d6e7f8a9-b012-def0-9012-456789012345">
+					<when expression="#[not isEmpty(vars.req.file.contentBase64) and not isEmpty(vars.req.file.fileName)]">
+						<ee:transform doc:name="JSON for portability documents" doc:id="e7f8a9b0-c123-ef01-0123-567890123456">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var fo = vars.req.file
+---
+{
+    fileName: fo.fileName,
+    filePath: fo.remotePath default "",
+    fileContent: fo.contentBase64
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Portability POST documents" doc:id="f8a9b0c1-d234-f012-1234-678901234567" name="portability-documents-post-clientSub_Flow" />
+						<set-variable value="#[201]" doc:name="httpStatus 201" doc:id="a9b0c1d2-e345-0123-2345-789012345678" variableName="httpStatus" />
+						<ee:transform doc:name="Unified response SFTP" doc:id="b0c1d2e3-f456-1234-3456-890123456789">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    responseCode: payload.code default "201",
+    message: payload.description default "Document uploaded successfully",
+    response: payload
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<set-variable value="#[400]" doc:name="httpStatus 400" doc:id="c1d2e3f4-a567-2345-4567-901234567890" variableName="httpStatus" />
+						<ee:transform doc:name="Error missing SFTP fields" doc:id="d2e3f4a5-b678-3456-5678-012345678901">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "VALIDATION_ERROR",
+  message: { message: "For storage SFTP, file.contentBase64 and file.fileName are required" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<set-variable value="#[400]" doc:name="httpStatus 400" doc:id="e3f4a5b6-c789-4567-6789-123456789012" variableName="httpStatus" />
+				<ee:transform doc:name="Invalid storage" doc:id="f4a5b6c7-d890-5678-7890-234567890123">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "VALIDATION_ERROR",
+  message: { message: "file.storage must be AZURE or SFTP" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
