@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-productOffering-orchestratorSub_Flow" doc:id="40b7b967-2e51-4af8-a239-1b27fd79b910" >
+	    <set-variable value='#[readUrl("classpath://approvals.json", "application/json")]' doc:name="Set Variable" doc:id="4c51c26f-0004-4396-a9cb-267cf2c46222" variableName="approvals"/>
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Variable parameters" doc:id="44db23d3-3fda-417b-8de5-f48bf78e8216" variableName="parameters" />
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="f9fd9c85-d8fd-48b0-acab-475e3e54751c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="220aa388-63e4-4ba8-9631-0fd0993a3297" >
+			<when expression='#[isEmpty(keysOf(payload.filtros default {}) map ($ as String) -- (vars.approvals.parametro default []))]'>
+				<ee:transform doc:name="Transform Message" doc:id="c565a5c4-57d8-479f-8c24-3d99c3980af2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// 1. Diccionario
+var configMap = (vars.approvals default []) reduce (item, acc = {}) -> 
+    acc ++ { (item.parametro): item }
+
+// 2. Filtros Validados
+var filtrosValidos = (payload.filtros mapObject (v, k) -> {
+    (k): {
+        valor: v,
+        config: configMap[k as String]
+    }
+}) filterObject ($.config != null)
+
+// 3. Agrupación
+var filtrosAgrupados = filtrosValidos groupBy ($.config.contenedor)
+
+---
+{
+    "query": (
+        // Bloque ROOT
+        (if (filtrosAgrupados.root != null) 
+            filtrosAgrupados.root mapObject (v, k) -> {
+                (v.config.valor): if (v.config.tipoDato == "number") v.valor as Number
+                                 else if (v.config.usaRegex == true) { "\$regex": v.valor, "\$options": "i" }
+                                 else v.valor
+            } 
+        else {})
+        ++ 
+        // Bloque BUNDLE
+        ((filtrosAgrupados -- ["root"]) mapObject (filtros, nombreContenedor) -> {
+            (nombreContenedor): {
+                "\$all": filtros pluck (v) -> {
+                    "\$elemMatch": {
+                        "parametro": v.config.valor,
+                        "valor": if (v.config.tipoDato == "number") v.valor as Number
+                                 else if (v.config.usaRegex == true) { "\$regex": v.valor, "\$options": "i" }
+                                 else v.valor
+                    }
+                }
+            }
+        })
+        ++
+        "estado": "Activo"
+    ),
+    "limit": (vars.parameters.LIMIT default 10) as Number,
+    "offset": (vars.parameters.OFFSET default 0) as Number
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="22fc5e92-ca07-4339-8a2c-4dfc82e3c89d" name="get-product-offering-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="72753372-9e80-4268-a145-ba09d6678f07">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var offers = payload.ofertasProducto default []
+---
+{
+  codeResponse: payload.codigo,
+  responseMessage: payload.mensaje,
+  totalData: payload.totalDatos default 0,
+  productOfferings: offers map (item) -> {
+
+    id: item."_id"."\$oid",
+
+    offerFilterGroups: item.agrupa_filtros_oferta map (g) -> {
+      group: g.grupo,
+      offerGroupFilters: g.grupo_filtros_oferta map (f) -> {
+        filter: f.filtro,
+        groupFilterValues: f.valor_grupo_oferta map (v) -> {
+          value: v.valor,
+          maxValue: v.valor_maximo,
+          minValue: v.valor_minimo
+        }
+      }
+    },
+
+    filterGrouping: item.agrupacion_filtros,
+    file: item.archivo,
+    mainBundle: item.bundle_principal,
+    maxQuantity: item.cantidad_maxima,
+    minQuantity: item.cantidad_minima,
+
+    productOfferingCharacteristics: item.caracteristicas_producto_oferta map (c) -> {
+      offeringCharacteristicActions: c.accion_caracteristica_oferta,
+      characteristic: c.caracteristica,
+      value: c.valor
+    },
+
+    classification: item.clasificacion,
+    configurationCode: item.cod_configuracion,
+    dependency: item.dependencia,
+    planDescription: item.descripcion_plan,
+    display: item.display,
+    isModification: item.es_modificacion,
+    isBundleType: item.es_tipo_bundle,
+    technicalSpecification: item.especificacion_tecnica,
+
+    billingSpecificationsUpdate: item.especificaciones_facturacion_upd map (b) -> {
+      id: b."_id"."\$oid",
+      technicalOfferingActions: b.accion_esp_tecnica_oferta,
+      status: b.estado,
+      applicationDate: b.fecha_aplicacion."\$date",
+      creationDate: b.fecha_creacion."\$date",
+      productSpecificationId: b.id_producto_espeficificacion,
+      parameter: b.parametro,
+      productSpecification: b.producto_espeficificacion,
+      system: b.sistema,
+      specificationType: b.tipo_especificacion,
+      createdBy: b.usuario_creo,
+      value: b.valor
+    },
+
+    status: item.estado,
+    statusUpdate: item.estado_update,
+    phase: item.fase,
+    phaseUpdate: item.fase_update,
+
+    creationDate: item.fecha_creacion."\$date",
+    validityEndDate: item.fecha_fin_vigencia."\$date",
+    validityStartDate: item.fecha_ini_vigencia."\$date",
+
+    icon: item.icono,
+    mainBundleId: item.id_bundle_principal,
+    productId: item.id_producto,
+    mainProductId: item.id_producto_principal,
+
+    planImages: item.imagenes_plan,
+    groupNumber: item.num_agrupacion,
+    notes: item.observaciones,
+
+    bundleParameters: item.parametros_bundle map (bp) -> {
+      parameter: bp.parametro,
+      parameterType: bp.tipo_parametro,
+      value: bp.valor
+    },
+
+    maxPrice: item.precio_maximo,
+    minPrice: item.precio_minimo,
+
+    offeringPrice: item.precio_oferta map (p) -> {
+      id: p."_id"."\$oid",
+      salesChannel: p.canal_venta,
+      status: p.estado,
+      applicationDate: p.fecha_aplicacion."\$date",
+      creationDate: p.fecha_creacion."\$date",
+      tax: p.iva,
+      priceWithTax: p.precio_con_iva,
+      priceFilters: p.precio_filtros,
+      priceWithoutTax: p.precio_sin_iva,
+      service: p.servicio,
+      createdBy: p.usuario_creo
+    },
+
+    product: item.producto,
+    mainProduct: item.producto_principal,
+    insuranceRangeEnd: item.rangoFinSeguro,
+    insuranceRangeStart: item.rangoInicioSeguro,
+    sequence: item.secuencia,
+    serviceSubtype: item.subtipo_servicio,
+    bundleType: item.tipo_bundle,
+    productType: item.tipo_producto,
+    serviceType: item.tipo_servicio,
+    blockedBy: item.usuario_bloqueo,
+    createdBy: item.usuario_creo,
+
+    technicalOfferingValue: item.valor_espec_tecnica_oferta map (t) -> {
+      technicalOfferingActions: t.accion_esp_tecnica_oferta,
+      productSpecificationId: t.id_producto_espeficificacion,
+      parameter: t.parametro,
+      productSpecification: t.producto_espeficificacion,
+      system: t.sistema,
+      specificationType: t.tipo_especificacion,
+      value: t.valor
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="3cc12969-6b6f-4747-bb8b-6d3bc5c237fd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var llavesFiltro = keysOf(payload.filtros default {}) map ($ as String)
+var listaAprobados = vars.approvals.parametro default []
+var faltantes = llavesFiltro -- listaAprobados
+---
+{
+    "codeResponse": "200",
+    "responseMessage": "Existen filtros no homologados",
+    "invalid_filters": faltantes
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

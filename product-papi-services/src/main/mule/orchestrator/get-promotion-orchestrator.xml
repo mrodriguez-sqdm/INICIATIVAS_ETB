@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-promotion-benefits-orchestratorSub_Flow" doc:id="6a30d2c5-9160-479b-9558-c1c088d9fdb2" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="b1e3dd36-a6d6-4c58-b993-0a1087799d0b" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable" doc:id="a4e9a5a8-ae81-404b-a2bf-9c5e0c107dea" variableName="headers"/>
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="79a6881a-e940-4edb-acb3-005866cb8f52" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="8519b042-271f-4f4b-a993-a54aedac8555" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var planesArray = 
+    if (vars.parameters.PLANS_TO_BE_APPLIED != null) 
+        read(vars.parameters.PLANS_TO_BE_APPLIED, "application/json") 
+    else 
+        []
+
+---
+{
+	query: { Planes_Aplicar: { "\$in": planesArray } },
+	limit: vars.parameters.LIMIT as Number,
+	offset: vars.parameters.OFFSET as Number
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="89d613c5-8143-4090-8447-f5c0caec1b45" name="get-promotion-clientSub_Flow"/>
+		<set-variable value="#[[]]" doc:name="initialize responses" doc:id="b8ca3049-cf75-47f4-9af1-f881fc17a413" variableName="responses"/>
+		<foreach doc:name="For Each" doc:id="5dfec690-cc0c-4f9f-92ae-dd9e30de4cfc" collection="#[payload.promocion]">
+			<set-variable value="#[payload]" doc:name="Set Variable" doc:id="a403d083-58cd-4dfc-9bfa-b594968614f7" variableName="promotion"/>
+			<set-variable value='#[payload."_id"."\$oid"]' doc:name="Set Id Promotion" doc:id="27ef59e3-e73e-4513-813e-1eb7299adc17" variableName="IdPromotion"/>
+			<flow-ref doc:name="Flow Reference" doc:id="edc4d644-cfc4-4981-9734-aa16e7cc6e40" name="get-promotion-benefits-clientSub_Flow"/>
+			<ee:transform doc:name="Transform Message" doc:id="6260622b-ecaf-48da-b17c-7ee922ba2f6b" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.promotion ++ { beneficiosPromocion: payload.beneficiosPromocion}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<set-variable value="#[%dw 2.0&#10;output application/json&#10;---&#10;(vars.responses default []) ++ [payload]]" doc:name="Set Variable" doc:id="b74a33fa-273b-4172-917e-4e62ac159efd" variableName="responses" />
+		</foreach>
+		<ee:transform doc:name="Transform Message" doc:id="1f17ee60-1d13-4b41-9dfc-2dda14fe5483" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: payload.codigo,
+    mensaje: payload.mensaje,
+	totalDatos: payload.totalDatos,
+    promocion: vars.responses
+	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="6e8a9974-e564-4e5f-9330-0d8f27315a4d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var promo = payload.promocion default []
+
+---
+{
+  codeResponse: payload.codigo,
+  responseMessage: payload.mensaje,
+  totalData: payload.totalDatos,
+  promotion: promo map (item) -> {
+    id: item."_id"."\$oid",
+    active: item.Activo,
+    applyLateFee: item.Aplicar_Mora,
+    channels: item.Canales,
+    features: item.Caracteristicas map (c) -> {
+      feature: c.caracteristica,
+      values: c.valores
+    },
+    description: item.Descripcion,
+    proratedDiscount: item.Descuento_Prorrateo,
+    creationDate: item.Fecha_Creacion,
+    endDate: item.Fecha_Final,
+    startDate: item.Fecha_Inicial,
+    modificationDate: item.Fecha_Modificacion,
+    changePlanActionId: item.ID_Accion_Cambio_Plan,
+    conditionalActionId: item.ID_Accion_Condicionada,
+    agreementId: item.ID_Convenio,
+    conditionalOperatorId: item.ID_Operador_Condicionada,
+    serviceId: item.ID_Servicio,
+    activationTypeId: item.ID_Tipo_Activacion,
+    conditionalTypeId: item.ID_Tipo_Condicionada,
+    promotionTypeId: item.ID_Tipo_Promocion,
+    serviceTypeId: item.ID_Tipo_Servicio,
+    conditionalVariableId: item.ID_Variable_Condicionada,
+    name: item.Nombre,
+    permanent: item.Permanente,
+    plansApply: item.Planes_Aplicar,
+    rules: item.Reglas,
+    suspendLateFee: item.Suspender_Mora,
+    proceduresApply: item.Tramites_Aplicar,
+    creationUser: item.Usuario_Creacion,
+    modificationUser: item.Usuario_Modificacion,
+    promotionBenefits: item.beneficiosPromocion map ((b) -> {
+     
+        id: b."_id"."\$oid",
+        name: b.Nombre,
+        promotionId: b.ID_Promocion,
+        benefitId: b.ID_Beneficio,
+        benefitTypeId: b.ID_Tipo_Beneficio,
+        benefitClassId: b.ID_Clase_Beneficio,
+        classRange1: b.Rango_Clase_1,
+        classRange2: b.Rango_Clase_2,
+        classOperatorId: b.ID_Operador_Clase,
+        classValue: b.Valor_Clase,
+        additionalClassValue: b.Valor_Adicional_Clase,
+        deleted: b.Eliminado,
+        deletedDate: b.Fecha_Eliminado,
+        details: b.Detalles map ((d) -> {
+            applyOnId: d.ID_Aplica_En,
+            applyOnOperatorId: d.ID_Operador_Aplica_En,
+            applyOnNumber1: d.Aplica_En_Numero_1,
+            applyOnNumber2: d.Aplica_En_Numero_2,
+            resourceId: d.ID_Recurso,
+            configurationCode: "",       // no existe en origen, se deja null
+            initialPeriod: d.Periodo_Inicial,
+            finalPeriod: d.Periodo_Final,
+            value: d.Valor,
+            value2: d.Valor_2,
+            prepaidAssignmentRules: d.Reglas_Asignacion_Prepago,
+            partNumbers: d.Numeros_de_Parte
+        })
+})
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+
+
+</mule>

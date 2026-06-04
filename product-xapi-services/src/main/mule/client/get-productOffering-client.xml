@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="get-productOffering-clientSub_Flow" doc:id="bf09c8bf-db3b-4b0b-a351-89eabc4c5531" >
+		<ee:transform doc:name="Transform Message" doc:id="580eadef-2f60-4321-8d57-fb0e2b7df29e" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="Queryparams" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<http:request method="GET" doc:name="Request" doc:id="49486dde-ae3e-4d38-af0b-671f1f58e6aa" config-ref="HTTP_Request_configuration_product-papi" path="${product-papi.productOffering.path}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('product-papi.client_secret'),
+	"client_id" : p('product-papi.client_id'),
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId,
+	"name": attributes.headers.name
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+attributes.queryParams]]]></http:query-params>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="4626a6da-e627-4c1b-bc48-2272aae62401" message="Log: get-productOffering-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="ae63816d-996c-4954-987f-4d3f2def1a1d" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="response_code" ><![CDATA[%dw 2.0
+output application/json
+---
+attributes.headers.statusCode default 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger1" doc:id="61a68d9b-7729-49e4-b783-58582d542bf5" message="#[payload]" />
+		<choice doc:name="Choice" doc:id="f91d202e-c2f8-4e6e-ba82-5a08befd1b19" >
+			<when expression="#[!(vars.response_code == 200 or vars.response_code == 201)]">
+				<ee:transform doc:name="Transform Message" doc:id="53cdd474-ce62-4c21-8008-7491bb38da4e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: vars.request_code,
+  reason: "Consulta no exitosa",
+  message: payload,
+  status: "Fail",
+  referenceError: payload,
+  timestamp: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[vars.body_request_code]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			
+</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="ba5199cb-2996-49b1-8c8d-cacbbdf90173" />
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="34c0e4d4-83ed-402f-89bb-77d3f00cf366" message="#[vars.body_request]"/>
+	
+</sub-flow>
+</mule>
