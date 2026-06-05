@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-equipements-orchestratorSub_Flow" doc:id="c5337af1-09cd-4bc9-9a65-ffa4cfe35792" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="e6bf3696-fe99-40e2-90d2-53ce665cee46" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="5bcc565c-e1f1-4250-bcfa-d656da8f88ba" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="2c483cd4-a322-40a0-b1fe-d13ca1855a93" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "Service_Account": vars.parameters.SERVICE_ACCOUNT default "",
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="9fe08441-d8b1-40cf-957d-da06defcd284" message="#[payload]" />
+		<flow-ref doc:name="Flow Reference" doc:id="b8588ac5-ef84-43ca-b439-94ac3cca151f" name="soporte1n-equipements-bot-sapi-2-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="579d9af1-a0ff-4094-bee3-0f8c89a109fd" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="8870c1ea-3ba8-44fd-9b87-df8b5730e63f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode ++', '++ payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    "equipments": (payload.Equipments default []) map (equipment, index) -> {
+	    "brand": equipment.Brand,
+	    "firmware": equipment.Firmware,
+	    "isDual": equipment.Is_Dual,
+	    "mac": equipment.MAC,
+	    "manageable": equipment.Manageable,
+	    "model": equipment.Model,
+	    "serial": equipment.Serial,
+	    // Condición: Si el array viene vacío o nulo, añade el objeto con 'code'
+	    "serialSlaves": if (isEmpty(equipment.Serial_Slaves)) [
+	      { "code": "" }
+	    ] else equipment.Serial_Slaves,
+	    "typeModem": equipment.Type_Modem,
+	    // Condición: Si el array de networks viene vacío, también inicializa con 'code'
+	    "networks": if (isEmpty(equipment.Networks)) [
+	      { "code": "" }
+	    ] else equipment.Networks map (network, netIndex) -> {
+	      "name": network.Name,
+	      "type": network.Type
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

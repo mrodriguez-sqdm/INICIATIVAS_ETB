@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="get-bags-orchestratorSub_Flow" doc:id="d69491a8-8abb-4749-915a-0d2584b80db0">
+		<ee:transform doc:name="Set Variables" doc:id="d2716901-d97e-42b9-bf31-661c18c6341d" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="parameters" ><![CDATA[attributes.queryParams]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Set Body Request" doc:id="cd1b9f82-cb0e-47f0-8357-1e64a7d5417d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name default "",
+      "correlationID": vars.headers."X-CORRELATION-ID" default "",
+      "processingServer": ""
+    },
+    "Property": [
+    	{
+        "Name": "CHANNEL",
+        "Value": vars.parameters.ORIGIN default ""
+      }
+    ]
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name default ""
+    },
+    "Agrupation_Number": vars.parameters.AGRUPATION_NUMBER as Number default 0 ,
+    "Name": vars.parameters.NAME default ""
+    
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="2e5035c8-ad9c-4d68-bc18-d12d395a6e7d" message="#[payload]"/>
+		<flow-ref doc:name="Flow Reference" doc:id="8c659647-120d-4be7-8ab3-347ee241dfb3" name="post-getbags-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Http Status" doc:id="92cf9f74-673b-47d0-8a99-b5209ef2d4d1" variableName="httpStatus" />
+		<logger level="INFO" doc:name="Logger" doc:id="1e4c1e23-70ca-490b-8297-9cfe3162d224" message="#[payload]"/>
+		<ee:transform doc:name="Set Body Response" doc:id="5eaf3ce5-c560-4335-ae15-4db8c0018e10">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codeResponse: vars.httpStatus as String,
+  messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode,
+  "bag": {
+    "id": payload.Id,
+    "name": payload.Name,
+    "description": payload.Description,
+    "benefits": payload.Benefits,
+    "channel": payload.Channel,
+    "value": payload.Value,
+    "valueStr": payload.Value_Str,
+    "validity": payload.Validity,
+    "instructions": payload.Instructions,
+    "technicalConditions": payload.Technical_Conditions,
+    "image": if (payload.Image != null) {
+      "icon": payload.Image.Icon,
+      "logo": payload.Image.Logo
+    } else null,
+    "tooltip": payload.Tooltip default []
+    
+    }
+  
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
