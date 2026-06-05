@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="resource-function-orchestratorSub_Flow" doc:id="05a7db79-6879-4d65-8ea6-cc81caa9d623" >
+		<choice doc:name="Choice" doc:id="80fe3fb5-f7d6-480f-8b3f-2eb8fca13434" >
+			<when expression='#[payload.resourceType == "INTERNET"]' >
+				<flow-ref doc:name="Flow Reference" doc:id="9d02de8e-bba9-4e88-b4aa-3cefd7485bf7" name="normalice-internet-orchestratorSub_Flow" />
+			</when>
+			<when expression='#[payload.resourceType == "TV"]' >
+				<flow-ref doc:name="Flow Reference" doc:id="623cbc8e-1de4-44e2-a9a8-0c98c7e73b4c" name="normalice-tv-orchestratorSub_Flow" />
+			</when>
+			<when expression='#[payload.resourceType == "LB"]' >
+				<flow-ref doc:name="Flow Reference" doc:id="f12f79c1-f559-418d-a548-f50802336b53" name="normalice-lb-orchestratorSub_Flow" />
+			</when>
+			<when expression='#[payload.resourceType == "ACCESS_FTTH"]' >
+				<flow-ref doc:name="Flow Reference" doc:id="209e3085-c3f6-4e6c-bc5f-3b62380e0756" name="normalice-access-orchestratorSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set Body Response Invalid" doc:id="79a3df4c-96f3-469c-9d78-2d44666a9124" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codeResponse: 500 ,
+  messageResponse: "Ruta no definida"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="normalice-internet-orchestratorSub_Flow" doc:id="864bea95-5fcd-4f2a-8f92-dd8a81cef0e8" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="08b65eda-2b95-4fad-970f-912e751688d7" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="1890a09f-507f-493c-aeec-c2ab52105404" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="a6504e7e-84a1-4137-82be-4bcd203524cc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "Phone": payload.phone,
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="451ac2bc-199a-4d43-a377-64ab0bbc62af" name="soporte1n-normalizeinternet-bot-sapi-clientSub_Flow"/>
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="b97e63bb-906b-4012-966a-e429087c83ef" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="ac78dbb0-c770-4a5f-b316-31f13c754743" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode ++', '++ payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    normalized: {
+    	numPqr: payload.WSResponseBody.Num_PQR,
+    	diagnostic: if (payload.WSResponseBody.Diagnostic != null) 
+        {
+            ontOn: payload.WSResponseBody.Diagnostic.ONT_On,
+            poorConnection: payload.WSResponseBody.Diagnostic.Poor_Connection,
+            speedFault: payload.WSResponseBody.Diagnostic.Speed_Fault
+        } else {},
+    massiveFailure: if (payload.WSResponseBody.Massive_Failure != null) {
+        endDate: {
+    date: payload.WSResponseBody.Massive_Failure.End_Date.Date,
+    format1: payload.WSResponseBody.Massive_Failure.End_Date.Format_1,
+    format2: payload.WSResponseBody.Massive_Failure.End_Date.Format_2,
+    format3: payload.WSResponseBody.Massive_Failure.End_Date.Format_3,
+    format4: payload.WSResponseBody.Massive_Failure.End_Date.Format_4,
+    day: {
+      format1: payload.WSResponseBody.Massive_Failure.End_Date.Day.Format_1,
+      format2: payload.WSResponseBody.Massive_Failure.End_Date.Day.Format_2,
+      format3: payload.WSResponseBody.Massive_Failure.End_Date.Day.Format_3
+    },
+    month: {
+      format1: payload.WSResponseBody.Massive_Failure.End_Date.Month.Format_1,
+      format2: payload.WSResponseBody.Massive_Failure.End_Date.Month.Format_2,
+      format3: payload.WSResponseBody.Massive_Failure.End_Date.Month.Format_3
+    },
+    year: {
+      format1: payload.WSResponseBody.Massive_Failure.End_Date.Year.Format_1,
+      format2: payload.WSResponseBody.Massive_Failure.End_Date.Year.Format_2,
+      format3: payload.WSResponseBody.Massive_Failure.End_Date.Year.Format_3
+    },
+    hour: {
+      format1: payload.WSResponseBody.Massive_Failure.End_Date.Hour.Format_1,
+      format2: payload.WSResponseBody.Massive_Failure.End_Date.Hour.Format_2,
+      format3: payload.WSResponseBody.Massive_Failure.End_Date.Hour.Format_3,
+      format4: payload.WSResponseBody.Massive_Failure.End_Date.Hour.Format_4,
+      format5: payload.WSResponseBody.Massive_Failure.End_Date.Hour.Format_5,
+      format6: payload.WSResponseBody.Massive_Failure.End_Date.Hour.Format_6
+    }
+  },
+        expectedSolutionTime: payload.WSResponseBody.Massive_Failure.Expected_Solution_Time,
+        priority: payload.WSResponseBody.Massive_Failure.Priority,
+        product: payload.WSResponseBody.Massive_Failure.Product,
+        numPqr: payload.WSResponseBody.Massive_Failure.Num_PQR,
+        startDate: {
+    date: payload.WSResponseBody.Massive_Failure.Start_Date.Date,
+    format1: payload.WSResponseBody.Massive_Failure.Start_Date.Format_1,
+    format2: payload.WSResponseBody.Massive_Failure.Start_Date.Format_2,
+    format3: payload.WSResponseBody.Massive_Failure.Start_Date.Format_3,
+    format4: payload.WSResponseBody.Massive_Failure.Start_Date.Format_4,
+    day: {
+      format1: payload.WSResponseBody.Massive_Failure.Start_Date.Day.Format_1,
+      format2: payload.WSResponseBody.Massive_Failure.Start_Date.Day.Format_2,
+      format3: payload.WSResponseBody.Massive_Failure.Start_Date.Day.Format_3
+    },
+    month: {
+      format1: payload.WSResponseBody.Massive_Failure.Start_Date.Month.Format_1,
+      format2: payload.WSResponseBody.Massive_Failure.Start_Date.Month.Format_2,
+      format3: payload.WSResponseBody.Massive_Failure.Start_Date.Month.Format_3
+    },
+    year: {
+      format1: payload.WSResponseBody.Massive_Failure.Start_Date.Year.Format_1,
+      format2: payload.WSResponseBody.Massive_Failure.Start_Date.Year.Format_2,
+      format3: payload.WSResponseBody.Massive_Failure.Start_Date.Year.Format_3
+    },
+    hour: {
+      format1: payload.WSResponseBody.Massive_Failure.Start_Date.Hour.Format_1,
+      format2: payload.WSResponseBody.Massive_Failure.Start_Date.Hour.Format_2,
+      format3: payload.WSResponseBody.Massive_Failure.Start_Date.Hour.Format_3,
+      format4: payload.WSResponseBody.Massive_Failure.Start_Date.Hour.Format_4,
+      format5: payload.WSResponseBody.Massive_Failure.Start_Date.Hour.Format_5,
+      format6: payload.WSResponseBody.Massive_Failure.Start_Date.Hour.Format_6
+    }
+  }
+	} else {},
+    semaphore: if (payload.WSResponseBody.Semaphore != null){
+        attenuation: payload.WSResponseBody.Semaphore.Attenuation,
+        modem: payload.WSResponseBody.Semaphore.Modem,
+        noise: payload.WSResponseBody.Semaphore.Noise,
+        potency: payload.WSResponseBody.Semaphore.Potency
+    } else {}
+}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="normalice-tv-orchestratorSub_Flow" doc:id="a668ae0d-a8f5-4c5a-9f81-bb88402e2ae2" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="80af8b52-753d-495a-972e-0463fd767f95" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="69a35cb0-390a-4a61-8a09-1e42979cd7bb" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="21bded16-a4d4-4d32-b4c4-ff56aec0fab1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "Phone": payload.phone,
+    "Normalize": payload.normalized default true,
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="1f21b3ec-be89-47ae-a768-e511cb5ff5a2" name="soporte1n-normalizetv-bot-sapi-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="e19b59d8-8307-417e-a92a-e52119144cf8" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="a16e78ab-ff9e-40ed-8d6b-1479472ff25f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode ++', '++ payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+	normalized: {
+		numPqr: payload.WSResponseBody.Num_PQR default "",
+		trafficLightColor: payload.WSResponseBody.Traffic_Light_Color default "",
+	    "additionalChannels": payload.WSResponseBody.Additional_Channels default "",
+	    "additionalServices": payload.WSResponseBody.Additional_Services default "",
+	    "decos": payload.WSResponseBody.Decos default "",
+	    "stateSubscriberId": payload.WSResponseBody.State_Subscriber_Id default ""
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="normalice-lb-orchestratorSub_Flow" doc:id="4464f6cd-3b64-4297-9049-3bdc61c1beef" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="ca65be0f-4f05-42df-ae5b-bfe39326ce86" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="03f9bee9-467c-400c-873b-a9c2c6472626" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="936eb54c-b3e9-4e3c-a585-b1e82c91ccdd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "Phone": payload.phone default "",
+    "Normalize": payload.normalized default true,
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="f315b009-c26f-4471-a2aa-ccbae0f8ad58" message="#[payload]"/>
+		<flow-ref doc:name="Flow Reference" doc:id="e5358ceb-1fba-459f-9924-53411025b0f7" name="soporte1n-normalizelb-bot-sapi-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="60295d9f-e5b3-4a4a-a4c0-409b6e36c461" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="5cd5b621-6c0f-4379-92f1-e3d170ff9194" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode ++', '++ payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    normalized: if(payload.WSResponseBody != null) {
+	    modemPhoneProgrammed: payload.WSResponseBody.Modem_Phone_Programmed default "",
+	    stateVoipAcs: payload.WSResponseBody.State_VoIP_ACS default "",
+	    stateVoipIms: payload.WSResponseBody.State_VoIP_IMS default "",
+	    stateMssInventory: payload.WSResponseBody.State_MSS_Inventory default ""
+    	
+    }else {}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="normalice-access-orchestratorSub_Flow" doc:id="4a98cef7-54f2-40ad-a825-1277858eb85f" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="3937c5a7-5cf8-4d0a-8bb8-9598d586e135" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="37e48727-07ed-4848-9bcb-67ec20ba4759" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="c437abc1-ca65-4272-aaf0-f7b59db71ea2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "Phone": payload.phone default "",
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="4a8d94ac-7057-4720-9de9-867055ddb46d" message="#[payload]" />
+		<flow-ref doc:name="Flow Reference" doc:id="e4f4018c-c5c1-4e69-bddc-d7d9a88d962d" name="soporte1n-normalizeaccess-bot-sapi-2-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="73880da8-548d-4fe1-9ea0-799158c1871f" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="26c5e153-af0b-43cf-a879-8227570dfa5b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode ++', '++ payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    normalized: if(payload.WSResponseBody != null) {
+		brand: payload.WSResponseBody.Brand default "",
+		phone: payload.WSResponseBody.Phone default "",
+		restarOnt: {
+		 executionDate: payload.WSResponseBody.RESTART_ONT.Execution_Date default "",
+		 state: payload.WSResponseBody.RESTART_ONT.State default "",
+		 stateDescription: payload.WSResponseBody.RESTART_ONT.State_Description default ""
+		},
+		serviceAccount: payload.WSResponseBody.Service_Account default "",
+		technology: payload.WSResponseBody.Technology default ""
+    	
+    }else {}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

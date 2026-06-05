@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="resource-function-set-resource-networkSub_Flow" doc:id="925276cf-ce08-4309-9a59-f80297011236" >
+		<choice doc:name="Choice" doc:id="a6a17f32-27da-4635-adc4-ef0ac0b7d36d" >
+			<when expression='#[upper(payload.operation."type") == "PASSWORD"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="58ea7a4f-7a3d-45cb-8a3b-6ae822a543e5" name="post-resource-function-set-wifi-orchestratorSub_Flow"/>
+			</when>
+			<when expression='#[upper(payload.operation."type") == "NETWORKNAME"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="84269bd3-025b-451c-936d-366bcaaddbf6" name="post-resource-function-set-wifi-name-orchestratorSub_Flow"/>
+			</when>
+			<otherwise >
+				<set-variable value="#[500]" doc:name="Set Http Status" doc:id="11f49da9-8a3f-4a9e-9b22-148c09f91f33" variableName="httpStatus" />
+				<ee:transform doc:name="Set Body Response" doc:id="7c63b628-c691-4065-904a-9ae9d12c677a" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: "Operacion no soportada"
+	
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-resource-function-set-wifi-orchestratorSub_Flow" doc:id="fd85c1aa-687f-4836-bf54-b6ba58066272" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="a0b26c34-3b35-46bb-9e4f-348039e2f4a4" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="1fac0bb0-00da-4c8c-ad2c-8838db876401" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="ce5ab183-7ab2-4617-8f4e-f2ce5a76e053">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+	
+    "Dual": payload.operation.dual default true,
+    "New_Network_Password": payload.operation.password default "",
+    "Phone": payload.connectionNumber default "",
+    "Serial":  payload.operation.serial default "",
+    "SyncUp": payload.operation.syncUp default false,
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="f15591cf-11b1-4fd6-90e2-bef7486328f3" name="soporte1n-setwifinetworkpassword-bot-sapi-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="39ad270b-09e2-4bbc-a1a9-9a4853102a91" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="2c6fe37e-05dc-4682-95e7-77122e00513e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+	detail: {
+	 numberPqr: payload.WSResponseBody.Num_PQR default ""
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-resource-function-set-wifi-name-orchestratorSub_Flow" doc:id="43a9fe39-3eeb-4c58-a264-e2e236fef72b" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="e868fef4-d486-4574-a146-6ca43d1aa4ec" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="9716c296-dca9-4390-a371-18b18857738e" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="549dac20-41c2-4ece-89b9-222ffecebecc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "Dual": payload.operation.dual default "",
+    "New_Network_Name": payload.operation.networkName default "",
+    "Phone": payload.connectionNumber default "",
+    "Serial": payload.operation.serial default "",
+    "SyncUp": payload.operation.syncUp default "",
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="6be13695-d8c6-4af2-9de6-fcf850233803" name="soporte1n-setwifinetworkname-bot-sapi-2-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="c181acfd-5f2e-4288-8f96-ed0d16bf702a" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="7cfd4243-a54e-4cb6-a9ff-35af5031f5e2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorMessage ++', '++ payload.WSResponseHeader.Service.statusDetail[0].errorCode ,
+	detail: {
+	 numberPqr: payload.WSResponseBody.Num_PQR default ""
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
