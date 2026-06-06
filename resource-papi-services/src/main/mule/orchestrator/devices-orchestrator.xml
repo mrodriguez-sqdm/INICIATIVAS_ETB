@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-devicestate-orchestratorSub_Flow" doc:id="c5337af1-09cd-4bc9-9a65-ffa4cfe35792" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="e6bf3696-fe99-40e2-90d2-53ce665cee46" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="5bcc565c-e1f1-4250-bcfa-d656da8f88ba" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="2c483cd4-a322-40a0-b1fe-d13ca1855a93" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "Service_Account": vars.parameters.SERVICE_ACCOUNT default "",
+    "Serial": vars.parameters.SERIAL default "",
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="9fe08441-d8b1-40cf-957d-da06defcd284" message="#[payload]" />
+		<flow-ref doc:name="Flow Reference" doc:id="b8588ac5-ef84-43ca-b439-94ac3cca151f" name="soporte1n-getdevicestate-bot-sapi-2-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="579d9af1-a0ff-4094-bee3-0f8c89a109fd" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="8870c1ea-3ba8-44fd-9b87-df8b5730e63f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode ++', '++ payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    "networks": (payload.Networks default []) map (network, netIdx) -> {
+    "connectedDevices": (network.Connected_Devices default []) map (device, devIdx) -> {
+      "authenticated": device.Authenticated,
+      "attributes": (device.Attributes default []) map (attr, attrIdx) -> {
+        "name": attr.Name,
+        "value": attr.Value
+      },
+      "index": device.Index,
+      "isLan": device.Is_LAN,
+      "isWlan": device.Is_WLAN,
+      "ip": device.Ip,
+      "linkRate": device.LinkRate,
+      "locked": device.Locked,
+      "mac": device.Mac,
+      "name": device.Name,
+      "noise": device.Noise,
+      "serial": device.Serial,
+      "state": device.State,
+      "snr": device.SNR,
+      "rrsi": device.RRSI
+    }
+  },
+  "totalDevices": payload.Total_Devices default 0,
+  "phone": payload.Phone
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="setconnecteddevicestate-orchestratorSub_Flow" doc:id="588905e0-086a-49cc-bbe5-0d7ee0e5a132" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="e6ef6888-87ba-4e15-bbae-66220941475f" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="1d853600-3e76-4498-bdc0-a7d6d1293113" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="ddc5bc0e-2410-435a-979e-411b5872f87a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "MAC": payload.device.mac,
+    "Service_Account": payload.device.serviceAccount,
+    "Serial": payload.device.mac default "",
+    "State": payload.device.state,
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="babea1b2-884e-47af-b90e-1861a5477f2c" message="#[payload]" />
+		<flow-ref doc:name="Flow Reference" doc:id="236984bc-979c-4dde-8a24-eda6c8969893" name="soporte1n-setconnecteddevicestate-bot-sapi-2-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="23fd9c04-7505-49be-a04a-c100814bafb1" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="75df8b1b-466f-4681-815b-68958ea31977" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode ++', '++ payload.WSResponseHeader.Service.statusDetail[0].errorMessage
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
