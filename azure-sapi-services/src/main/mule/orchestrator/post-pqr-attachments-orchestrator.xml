@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-pqr-attachments-orchestrator" doc:id="0d011dd6-d541-4bea-8d38-54796a76e1e2" >
+		<ee:transform doc:name="set documentNumber and pqrId variables" doc:id="f7204ce1-0308-45d2-9890-26cf08aae64b">
+			<ee:variables>
+				<ee:set-variable variableName="documentNumber"><![CDATA[attributes.uriParams.'documentNumber']]></ee:set-variable>
+				<ee:set-variable variableName="pqrId"><![CDATA[attributes.uriParams.'pqrId']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="prepare attachment files" doc:id="496c115d-4fd9-4a38-999b-47ce4076d456" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="files" ><![CDATA[%dw 2.0
+output application/java
+var ids = (payload.parts filterObject ((v, k) -> k as String == "attachmentId")) pluck $
+var files = (payload.parts filterObject ((v, k) -> k as String == "files")) pluck $
+---
+files map (filePart, index) -> {
+    attachmentId: ids[index].content,
+    fileName: filePart.headers."Content-Disposition".filename,
+    content: filePart.content,
+    contentType: filePart.headers."Content-Type"
+}
+
+
+
+
+
+]]></ee:set-variable>
+				<ee:set-variable variableName="container" ><![CDATA[%dw 2.0
+output application/java
+---
+p('azureStorage.pqr.container')]]></ee:set-variable>
+				<ee:set-variable variableName="azureResults" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<foreach doc:name="For Each File" doc:id="f883a2bb-314b-430a-b9fe-9e26285819fd" collection="#[vars.files]">
+			<try doc:name="Try" doc:id="4548b5bf-6bb0-4258-9b04-6f598b262b55" >
+				<logger level="INFO" doc:name="attachment" doc:id="ed4b1706-beeb-4059-a97a-e4a139fa1748" message="#['Subiendo archivo ' ++ payload.fileName ++ ' con Attachment ID: ' ++ payload.attachmentId]" />
+				<ee:transform doc:name="set storage variables" doc:id="6567ba49-e4d1-4825-8c34-08ec06f96f24">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="contentType"><![CDATA[%dw 2.0
+output application/java
+---
+payload.contentType]]></ee:set-variable>
+					<ee:set-variable variableName="fileContent"><![CDATA[%dw 2.0
+output application/java
+---
+payload.content]]></ee:set-variable>
+					<ee:set-variable variableName="fileName"><![CDATA[%dw 2.0
+output application/java
+var document = trim(vars.documentNumber)
+var pqr = trim(vars.pqrId)
+---
+(document ++ "/" ++ pqr ++ "/" ++ payload.fileName) replace " " with "_"]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+				<flow-ref doc:name="post-pqr-attachments-client" doc:id="19e24c6d-abef-4f17-852a-d6b49f1b9551" name="post-pqr-attachments-client" />
+				<ee:transform doc:name="update azureResults" doc:id="8680e426-f7bf-4ab6-bf1b-c314401d72d7">
+				<ee:message>
+				</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="azureResults" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.azureResults + {
+	fileName: vars.fileName,
+	status: "uploaded",
+	blobPath: vars.fileName
+}]]></ee:set-variable>
+					</ee:variables>
+			</ee:transform>
+				<error-handler >
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="284b0e34-f6ce-4f11-b36d-45ecb1df1f13" >
+						<ee:transform doc:name="update azureResults" doc:id="9dabce65-a54e-4894-b4f9-144410aea8ae" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="azureResults" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.azureResults + {
+	fileName: vars.fileName,
+	status: "failed",
+	error: error.description
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</foreach>
+		<ee:transform doc:name="set response" doc:id="b230203e-72ba-415f-9ded-4e98f67be133">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var failedCount = sizeOf(vars.azureResults filter ($.status == "failed"))
+---
+{
+	status: "201",
+	message: "Files uploaded successfully",
+	result: {
+		state: if ( failedCount == 0 ) "success" 
+          else if ( failedCount < sizeOf(vars.azureResults) ) "partial_success" 
+          else "failed",
+		tracingId: correlationId,
+		summary: {
+			totalFiles: sizeOf(vars.azureResults),
+			processedFiles: sizeOf(vars.results filter ($.status == "uploaded")) default 0,
+			failedFiles: failedCount
+		},
+		details: vars.azureResults
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	
+</sub-flow>
+</mule>
