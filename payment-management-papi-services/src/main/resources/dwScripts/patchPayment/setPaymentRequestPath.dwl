@@ -7,6 +7,8 @@ var gateway = if (payload.gateway != null and payload.gateway != "")
 				"wompiWebhook"
 			  else if (payload.properties? and payload.transactionId?)
 				"payuWebhook"
+    		  else if (payload.transaction_id? and payload.reference_sale?)
+                "payuConfirmation"
 			  else ""
 
 ---
@@ -23,6 +25,9 @@ gateway match {
 	
 	case "payuWebhook" ->
 		readUrl('classpath://dwScripts/patchPayment/setPatchPayuWebhookRequest.dwl', 'text/plain')
+	
+	case "payuConfirmation" ->
+        readUrl('classpath://dwScripts/patchPayment/setPatchPayuConfirmationRequest.dwl', 'text/plain')
 
 	else -> ""
 }

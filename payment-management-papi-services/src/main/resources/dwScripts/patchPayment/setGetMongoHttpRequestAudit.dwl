@@ -7,12 +7,16 @@ var method = if (vars.payloadRequest.gateway != null and vars.payloadRequest.gat
 				"wompiWebhook"
 			  else if (vars.payloadRequest.properties? and vars.payloadRequest.transactionId?)
 				"payuWebhook"
+			  else if (payload.transaction_id? and payload.reference_sale?)
+                "payuConfirmation"
 			  else ""
 
 var paymentId = if (method == "wompiWebhook")
 					vars.payloadRequest.data.transaction.id
 				else if (method == "payuWebhook")
 					vars.payloadRequest.transactionId
+				else if (method == "payuConfirmation")
+        			vars.payloadRequest.transaction_id
 				else
 					vars.uriParamsRequest.paymentId
 ---

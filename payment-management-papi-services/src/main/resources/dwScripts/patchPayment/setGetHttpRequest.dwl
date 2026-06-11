@@ -7,11 +7,13 @@ var method = if (payload.gateway != null and payload.gateway != "")
 				"wompiWebhook"
 			  else if (payload.properties? and payload.transactionId?)
 				"payuWebhook"
+			  else if (payload.transaction_id? and payload.reference_sale?)
+        		"payuConfirmation"
 			  else ""
 
 // normalización del nombre del sistema
 var systemKey =
-    if (method == "etb" or method == "wompiWebhook" or method == "payuWebhook") "mongo"
+    if (method == "etb" or method == "wompiWebhook" or method == "payuWebhook" or method == "payuConfirmation") "mongo"
     else method
 
 var configKey = systemKey ++ "-sapi"
@@ -20,6 +22,8 @@ var paymentId = if (method == "wompiWebhook")
 					{id: payload.data.transaction.id}
 				else if (method == "payuWebhook")
 					{id: payload.transactionId}
+				else if (method == "payuConfirmation")
+        			{id: payload.transaction_id }
 				else
 					{ id: attributes.uriParams.paymentId }
 
