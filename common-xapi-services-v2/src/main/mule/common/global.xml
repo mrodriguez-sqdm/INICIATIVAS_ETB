@@ -1,31 +1,80 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+<mule
+	xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
 	xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
 	xmlns:http="http://www.mulesoft.org/schema/mule/http"
 	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
-	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="
 http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
 http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd 
 http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
-http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
-	<http:listener-config name="common-xapi-services-httpListenerConfig">
-        <http:listener-connection host="0.0.0.0" port="${https.port}" readTimeout="${configurationTimeout.common-xapi-v2-listener}" tlsContext="TLS_Context" protocol="HTTPS"/>
-    </http:listener-config>
-    <http:request-config name="HTTP_Request_configuration_common-papi-services-v2" doc:name="HTTP Request configuration" doc:id="cfb2bacd-11eb-410c-a03a-3c1978ca63ed" basePath="${common-papi-v2.base-path}" responseTimeout="${configurationTimeout.common-papi-v2.responseTimeout}">
-		<http:request-connection protocol="${common-papi-v2.protocol}" host="${common-papi-v2.host}" port="${common-papi-v2.port}" connectionIdleTimeout="${configurationTimeout.common-papi-v2.connectionIdleTimeout}"/>
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+	<http:listener-config
+		name="common-xapi-services-httpListenerConfig">
+		<http:listener-connection
+			host="${http.host}" port="${http.port}"
+			readTimeout="${http.readTimeout}" tlsContext="TLS_Context"
+			protocol="HTTPS" />
+	</http:listener-config>
+	<apikit:config name="common-xapi-services-config"
+		api="common-xapi-services.raml"
+		outboundHeadersMapName="outboundHeaders"
+		httpStatusVarName="httpStatus" />
+	<http:request-config
+		name="HTTP_Common_PAPI_Request_Config"
+		doc:name="HTTP Pau Request Config" basePath="${commonPapi.basePath}">
+		<http:request-connection
+			host="${commonPapi.host}"
+			connectionIdleTimeout="${commonPapi.connectionIdleTimeout}"
+			protocol="${commonPapi.protocol}" port="${commonPapi.port}">
+			<reconnection>
+				<reconnect
+					frequency="${commonPapi.reconnection.frequency}"
+					count="${commonPapi.reconnection.count}" />
+			</reconnection>
+		</http:request-connection>
 	</http:request-config>
-     <apikit:config name="common-xapi-services-config" api="common-xapi-services.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
-	<tls:context name="TLS_Context" doc:name="TLS Context" doc:id="4188e79d-f2b6-475b-b12d-a60c0de653f9" >
-		<tls:key-store type="${tls.type}" path="${tls.path}" keyPassword="${tls.keyPassword}" password="${tls.keyPassword}" />
+	<tls:context name="TLS_Context" doc:name="TLS Context"
+		doc:id="ab53cfd8-10f8-4fd5-a8b6-b526088c0521">
+		<tls:key-store type="${tls.type}" path="${tls.path}"
+			keyPassword="${secure::tls.keyPassword}"
+			password="${secure::tls.password}" />
 	</tls:context>
-	<import doc:name="Import" doc:id="b72b3e90-3f99-4524-9231-0dfe4a54fb1d" file="error-handler.xml" />
-	<import doc:name="Import" doc:id="9de5248b-c60a-4518-8bc2-f18c372361dd" file="error-handler-v2.xml" />
-	<import doc:name="Import" doc:id="47ec5179-5eec-4302-9ea8-5ae42826005e" file="etb-common-lib.xml" />
-	<import doc:name="Import" doc:id="e0de86a1-1bea-4b6c-93ec-b917fa57a719" file="loggin.xml" /> 
-	<import doc:name="Import" doc:id="323bec79-d813-4962-b39d-2677bff952f1" file="audits-sapi-client.xml" />
-	<configuration-properties doc:name="Configuration properties" doc:id="f2c40a07-2c7e-4fda-8e36-991d5603dd9c" file="${env}-properties.yaml" />
-	<api-gateway:autodiscovery apiId="${autodiscovery}" ignoreBasePath="true" doc:name="API Autodiscovery" doc:id="8556ebe7-34cd-482b-ac3c-de61687eaa50" flowRef="common-xapi-services-main" />
-	</mule>
+	<import doc:name="Import"
+		doc:id="9de5248b-c60a-4518-8bc2-f18c372361dd"
+		file="error-handler-v2.xml" />
+	<import doc:name="Import"
+		doc:id="47ec5179-5eec-4302-9ea8-5ae42826005e"
+		file="etb-common-lib.xml" />
+	<import doc:name="Import"
+		doc:id="e0de86a1-1bea-4b6c-93ec-b917fa57a719" file="loggin.xml" />
+	<import doc:name="Import"
+		doc:id="323bec79-d813-4962-b39d-2677bff952f1"
+		file="audits-sapi-client.xml" />
+	<configuration-properties
+		doc:name="Configuration properties"
+		doc:id="46e34d80-3fe3-4545-8d0d-eeeadda8dc2f"
+		file="properties/${env}-properties.yaml" />
+	<api-gateway:autodiscovery apiId="${api.id}"
+		ignoreBasePath="true" doc:name="API Autodiscovery"
+		doc:id="d5d9cd85-790c-4bda-9b6d-1b7b3d895ab8"
+		flowRef="common-xapi-services-main" />
+	<secure-properties:config
+		name="Secure_Properties_Config" doc:name="Secure Properties"
+		doc:id="ce6964d3-e3c7-44e3-a8e4-abd192bd9f8e"
+		file="secureProperties/${env}-secure-properties.yaml"
+		key="${secure.key}">
+		<secure-properties:encrypt
+			algorithm="Blowfish" />
+	</secure-properties:config>
+	<configuration-properties
+		doc:name="Configuration properties"
+		doc:id="82a9c238-8a37-486a-b600-786b7c4243fe"
+		file="properties/common-properties.yaml" />
+</mule>
