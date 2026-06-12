@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="billing-zsmart-orchestrator"
+		doc:id="029cce0a-392e-46ec-89b5-a5fe5979f941">
+		<logger level="INFO" doc:name="Log Orchestration Start"
+			doc:id="5a0df5a8-926d-45c5-a822-35b60e2193d7"
+			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /billing"]' />
+		<ee:transform doc:name="Transform Message" doc:id="6519ed6c-ea1c-4a03-a479-6707c95e5803" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    access_token: p('secure::zsmart.token'),
+    method: "UserProfile",
+    version: "1.0",
+    content: payload
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="billing-zsmart-client" doc:id="c0d56c2d-6691-48ad-8d47-671416530ce2" name="billing-zsmart-client"/>
+		<choice doc:name="Choice" doc:id="efc31ee0-6d87-44c2-959a-28948af14caa" >
+			<when expression='#[(payload.res_code != "00000" or payload.result.responseCode != "0000")]'>
+				<ee:transform doc:name="Transform Message" doc:id="9e3e7cc3-433b-413c-b7f6-43df688856bc">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="zsmartError" ><![CDATA[%dw 2.0
+output application/json
+var resCode = payload.res_code
+var resultResCode = payload.result.responseCode
+var resMessage = payload.res_message
+var resultResMessage = payload.result.responseMessage
+---
+if(resCode != "00000" and resultResCode != "0000")
+    resMessage ++ " - " ++ resultResMessage
+else if( resCode != "00000")
+    resMessage
+else if(resultResCode != "0000")  
+    resultResMessage
+else "Unexpected Error Processing Zsmart User Profile"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<raise-error doc:name="Raise error" doc:id="3538d8c1-b4a4-4453-9b19-4d7dc36a25fe" type="ZSMART:USER_PROFILE_ERROR" description="#[vars.zsmartError]" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="set response" doc:id="591db913-19f5-4eaf-ab33-4d23c20d40b9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "200",
+  "message": "Success",
+  "result": payload
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Log Orchestration End"
+                message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /billing"]' />
+	</sub-flow>
+</mule>
