@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<!-- ================================================= -->
+	<!-- COMMON ERROR HANDLER V2 -->
+	<!-- ================================================= -->
+
+	<error-handler name="common-error-handler-local">
+
+		<!-- ======================= -->
+		<!-- APIKIT ERRORS -->
+		<!-- ======================= -->
+
+		<on-error-propagate type="APIKIT:BAD_REQUEST">
+			<flow-ref name="build-error-response-400"
+				doc:name="build-error-response-400" />
+		</on-error-propagate>
+
+		<on-error-propagate type="APIKIT:NOT_FOUND">
+			<flow-ref name="build-error-response-404"
+				doc:name="build-error-response-404" />
+		</on-error-propagate>
+
+		<on-error-propagate
+			type="APIKIT:METHOD_NOT_ALLOWED">
+			<flow-ref name="build-error-response-405"
+				doc:name="build-error-response-405" />
+		</on-error-propagate>
+
+		<on-error-propagate type="APIKIT:NOT_ACCEPTABLE">
+			<flow-ref name="build-error-response-406"
+				doc:name="build-error-response-406" />
+		</on-error-propagate>
+
+		<on-error-propagate
+			type="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+			<flow-ref name="build-error-response-415"
+				doc:name="build-error-response-415" />
+		</on-error-propagate>
+
+		<!-- ======================= -->
+		<!-- HTTP ERRORS -->
+		<!-- ======================= -->
+
+		<on-error-propagate type="HTTP:NOT_FOUND">
+			<flow-ref name="build-error-response-404"
+				doc:name="build-error-response-404" />
+		</on-error-propagate>
+
+		<on-error-propagate type="HTTP:BAD_REQUEST">
+			<flow-ref name="build-error-response-400"
+				doc:name="build-error-response-400" />
+		</on-error-propagate>
+
+		<on-error-propagate enableNotifications="true"
+			logException="true" doc:name="On Error Propagate"
+			doc:id="89075c24-9287-4c16-8c7b-b6d938fe02a7"
+			type="HTTP:UNAUTHORIZED">
+			<flow-ref doc:name="build-error-response-401"
+				doc:id="496dfa8c-13fe-4e24-99f4-ccf4483cf445"
+				name="build-error-response-401" />
+		</on-error-propagate>
+
+		<on-error-propagate enableNotifications="true"
+			logException="true" doc:name="On Error Propagate"
+			doc:id="b0da18ed-9617-477d-8937-33b24c55e730" type="HTTP:FORBIDDEN">
+			<flow-ref doc:name="build-error-response-403"
+				doc:id="53fb6b9d-0c94-466f-98cf-b8efd05ba160"
+				name="build-error-response-403" />
+		</on-error-propagate>
+
+		<on-error-propagate
+			type="HTTP:CONNECTIVITY, HTTP:TIMEOUT" enableNotifications="true"
+			logException="true">
+			<flow-ref name="build-error-response-504"
+				doc:name="build-error-response-504" />
+		</on-error-propagate>
+
+		<!-- ======================= -->
+		<!-- DEFAULT / ANY -->
+		<!-- ======================= -->
+		<on-error-propagate type="ANY">
+			<choice doc:name="Choice"
+				doc:id="c90cf1b5-255c-4147-b7d2-f785902bd476">
+				<when
+					expression="#[error.errorMessage.payload.Fault.detail.error.code == 'DTV-0071-0002-1012']">
+					<flow-ref doc:name="build-error-response-409"
+						doc:id="27cc8ac3-c1cc-4d27-92af-98d2729de680"
+						name="build-error-response-409" />
+				</when>
+				<when
+					expression='#[lower(error.errorMessage.payload.error default "") contains "not found"]'>
+					<flow-ref doc:name="build-error-response-404"
+						doc:id="d7be57d9-6ead-4962-99a7-182c3f5fffac"
+						name="build-error-response-404" />
+				</when>
+				<when
+					expression="#[error.errorMessage.payload.Fault.detail.error.code == 'DTV-0071-0002-1011' or error.errorMessage.payload.Fault.detail.error.code == 'DTV-0071-0002-5004']">
+					<flow-ref doc:name="build-error-response-400"
+						doc:id="a8d90048-afb6-438c-9cfe-4d1ea2b132bf"
+						name="build-error-response-400" />
+				</when>
+				<otherwise>
+					<flow-ref name="build-error-response-500"
+						doc:name="build-error-response-500" />
+				</otherwise>
+			</choice>
+		</on-error-propagate>
+
+
+	</error-handler>
+
+	<!-- ================================================= -->
+	<!-- ERROR RESPONSE BUILDERS -->
+	<!-- ================================================= -->
+	<sub-flow name="build-error-response-400">
+		<set-variable variableName="httpStatus" value="400" />
+		<flow-ref name="build-common-error" />
+	</sub-flow>
+
+	<sub-flow name="build-error-response-401"
+		doc:id="10273325-428b-4cd3-8273-188be989ba41">
+		<set-variable variableName="httpStatus" value="401" />
+		<flow-ref name="build-common-error" />
+	</sub-flow>
+
+	<sub-flow name="build-error-response-403"
+		doc:id="dbe27354-2cee-4ca6-bead-bbb0b46d713e">
+		<set-variable value="403" doc:name="Set Variable"
+			doc:id="dcaabb28-4e86-46e6-aca5-26e2f528f792"
+			variableName="httpStatus" />
+		<flow-ref doc:name="Flow Reference"
+			doc:id="7dd44372-3075-4263-b681-11a709530072"
+			name="build-common-error" />
+	</sub-flow>
+
+	<sub-flow name="build-error-response-404">
+		<set-variable variableName="httpStatus" value="404" />
+		<flow-ref name="build-common-error" />
+	</sub-flow>
+
+	<sub-flow name="build-error-response-405">
+		<set-variable variableName="httpStatus" value="405" />
+		<flow-ref name="build-common-error" />
+	</sub-flow>
+
+	<sub-flow name="build-error-response-406">
+		<set-variable variableName="httpStatus" value="406" />
+		<flow-ref name="build-common-error" />
+	</sub-flow>
+
+	<sub-flow name="build-error-response-415">
+		<set-variable variableName="httpStatus" value="415" />
+		<flow-ref name="build-common-error" />
+	</sub-flow>
+
+	<sub-flow name="build-error-response-409"
+		doc:id="f5faa47a-338b-4efe-ab4c-7afbfbd20d2c">
+		<set-variable value="409" doc:name="Set Variable"
+			doc:id="eced28a3-68e5-4846-b4b6-66a3b4a387f0"
+			variableName="httpStatus" />
+		<flow-ref doc:name="Flow Reference"
+			doc:id="a358ec91-410b-49b5-9ddf-f3515b2a1812"
+			name="build-common-error" />
+	</sub-flow>
+	<sub-flow name="build-error-response-504">
+		<set-variable variableName="httpStatus" value="504" />
+		<flow-ref name="build-common-error" />
+	</sub-flow>
+	<sub-flow name="build-error-response-500">
+		<set-variable variableName="httpStatus" value="500" />
+		<flow-ref name="build-common-error" />
+	</sub-flow>
+
+	<!-- ================================================= -->
+	<!-- COMMON ERROR BUILDER -->
+	<!-- ================================================= -->
+
+	<sub-flow name="build-common-error">
+
+		<ee:transform doc:name="Build Error Payload">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var currentApi = p("app.name")
+
+var payloadError = error.errorMessage.payload default {}
+
+var dtvError = payloadError.Fault.detail.error default null
+var simpleError = payloadError.error default null
+var oauthErrorDescription = payloadError.error_description default null
+var gcpError =
+	if (payloadError.error is Object)
+		payloadError.error
+	else
+		null
+
+fun getError(errorPayload, defaultCause, appName) = do {
+	var origin = {
+		"origin": appName
+	}
+	var currentCause = if (errorPayload is Object) (errorPayload.cause default []) else []
+
+	var errorCause = errorPayload match {
+		case is Object -> [
+			origin ++ {
+				message: defaultCause
+			}
+		]
+		case is String -> [
+			origin ++ {
+				message: errorPayload
+			}
+		]
+		case is Null -> [
+			origin ++ {
+				message: defaultCause
+			}
+		]
+		else -> [
+			origin ++ {
+				message: "Unexpected Error: Please contact support."
+			}
+		]
+	}
+	---
+	currentCause ++ errorCause
+}
+
+fun getErrorMessage(errorMessage, defaultMessage, appName) =
+	errorMessage match {
+		case is Object ->
+			if (errorMessage.message is Object)
+				errorMessage.message.message
+			else
+				errorMessage.message
+		case is String ->
+			appName ++ ": " ++ errorMessage
+		case is Null ->
+			appName ++ ": " ++ defaultMessage
+		else ->
+			"Unexpected Error: Please contact support."
+	}
+
+fun getBackendCode() =
+	if (dtvError != null)
+		dtvError.code
+	else if (gcpError != null)
+		gcpError.code
+	else if (oauthErrorDescription != null)
+		simpleError default (error.errorType.namespace ++ ":" ++ error.errorType.identifier)
+	else
+		error.errorType.namespace ++ ":" ++ error.errorType.identifier
+
+fun getBackendMessage() =
+	if (dtvError != null)
+		dtvError.reason
+	else if (gcpError != null)
+		gcpError.message
+	else if (oauthErrorDescription != null)
+		oauthErrorDescription
+	else if (simpleError != null and simpleError is String)
+		simpleError
+	else
+		getErrorMessage(
+			payloadError,
+			(error.description default "Unexpected Error"),
+			currentApi
+		)
+
+---
+{
+	status: vars.httpStatus,
+	code: getBackendCode(),
+	message: getBackendMessage(),
+	messageServer: error.failingComponent default "Unexpected Error",
+	cause: getError(
+		payloadError,
+		getBackendMessage(),
+		currentApi
+	)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async>
+			<flow-ref name="loggin-client-call" />
+		</async>
+
+	</sub-flow>
+
+
+</mule>
