@@ -173,15 +173,23 @@ var objectCustomer = findObject("MDM_CLIENTE")
 
 
 
-fun buscarIdDireccionPorGis(direcciones, valorGis) = do {
-    var direccionEncontrada = direcciones filter ((item) -> 
-        // Filtramos por tipo (Instalación) y por el GIS correspondiente
-        (upper(item.Tipo_Direccion) == "INSTALACION") 
-        and (item.Cobertura.Direccion_GIS == valorGis)
+fun buscarIdDireccionPorGis(direcciones: Array, valorGis: String | Null) = do {
+    // 1. Filtramos primero por las condiciones obligatorias: Tipo INSTALACION y Estado ACTIVO
+    var direccionesFiltradas = direcciones filter ((item) -> 
+        (upper(item.Tipo_Direccion) == "INSTALACION") and (upper(item.Estado) == "ACTIVO")
     )
+    // 2. Ordenamos de MAYOR a MENOR por Id_Direccion usando el signo menos (-)
+    var direccionesOrdenadas = direccionesFiltradas orderBy ((item) -> -item.Id_Direccion)
     ---
-    // Retornamos el Id_Direccion del primer resultado encontrado
-    direccionEncontrada[0].Id_Direccion default null
+    if (isEmpty(valorGis))
+        // Escenario sin GIS: Tomamos el primero del ordenamiento descendente (el ID más alto)
+        direccionesOrdenadas[0].Id_Direccion default null
+    else do {
+        // Escenario con GIS: Buscamos la coincidencia sobre el array ya ordenado
+        var coincidenciaGis = direccionesOrdenadas filter ((item) -> item.Cobertura.Direccion_GIS == valorGis)
+        ---
+        coincidenciaGis[0].Id_Direccion default null
+    }
 }
 
 var fechaActual = {
@@ -491,9 +499,9 @@ do {
     // 2. Creamos el objeto del consecutivo actual
     var resultadoActual = {
 		"Accion": objectAccion.Accion,
-		"Agendamiento": payload.Agendamiento,
-		"Aprovisionamiento": payload.Aprovisionamiento,
-		"Disponibilidad": payload.Disponibilidad,
+		"Agendamiento": objectAccion.Agendamiento,
+		"Aprovisionamiento": objectAccion.Aprovisionamiento,
+		"Disponibilidad": objectAccion.Disponibilidad,
 		"Atributos": payload.Atributos map (item, index) -> {
 	        "Nombre": item.Nombre,
 	        "Valor": item.Valor,
@@ -549,9 +557,9 @@ do {
     // 2. Creamos el objeto del consecutivo actual
     var resultadoActual = {
 		"Accion": objectAccion.Accion,
-		"Agendamiento": payload.Agendamiento,
-		"Aprovisionamiento": payload.Aprovisionamiento,
-		"Disponibilidad": payload.Disponibilidad,
+		"Agendamiento": objectAccion.Agendamiento,
+		"Aprovisionamiento": objectAccion.Aprovisionamiento,
+		"Disponibilidad": objectAccion.Disponibilidad,
 		"Atributos": payload.Atributos map (item, index) -> {
 	        "Nombre": item.Nombre,
 	        "Valor": item.Valor,
@@ -679,7 +687,7 @@ var direccion = obtenerDireccionPorId(vars.resultadoProductos.Servicio_Tramite.I
 					} default []
 				} 
 				// Unimos con el mapeo de sus hijos
-				] ++ (padre.Servicios_Hijos filter ($.Id_Clase_Servicio as Number != 2102 and $.Disponibilidad) map (hijo) -> {
+				] ++ (padre.Servicios_Hijos filter ($.Disponibilidad) map (hijo) -> {
 					"idProductoTecnico": hijo.Clase_Servicio default "",
 					"idServicio": hijo.Id_Servicio,
 					"idServicioPadre": padre.Id_Servicio, // Referencia al ID del padre
