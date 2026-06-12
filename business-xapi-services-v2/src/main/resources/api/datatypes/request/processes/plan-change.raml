@@ -1,0 +1,165 @@
+#%RAML 1.0 DataType
+type: !include ../billing-process-base.raml
+discriminatorValue: PLAN_CHANGE
+description: |
+  Change main offer (plan). ZSmart: serviceEventId=329 (Change Main Offer).
+  Single atomic call. Only supports standalone plan change — one prodInstId per call.
+  business-papi resolves: serviceEventId=329, operate=M for billProdInst,
+  service.offers[] with operate=D (current) and operate=A (new) -> billOfferInstList,
+  service.attributes[] -> billProdInstAttrList, currencyId=1 default.
+  Nodes map: transaction->header, service->billProdInstList[0], service.attributes[]->billProdInstAttrList,
+  service.offers[]->billOfferInstList, service.charges[]->chargeList.
+properties:
+  processCode:
+    type: string
+    enum: [PLAN_CHANGE]
+    required: true
+
+  transaction:
+    type: object
+    required: true
+    description: "Transaction header. -> header"
+    properties:
+      id:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Unique transaction ID. -> header.transactionId"
+        example: TRX202603190023
+        required: true
+      timestamp:
+        type: string
+        minLength: 19
+        maxLength: 19
+        description: "Operation timestamp YYYY-MM-DD HH:MM:SS. -> header.createDate. ZSmart spec defines length 14 (YYYYMMDDHHMMSS) but accepts format with separators as confirmed by real request samples. business-papi must NOT strip separators before forwarding."
+        example: '2026-03-19 10:00:00'
+        required: true
+      orderItemId:
+        type: string
+        minLength: 1
+        maxLength: 22
+        description: "CRM order item ID. -> header.orderItemId"
+        example: OI20260319002345-001
+        required: true
+      prodInstId:
+        type: integer
+        maximum: 999999999999999
+        description: "CRM subscriber instance ID for this order. Must match service.prodInstId. -> header.prodInstId"
+        example: 98765
+        required: true
+      custId:
+        type: integer
+        maximum: 999999999999999
+        description: "ZSmart customer ID (max 15 digits). Identifies who requests the order. Mandatory for all transactions except new connection. -> header.custId"
+        example: 12345678
+        required: false
+      salesChannel:
+        type: integer
+        enum: [1, 2, 4, 5, 7, 106]
+        description: "Channel ID. 1=POS, 2=WAP, 4=SMS, 5=USSD, 7=IVR, 106=System default. -> header.salesChannel"
+        example: 1
+        required: true
+      salesDepartment:
+        type: string
+        minLength: 1
+        maxLength: 10
+        description: "DANE department code of sales agent. Used for tax calculation. -> header.salesDepartment"
+        example: '11'
+        required: false
+      salesCity:
+        type: string
+        minLength: 1
+        maxLength: 10
+        description: "DANE city code of sales agent. Used for tax calculation. -> header.salesCity"
+        example: '11001'
+        required: false
+      po:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Purchase order number. -> header.po"
+        example: 'PO-2026-00123'
+        required: false
+      billType:
+        type: string
+        enum: ['1', '2']
+        description: "1=Monthly invoice (default), 2=Sales invoice. Cannot be used for prepaid plans. -> header.billType"
+        example: '1'
+        required: false
+      comments:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Order comments. -> header.comments"
+        example: 'Customer requested plan upgrade'
+        required: false
+
+  service:
+    type: object
+    required: true
+    description: "Service to change plan on. -> billProdInstList[0] (operate=M)"
+    properties:
+      prodInstId:
+        type: integer
+        maximum: 999999999999999
+        description: "CRM product instance ID (max 15 digits). -> billProdInst.prodInstId / header.prodInstId"
+        example: 98765
+        required: true
+      areaCode:
+        type: string
+        minLength: 1
+        maxLength: 16
+        description: "Service number area prefix. -> billProdInst.areaCode"
+        example: '601'
+        required: true
+      serviceNumber:
+        type: string
+        minLength: 1
+        maxLength: 24
+        description: "Service number without prefix. -> billProdInst.serviceNumber"
+        example: '5551234'
+        required: true
+      effectiveDate:
+        type: string
+        minLength: 19
+        maxLength: 19
+        description: "Service effective date YYYY-MM-DD HH:MM:SS. -> billProdInst.effDate. ZSmart spec defines length 14 (YYYYMMDDHHMMSS) but accepts format with separators as confirmed by real request samples."
+        example: '2026-03-19 10:00:00'
+        required: true
+      newOfferCode:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: "New main offer code to activate. -> billProdInst.offerCode"
+        example: PLAN_PSTN_200
+        required: true
+      socialLevel:
+        type: string
+        enum: ['', '1', '2', '3', '4', '5', '6']
+        description: "Social stratum 1-6. Default empty. -> billProdInst.socialLevel"
+        example: '3'
+        required: false
+      bundleIdCRM:
+        type: string
+        minLength: 1
+        maxLength: 9
+        description: "Bundle code. Cannot be modified. -> billProdInst.bundleIdCRM"
+        example: 'BND202601'
+        required: false
+      attributes:
+        type: array
+        required: false
+        description: "Attributes to add/modify/delete for this service. CRM sends operate explicitly. -> billProdInstAttrList"
+        items: !include ../common/AttributeItemWithOperate.raml
+      offers:
+        type: array
+        required: true
+        minItems: 1
+        description: "Offer changes for this service. Must include at least one D (delete current offer) and one A (add new offer). Multiple A entries allowed for additional offers. -> billOfferInstList"
+        items: !include ../common/OfferItemAD.raml
+      charges:
+        type: array
+        required: false
+        minItems: 1
+        description: "Optional charges for this plan change (e.g. plan change fee). -> chargeList"
+        items: !include ../common/ChargeItem.raml

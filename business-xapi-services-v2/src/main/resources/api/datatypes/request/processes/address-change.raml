@@ -1,0 +1,221 @@
+#%RAML 1.0 DataType
+type: !include ../billing-process-base.raml
+discriminatorValue: ADDRESS_CHANGE
+description: |
+  Change service installation address (Traslado). ZSmart: serviceEventId=805 (Change installation address).
+  business-papi resolves: serviceEventId=805, billProdInst(operate=M) with new address fields.
+  Nodes map: transaction->header, service->billProdInst,
+             service.attributes[]->billProdInstAttrList,
+             service.offers[]->billOfferInstList,
+             service.charges[]->chargeList.
+properties:
+  processCode:
+    type: string
+    enum: [ADDRESS_CHANGE]
+    required: true
+
+  transaction:
+    type: object
+    required: true
+    description: "Transaction header. -> header"
+    properties:
+      id:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Unique transaction ID. -> header.transactionId"
+        example: TRX202603190086
+        required: true
+      timestamp:
+        type: string
+        minLength: 19
+        maxLength: 19
+        description: "Operation timestamp YYYY-MM-DD HH:MM:SS. -> header.createDate. ZSmart spec defines length 14 (YYYYMMDDHHMMSS) but accepts format with separators as confirmed by real request samples. business-papi must NOT strip separators before forwarding."
+        example: '2026-03-19 10:00:00'
+        required: true
+      orderItemId:
+        type: string
+        minLength: 1
+        maxLength: 22
+        description: "CRM order item ID. -> header.orderItemId"
+        example: OI20260319016789-001
+        required: true
+      prodInstId:
+        type: integer
+        maximum: 999999999999999
+        description: "CRM subscriber instance ID. Must match service.prodInstId. -> header.prodInstId"
+        example: 98765
+        required: true
+      custId:
+        type: integer
+        maximum: 999999999999999
+        description: "ZSmart customer ID (max 15 digits). -> header.custId"
+        example: 12345678
+        required: true
+      salesChannel:
+        type: integer
+        enum: [1, 2, 4, 5, 7, 106]
+        description: "Channel ID. 1=POS, 2=WAP, 4=SMS, 5=USSD, 7=IVR, 106=System default. -> header.salesChannel"
+        example: 1
+        required: true
+      salesDepartment:
+        type: string
+        minLength: 1
+        maxLength: 10
+        description: "DANE department code of sales agent. -> header.salesDepartment"
+        example: '11'
+        required: false
+      salesCity:
+        type: string
+        minLength: 1
+        maxLength: 10
+        description: "DANE city code of sales agent. -> header.salesCity"
+        example: '11001'
+        required: false
+      po:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Purchase order number. -> header.po"
+        example: 'PO-2026-00127'
+        required: false
+      billType:
+        type: string
+        enum: ['1', '2']
+        description: "1=Monthly invoice (default), 2=Sales invoice. Only for postpaid. -> header.billType"
+        example: '1'
+        required: false
+      comments:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Order comments. -> header.comments"
+        example: 'Service relocation requested'
+        required: false
+
+  service:
+    type: object
+    required: true
+    description: "Service to relocate. -> billProdInst (operate=M)"
+    properties:
+      prodInstId:
+        type: integer
+        maximum: 999999999999999
+        description: "CRM product instance ID. Must match transaction.prodInstId. -> billProdInst.prodInstId"
+        example: 98765
+        required: true
+      areaCode:
+        type: string
+        minLength: 1
+        maxLength: 16
+        description: "Service number area prefix. -> billProdInst.areaCode"
+        example: '601'
+        required: true
+      serviceNumber:
+        type: string
+        minLength: 1
+        maxLength: 24
+        description: "Service number without prefix. -> billProdInst.serviceNumber"
+        example: '5551234'
+        required: true
+      effectiveDate:
+        type: string
+        minLength: 19
+        maxLength: 19
+        description: "Relocation effective date YYYY-MM-DD HH:MM:SS. -> billProdInst.effDate. ZSmart spec defines length 14 (YYYYMMDDHHMMSS) but accepts format with separators as confirmed by real request samples."
+        example: '2026-04-01 00:00:00'
+        required: true
+      department:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "DANE department code of new installation address. -> billProdInst.department"
+        example: '11'
+        required: false
+      city:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "DANE city code of new installation address. -> billProdInst.city"
+        example: '11001'
+        required: false
+      address:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "New installation address. -> billProdInst.address"
+        example: 'Cra 100 # 15-30'
+        required: false
+      socialLevel:
+        type: string
+        enum: ['', '1', '2', '3', '4', '5', '6']
+        description: "New socioeconomic stratum if changed by relocation. Empty string to clear. -> billProdInst.socialLevel"
+        example: '4'
+        required: false
+      offerCode:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: "New main offer code. Mandatory only if main offer changes with relocation. -> billProdInst.offerCode"
+        example: 'OFFER-FIBER-500M-B2C'
+        required: false
+      originalDepartment:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Link origin department. Required for Dedicated Links and MPLS/Corporate VPN services. -> billProdInst.originalDepartment"
+        example: '11'
+        required: false
+      originalCity:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Link origin city. Required for Dedicated Links and MPLS/Corporate VPN services. -> billProdInst.originalCity"
+        example: '11001'
+        required: false
+      originalAddress:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Link origin address. Required for Dedicated Links and MPLS/Corporate VPN services. -> billProdInst.originalAddress"
+        example: 'Cra 7 # 32-16'
+        required: false
+      destDepartment:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Link destination department. Required for Dedicated Links and MPLS/Corporate VPN services. -> billProdInst.destDepartment"
+        example: '11'
+        required: false
+      destCity:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Link destination city. Required for Dedicated Links and MPLS/Corporate VPN services. -> billProdInst.destCity"
+        example: '11001'
+        required: false
+      destAddress:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Link destination address. Required for Dedicated Links and MPLS/Corporate VPN services. -> billProdInst.destAddress"
+        example: 'Cra 100 # 15-30'
+        required: false
+      attributes:
+        type: array
+        required: false
+        minItems: 1
+        description: "Extended service attributes to add or modify. -> billProdInstAttrList"
+        items: !include ../common/AttributeItemWithOperate.raml
+      offers:
+        type: array
+        required: false
+        minItems: 1
+        description: "Additional offers to add, modify or delete with relocation. -> billOfferInstList"
+        items: !include ../common/OfferItemWithOperate.raml
+      charges:
+        type: array
+        required: false
+        minItems: 1
+        description: "Optional charges on relocation. -> chargeList"
+        items: !include ../common/ChargeItem.raml
