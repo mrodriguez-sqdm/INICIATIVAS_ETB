@@ -1,23 +1,68 @@
 %dw 2.0
-var operateModify = "M"
 var serviceEventId = "50"
+var transaction = payload.transaction
+var customer = payload.customer
+var account = payload.account
+var services = payload.services default []
+var productInstId = transaction.prodInstId
+var operation = "M"
 var currency = "1"
-var serviceInstanceId = payload.service.externalId as Number
-var customerId = payload.customer.externalId as Number
 output application/json  skipNullOn="everywhere"
 ---
 {
-  header: {
-    transactionId: payload.transaction.id,
-    createDate: payload.transaction.timestamp,
-    orderItemId: payload.transaction.orderItemId,
-    serviceEventId: serviceEventId,
-    custId: payload.customer.externalId as Number,
-    prodInstId: serviceInstanceId,
-    salesChannel: payload.transaction.salesChannel as Number
+  // Header Mapping
+  "header": {
+    "transactionId": transaction.id,
+    "createDate": transaction.timestamp,
+    "orderItemId": transaction.orderItemId,
+    "serviceEventId": serviceEventId,
+    "custId": transaction.custId,
+    "acctId": transaction.acctId,
+    "prodInstId": productInstId,
+    "salesChannel": transaction.salesChannel,
+    "salesDepartment": transaction.salesDepartment,
+    "salesCity": transaction.salesCity,
+    "po": transaction.po,
+    "billType": transaction.billType,
+    "comments": transaction.comments
   },
-  billProdInst: {
-    operate: operateModify,
-    prodInstId: serviceInstanceId
-  }
+  // services Mapping
+  ("billProdInstList": services map ((service) -> {
+    "operate": operation,
+    "prodInstId": service.prodInstId,
+    "areaCode": service.areaCode,
+    "serviceNumber": service.serviceNumber,
+    "socialLevel": service.socialLevel,
+    "effDate": service.effectiveDate,
+    "offerCode": service.offerCode,
+    "bundleIdCRM": service.bundleIdCRM,
+    "department": service.department,
+    "city": service.city,
+    "address": service.address,
+    "originalDepartment": service.originalDepartment,
+    "originalCity": service.originalCity,
+    "originalAddress": service.originalAddress,
+    "destDepartment": service.destDepartment,
+    "destCity": service.destCity,
+    "destAddress": service.destAddress,
+    ("contactDtoList": service.contacts map ((serviceContact) -> {
+      "contactType": serviceContact.contactType,
+      "operate": operation,
+      "contactID": serviceContact.contactId,
+      "firstName": serviceContact.firstName,
+      "lastName": serviceContact.lastName,
+      "email": serviceContact.email,
+      "mobilePhone": serviceContact.mobilePhone,
+      "whatsapp": serviceContact.whatsApp,
+      "fixedPhone": serviceContact.fixedPhone,
+      "contactDocType": serviceContact.contactDocType,
+      "contactDocNo": serviceContact.contactDocNo,
+      "contactDocExpDate": serviceContact.DocExpDate,
+      "country": serviceContact.country,
+      "department": serviceContact.department,
+      "city": serviceContact.city,
+      "district": serviceContact.district,
+      "addressName": serviceContact.addressName
+    })) if (!isEmpty(service.contacts default []))
+  })) if (!isEmpty(services default []))
 }

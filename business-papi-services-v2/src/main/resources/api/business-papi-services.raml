@@ -16,22 +16,21 @@ annotationTypes:
 
 types:
   BillingProcessBase:               !include datatypes/request/billing-process-base.raml
-  BillingSaleRequest:               !include datatypes/request/processes/post-sale.raml
-  BillingPlanChangeRequest:         !include datatypes/request/processes/patch-plan-change.raml
-  BillingSvaRequest:                !include datatypes/request/processes/patch-sva.raml
-  BillingSuspensionRequest:         !include datatypes/request/processes/patch-suspension.raml
-  BillingRestorationRequest:        !include datatypes/request/processes/patch-restoration.raml
-  BillingNumberChangeRequest:       !include datatypes/request/processes/patch-number-change.raml
-  BillingVolCancRequest:            !include datatypes/request/processes/patch-voluntary-cancellation.raml
-  BillingAddChargeRequest:          !include datatypes/request/processes/patch-add-charge.raml
-  BillingServiceAddRequest:         !include datatypes/request/processes/post-service-addition.raml
-  BillingServiceRemRequest:         !include datatypes/request/processes/patch-service-removal.raml
-  BillingStratumChangeRequest:      !include datatypes/request/processes/patch-stratum-change.raml
-  BillingOwnershipTransferRequest:  !include datatypes/request/processes/patch-ownership-transfer.raml
-  BillingCycleChangeRequest:        !include datatypes/request/processes/patch-billing-cycle-change.raml
-  BillingCustomerUpdateRequest:     !include datatypes/request/processes/patch-customer-update.raml
-  BillingAccountUpdateRequest:      !include datatypes/request/processes/patch-account-update.raml
-  BillingAddressChangeRequest:      !include datatypes/request/processes/patch-address-change.raml
+  BillingSaleRequest:               !include datatypes/request/processes/sale.raml
+  BillingPlanChangeRequest:         !include datatypes/request/processes/plan-change.raml
+  BillingSvaRequest:                !include datatypes/request/processes/sva.raml
+  BillingSuspensionRequest:         !include datatypes/request/processes/suspension.raml
+  BillingRestorationRequest:        !include datatypes/request/processes/restoration.raml
+  BillingNumberChangeRequest:       !include datatypes/request/processes/number-change.raml
+  BillingVolCancRequest:            !include datatypes/request/processes/voluntary-cancellation.raml
+  BillingStratumChangeRequest:      !include datatypes/request/processes/stratum-change.raml
+  BillingOwnershipTransferRequest:  !include datatypes/request/processes/ownership-transfer.raml
+  BillingCycleChangeRequest:        !include datatypes/request/processes/billing-cycle-change.raml
+  BillingCustomerUpdateRequest:     !include datatypes/request/processes/customer-update.raml
+  BillingAccountUpdateRequest:      !include datatypes/request/processes/account-update.raml
+  BillingAddressChangeRequest:      !include datatypes/request/processes/address-change.raml
+  BillingNewCustomerRequest:        !include datatypes/request/processes/new-customer.raml
+  BillingNewAccountRequest:         !include datatypes/request/processes/new-account.raml
 
 /partyInteraction:
   post:
@@ -327,14 +326,20 @@ types:
     description: |
       Creates a new resource in ZSmart.
       Accepted processCodes:
-        - SALE             → serviceEventId=1. Creates customer, account and service in one call.
-        - SERVICE_ADDITION → serviceEventId=1. Adds a service to an existing customer/account.
+        - SALE         → serviceEventId=1.   Creates customer, account and service. Supports existing custId/acctId via transaction.custId/acctId.
+        - NEW_CUSTOMER → serviceEventId=806. Creates a new customer (cust node) in ZSmart. Returns custId.
+        - NEW_ACCOUNT  → serviceEventId=807. Creates a new billing account for an existing customer. Returns acctId.
     body:
       application/json:
         type: !include datatypes/request/billing-process-request.raml
         examples:
-          SALE:             !include examples/request/post-sale.json
-          SERVICE_ADDITION: !include examples/request/post-service-addition.json
+          SALE:                         !include examples/request/sale.json
+          SALE_NEW_CUSTOMER:            !include examples/request/sale-new-customer.json
+          SALE_NEW_ACCOUNT:             !include examples/request/sale-new-account.json
+          SALE_EXISTING_CUST_ACCT:      !include examples/request/sale-existing-customer-account.json
+          SALE_WITH_CHARGE:             !include examples/request/sale-with-charge.json
+          NEW_CUSTOMER:     !include examples/request/new-customer.json
+          NEW_ACCOUNT:      !include examples/request/new-account.json
     responses:
       201:
         description: Resource created successfully.
@@ -342,8 +347,9 @@ types:
           application/json:
             type: !include datatypes/response/billing-process-response.raml
             examples:
-              SALE:             !include examples/response/post-sale.json
-              SERVICE_ADDITION: !include examples/response/post-service-addition.json
+              SALE:         !include examples/response/sale-201.json
+              NEW_CUSTOMER: !include examples/response/new-customer-201.json
+              NEW_ACCOUNT:      !include examples/response/new-account-201.json
       400:
         body:
           application/json:
@@ -359,7 +365,7 @@ types:
         body:
           application/json:
             type: !include datatypes/response/billing-process-response.raml
-            example: !include examples/response/post-sale.json
+            example: !include examples/response/sale-201.json
       422:
         body:
           application/json:
@@ -388,11 +394,9 @@ types:
         - SUSPENSION             → serviceEventId=28
         - RESTORATION            → serviceEventId=29
         - NUMBER_CHANGE          → serviceEventId=32
-        - VOLUNTARY_CANCELLATION → serviceEventId=46
-        - ADD_CHARGE             → serviceEventId=804 (also covers Retoma de Equipos)
+        - VOLUNTARY_CANCELLATION → serviceEventId=46 (terminates one service; customer/account remain if multi-service)
         - STRATUM_CHANGE         → serviceEventId=50
         - OWNERSHIP_TRANSFER     → serviceEventId=67
-        - SERVICE_REMOVAL        → serviceEventId=46
         - BILLING_CYCLE_CHANGE   → serviceEventId=234 (postpaid accounts only)
         - CUSTOMER_UPDATE        → serviceEventId=802
         - ACCOUNT_UPDATE         → serviceEventId=803
@@ -401,20 +405,19 @@ types:
       application/json:
         type: !include datatypes/request/billing-process-request.raml
         examples:
-          PLAN_CHANGE:            !include examples/request/patch-plan-change.json
-          SVA:                    !include examples/request/patch-sva.json
-          SUSPENSION:             !include examples/request/patch-suspension.json
-          RESTORATION:            !include examples/request/patch-restoration.json
-          NUMBER_CHANGE:          !include examples/request/patch-number-change.json
-          VOLUNTARY_CANCELLATION: !include examples/request/patch-voluntary-cancellation.json
-          ADD_CHARGE:             !include examples/request/patch-add-charge.json
-          SERVICE_REMOVAL:        !include examples/request/patch-service-removal.json
-          STRATUM_CHANGE:         !include examples/request/patch-stratum-change.json
-          OWNERSHIP_TRANSFER:     !include examples/request/patch-ownership-transfer.json
-          BILLING_CYCLE_CHANGE:   !include examples/request/patch-billing-cycle-change.json
-          CUSTOMER_UPDATE:        !include examples/request/patch-customer-update.json
-          ACCOUNT_UPDATE:         !include examples/request/patch-account-update.json
-          ADDRESS_CHANGE:         !include examples/request/patch-address-change.json
+          PLAN_CHANGE:            !include examples/request/plan-change.json
+          SVA:                    !include examples/request/sva.json
+          SUSPENSION:             !include examples/request/suspension.json
+          RESTORATION:            !include examples/request/restoration.json
+          NUMBER_CHANGE:          !include examples/request/number-change.json
+          VOLUNTARY_CANCELLATION: !include examples/request/voluntary-cancellation.json
+          OWNERSHIP_TRANSFER_EXISTING_CUST_ACCT: !include examples/request/ownership-transfer-existing-cust-acct.json
+          OWNERSHIP_TRANSFER_EXISTING_CUST_NEW_ACCT: !include examples/request/ownership-transfer-existing-cust-new-acct.json
+          OWNERSHIP_TRANSFER_NEW_CUST_NEW_ACCT: !include examples/request/ownership-transfer-new-cust-new-acct.json
+          BILLING_CYCLE_CHANGE:   !include examples/request/billing-cycle-change.json
+          CUSTOMER_UPDATE:        !include examples/request/customer-update.json
+          ACCOUNT_UPDATE:         !include examples/request/account-update.json
+          ADDRESS_CHANGE:         !include examples/request/address-change.json
     responses:
       200:
         description: Resource modified successfully.
@@ -422,20 +425,17 @@ types:
           application/json:
             type: !include datatypes/response/billing-process-response.raml
             examples:
-              PLAN_CHANGE:            !include examples/response/patch-plan-change.json
-              SVA:                    !include examples/response/patch-sva.json
-              SUSPENSION:             !include examples/response/patch-suspension.json
-              RESTORATION:            !include examples/response/patch-restoration.json
-              NUMBER_CHANGE:          !include examples/response/patch-number-change.json
-              VOLUNTARY_CANCELLATION: !include examples/response/patch-voluntary-cancellation.json
-              ADD_CHARGE:             !include examples/response/patch-add-charge.json
-              SERVICE_REMOVAL:        !include examples/response/patch-service-removal.json
-              STRATUM_CHANGE:         !include examples/response/patch-stratum-change.json
-              OWNERSHIP_TRANSFER:     !include examples/response/patch-ownership-transfer.json
-              BILLING_CYCLE_CHANGE:   !include examples/response/patch-billing-cycle-change.json
-              CUSTOMER_UPDATE:        !include examples/response/patch-customer-update.json
-              ACCOUNT_UPDATE:         !include examples/response/patch-account-update.json
-              ADDRESS_CHANGE:         !include examples/response/patch-address-change.json
+              PLAN_CHANGE:            !include examples/response/plan-change-200.json
+              SVA:                    !include examples/response/sva-200.json
+              SUSPENSION:             !include examples/response/suspension-200.json
+              RESTORATION:            !include examples/response/restoration-200.json
+              NUMBER_CHANGE:          !include examples/response/number-change-200.json
+              VOLUNTARY_CANCELLATION: !include examples/response/voluntary-cancellation-200.json
+              OWNERSHIP_TRANSFER:     !include examples/response/ownership-transfer-200.json
+              BILLING_CYCLE_CHANGE:   !include examples/response/billing-cycle-change-200.json
+              CUSTOMER_UPDATE:        !include examples/response/customer-update-200.json
+              ACCOUNT_UPDATE:         !include examples/response/account-update-200.json
+              ADDRESS_CHANGE:         !include examples/response/address-change-200.json
       400:
         body:
           application/json:
@@ -451,7 +451,7 @@ types:
         body:
           application/json:
             type: !include datatypes/response/billing-process-response.raml
-            example: !include examples/response/patch-plan-change.json
+            example: !include examples/response/plan-change-200.json
       422:
         body:
           application/json:
