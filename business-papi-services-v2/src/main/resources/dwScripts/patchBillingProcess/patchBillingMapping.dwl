@@ -7,6 +7,8 @@ output application/java
 	case "SVA" -> readUrl('classpath://dwScripts/patchBillingProcess/svaMapping.dwl', 'text/plain')
 	case "SUSPENSION" -> readUrl('classpath://dwScripts/patchBillingProcess/suspensionMapping.dwl', 'text/plain')
 	case "RESTORATION" -> readUrl('classpath://dwScripts/patchBillingProcess/restorationMapping.dwl', 'text/plain')
+	case "SUSPENSION_FRAUD" -> readUrl('classpath://dwScripts/patchBillingProcess/suspensionFraudMapping.dwl', 'text/plain')
+	case "RESTORATION_FRAUD" -> readUrl('classpath://dwScripts/patchBillingProcess/restorationFraudMapping.dwl', 'text/plain')
 	case "NUMBER_CHANGE" -> readUrl('classpath://dwScripts/patchBillingProcess/numberChangeMapping.dwl', 'text/plain')
 	case "VOLUNTARY_CANCELLATION" -> readUrl('classpath://dwScripts/patchBillingProcess/voluntaryCancelMapping.dwl', 'text/plain')
 	case "STRATUM_CHANGE" -> readUrl('classpath://dwScripts/patchBillingProcess/stratumChangeMapping.dwl', 'text/plain')
