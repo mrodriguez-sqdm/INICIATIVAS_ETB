@@ -95,7 +95,93 @@ var newestCustomer = resultList maxBy ((item) -> item."_id"."\$oid" as String)
 				<ee:set-variable variableName="originalRequest" ><![CDATA[payload]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<ee:transform doc:name="http request mongo post userIdp" doc:id="c70b89df-3270-487d-bed2-ff3cba2c3036">
+		<ee:transform doc:name="http request google create user" doc:id="fb2ceaf9-a440-47f0-945b-89775e48aab3">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("google-sapi.base-path"),
+	host: p("google-sapi.host"),
+	port: p("google-sapi.port"),
+	method: "POST",
+	path: p("google-sapi.resources.gcp.base-path") ++ p("google-sapi.resources.gcp.identity.path") ++ p("google-sapi.resources.gcp.identity.users.path") ++ p("google-sapi.resources.gcp.identity.users.create.path"),
+	body: {
+	  "email": vars.originalRequest.customer.email,
+	  "password": {
+		"value": vars.originalRequest.customer.password.value,
+		"iv": vars.originalRequest.customer.password.iv
+	  },
+	  "documentType": vars.originalRequest.customer.documentType,
+	  "documentNumber": vars.originalRequest.customer.documentNumber,
+	  "returnSecureToken": true
+	},
+	headers: {
+	"client_secret" : p('google-sapi.security.client_secret'),
+	"client_id" : p('google-sapi.security.client_id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="8b98d348-36c0-4f2f-b4f3-7f477412bcf3" message="#[payload.body]"/>
+		<flow-ref doc:name="go to client" doc:id="6cdaec17-825a-40e8-b387-1f83b9d3fb0a" name="generic-sapi-clientSub_Flow" target="responseCreateUserGcp"/>
+		<ee:transform doc:name="http request mongo get userIdp" doc:id="0f83aead-881f-4832-9a69-b89a83cddc2e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: p("mongo-db-sapi.resources.dynamicQuery.base-path"),
+	body: {
+  		"query": {
+			"aggregate": p("mongo-db-sapi.collections.userIDP"),
+			"pipeline": [
+				"\$match": {
+		          // Filtra por número de identificación si viene en el payload
+		          ( "NumIdentificacion": vars.originalRequest.customer.documentNumber ) if (!isEmpty(vars.originalRequest.customer.documentNumber)),
+		          
+		          // Filtra por tipo de identificación si viene en el payload
+		          ( "TipoIdentificacion": vars.originalRequest.customer.documentType ) if (!isEmpty(vars.originalRequest.customer.documentType))
+				}
+			],
+			"cursor": {}
+   			}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client_secret'),
+	"client_id" : p('mongo-db-sapi.security.client_id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="go to client mongo get" doc:id="1cf9102f-2ed5-41fd-8e76-1590274f1e4e" name="generic-sapi-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="c2d2bab5-02b6-4bea-8892-57beab6f70f3" >
+			<when expression="#[isEmpty(payload.result)]">
+				<ee:transform doc:name="http request mongo post userIdp" doc:id="c70b89df-3270-487d-bed2-ff3cba2c3036">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -119,11 +205,11 @@ output application/json
 				"Estado": true,
 				"Estado_Registro": "Activado",
 				"Identificador_Peticion_Creacion": vars.headers."X-CORRELATION-ID",
-				"Mail": payload.customer.mail,
-				"NumIdentificacion": payload.customer.documentNumber,
+				"Mail": vars.originalRequest.customer.email,
+				"NumIdentificacion": vars.originalRequest.customer.documentNumber,
 				"Password": "",
 				"Requiere_Actualizar_Pwd": false,
-				"TipoIdentificacion": payload.customer.documentType,
+				"TipoIdentificacion": vars.originalRequest.customer.documentType,
 				"TipoRegistro": "Registro Light",
 				"Widgets": [
 				{
@@ -137,7 +223,7 @@ output application/json
 				    }
 				],
 				"Idp": {
-					"id": "",
+					"id": vars.responseCreateUserGcp.localId,
 					"estado": true,
 					"fechaCreacion": vars.fechaActual,
 					"fechaUltActualizacion": vars.fechaActual
@@ -163,8 +249,8 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="Flow Reference" doc:id="6cdaec17-825a-40e8-b387-1f83b9d3fb0a" name="generic-sapi-clientSub_Flow" />
-		<ee:transform doc:name="Set Body Response" doc:id="0a3517fc-8108-47a5-b85a-264704035d9b" >
+				<flow-ref doc:name="go to client mongo" doc:id="fbda22f0-d3e8-4024-89b0-64697032bc80" name="generic-sapi-clientSub_Flow"/>
+				<ee:transform doc:name="Set Body Response" doc:id="0a3517fc-8108-47a5-b85a-264704035d9b" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
@@ -172,21 +258,105 @@ output application/json
 // Guardamos la validación de MongoDB en una variable bohemia para legibilidad
 var isSuccessfullyRegistered = (payload.result.ok == 1) and (payload.result.n >= 1)
 
-var originalEmail = vars.originalRequest.customer.mail default ""
+var originalEmail = vars.originalRequest.customer.email default ""
 ---
 {
   "codeResponse": payload.codigo,
   "messageResponse": if (isSuccessfullyRegistered) "operacion realizada exitosamente" else "No se pudo registrar el cliente",
   ("customer": {
     "idp": {
-      "creationDate": "",
-      "id": ""
+      "creationDate": vars.fechaActual."\$date",
+      "id": vars.responseCreateUserGcp.localId
     },
     "mail": originalEmail
   }) if (isSuccessfullyRegistered)
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="http request mongo patch userIdp" doc:id="9619ac72-8eba-4fd2-bf3a-beb7009875c8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var resultList = if (payload.result is Array) payload.result else [payload.result]
+
+var newestCustomer = resultList maxBy ((item) -> item."_id"."\$oid" as String)
+
+
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: p("mongo-db-sapi.resources.dynamicQuery.base-path"),
+	body: { 
+	  "query" : {
+		  "update": p("mongo-db-sapi.collections.userIDP"),
+		  "updates": [
+		    {
+		      "q": {
+		        "_id": {
+          			"\$oid": newestCustomer."_id"."\$oid"
+        		 }
+		      },
+		      "u": {
+		        "\$set": {
+		          "FechaModificacion": vars.fechaActual,
+		          "Mail": vars.originalRequest.customer.email
+		        }
+		      },
+		      "upsert": false,
+		      "multi": false
+		    }
+		  ]
+		}
+    },
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client_secret'),
+	"client_id" : p('mongo-db-sapi.security.client_id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+    },
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="go to update" doc:id="9410d429-1786-4863-bd99-171d4feb3f7b" name="generic-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Set Body Response" doc:id="97aa6593-cbef-4d8a-acef-3575987725e4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// Guardamos la validación de MongoDB en una variable bohemia para legibilidad
+var isSuccessfullyRegistered = (payload.result.ok == 1) and (payload.result.n >= 1)
+
+var originalEmail = vars.originalRequest.customer.email default ""
+---
+{
+  "codeResponse": payload.codigo,
+  "messageResponse": if (isSuccessfullyRegistered) "operacion realizada exitosamente" else "No se pudo actualizar el cliente",
+  ("customer": {
+    "idp": {
+      "creationDate": vars.fechaActual."\$date",
+      "id": vars.responseCreateUserGcp.localId
+    },
+    "mail": originalEmail
+  }) if (isSuccessfullyRegistered)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 	<sub-flow name="patch-userIdp-orchestratorSub_Flow" doc:id="3ff2560a-fbd1-4424-9590-ac2424eed7af" >
 		<ee:transform doc:name="Set Variables" doc:id="fcebeedd-564d-4ddf-ac37-a464c61e0f98" >
@@ -271,6 +441,20 @@ var originalEmail = vars.originalRequest.customer.mail default ""
     },
     "mail": originalEmail
   }) if (isSuccessfullyRegistered)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="userIdp-orchestratorSub_Flow" doc:id="df33dfc0-e05a-401e-98eb-54a11cabfef6" >
+		<ee:transform doc:name="Transform Message" doc:id="192fed91-039f-4e10-9478-41f1bc299340" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "kind": "identitytoolkit#SignupNewUserResponse",
+  "email": "testdani0002@empresa.com",
+  "localId": "Ep21ZKGDHOcfcyMbbfEjoOnQa7y2"
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
