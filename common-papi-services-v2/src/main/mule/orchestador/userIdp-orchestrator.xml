@@ -13,9 +13,65 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 				<ee:set-variable variableName="queryParams" ><![CDATA[attributes.queryParams]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<ee:transform doc:name="http request mongo get userIdp" doc:id="2238f6d9-e8ca-4dc7-b5d9-9dea2950539e" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<choice doc:name="Choice" doc:id="c15986a4-e03a-4dfd-96b2-bd8f067028d3" >
+			<when expression="#[not isEmpty(vars.queryParams.email)]">
+				<ee:transform doc:name="http request google search user" doc:id="3d461179-9dd5-44f1-887d-68f37dcec88c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("google-sapi.base-path"),
+	host: p("google-sapi.host"),
+	port: p("google-sapi.port"),
+	method: "POST",
+	path: p("google-sapi.resources.gcp.base-path") ++ p("google-sapi.resources.gcp.identity.path") ++ p("google-sapi.resources.gcp.identity.users.path") ++ p("google-sapi.resources.gcp.identity.users.search.path"),
+	body: {
+	  "email": [vars.queryParams.email]
+	},
+	headers: {
+	"client_secret" : p('google-sapi.security.client_secret'),
+	"client_id" : p('google-sapi.security.client_id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="go to client" doc:id="6b8035e7-2884-4a11-981e-02d4f309d918" name="generic-sapi-clientSub_Flow"/>
+				<ee:transform doc:name="Set Body Response" doc:id="966e04bf-e433-45e4-b9d3-17a3e4747f8e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+
+---
+{
+  "codeResponse": if(!isEmpty(payload.users[0])) "200" else "404",
+  "messageResponse": if(!isEmpty(payload.users[0])) "Consulta Realizada Exitosamente" else "No se encontraron resultados",
+  "customer":  {
+    "idp": {
+      "creationDate": payload.users[0].lastRefreshAt default "",
+      "id": payload.users[0].localId default ""
+    },
+    "mail": payload.users[0].email default ""
+  } 
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="http request mongo get userIdp" doc:id="2238f6d9-e8ca-4dc7-b5d9-9dea2950539e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -29,9 +85,6 @@ output application/json
 			"aggregate": p("mongo-db-sapi.collections.userIDP"),
 			"pipeline": [
 				"\$match": {
-							// Filtra por mail si viene en el payload y no está vacío
-		          ( "Mail": vars.queryParams.email ) if (!isEmpty(vars.queryParams.email)),
-		          
 		          // Filtra por número de identificación si viene en el payload
 		          ( "NumIdentificacion": vars.queryParams.documentNumber ) if (!isEmpty(vars.queryParams.documentNumber)),
 		          
@@ -59,11 +112,10 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<logger level="INFO" doc:name="Logger" doc:id="01f00708-7176-4c46-9900-f570a419d823" message="#[payload]"/>
-		<flow-ref doc:name="Flow Reference" doc:id="c64b1e16-ee95-4509-b4ec-f66f8497ffcd" name="generic-sapi-clientSub_Flow"/>
-		<ee:transform doc:name="Set Body Response" doc:id="2e86a6aa-4863-4145-b7cc-eae48f0bb62f" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+				<flow-ref doc:name="Flow Reference" doc:id="c64b1e16-ee95-4509-b4ec-f66f8497ffcd" name="generic-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Set Body Response" doc:id="2e86a6aa-4863-4145-b7cc-eae48f0bb62f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
 var resultList = if (payload.result is Array) payload.result else [payload.result]
@@ -83,6 +135,8 @@ var newestCustomer = resultList maxBy ((item) -> item."_id"."\$oid" as String)
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 	<sub-flow name="post-userIdp-orchestratorSub_Flow" doc:id="0da0c59b-5a46-40b2-abd0-c14d854cd181" >
 		<ee:transform doc:name="Set Variables" doc:id="68384e7f-a27b-4e12-b04b-cf16048b563a" >
