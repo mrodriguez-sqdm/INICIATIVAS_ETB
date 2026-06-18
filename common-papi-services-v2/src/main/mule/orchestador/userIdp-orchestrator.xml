@@ -445,16 +445,118 @@ var originalEmail = vars.originalRequest.customer.mail default ""
 			</ee:message>
 		</ee:transform>
 	</sub-flow>
-	<sub-flow name="userIdp-orchestratorSub_Flow" doc:id="df33dfc0-e05a-401e-98eb-54a11cabfef6" >
-		<ee:transform doc:name="Transform Message" doc:id="192fed91-039f-4e10-9478-41f1bc299340" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+	<sub-flow name="userIdp-login-orchestratorSub_Flow" doc:id="fc693852-a02c-4f32-beb5-c3f54fb6e1f1" >
+		<ee:transform doc:name="Set Variables" doc:id="8e9db102-5654-4373-8a7d-6e3b9bad38b9" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="fechaActual" ><![CDATA[{
+  "\$date": (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+}]]></ee:set-variable>
+				<ee:set-variable variableName="originalRequest" ><![CDATA[payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="cdf85af7-cc48-47d9-bec2-a8c31a8c5724" >
+			<route >
+				<ee:transform doc:name="http request google search user" doc:id="60b0fba0-986d-492a-9544-8239114855ef">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
-  "kind": "identitytoolkit#SignupNewUserResponse",
-  "email": "testdani0002@empresa.com",
-  "localId": "Ep21ZKGDHOcfcyMbbfEjoOnQa7y2"
+	basePath: p("google-sapi.base-path"),
+	host: p("google-sapi.host"),
+	port: p("google-sapi.port"),
+	method: "POST",
+	path: p("google-sapi.resources.gcp.base-path") ++ p("google-sapi.resources.gcp.identity.path") ++ p("google-sapi.resources.gcp.identity.users.path") ++ p("google-sapi.resources.gcp.identity.users.search.path"),
+	body: {
+	  "email": [vars.originalRequest.customer.email]
+	},
+	headers: {
+	"client_secret" : p('google-sapi.security.client_secret'),
+	"client_id" : p('google-sapi.security.client_id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="go to client" doc:id="7bbf2e70-7e25-4c9e-9cc5-7fef5b63f631" name="generic-sapi-clientSub_Flow" target="responseSearchUserGcp" />
+			</route>
+			<route >
+				<ee:transform doc:name="http request google login" doc:id="296ddca8-fffe-4375-9b2e-c916db3562bf">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("google-sapi.base-path"),
+	host: p("google-sapi.host"),
+	port: p("google-sapi.port"),
+	method: "POST",
+	path: p("google-sapi.resources.gcp.base-path") ++ p("google-sapi.resources.gcp.identity.path") ++ p("google-sapi.resources.gcp.identity.login.path"),
+	body:{
+		  (email: vars.originalRequest.customer.email) 
+		if (!isEmpty(vars.originalRequest.customer.email default "")),
+		
+		(password: {
+		    value: vars.originalRequest.customer.password.value,
+		    iv:    vars.originalRequest.customer.password.iv
+		}) if (
+		    !isEmpty(vars.originalRequest.customer.password.value default "") and
+		!isEmpty(vars.originalRequest.customer.password.iv    default "")
+		),
+		  "returnSecureToken": true
+    },
+	headers: {
+	"client_secret" : p('google-sapi.security.client_secret'),
+	"client_id" : p('google-sapi.security.client_id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="go to client login" doc:id="0c4b01d0-9370-4ade-b425-0a729c3415b2" name="generic-sapi-clientSub_Flow" target="responseLoginIdp"/>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Set Response Body" doc:id="e75d726e-509e-4b30-90a8-ef42ec6e325a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var rawAttributes = vars.responseSearchUserGcp.users[0].customAttributes default ""
+var parsedAttributes = if (!isEmpty(rawAttributes)) 
+                           rawAttributes read "application/json" 
+                       else {}
+var token = vars.responseLoginIdp.idToken
+---
+{
+    "codeResponse": if(not isEmpty(token)) "200" else "500",
+    "messageResponse": if(not isEmpty(token)) "operacion realizada exitosamente" else "Ocurrio un error en la operacion de login",
+    "customer": {
+	    "documentType": parsedAttributes.documentType default "",
+        "documentNumber": parsedAttributes.documentNumber default "",
+        "token": {
+			"id": token default ""
+        }
+    }
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
