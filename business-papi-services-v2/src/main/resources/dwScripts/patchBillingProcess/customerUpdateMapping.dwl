@@ -1,8 +1,8 @@
 %dw 2.0
 var serviceEventId = "802"
 var transaction = payload.transaction
-var customer = payload.customer
-var account = payload.account
+var customer = payload.customer default {}
+var account = payload.account default {}
 var services = payload.services default []
 var productInstId = transaction.prodInstId
 var operation = "M"
@@ -27,7 +27,7 @@ output application/json  skipNullOn="everywhere"
     "comments": transaction.comments
   },
   // Customer Mapping
-  "cust": {
+  ("cust": {
     "operate": operation,
     "custId": customer.custId,
     "custName": customer.custName,
@@ -81,7 +81,7 @@ output application/json  skipNullOn="everywhere"
       "district": custContact.district,
       "addressName": custContact.addressName
     })) if (!isEmpty(customer.contacts default []))
-  },
+  }) if (!isEmpty(customer default {})),,
   // Customer Attributes Mapping
   ("custAttrList": customer.attributes map ((custAttr) -> {
     "operate": custAttr.operate,

@@ -8,8 +8,8 @@ var serviceEventId = payload.processCode  match {
     else -> fail("Invalid Process Code")
 }
 var transaction = payload.transaction
-var customer = payload.customer
-var account = payload.account
+var customer = payload.customer default {}
+var account = payload.account default {}
 var services = payload.services default []
 var productInstId = transaction.prodInstId
 var operation = "A"
@@ -33,7 +33,7 @@ var currency = "1"
     "comments": transaction.comments
   },
   // Customer Mapping
-  "cust": {
+  ("cust": {
     "operate": operation,
     "custId": customer.custId,
     "custName": customer.custName,
@@ -87,7 +87,7 @@ var currency = "1"
       "district": custContact.district,
       "addressName": custContact.addressName
     })) if (!isEmpty(customer.contacts default []))
-  },
+  }) if (!isEmpty(customer default {})),
   // Customer Attributes Mapping
   ("custAttrList": customer.attributes map ((custAttr) -> {
     "operate": operation,
@@ -97,7 +97,7 @@ var currency = "1"
     "effDate": custAttr.effectiveDate
   })) if (!isEmpty(customer.attributes default [])),
   // Account Mapping
-  "account": {
+  ("account": {
     "operate": operation,
     "acctId": account.acctId,
     "acctName": account.acctName,
@@ -144,7 +144,7 @@ var currency = "1"
       "district": acctContact.district,
       "addressName": acctContact.addressName
     })) if (!isEmpty(account.contacts default []))
-  },
+  }) if (!isEmpty(customer default {})),
   // Account Attributes Mapping
   ("acctAttrList": account.attributes map ((acctAttr) -> {
     "operate": operation,
@@ -207,7 +207,7 @@ var currency = "1"
       "offerCode": offer.offerCode,
       "effDate": offer.effectiveDate,
       "expDate": offer.expirationDate,
-      "intanceId": boi.prodInstId
+      "instanceId": boi.prodInstId
     })) if (!isEmpty(flatten(services.offers default []))),
   // Service Offers Attributes Mapping
   ("billOfferInstAttrList": services flatMap (boi) -> boi.offers default [] flatMap (o) -> o.attributes default [] map ((offerAttr) -> {

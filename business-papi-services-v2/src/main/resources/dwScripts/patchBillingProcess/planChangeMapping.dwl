@@ -80,7 +80,7 @@ output application/json  skipNullOn="everywhere"
       "offerCode": offer.offerCode,
       "effDate": offer.effectiveDate,
       "expDate": offer.expirationDate,
-      "intanceId": boi.prodInstId
+      "instanceId": boi.prodInstId
     })) if (!isEmpty(flatten(services.offers default []))),
   // Service Offers Attributes Mapping
   ("billOfferInstAttrList": services flatMap (boi) -> boi.offers default [] flatMap (o) -> o.attributes default [] map ((offerAttr) -> {

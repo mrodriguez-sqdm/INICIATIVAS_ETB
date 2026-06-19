@@ -1,7 +1,7 @@
 %dw 2.0
 var serviceEventId = "234"
 var transaction = payload.transaction
-var account = payload.account
+var account = payload.account default {}
 var services = payload.services default []
 var productInstId = transaction.prodInstId
 var operation = "M"
@@ -26,7 +26,7 @@ output application/json  skipNullOn="everywhere"
     "comments": transaction.comments
   },
   // Account Mapping
-  "account": {
+  ("account": {
     "operate": operation,
     "acctId": account.acctId,
     "acctName": account.acctName,
@@ -74,5 +74,5 @@ output application/json  skipNullOn="everywhere"
       "district": acctContact.district,
       "addressName": acctContact.addressName
     })) if (!isEmpty(account.contacts default []))
-  }
+  }) if (!isEmpty(account default {}))
 }

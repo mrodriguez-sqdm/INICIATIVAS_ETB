@@ -1,8 +1,8 @@
 %dw 2.0
 var serviceEventId = "67"
 var transaction = payload.transaction
-var customer = payload.newCustomer
-var account = payload.newAccount
+var customer = payload.newCustomer default {}
+var account = payload.newAccount default {}
 var services = payload.services default []
 var productInstId = transaction.prodInstId
 var operationServices = "M"

@@ -1,8 +1,8 @@
 %dw 2.0
 var serviceEventId = "189"
 var transaction = payload.transaction
-var customer = payload.customer
-var account = payload.account
+var customer = payload.customer default {}
+var account = payload.account default {}
 var services = payload.services default []
 var productInstId = transaction.prodInstId
 var operation = "M"
@@ -80,7 +80,7 @@ output application/json  skipNullOn="everywhere"
       "offerCode": offer.offerCode,
       "effDate": offer.effectiveDate,
       "expDate": offer.expirationDate,
-      "intanceId": boi.prodInstId
+      "instanceId": boi.prodInstId
     })) if (!isEmpty(flatten(services.offers default []))),
   // Service Offers Attributes Mapping
   ("billOfferInstAttrList": services flatMap (boi) -> boi.offers default [] flatMap (o) -> o.attributes default [] map ((offerAttr) -> {
