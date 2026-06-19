@@ -1,0 +1,42 @@
+parameters:
+- name: apiName
+  type: string
+
+steps:
+
+- download: current
+  artifact: ${{ parameters.apiName }}
+
+- powershell: |
+    $artifactDir = "$(Pipeline.Workspace)/${{ parameters.apiName }}"
+    Write-Host "Contents of $artifactDir :"
+    Get-ChildItem $artifactDir -Recurse | Select-Object FullName
+    
+    $jar = "$artifactDir/$(artifactId)-$(version)-$(packaging).jar"
+    if (Test-Path $jar) {
+      Write-Host "✓ JAR found: $jar"
+    } else {
+      Write-Error "✗ JAR NOT found at: $jar"
+      exit 1
+    }
+  displayName: Verify downloaded artifact
+
+- task: Maven@4
+  displayName: Deploy ${{ parameters.apiName }}
+  inputs:
+    mavenPomFile: APIS/${{ parameters.apiName }}/pom.xml
+    goals: >
+      mule:deploy
+      -Dmule.artifact=$(Pipeline.Workspace)/${{ parameters.apiName }}/$(artifactId)-$(version)-$(packaging).jar
+      -Dusername=$(username)
+      -Dpassword=$(password)
+      -Denvironment=$(muleEnvironment)
+      -Dworkers=$(workers)
+      -DworkerType=$(workerType)
+      -Dapp.runtime=$(appRuntime)
+      -Dapp.name=${{ parameters.apiName }}-qa
+      -Dregion=$(region)
+      -Denv=$(env)
+      -Dautodiscovery=19139633
+      -Danypoint.platform.client_id=$(clientId)
+      -Danypoint.platform.client_secret=$(clientSecret)

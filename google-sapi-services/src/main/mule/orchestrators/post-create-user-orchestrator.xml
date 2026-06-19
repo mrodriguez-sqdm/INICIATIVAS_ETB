@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="post-create-user-orchestrator"
+		doc:id="029cce0a-392e-46ec-89b5-a5fe5979f941">
+		<logger level="INFO" doc:name="Log Orchestration Start"
+			doc:id="5a0df5a8-926d-45c5-a822-35b60e2193d7"
+			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /create"]' />
+		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="7e0f6360-d1f8-4cf6-87b5-c6f76c9e7f34" variableName="payloadRq"/>
+		<flow-ref doc:name="get-tokenSub_Flow" doc:id="26534d2a-1325-4522-b6c7-a7ed113ec57e" name="get-tokenSub_Flow" target="getToken"/>
+		<java:invoke-static doc:name="Invoke static" doc:id="d8d80b0c-d2cc-4922-a942-0fac3dbfd6f5" class="com.etb.gcp.AesDecryptHelper" method="decrypt(java.lang.String,java.lang.String,java.lang.String)">
+			<java:args ><![CDATA[#[%dw 2.0
+output application/java
+---
+{
+    encryptedPassword: payload.password.value as String,
+    iv: payload.password.iv as String,
+    secretKey: p('secure::aes.secretKey') as String
+}]]]></java:args>
+		</java:invoke-static>
+		<ee:transform doc:name="Transform Message" doc:id="0d89d2b8-8e77-4c68-b52d-1446d1c35418" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  email: vars.payloadRq.email,
+  password: payload,
+  returnSecureToken: vars.payloadRq.returnSecureToken
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-signup-google-gcp-client" doc:id="01e3426e-6d91-4d42-a8b9-81257912ae52" name="post-signup-google-gcp-client"/>
+		<choice doc:name="Choice" doc:id="9bd054f0-3207-4b3b-8924-116261938462" >
+			<when expression='#[!isEmpty(trim((vars.payloadRq.documentType default "") as String)) and !isEmpty(trim((vars.payloadRq.documentNumber default "") as String))]'>
+				<ee:transform doc:name="Transform Message" doc:id="3a964e68-f709-4321-9014-f79d6861c591">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    localId: payload.localId,
+    customAttributes: write(
+        {
+            documentType: vars.payloadRq.documentType,
+            documentNumber: vars.payloadRq.documentNumber
+        },
+        "application/json"
+    )
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="post-update-google-gcp-client" doc:id="93e68b6b-689c-4d68-b0f7-273d9d9ba11c" name="post-update-google-gcp-client" />
+			</when>
+		</choice>
+		<logger level="INFO" doc:name="Log Orchestration End"
+                message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /create"]' />
+	</sub-flow>
+</mule>

@@ -1,0 +1,793 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-trouble-ticket-orchestrator-sub-flow"
+		doc:id="9fed4b65-6426-4d22-b388-a5401c2d73d1">
+		<ee:transform doc:name="set variables"
+			doc:id="dc03b0f4-83e7-47d9-9e12-f63b6ff2a54a">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."x-correlation-id",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="validate cun flag"
+			doc:id="9e9b7174-ea75-4f72-8d96-4fdb7a999c57">
+			<when expression="#[payload.ticket.cun == true]">
+				<ee:transform doc:name="set common sapi request"
+					doc:id="170a1d54-3f8e-4152-9601-b6ade6a8c924">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "pqrType": payload.ticket.pqr.pqrType,
+  "pqrDate": payload.ticket.pqr.pqrDate,
+  "system": attributes.headers.'x-system-id',
+  "orderNumber": payload.ticket.service.orderNumber,
+  "connectionNumber": payload.ticket.service.connectionNumber,
+  "identification": payload.ticket.customer.documentType,
+  "identificationType": payload.ticket.customer.documentNumber,
+  "user": if(payload.ticket.customer.user?) payload.ticket.customer.user else attributes.headers.'x-system-id'
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="common-sapi-client-sub-flow"
+					doc:id="7c74995d-dc5b-4340-b410-bcabb50dd0d0"
+					name="common-sapi-client-sub-flow" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="bot-service-orchestration-sub-flow"
+					doc:id="ddaa0188-891f-47ac-bd68-057d96f83480"
+					name="bot-service-orchestration-sub-flow" />
+				<flow-ref
+					doc:name="customer-ownership-orchestration-sub-flow"
+					doc:id="460b8fba-a891-4c1a-aed2-773b4369dd3d"
+					name="customer-ownership-orchestration-sub-flow" />
+				<flow-ref doc:name="pqr-validations-orchestration-sub-flow"
+					doc:id="5a33dae1-ffbf-4570-bb75-8155103bb21f"
+					name="pqr-validations-orchestration-sub-flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="bot-service-orchestration-sub-flow"
+		doc:id="386cc928-9688-42e8-b1b2-4d2c432b6bcb">
+		<ee:transform
+			doc:name="set bots mongo db sapi request vars"
+			doc:id="b69f89bc-9329-447f-9d20-6fe164f422de">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="systemId"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.headers.'x-system-id']]></ee:set-variable>
+				<ee:set-variable variableName="channelId"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.headers.'x-channel-id']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="get-bot-system-mongo-db-sapi-client-sub-flow"
+			doc:id="823e0885-eb0e-441e-84ea-986e9b906ae8"
+			name="get-bot-system-mongo-db-sapi-client-sub-flow"
+			target="botSystemResponse" />
+		<flow-ref
+			doc:name="get-bot-channel-mongo-db-sapi-client-sub-flow"
+			doc:id="5227d47f-e08f-483b-8a23-7e3af5e939f7"
+			name="get-bot-channel-mongo-db-sapi-client-sub-flow"
+			target="botChannelResponse" />
+		<choice doc:name="validate origin"
+			doc:id="b5784b64-8e39-4862-8faa-2a4bae0783ba">
+			<when
+				expression="#[isEmpty(vars.botSystemResponse.botSystem) or isEmpty(vars.botChannelResponse.botChannel)]">
+				<raise-error
+					doc:name="COMMON_PAPI:ORIGIN_NOT_RECOGNIZED"
+					doc:id="51030935-fa09-4b99-b2c4-8474208bdd88"
+					type="COMMON_PAPI:ORIGIN_NOT_RECOGNIZED"
+					description="The system/channel is not recognized" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="set origin variables"
+					doc:id="d054491f-e6f4-4da5-874b-2269c9328a21">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="origin"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"system": (vars.botSystemResponse.botSystem[0]- "_id"),
+	"channel": (vars.botChannelResponse.botChannel[0] - "_id"),
+	"user": vars.channelId,
+	"ip": attributes.headers['x-forwarded-for'] default attributes.remoteAddress,
+	"sessionId": correlationId
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform
+					doc:name="set services mongo db request vars"
+					doc:id="15a8ea0a-77f9-43b8-8fef-678627e441ba">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="service"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ConnectionNumber: vars.initialPayload.ticket.pqr.contact.phone
+}]]></ee:set-variable>
+						<ee:set-variable variableName="serviceActive"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Tecnology: p('mongoDbSapi.serviceActive.technology'),
+	ConnectionNumber: vars.initialPayload.ticket.pqr.contact.phone
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+					doc:name="get-service-mongo-db-sapi-client-sub-flow"
+					doc:id="8504ac99-0bf0-4514-af78-38de18826a8c"
+					name="get-service-mongo-db-sapi-client-sub-flow"
+					target="serviceResponse" />
+				<flow-ref
+					doc:name="get-serviceActive-mongo-db-sapi-client-sub-flow"
+					doc:id="7265928e-7adf-499d-b8c3-7fe837b3e134"
+					name="get-serviceActive-mongo-db-sapi-client-sub-flow"
+					target="serviceActiveResponse" />
+				<choice doc:name="validate service"
+					doc:id="6c6e75d9-212e-4a29-84e8-b0175547dec5">
+					<when
+						expression='#[isEmpty(vars.serviceResponse.servicios) and isEmpty(vars.serviceActiveResponse.services) and (not (vars.origin.system.Sistema_Origen contains "MAX"))]'>
+						<raise-error
+							doc:name="COMMON_PAPI:SERVICE_NOT_RELATED"
+							doc:id="875b0e1a-4419-4235-9399-c4dead20523d"
+							type="COMMON_PAPI:SERVICE_NOT_RELATED"
+							description="Connection Number does not have services related" />
+					</when>
+					<otherwise>
+						<ee:transform doc:name="set service variables"
+							doc:id="bf904ec0-0edb-4f90-916b-c8f940b3b875">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="hasService"><![CDATA[%dw 2.0
+output application/json
+---
+if(vars.origin.system.Sistema_Origen contains "MAX") true else false
+]]></ee:set-variable>
+								<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+var serviceTechnology = vars.serviceResponse.servicios[0].Bundle.Tipo_Servicio
+var serviceActiveTechnology = vars.serviceResponse.services[0].Tecnologia
+---
+if(serviceTechnology != null)
+vars.initialPayload  update {
+    case botFailure  at .ticket.pqr.failure.botRequest -> botFailure ++ " " ++ serviceTechnology
+}
+else if (serviceActiveTechnology != null)
+vars.initialPayload  update {
+    case botFailure  at .ticket.pqr.failure.botRequest -> botFailure ++ " " ++ serviceActiveTechnology
+}
+else vars.initialPayload]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<logger level="INFO" doc:name="Services"
+							doc:id="8b289cfa-5edb-4bc8-a8e7-9848288b6619"
+							message='#["SERVICES RELATED: " ++ vars.hasService]' />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="customer-ownership-orchestration-sub-flow"
+		doc:id="1faa5543-85b9-4347-953a-95dcd9bb1191">
+		<ee:transform
+			doc:name="set customer mongo db sapi request var"
+			doc:id="0a3a7fad-bd3b-462b-8219-30a09aea5220">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="customer"><![CDATA[%dw 2.0
+output application/json
+var serviceTechnology = vars.serviceResponse.servicios
+var serviceActiveTechnology = vars.serviceResponse.services
+---
+if(not isEmpty(serviceTechnology))
+
+{
+	Numero_Documento: serviceTechnology[0].Cliente.Numero_Documento,
+	Tipo_Documento: serviceTechnology[0].Cliente.Tipo_Documento
+}
+else if(not isEmpty(serviceActiveTechnology))
+{
+	Numero_Documento: serviceActiveTechnology[0].Numero_Identificacion,
+	Tipo_Documento: serviceActiveTechnology[0].Tipo_Documento
+}
+else {
+	Numero_Documento: vars.initialPayload.ticket.customer.documentNumber,
+	Tipo_Documento: vars.initialPayload.ticket.customer.documentType
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="get-customer-mongo-db-sapi-client-sub-flow"
+			doc:id="808a358c-72fa-420a-a4f1-fbc953664a9f"
+			name="get-customer-mongo-db-sapi-client-sub-flow"
+			target="customerResponse" />
+		<choice doc:name="validate customer"
+			doc:id="dcfa303e-57a0-4e70-8ed4-22b210aea780">
+			<when expression="#[isEmpty(vars.customerResponse.customers)]">
+				<raise-error doc:name="COMMON_PAPI:CUSTOMER_NOT_EXISTS"
+					doc:id="d1b314d7-c3bc-4e39-83a7-4e1584e2499f"
+					type="COMMON_PAPI:CUSTOMER_NOT_EXISTS"
+					description="Customer does not have related accounts or services" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="set contact"
+					doc:id="eedc377b-2ff6-4bda-a936-6d0269bc50f6">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+var bdEmail = vars.customerResponse.customers[0].Contacto[0].Email_Contacto
+var bdPhone = vars.customerResponse.customers[0].Contacto[0].Telefono_Contacto
+---
+payload  update {
+    case email at .ticket.pqr.contact.email -> if(isEmpty(bdEmail)) email else bdEmail
+    case phone at .ticket.pqr.contact.phone -> if(isEmpty(bdPhone)) phone else bdPhone
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="validate channel"
+					doc:id="8f1bfd82-c7dd-42d4-a008-a3a7defd838c">
+					<when expression='#[vars.channelId == "PORTALWEB"]'>
+						<ee:transform doc:name="set isOwner"
+							doc:id="056ab3e1-5608-4f5a-bec7-da86a53e9cd7">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="isOwner"><![CDATA[%dw 2.0
+output application/json
+var serviceTechnology = vars.serviceResponse.servicios
+var serviceActiveTechnology = vars.serviceResponse.services
+var serviceOwner = if(serviceTechnology != [])
+{
+	documentNumber: serviceTechnology[0].Cliente.Numero_Documento,
+	documentType: serviceTechnology[0].Cliente.Tipo_Documento
+}
+else if(serviceActiveTechnology != [])
+{
+	documentNumber: serviceActiveTechnology[0].Numero_Identificacion,
+	documentType: serviceActiveTechnology[0].Tipo_Documento
+}else {
+	documentNumber: "",
+	documentType: ""
+}
+---
+serviceOwner == {
+	documentNumber: vars.initialPayload.ticket.customer.documentNumber,
+	documentType: vars.initialPayload.ticket.customer.documentType
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<choice doc:name="Choice"
+							doc:id="89e07b5f-d289-432e-b381-1da47b5f2184">
+							<when expression="#[vars.isOwner]">
+								<logger level="INFO" doc:name="ownership valid"
+									doc:id="d50d5159-246d-4f9d-b4bf-96debf265eae"
+									message='#["Ownership validation for channel " ++ vars.channelId ++ " applied"]' />
+							</when>
+							<otherwise>
+								<raise-error
+									doc:name="COMMON_PAPI:OWNERSHIP_MISMATCH"
+									doc:id="cc1d54cf-959d-4042-9c69-e032360e8a55"
+									type="COMMON_PAPI:OWNERSHIP_MISMATCH"
+									description="The customer is not the service holder" />
+							</otherwise>
+						</choice>
+					</when>
+					<otherwise>
+						<logger level="INFO" doc:name="skip ownership validation"
+							doc:id="4e83edcb-3947-4a9b-ac52-62758885d75e"
+							message='#["Ownership validation not required for channel " ++ vars.channelId]' />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="pqr-validations-orchestration-sub-flow"
+		doc:id="fe675403-abfe-4a36-b237-d05c452637b5">
+		<ee:transform
+			doc:name="set pqr category mongo db sapi request var"
+			doc:id="392fc2df-574a-4fc5-b9bf-e7d5fc99b6e1">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="pqrCategory"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	botRequest: vars.initialPayload.ticket.pqr.failure.botRequest,
+	causal: vars.initialPayload.ticket.pqr.failure.causal,
+	class: vars.initialPayload.ticket.pqr.failure.class,
+	reason: vars.initialPayload.ticket.pqr.failure.reason,
+	symptom: vars.initialPayload.ticket.pqr.failure.symptom,
+	product: vars.initialPayload.ticket.service.product
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="get-pqr-category-mongo-db-sapi-client-sub-flow"
+			doc:id="1c601d8d-3f87-4def-96f1-116be9a5b648"
+			name="get-pqr-category-mongo-db-sapi-client-sub-flow"
+			target="pqrCategoryResponse" />
+		<choice doc:name="validate category"
+			doc:id="d19f89d3-c8f0-4661-b0b7-364d11df0de1">
+			<when
+				expression="#[isEmpty(vars.pqrCategoryResponse.pqrCategory)]">
+				<raise-error doc:name="COMMON_PAPI:TIPOLOGY_NOT_FOUND"
+					doc:id="d537f1fb-df20-48c7-b3df-8c19dc5ed113"
+					type="COMMON_PAPI:TIPOLOGY_NOT_FOUND"
+					description="PQR tipology not found" />
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="PQR category"
+					doc:id="04d86639-728c-416e-9142-1a0ff422bcb8"
+					message='#["TIPOLOGIA PQR ENCONTRADA, ID RELACIONADO: " ++ vars.pqrCategoryResponse.pqrCategory[0].mongoId default "EMPTY"]' />
+				<ee:transform
+					doc:name="set pqr duplicate mongo db sapi request var"
+					doc:id="8305a123-6cd8-4584-b85c-3de4aea9aa14">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="pqrDuplicate"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	documentNumber: vars.initialPayload.ticket.pqr.failure.botRequest,
+	documentType: vars.initialPayload.ticket.pqr.failure.botRequest,
+	causal: vars.initialPayload.ticket.pqr.failure.causal,
+	class: vars.initialPayload.ticket.pqr.failure.class,
+	reason: vars.initialPayload.ticket.pqr.failure.reason,
+	symptom: vars.initialPayload.ticket.pqr.failure.symptom,
+	product: vars.initialPayload.ticket.service.product
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+					doc:name="get-pqr-duplicate-mongo-db-sapi-client-sub-flow"
+					doc:id="0a6dfa37-dbfa-43f9-909d-1295fb4f6426"
+					name="get-pqr-duplicate-mongo-db-sapi-client-sub-flow"
+					target="pqrDuplicateResponse" />
+				<ee:transform doc:name="set isDuplicate"
+					doc:id="7748991d-50c6-413b-ad4d-386cbb0f902f">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="isDuplicate"><![CDATA[%dw 2.0
+output application/json
+var requestPqr = vars.initialPayload.ticket.pqr.failure
+var matchPqr = vars.pqrDuplicateResponse.pqrDuplicate filter ((item, index) -> lower(item.estado_pqr) == "abierta" and item.causal_pqr == requestPqr.causal and item.clase_pqr == requestPqr.class and item.motivo_pqr == requestPqr.reason and item.sintoma_pqr == requestPqr.symptom)
+---
+{
+	duplicate: isEmpty(matchPqr),
+	cun: matchPqr[0].cun default 0
+}
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="validate duplicate"
+					doc:id="9626adfd-5872-431d-babe-b4dad9fc9369">
+					<when expression="#[vars.isDuplicate.duplicate]">
+						<logger level="INFO" doc:name="New PQR"
+							doc:id="0b5da029-2488-4700-86b6-b224f37759d6"
+							message="No customer-related PQR was found" />
+						<choice doc:name="validate reason"
+							doc:id="c04c4909-8376-4b9b-9df3-210e67e02893">
+							<when
+								expression='#[vars.initialPayload.ticket.pqr.failure.reason == "FALLA TECNICA" and vars.hasService == false]'>
+								<ee:transform
+									doc:name="set pqr parent mongo db sapi request var"
+									doc:id="0345417d-797f-4167-a15a-750f99885edd">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="pqrParent"><![CDATA[%dw 2.0
+output application/json
+var serviceId = vars.serviceResponse.servicios[0].Id_Cuenta_Servicio
+var serviceActiveId = vars.serviceResponse.services[0].Id_Cuenta_Servicio_Origen
+---
+{
+	serviceAccount: serviceId default serviceActiveId,
+	reason: vars.initialPayload.ticket.pqr.failure.reason
+}]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+								<flow-ref
+									doc:name="get-pqr-parent-mongo-db-sapi-client-sub-flow"
+									doc:id="6c968ec3-7c2b-4d9f-85bb-1128870effdb"
+									name="get-pqr-parent-mongo-db-sapi-client-sub-flow"
+									target="pqrParentResponse" />
+								<ee:transform doc:name="set pqr variables"
+									doc:id="d7550205-ee40-4a67-9e8b-f9a3cd4127c7">
+									<ee:message>
+									</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="childPqr"><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(vars.pqrParentResponse.pqrParent)) false else true]]></ee:set-variable>
+										<ee:set-variable variableName="parentPqr"><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(vars.pqrParentResponse.pqrParent)) null else vars.pqrParentResponse.pqrParent[0]]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</when>
+							<otherwise>
+								<logger level="INFO" doc:name="PQR Parent"
+									doc:id="31bc08f9-92d5-4ab5-ac9c-3eb34d0552a6"
+									message="PQR does not apply to parent search" />
+							</otherwise>
+						</choice>
+					</when>
+					<otherwise>
+						<raise-error doc:name="COMMON_PAPI:PQR_DUPLICATED"
+							doc:id="1670939e-035d-4035-930c-27991ea26b63"
+							type="COMMON_PAPI:PQR_DUPLICATED"
+							description="PQR already exists with cun related: #[vars.isDuplicate.cun]" />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="pqr-creation-orchestration-sub-flow"
+		doc:id="0c418c4d-ca77-472d-bbf3-cfb01c035576">
+		<ee:transform doc:name="set pqr request"
+			doc:id="06b98fd5-1b24-4124-95aa-d34fca5df8ad">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var origin = vars.origin
+var requestPqr = vars.initialPayload.ticket
+var serviceName = vars.serviceResponse.servicios[0].Bundle.Nombre
+var serviceActiveName = vars.serviceResponse.services[0].Servicio
+var serviceId = vars.serviceResponse.servicios[0].Id_Cuenta_Servicio
+var serviceActiveId = vars.serviceResponse.services[0].Id_Cuenta_Servicio_Origen
+var serviceTechnology = vars.serviceResponse.servicios[0].Bundle.Tipo_Servicio
+var serviceActiveTechnology = vars.serviceResponse.services[0].Tecnologia
+var remedyStatus = vars.pqrCategoryResponse.pqrCategory[0].remedy
+---
+{
+	"id": vars.origin.sessionId,
+	"pqrRowId": "",
+	"pqrNumber": "",
+	"documentType": requestPqr.customer.documentType,
+	"documentNumber": requestPqr.customer.documentNumber,
+	"contactDocumentType": requestPqr.pqr.contact.documentType,
+	"contactDocumentNumber": requestPqr.pqr.contact.documentNumber,
+	"serviceId": serviceId default serviceActiveId,
+	"connectionNumber": requestPqr.pqr.contact.phone,
+	"serviceAccount": serviceId default serviceActiveId,
+	"billingAccount": "",
+	"product": requestPqr.service.product,
+	"orderNumber": requestPqr.service.orderNumber,
+	"pqrClaimPqr": "",
+	"claimPqrType": "",
+	"cun": requestPqr.pqr.cunRelated,
+	"service": serviceName default serviceActiveName,
+	"technology": serviceTechnology default serviceActiveTechnology,
+	"pqrType": requestPqr.pqr.pqrType,
+	"pqrClass": requestPqr.pqr.failure.class,
+	"pqrReason": requestPqr.pqr.failure.reason,
+	"pqrRootCause": requestPqr.pqr.failure.causal,
+	"pqrUrgency": "Low",
+	"impact": "Low",
+	"pqrSymptom": requestPqr.pqr.failure.symptom,
+	"claimedValue": "",
+	"adjustedValue": "",
+	"creationDate": now() as String,
+	"filingDate": now() as String,
+	"solutionDate": now() as String,
+	"solution": requestPqr.pqr.solution,
+	"imputability": "",
+	"pqrStatus": requestPqr.pqr.solution,
+	"remedySendStatus": remedyStatus,
+	"closureType": "",
+	"pqrNotificationMethod": "",
+	"receptionMethod": "",
+	"pqrDescription": requestPqr.pqr.description,
+	"pqrResponse": "",
+	"remedyIncidentNumber": "",
+	"remedyResponse": "",
+	"originSystemId": "",
+	"originSystem": origin.system.Sistema_Origen,
+	"callOriginLsp": "",
+	"thirdPartyDestinationLsp": "",
+	"completePqrIndicator": "",
+	"email": requestPqr.customer.email default requestPqr.pqr.contact.email,
+	"massiveFailureCun": requestPqr.pqr.cunMassiveFailure,
+	"writtenNotificationAddress": "",
+	"externalFiling": "",
+	"appealResourceFlag": "",
+	"governmentTransferFlag": "N",
+	"reopeningFlag": "",
+	"priority": "",
+	"creatorUser": origin.user,
+	"assignedUser": "",
+	"comments": "",
+	"clientName": "",
+	"clientSegment": "",
+	"resolutionCode": "",
+	"resolutionDescription": "",
+	"subChannel": origin.channel.Canal_Origen,
+	"point": "",
+	"provider": "ETB",
+	"management": "",
+	"trafficLight": "",
+	"businessDays": "",
+	"additionalFields": /*map????*/ [{
+		"key": "contract_version",
+		"value": "V2.1"
+	}],
+	"pqrExtensions": /*map????*/ [{
+		"extensionDays": "",
+		"extensionStartDate": "",
+		"extensionEndDate": ""
+	}],
+	"pqrActivities": /*map????*/ [{
+		"activityRowId": "",
+		"activityName": "",
+		"activityStatus": "",
+		"comments": "",
+		"description": "",
+		"management": "",
+		"managementDescription": "",
+		"activityGroup": "",
+		"assignedUser": "",
+		"activityCreatorUser": "",
+		"activityStartDate": "",
+		"currentStatusDate": "",
+		"activityDueDate": "",
+		"isFinal": "",
+		"priority": "",
+		"disconnectionDate": "",
+		"reconnectionDate": "",
+		"duration": "",
+		"account": "",
+		"notification": "",
+		"trafficLight": "",
+		"businessDays": "",
+		"activityAttachments": [{
+			"activityAttachment": ""
+		}]
+	}],
+	"pqrCharacteristics": [{
+		"characteristic": "",
+		"value": ""
+	}],
+	"pqrAttachedFiles": requestPqr.pqr.attachment map(attachment, idx) ->{
+		"attachedFile": attachment.name
+	},
+	"setType": "Standard",
+	"pqrVersion": "1.0",
+	"notificationFlag": "N",
+	"earlyFailureFlagField": "N",
+	"secondLevelStatus": {
+		"id": "",
+		"code": "",
+		"description": "",
+		"date": now() as String {
+			format: "YYYY-MM-dd"
+		},
+		"retries": 2,
+		"exceptionCode": null
+	},
+	"subStatus": "",
+	"exception": null,
+	"exceptionType": null,
+	"originatedBy": origin.user,
+	"family": "",
+	"contactType": "",
+	"signature": "",
+	"isMultiDetail": false,
+	"communicationsDelivery": {
+		"communicationMethod": "",
+		"communicationData1": "",
+		"communicationData2": ""
+	},
+	"backCode": "",
+	"retentionNumber": "",
+	"failureType": requestPqr.pqr.failure.botFailure,
+	"permanenceBlock": ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-pqr-datalogic-sapi-client-sub-flow"
+			doc:id="d392ed7d-add8-48be-8e75-6ac1fc20f178"
+			name="post-pqr-datalogic-sapi-client-sub-flow" target="pqrResponse" />
+		<ee:transform doc:name="set response"
+			doc:id="a315473a-5ca1-40b3-8cbb-bc2d7fb77cb0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.pqrResponse]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async"
+			doc:id="4fd87672-c774-4af9-bfe4-5b3644ee0ba5">
+			<ee:transform
+				doc:name="set pqr attachment azure request"
+				doc:id="64289089-4b41-4265-963e-6f14ce15504d">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output multipart/form-data
+var attachments = vars.initialPayload.ticket.pqr.attachment
+---
+{
+	parts: {
+		(attachments map (item, index) -> {
+			attachmentId: {
+				content: item.id
+			},
+			files: {
+				content: fromBase64(item.file),
+				headers: {
+					"Content-Type": item.mimeType,
+					"Content-Disposition": {
+						"name": "files",
+						"filename": item.name
+					}
+				}
+			}
+		})
+	}
+}]]></ee:set-payload>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="fileDetails"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"documentNumber": vars.initialPayload.ticket.customer.documentNumber,
+	"pqrId": vars.pqrResponse.pqr.databaseId
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref
+				doc:name="post-pqr-attachments-azure-sapi-client-sub-flow"
+				doc:id="65a0e916-134b-4241-bb00-56d6c133a1a8"
+				name="post-pqr-attachments-azure-sapi-client-sub-flow"
+				target="attachmentsResponse" />
+			<logger level="INFO" doc:name="azure details"
+				doc:id="143a847d-5c69-48a3-a38b-d5fdbcb0fbe9"
+				message="#[vars.attachmentsResponse]" />
+			<ee:transform doc:name="set pqr mongo db request"
+				doc:id="eb0b39be-2389-4e4e-8691-b089f4981832">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var origin = vars.origin
+var requestPqr = vars.initialPayload.ticket
+var serviceName = vars.serviceResponse.servicios[0].Bundle.Nombre
+var serviceActiveName = vars.serviceResponse.services[0].Servicio
+var serviceId = vars.serviceResponse.servicios[0].Id_Cuenta_Servicio
+var serviceActiveId = vars.serviceResponse.services[0].Id_Cuenta_Servicio_Origen
+var serviceTechnology = vars.serviceResponse.servicios[0].Bundle.Tipo_Servicio
+var serviceActiveTechnology = vars.serviceResponse.services[0].Tecnologia
+var remedyStatus = vars.pqrCategoryResponse.pqrCategory[0].remedy
+var pqr = vars.pqrResponse.pqr
+---
+{
+	"actualizacion_extractor": "",
+	"row_id_pqr": "",
+	"numero_pqr": pqr.databaseId,
+	"tipo_documento": requestPqr.customer.documentNumber,
+	"numero_identificacion": requestPqr.customer.documentType,
+	"contacto_tipo_documento": requestPqr.pqr.contact.documentNumber,
+	"contacto_numero_documento": requestPqr.pqr.contact.documentNumber,
+	"id_servicio": serviceId default serviceActiveId,
+	"numero_conexion": requestPqr.pqr.contact.phone,
+	"cuenta_servicio": serviceId default serviceActiveId,
+	"cuenta_facturacion": "",
+	"producto": requestPqr.service.product,
+	"numnumero_pedido": "",
+	"pqr_reclamo_pqr": "",
+	"tipo_pqr_reclamo": "",
+	"cun": requestPqr.pqr.cunRelated,
+	"servicio": serviceName default serviceActiveName,
+	"tecnologia": serviceTechnology default serviceActiveTechnology,
+	"tipo_pqr": requestPqr.pqr.pqrType,
+	"clase_pqr": requestPqr.pqr.failure.class,
+	"motivo_pqr": requestPqr.pqr.failure.reason,
+	"causal_pqr": requestPqr.pqr.failure.causal,
+	"urgencia_pqr": "",
+	"impacto": "",
+	"sintoma_pqr": "",
+	"valor_reclamado": "0",
+	"valor_ajustado": "0",
+	"fecha_creacion": now() as String,
+	"fecha_radicacion": "",
+	"fecha_solucion": "",
+	"solucion": requestPqr.pqr.solution,
+	"imputabilidad": "",
+	"estado_pqr": "Abierto",
+	"estado_envio_remedy": "",
+	"Tipo_cierre": "",
+	"medio_notificacion_pqr": "",
+	"medio_recepcion": "",
+	"descripcion_pqr": requestPqr.pqr.description,
+	"respuesta_pqr": "",
+	"num_incidendia_remedy": "",
+	"respuesta_remedy": "",
+	"id_sistema_origen": origin.system.Sistema_Origen,
+	"sistema_origen": origin.system.Sistema_Origen,
+	"lsp_origen_llamada": "",
+	"lsp_tercer_destino": "",
+	"indicador_pqr_completa": "",
+	"correo_electronico": requestPqr.customer.email default requestPqr.pqr.contact.email,
+	"cun_falla_masiva": requestPqr.pqr.cunMassiveFailure,
+	"direccion_notificacion_escrita": null,
+	"radicado_externo": "",
+	"flag_recurso_apelacion": false,
+	"flag_traslado_gobierno": false,
+	"flag_reapertura": false,
+	"prioridad": "",
+	"usuario_creador": origin.user,
+	"usuario_asignado": "",
+	"comentarios": "",
+	"nombre_cliente": "",
+	"segmento_cliente": "",
+	"codigo_resolucion": null,
+	"descripcion_resolucion": null,
+	"subcanal": origin.channel.Canal_Origen,
+	"punto": "",
+	"proveedor": "",
+	"gerencia": "",
+	"semaforo": "",
+	"dias_habiles": "",
+	"Fecha_Inicio_Espera": null,
+	"Fecha_Fin_Espera": null,
+	"cun_relacionado": "",
+	"nombre_contacto": "",
+	"canal_recepcion": "",
+	"pqr_extensiones": [],
+	"pqr_actividades_pqr": [],
+	"pqr_archivos_adjuntos": requestPqr.pqr.attachment map(attachment, idx) ->{
+		"archivo_adjunto": attachment.name
+	},
+	"version_pqr": "1",
+	"flag_notificacion": false,
+	"flag_fallaJoven": false,
+	"tipo_falla": requestPqr.pqr.failure.botFailure
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="post-pqr-mongo-db-sapi-client-sub-flow"
+				doc:id="5282ace0-2c72-4e72-88bb-8cfde77718e0"
+				name="post-pqr-mongo-db-sapi-client-sub-flow" />
+		</async>
+	</sub-flow>
+</mule>

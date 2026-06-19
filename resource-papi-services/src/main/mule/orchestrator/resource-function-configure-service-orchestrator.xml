@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-resource-function-configure-service-orchestratorSub_Flow" doc:id="02639f16-4609-4595-986f-b7d2dc457e68" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="34cc526c-7b46-4902-ae23-5189c2f63625" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="2f21dc5f-808b-4119-b7f4-532b7fbe4a73" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="c0c1ebc5-4e98-4fc3-8e0f-3f84c433f795" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+"WSRequestBody": {
+    "Dual": payload.dual default "",
+    "New_Network_State": payload.newNetworkState default "",
+    "Phone": payload.connectionNumber default "",
+    "Serial": payload.serial default "",
+    "SyncUp": payload.syncUp default "",
+    "Audit": {
+      "Canal": vars.headers.name
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="6587ea0b-7f9a-4984-9197-ba7612747bb0" name="soporte1n-setwifinetworkstate-bot-sapi-2-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="06c7268d-c66f-41a1-977b-c7d3263bd5b3" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="0bc1262e-ea09-4789-8236-2cd7d719fd97" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: vars.httpStatus as String,
+    messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+	detail: {
+	 numberPqr: payload.WSResponseBody.Num_PQR default ""
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
