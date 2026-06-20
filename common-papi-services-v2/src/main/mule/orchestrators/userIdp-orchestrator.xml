@@ -94,7 +94,8 @@ output application/json
 		          ( "NumIdentificacion": vars.queryParams.documentNumber ) if (!isEmpty(vars.queryParams.documentNumber)),
 		          
 		          // Filtra por tipo de identificación si viene en el payload
-		          ( "TipoIdentificacion": vars.queryParams.documentType ) if (!isEmpty(vars.queryParams.documentType))
+		          ( "TipoIdentificacion": vars.queryParams.documentType ) if (!isEmpty(vars.queryParams.documentType)),
+		          "Estado_Registro": "Activado"
 				}
 			],
 			"cursor": {}
@@ -754,5 +755,231 @@ var token = vars.responseLoginIdp.idToken
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+	</sub-flow>
+	<sub-flow name="delete-userIdp-orchestratorSub_Flow" doc:id="50c8be45-856a-4b24-a5ff-35c9ed8dcfdd" >
+		<ee:transform doc:name="Set Variables" doc:id="aaf4477f-3739-4a4b-b70a-8bd2b19ba7c5" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="queryParams" ><![CDATA[attributes.queryParams]]></ee:set-variable>
+				<ee:set-variable variableName="fechaActual" ><![CDATA[{
+  "\$date": (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="24bf430f-4732-496e-bc99-82318418eb64" >
+			<when expression="#[isEmpty(vars.queryParams.email) and isEmpty(vars.queryParams.documentNumber)]" >
+				<set-variable value="400" doc:name="Set Variable" doc:id="88f1fc0c-2c7c-4449-8085-5ca9ca610d06" variableName="httpStatus"/>
+				<ee:transform doc:name="Set Body Response" doc:id="28f2ebef-d893-4255-b75b-fa0c26b3b96e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+
+---
+{
+  "codeResponse": "400",
+  "messageResponse": "No se enviaron los parametros suficientes para ejecutar la accion"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="http request mongo get userIdp" doc:id="ff680ce7-2c71-4f72-baa5-748178f48fd5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongoDbSapi.basePath"),
+	host: p("mongoDbSapi.host"),
+	port: p("mongoDbSapi.port"),
+	method: "POST",
+	path: p("mongoDbSapi.dynamicQuery.path"),
+	body: {
+  		"query": {
+			"aggregate": p("mongoDbSapi.collections.userIDP"),
+			"pipeline": [
+				"\$match": {
+		          ( "Mail": vars.queryParams.email ) if (!isEmpty(vars.queryParams.email)),
+		          ( "NumIdentificacion": vars.queryParams.documentNumber ) if (!isEmpty(vars.queryParams.documentNumber)),
+		          ( "TipoIdentificacion": vars.queryParams.documentType ) if (!isEmpty(vars.queryParams.documentType)),
+		          "Estado_Registro": "Activado"
+				}
+			],
+			"cursor": {}
+   			}
+	},
+	headers: {
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="66309fc0-35ff-4d28-b582-4ebe4ae4e8a2" name="generic-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Object PORTAL_UNIF" doc:id="daacff7f-6ffa-4c2d-b536-40dacaaaf9ce" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var resultList = if (payload.result is Array) payload.result else [payload.result]
+
+var newestCustomer = resultList maxBy ((item) -> item."_id"."\$oid" as String)
+---
+newestCustomer]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[payload]" doc:name="Set Variable" doc:id="c9850be2-794e-4869-af19-9c66cd987db6" variableName="userPortalUni" />
+				<choice doc:name="Choice" doc:id="5ea3fc7d-fbe4-4e9d-861a-2112d3ca7953" >
+					<when expression="#[isEmpty(payload) or (payload.Idp? and isEmpty(payload.Idp.id))]" >
+						<ee:transform doc:name="Set Body Response" doc:id="1b7a1262-4193-44ee-afdc-e5781ec57db2" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+
+---
+{
+  "codeResponse": "404",
+  "messageResponse": "No se encontraron resultados",
+  "customer":  {} 
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="http request google search user" doc:id="b6211bef-2adf-4b58-881b-56cde9be984c" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("google-sapi.base-path"),
+	host: p("google-sapi.host"),
+	port: p("google-sapi.port"),
+	method: "POST",
+	path: p("google-sapi.resources.gcp.base-path") ++ p("google-sapi.resources.gcp.identity.path") ++ p("google-sapi.resources.gcp.identity.users.path") ++ p("google-sapi.resources.gcp.identity.users.delete.path"),
+	body: {
+	  "localId": payload.Idp.id
+	},
+	headers: {
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="go to client" doc:id="36aec0d5-afe1-4177-bb30-a2837cdd158e" name="google-sapi-clientSub_Flow"/>
+						<choice doc:name="Choice" doc:id="6b925017-54f9-4f25-9542-233187d4df36" >
+							<when expression="#[!isEmpty(payload.kind)]" >
+								<ee:transform doc:name="http request mongo get userIdp" doc:id="70d0e754-c8ee-4981-9f76-34e1639f567b" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongoDbSapi.basePath"),
+	host: p("mongoDbSapi.host"),
+	port: p("mongoDbSapi.port"),
+	method: "POST",
+	path: p("mongoDbSapi.dynamicQuery.path"),
+	body: { 
+	  "query" : {
+		  "update": p("mongoDbSapi.collections.userIDP"),
+		  "updates": [
+		    {
+		      "q": {
+		        "_id": {
+          			"\$oid": vars.userPortalUni."_id"."\$oid"
+        		 }
+		      },
+		      "u": {
+		        "\$set": {
+		          "FechaModificacion": vars.fechaActual,
+		          "Estado_Registro": "INACTIVO",
+		          "Idp.fechaUltActualizacion": vars.fechaActual
+		        }
+		      },
+		      "upsert": false,
+		      "multi": false
+		    }
+		  ]
+		}
+    },
+	headers: {
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<flow-ref doc:name="Flow Reference" doc:id="9e8bfe4f-5d14-4f5a-80d0-77a6032c7188" name="generic-sapi-clientSub_Flow" />
+								<ee:transform doc:name="Set Body Response Not Found" doc:id="3af4ecdc-d301-46c5-94d7-a99ee133e0b9" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+
+---
+{
+  "codeResponse": "200",
+  "messageResponse": "Usuario Eliminado Exitosamente",
+  "customer":  {} 
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</when>
+							<otherwise >
+								<ee:transform doc:name="Set Body Response" doc:id="68a4946b-5818-4636-b61f-fa6f0455d032" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+
+---
+{
+  "codeResponse":  "500",
+  "messageResponse":  "No se recibio confirmacion de GCP al intentar eliminar el usuario",
+  "customer":  {} 
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</otherwise>
+						</choice>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
 	</sub-flow>
 </mule>
