@@ -565,9 +565,217 @@ var originalEmail = vars.originalRequest.customer.email default ""
 				<ee:set-variable variableName="uriParams" ><![CDATA[attributes.uriParams]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<ee:transform doc:name="http request mongo patch userIdp" doc:id="66e77bcf-f057-43e9-9462-0cf78c6e8d8a" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<ee:transform doc:name="http request google update user" doc:id="ea436ea7-d7bc-43de-ba63-c410dce011b2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("google-sapi.base-path"),
+	host: p("google-sapi.host"),
+	port: p("google-sapi.port"),
+	method: "POST",
+	path: p("google-sapi.resources.gcp.base-path") ++ p("google-sapi.resources.gcp.identity.path") ++ p("google-sapi.resources.gcp.identity.users.path") ++ p("google-sapi.resources.gcp.identity.users.update.path"),
+	body: {
+	  "localId": vars.uriParams.id,
+	  "email": vars.originalRequest.customer.email,
+	  "password": {
+		"value": vars.originalRequest.customer.password.value,
+		"iv": vars.originalRequest.customer.password.iv
+	  }
+	},
+	headers: {
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="go to client" doc:id="84de8abf-53d3-4611-8691-0063fcdcfdce" name="google-sapi-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="878cd36f-7135-4e40-87db-1a4f26220325" >
+			<when expression="#[!isEmpty(payload.localId)]">
+				<ee:transform doc:name="http request mongo get userIdp" doc:id="41e1c88d-f2a5-4372-9cfb-425a21a35607">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongoDbSapi.basePath"),
+	host: p("mongoDbSapi.host"),
+	port: p("mongoDbSapi.port"),
+	method: "POST",
+	path: p("mongoDbSapi.dynamicQuery.path"),
+	body: {
+  		"query": {
+			"aggregate": p("mongoDbSapi.collections.userIDP"),
+			"pipeline": [
+				"\$match": {
+				 "Idp.id": vars.uriParams.id,
+		          "Estado_Registro": "Activado"
+				}
+			],
+			"cursor": {}
+   			}
+	},
+	headers: {
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="a4103825-5a45-4039-9606-81ef61b47335" name="generic-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Object PORTAL_UNIF" doc:id="0352313a-eede-4165-8f0e-964f648751e0">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var resultList = if (payload.result is Array) payload.result else [payload.result]
+
+var newestCustomer = resultList maxBy ((item) -> item."_id"."\$oid" as String)
+---
+newestCustomer]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="560fd5ae-663d-428e-b4c0-f7f5cdf68e9c" message="#[payload]"/>
+				<choice doc:name="Choice" doc:id="8af845f7-2745-4b39-a4c6-ebf3a3f455a2">
+					<when expression="#[isEmpty(payload.Mail)]">
+						<ee:transform doc:name="http request google search user" doc:id="d2955a7e-7ab2-4cbb-bd44-2bd9fc2d7160" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("google-sapi.base-path"),
+	host: p("google-sapi.host"),
+	port: p("google-sapi.port"),
+	method: "POST",
+	path: p("google-sapi.resources.gcp.base-path") ++ p("google-sapi.resources.gcp.identity.path") ++ p("google-sapi.resources.gcp.identity.users.path") ++ p("google-sapi.resources.gcp.identity.users.search.path"),
+	body: {
+	  "localId": [vars.uriParams.id]
+	},
+	headers: {
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="go to client" doc:id="c2f7ed32-2257-462d-93d7-5956e7653726" name="google-sapi-clientSub_Flow" />
+						<choice doc:name="Choice" doc:id="5d1b6e9e-ae06-41fa-8dce-ea23086b34cd" >
+							<when expression="#[!isEmpty(payload.users)]" >
+								<ee:transform doc:name="http request mongo get userIdp" doc:id="eebda43f-df92-4991-a467-7364e5e4d711" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var rawAttributes = payload.users[0].customAttributes default ""
+var parsedAttributes = if (!isEmpty(rawAttributes)) 
+                           rawAttributes read "application/json" 
+                       else {}
+
+---
+{
+	basePath: p("mongoDbSapi.basePath"),
+	host: p("mongoDbSapi.host"),
+	port: p("mongoDbSapi.port"),
+	method: "POST",
+	path: p("mongoDbSapi.dynamicQuery.path"),
+	body: { 
+	  "query" : {
+	    "insert": p("mongoDbSapi.collections.userIDP"),
+	    "documents": [
+			  {
+				"Actualizacion_Contraseña": true,
+				"FechaActivacion": vars.fechaActual,
+				"FechaActualizacionPwd": null,
+				"FechaCreacion": vars.fechaActual,
+				"FechaModificacion": vars.fechaActual,
+				"Estado": true,
+				"Estado_Registro": "Activado",
+				"Identificador_Peticion_Creacion": vars.headers."X-CORRELATION-ID",
+				"Mail": payload.users[0].email,
+				"NumIdentificacion": parsedAttributes.documentNumber,
+				"Password": "",
+				"Requiere_Actualizar_Pwd": false,
+				"TipoIdentificacion": parsedAttributes.documentType,
+				"TipoRegistro": "Registro Light",
+				"Widgets": [
+				{
+				    "Application_Date": vars.fechaActual,
+				"Widget": {
+				"_id": {
+   					 "\$oid": "62a22c1d1144eda2a0f12864"
+  					},
+				"Widget": "Servicios"
+				        }
+				    }
+				],
+				"Idp": {
+					"id": payload.users[0].localId,
+					"estado": true,
+					"fechaCreacion": vars.fechaActual,
+					"fechaUltActualizacion": vars.fechaActual
+				    }
+			  }
+	      ]
+	 }
+    },
+	headers: {
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<flow-ref doc:name="Flow Reference" doc:id="df5d75cb-5619-4cba-9da3-a095ad84364d" name="generic-sapi-clientSub_Flow" />
+							</when>
+						</choice>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="http request mongo patch userIdp" doc:id="66e77bcf-f057-43e9-9462-0cf78c6e8d8a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -582,14 +790,14 @@ output application/json
 		  "updates": [
 		    {
 		      "q": {
-		        "_id": {
-          			"\$oid": vars.uriParams.id
-        		 }
+		        "Idp.id": vars.uriParams.id
+        		 
 		      },
 		      "u": {
 		        "\$set": {
 		          "FechaModificacion": vars.fechaActual,
-		          "Mail": payload.customer.mail
+		          "Mail": vars.originalRequest.customer.email,
+		          "Idp.fechaUltActualizacion": vars.fechaActual
 		        }
 		      },
 		      "upsert": false,
@@ -615,30 +823,48 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="Flow Reference" doc:id="7e28da25-cbb4-4d1f-ae94-885e39428761" name="generic-sapi-clientSub_Flow"/>
-		<ee:transform doc:name="Set Body Response" doc:id="e1b5171b-92d5-4224-aa9b-e4665975d0d8" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+						<logger level="INFO" doc:name="Logger" doc:id="5d99d49b-7e5f-4dc7-83a3-3831e208510c" message="#[payload]"/>
+						<flow-ref doc:name="Flow Reference" doc:id="7e28da25-cbb4-4d1f-ae94-885e39428761" name="generic-sapi-clientSub_Flow" />
+					</otherwise>
+				</choice>
+				<ee:transform doc:name="Set Body Response" doc:id="cda79ac1-d6d6-4994-b56e-89029638a3c5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
-// Guardamos la validación de MongoDB en una variable bohemia para legibilidad
-var isSuccessfullyRegistered = (payload.result.ok == 1) and (payload.result.n >= 1)
-
-var originalEmail = vars.originalRequest.customer.mail default ""
 ---
 {
-  "codeResponse": payload.codigo,
-  "messageResponse": if (isSuccessfullyRegistered) "operacion realizada exitosamente" else "No se pudo actualizar el cliente",
-  ("customer": {
+  "codeResponse": "200",
+  "messageResponse": "Usuario Actualizado Exitosamente",
+  "customer": {
     "idp": {
-      "creationDate": "",
-      "id": ""
-    },
-    "mail": originalEmail
-  }) if (isSuccessfullyRegistered)
+      "id": vars.uriParams.id
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set Body Response" doc:id="e1b5171b-92d5-4224-aa9b-e4665975d0d8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+  "codeResponse": "500",
+  "messageResponse": "No se pudo actualizar el usuario",
+  "customer": {
+    "idp": {
+      "id": vars.uriParams.id
+    }
+  }
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 	<sub-flow name="userIdp-login-orchestratorSub_Flow" doc:id="46245d8c-1398-46ec-8c94-7abae6414af6" >
 		<ee:transform doc:name="Set Variables" doc:id="a9e1b0ab-b892-4a54-9f49-caa5c7f4051e" >
@@ -893,7 +1119,7 @@ output application/json
 						<flow-ref doc:name="go to client" doc:id="36aec0d5-afe1-4177-bb30-a2837cdd158e" name="google-sapi-clientSub_Flow"/>
 						<choice doc:name="Choice" doc:id="6b925017-54f9-4f25-9542-233187d4df36" >
 							<when expression="#[!isEmpty(payload.kind)]" >
-								<ee:transform doc:name="http request mongo get userIdp" doc:id="70d0e754-c8ee-4981-9f76-34e1639f567b" >
+								<ee:transform doc:name="http request mongo update userIdp" doc:id="70d0e754-c8ee-4981-9f76-34e1639f567b" >
 									<ee:message >
 										<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
