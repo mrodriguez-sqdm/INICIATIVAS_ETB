@@ -251,6 +251,36 @@ output application/json
 ]]></ee:set-payload>
 							</ee:message>
 						</ee:transform>
+				<ee:transform doc:name="Apply Pagination Customer" doc:id="1ba57968-c2cb-472e-a08f-5f7110529f68">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var profile = upper((Mule::p('pagination.profile') default "Bajo") as String)
+var maxLimit = if (profile == "ALTO") ((Mule::p('pagination.profiles.alto.max') default 100) as Number) else if (profile == "MEDIO") ((Mule::p('pagination.profiles.medio.max') default 50) as Number) else ((Mule::p('pagination.profiles.bajo.max') default 25) as Number)
+var defaultLimit = maxLimit
+var defaultOffset = (Mule::p('pagination.default.offset') default 0) as Number
+var reqLimit = (vars.parameters.limit default defaultLimit) as Number
+var reqOffset = (vars.parameters.offset default defaultOffset) as Number
+var limit = if (reqLimit > maxLimit) maxLimit else if (reqLimit < 0) 0 else reqLimit
+var offset = if (reqOffset < 0) 0 else reqOffset
+var customer = payload.customer default null
+var customerArr = if (customer is Array) customer else null
+var lastIndex = if (customerArr is Array) sizeOf(customerArr) - 1 else -1
+var toIndex = if (customerArr is Array) min([offset + limit - 1, lastIndex]) else -1
+---
+((payload - "customer")
+    ++ {
+      customer:
+        if (!(customerArr is Array))
+          null
+        else if (sizeOf(customerArr) == 0 or offset > lastIndex)
+          []
+        else
+          customerArr[offset to toIndex]
+    })
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
 			</when>
 						<otherwise >
 				<ee:transform doc:name="Transform Message" doc:id="a881f5ac-838a-489b-ab74-d0c6aecb7980" >

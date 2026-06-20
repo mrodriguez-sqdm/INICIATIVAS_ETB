@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
-	xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
-http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
 	<sub-flow name="product-order-create-orchestratorSub_Flow" doc:id="427d5021-21b6-4808-9363-450eb0e2fc39" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable headers" doc:id="f794dea2-bd6e-49e5-a232-c38d3432facf" variableName="headers"/>
 		<set-variable value="#[payload]" doc:name="Save Body Request Order" doc:id="521638ea-c45f-43b0-9197-80d567093f04" variableName="RequestOrder"/>
-		<flow-ref doc:name="Get Rules Mongo" doc:id="2a46b538-fa32-4ba4-ac24-d1f023b4c965" name="get-reglas-orden-mdm-cachingSub_Flow"/>
+		<flow-ref doc:name="Obtener Reglas MONGO/CHACHE" doc:id="ac8370f9-83ed-4bb1-a992-1e41eb2c0e2c" name="get-reglas-orden-mdm-cachingSub_Flow"/>
 		<ee:transform doc:name="Filter Rules" doc:id="72f1321d-9898-4d5a-89c6-3a03369317cb" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
@@ -77,174 +79,390 @@ output application/json
 			</when>
 
 			<otherwise >
-				<ee:transform doc:name="Transform Message" doc:id="73c11fdf-dfca-4390-bc73-79b59087fefd" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
----
-{ 
-"query" :{
- findAndModify: "MDM_CD_CONSECUTIVO",
- query: { Serie: "SecuenciaOrden"
-  },
-  update: { "\$inc": { Secuencia: 1 } },
-  new: true
-}
-}
- ]]></ee:set-payload>
-					</ee:message>
-					<ee:variables >
-						<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
-output application/json
----
-"POST"]]></ee:set-variable>
-						<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
-output application/json
----
-p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-				<flow-ref doc:name="Get Consecutive" doc:id="501c888d-54a2-44eb-a2a3-e1a1f1ac82ca" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="resultadoConsecutivo"/>
-				<ee:transform doc:name="Transform Message" doc:id="9b9d81c8-5378-427c-a08a-20a71f3dba7c" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
+				<scatter-gather doc:name="Scatter-Gather" doc:id="c21dc223-68e5-433c-92e2-f1c11a6cfdb9" >
+					<route >
+						<flow-ref doc:name="Build NumeroOrden" doc:id="3a465431-51bd-4649-bd66-038d19be08e6" name="generate-OrderNumber-Sub_Flow" target="orderNumber"/>
+					</route>
+					<route >
+						<flow-ref doc:name="Build ServicioTramite" doc:id="08f9b1d1-ede0-4ea6-bb05-b1f82244ef90" target="resultadoProductos" name="build-ServicioTramite-Sub_Flow"/>
+						
+					</route>
+					<route >
+						<ee:transform doc:name="Build ClienteTramite" doc:id="cc37e7fc-22a4-4993-8b97-471cde05108a" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="clienteTramite" ><![CDATA[%dw 2.0
 output application/json
 
-// Accedemos a los datos desde la variable RequestOrder
+fun findObject(nombreLlave) = 
+    (vars.resultadoSapi filter ($.llave == nombreLlave))[0].objeto default {}
+
+var objectCustomer = findObject("MDM_CLIENTE")
+---
+{
+  Cliente_Tramite: {
+    "_id": {
+   "\$oid": objectCustomer."_id"."\$oid"
+  },
+    Tipo_Documento: objectCustomer.Tipo_Documento,
+    Tipo_Cliente: objectCustomer.Tipo_Cliente,
+    Nombre_Corto_Empresa: objectCustomer.Nombre_Corto_Empresa,
+    Nombre_Cliente: objectCustomer.Nombre_Cliente,
+    Estado: objectCustomer.Estado,
+    Segmento: objectCustomer.Segmento,
+    Segmento_UEN: objectCustomer.Segmento_UEN,
+    UEN: objectCustomer.UEN,
+    Categoria: objectCustomer.Categoria,
+    Cliente_Valor: objectCustomer.Cliente_Valor,
+    EsquemaAtencion: objectCustomer.EsquemaAtencion,
+    ServiciosPS: objectCustomer.ServiciosPS,
+    Telefono_Fijo: objectCustomer.Telefono_Fijo,
+    Telefono_Movil: objectCustomer.Telefono_Movil,
+    Extension: objectCustomer.Extension,
+    Telefono_Movil2: objectCustomer.Telefono_Movil2,
+    Email: objectCustomer.Correo_Electronico,
+    Direccion: objectCustomer.Direccion,
+    Cobertura: objectCustomer.Cobertura,
+    Pais: objectCustomer.Pais,
+    Departamento: objectCustomer.Departamento,
+    Ciudad: objectCustomer.Ciudad,
+    Barrio: objectCustomer.Barrio,
+    Localidad: objectCustomer.Localidad,
+    Estrato: objectCustomer.Estrato,
+    Usuario_Modificador: lower(objectCustomer.Usuario_Modificador),
+    Autorizacion_Datacredito: objectCustomer.Autorizacion_Datacredito,
+    Fecha_Expedicion_Documento: objectCustomer.Fecha_Expedicion_Documento,
+    Fecha_Nacimiento: objectCustomer.Fecha_Nacimiento,
+    Genero: objectCustomer.Genero,
+    Rango_Edad: objectCustomer.Rango_Edad,
+    Estado_Civil: objectCustomer.Estado_Civil,
+    Ciudad_Exp_Documento: objectCustomer.Ciudad_Exp_Documento,
+    Depto_Exp_Documento: objectCustomer.Depto_Exp_Documento,
+    Scoring: objectCustomer.Scoring,
+    Tipo_Scoring: objectCustomer.Tipo_Scoring,
+    Clasificacion_Scoring: objectCustomer.Clasificacion_Scoring,
+    Fecha_Scoring: objectCustomer.Fecha_Scoring,
+    Fecha_Actualizacion: objectCustomer.Fecha_Creacion,
+    Sistema_Origen: null,
+    Modificado_MDM: objectCustomer.Modificado_MDM,
+    Id_Cuenta_Facturacion_Salesforce: objectCustomer.Id_Cuenta_Facturacion_Salesforce,
+    Ejecutivo_Experiencia: objectCustomer.Ejecutivo_Experiencia,
+    actualizacion_extractor: objectCustomer.actualizacion_extractor,
+    Caracteristica_Cliente: objectCustomer.Caracteristica_Cliente,
+    Id_Cuenta_Cliente: (objectCustomer.Id_Cuenta_Cliente default "") as Number default 0,
+    Nombres: objectCustomer.Nombres,
+    Primer_Apellido: objectCustomer.Primer_Apellido,
+    Segundo_Apellido: objectCustomer.Segundo_Apellido default "",
+    Fecha_Creacion: objectCustomer.Fecha_Creacion,
+    Direcciones: objectCustomer.Direcciones,
+    Cuenta_Facturacion_Id: objectCustomer.Cuenta_Facturacion_Id,
+    Cuenta_Servicio_Id: objectCustomer.Cuenta_Servicio_Id,
+    Adjuntos_Cliente: objectCustomer.Adjuntos_Cliente,
+    Scoring_Fija: objectCustomer.Scoring_Fija,
+    Fecha_Validacion_Identidad: objectCustomer.Fecha_Validacion_Identidad,
+    Autoriza_Manejo_Datos_Personales: objectCustomer.Autoriza_Manejo_Datos_Personales,
+    Autoriza_Consulta_Centrales: objectCustomer.Autoriza_Consulta_Centrales,
+    Datos_Empresa: objectCustomer.Datos_Empresa,
+    ATDP: objectCustomer.ATDP,
+    Contacto: (objectCustomer.Contacto default []) map (c) -> {
+      "_id": {
+   "\$oid": c."_id"."\$oid"
+  },
+      Autorizado: c.Autorizado,
+      Direccion_Asociada: c.Direccion_Asociada,
+      Email_Contacto: c.Email_Contacto,
+      Estado: c.Estado,
+      Movil_Contacto: c.Movil_Contacto,
+      Nombre_Contacto: c.Nombre_Contacto,
+      Nombre_Individual: c.Nombre_Individual,
+      Numero_Documento: c.Numero_Documento,
+      Primer_Apellido: c.Primer_Apellido,
+      Telefono_Contacto: c.Telefono_Contacto,
+      Tipo_Documento: c.Tipo_Documento
+    },
+    Comunicaciones_Cobranza: objectCustomer.Comunicaciones_Cobranza,
+    Usuario_Creacion: "",
+    Numero_Documento: objectCustomer.Numero_Identificacion
+  }
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</route>
+				</scatter-gather>
+				<scatter-gather doc:name="Scatter-Gather" doc:id="27f200ed-95c8-47bd-ab38-859f52073a90" >
+					<route >
+						<flow-ref doc:name="Build OrdenServicio" doc:id="e7fc298a-fb44-480a-a5bd-0c2d60d11382" name="build-OrdenServicio-Sub_Flow" target="ordenServicio" />
+					</route>
+					<route >
+						<flow-ref doc:name="Build code CUN" doc:id="6b6c6c5a-4097-4710-9f0b-4da15b4b08a5" name="build-CUN-orderSub_Flow" target="cun" />
+					</route>
+				</scatter-gather>
+				<flow-ref doc:name="Build Agendamiento" doc:id="6ae586c3-26a9-4edc-9a1a-9edb2a77f03d" name="build-agendamiento-orderSub_Flow" target="agendamiento"/>
+				<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="a996a268-4315-479c-9618-d02b3a3395a0" message="#[vars.agendamiento&#93;"/> [STUDIO] -->
+				<scatter-gather doc:name="Scatter-Gather" doc:id="f83dafd0-59b5-43bf-83ef-9615f29aeb95" >
+					<route >
+						<ee:transform doc:name="Set Body Insert MDM_CD_ORDEN" doc:id="9b9d81c8-5378-427c-a08a-20a71f3dba7c">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+
+// 1. Accedemos a los datos de entrada
 var inputData = vars.RequestOrder default {}
 
-var orderNum = vars.resultadoConsecutivo.result.value.Prefijo default "" ++ (vars.resultadoConsecutivo.result.value.Secuencia as String)
+
+var fechaActual = {
+        "\$date": (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+    }
+
+// 2. LA CLAVE: Función para buscar el objeto dentro del array de la variable
+// Busca en el array donde 'llave' coincida con el nombre y devuelve el campo 'objeto'
+fun findObject(nombreLlave) = 
+    (vars.resultadoSapi filter ($.llave == nombreLlave))[0].objeto default {}
 
 // Función para formatear fechas al estilo MongoDB
 fun toDate(d) = if (isEmpty(d)) null else { "\$date": d }
 
+// --- FUNCIÓN PARA EL CALCULO DEL ESTADO---
+fun calcularEstadoComercial(reglas) = do {
+    // 1. Limpiamos y ordenamos por código para asegurar la línea de tiempo
+    var estadosLimpios = (reglas map (item) -> {
+        "esValido": item.esValido default false,
+        "estadoOrdenComercial": item.estadoOrdenComercial
+    }) orderBy (item) -> item.estadoOrdenComercial.Codigo
+
+    // 2. Filtramos solo las reglas que SI SE CUMPLIERON
+    var reglasExitosas = estadosLimpios filter (item) -> item.esValido == true
+
+    // 3. ¿Falló algo opcional? 
+    // Comparamos si el número de éxitos es igual al total de reglas enviadas
+    var todasPasaron = sizeOf(reglasExitosas) == sizeOf(estadosLimpios)
+    
+    // Definimos la fecha actual una sola vez para que sea consistente
+    var fechaActual = { "\$date": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"} }
+
+    ---
+    if (todasPasaron)
+        // CASO 1: Éxito total -> Estado Maestro
+        {
+            "Codigo": p("status-orchestrator.code"),
+            "Descripcion": p("status-orchestrator.description"),
+            "Fecha": fechaActual,
+            "Reintentos": 0,
+            "CodigoExcepcion": 0
+        }
+    else
+        // CASO 2: Algo falló (pero no fue obligatorio) 
+        // Retornamos el estado de la ÚLTIMA regla que sí tuvo éxito
+        (reglasExitosas[-1].estadoOrdenComercial ++ { 
+        "Fecha": fechaActual default "" ,
+            "Reintentos": 0,
+            "CodigoExcepcion": 0
+        } default {})
+}
+
+fun reBuildOrdenServicio(orden: Object, confirmaAgendamiento: Boolean) = do {
+	
+	if(confirmaAgendamiento)
+		orden update {
+	    	case estado at .Estado_Orden -> {
+		        "Codigo": p('estado-orden-servicio.ejecutar-agenda.codigo'),
+		        "CodigoExcepcion": estado.CodigoExcepcion,
+		        "Descripcion": p('estado-orden-servicio.ejecutar-agenda.descripcion'),
+		        "Excepcion": estado.Excepcion,
+		        "Fecha": estado.Fecha,
+		        "Reintentos": estado.Reintentos,
+	     	}
+		}
+	else
+		orden
+	
+}
+
+ 
+
 ---
-{ 
-	"query" : {
- "insert": "MDM_CD_ORDEN",
-  "documents": [
-    {
-  "Fecha_Creacion": toDate(inputData.createdAt),
-  "Fecha_Modificacion": toDate(inputData.updatedAt),
-  "Usuario_Modificacion": inputData.updatedBy,
-  "Usuario_Creacion": inputData.createdBy,
-  "Actualizacion_Extractor": inputData.extractorUpdate,
-  "Numero_Orden": orderNum as String,
-  "Canal": inputData.channel,
-  "Fase": inputData.phase,
-  
-  "Estado_Orden_Comercial": {
-    "Codigo": inputData.commercialOrderStatus.code,
-    "Descripcion": inputData.commercialOrderStatus.description,
-    "Fecha": toDate(inputData.commercialOrderStatus.date),
-    "Reintentos": inputData.commercialOrderStatus.retries,
-    "CodigoExcepcion": inputData.commercialOrderStatus.exceptionCode,
-    "Excepcion": inputData.commercialOrderStatus.exception
-  },
-  
-  "Tramite": {
-    "Tipo_Tramite": inputData.through.throughType,
-    "Subtipo_Tramite": if (isEmpty(inputData.through.throughSubtype)) null else inputData.through.throughSubtype,
-    "Fecha_Tramite": toDate(inputData.through.throughDate),
-    "Fecha_Reconexion": toDate(inputData.through.reconnectionDate),
-    "Fecha_Suspension": toDate(inputData.through.suspensionDate),
-    "Fecha_Ejecucion": toDate(inputData.through.executionDate),
-    "Conservar_Numero_Conexion": inputData.through.keepConnectionNumber,
-    "Clausula_Permanencia": inputData.through.permanenceClause,
-    "Valor_Clausula_Permanencia": inputData.through.permanenceClauseValue,
-    "Causal_Cancelacion": if (isEmpty(inputData.through.cancellationReason)) null else inputData.through.cancellationReason,
-    "Subcausal_Cancelacion": if (isEmpty(inputData.through.cancellationSubreason)) null else inputData.through.cancellationSubreason,
-    "Descripcion_Cancelacion": if (isEmpty(inputData.through.cancellationDescription)) null else inputData.through.cancellationDescription,
-    "MotivosOrden": if (isEmpty(inputData.through.orderMotives)) null else inputData.through.orderMotives
-  },
-  
-  "CUN": inputData.cun,
-  
-  "Cliente_Tramite": {
-    "Tipo_Documento": inputData.requestCustomer.documentType,
-    "Numero_Documento": inputData.requestCustomer.documentNumber,
-    "Nombres": inputData.requestCustomer.firstName,
-    "Primer_Apellido": inputData.requestCustomer.firstLastName,
-    "Segundo_Apellido": inputData.requestCustomer.secondLastName,
-    "Fecha_Expedicion": toDate(inputData.requestCustomer.expeditionDate),
-    "UEN": inputData.requestCustomer.businessUnit,
-    "Segmento": inputData.requestCustomer.segment,
-    "Email": inputData.requestCustomer.email,
-    "Telefono_Movil": inputData.requestCustomer.mobilePhone,
-    
-    "Contactos": inputData.requestCustomer.contacts map (contact, index) -> {
-      "_id": { "\$oid": contact.id },
-      "Tipo_Documento": contact.documentType,
-      "Numero_Documento": contact.documentNumber,
-      "Nombres": contact.firstName,
-      "Primer_Apellido": contact.firstLastName,
-      "Departamento": contact.state,
-      "Ciudad": contact.city,
-      "Direccion": contact.address,
-      "Autorizado": contact.isAuthorized
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+  "query" : {
+    "insert": "MDM_CD_ORDEN",
+    "documents": [
+      {
+        "Fecha_Creacion": fechaActual,
+        "Fecha_Modificacion": null,
+        "Usuario_Modificacion": null,
+        "Usuario_Creacion": inputData.createdBy,
+        "Actualizacion_Extractor": "1",
+        "Numero_Orden": vars.orderNumber,
+        "Canal": "Canal_Fibra",
+        "Fase": "ORDERF",
+        
+        "Estado_Orden_Comercial": calcularEstadoComercial(vars.reglasAcumuladas),
+        
+        "Tramite": {
+          "Tipo_Tramite": inputData.through.throughType,
+          "Subtipo_Tramite": inputData.through.throughSubtype default "",
+          "Fecha_Tramite": fechaActual,
+          "Fecha_Reconexion": null,
+          "Fecha_Suspension": null,
+          "Fecha_Ejecucion": fechaActual,
+          "Conservar_Numero_Conexion": false,
+          "Clausula_Permanencia": true,
+          "Valor_Clausula_Permanencia": 0,
+          "Causal_Cancelacion": null,
+          "Subcausal_Cancelacion": null,
+          "Descripcion_Cancelacion": null,
+          "MotivosOrden": null
+        },
+        "Tipo_Servicio": null,
+        "CUN": vars.cun.cun,
+        "Cliente_Anterior": null,
+        "Cliente_Tramite": vars.clienteTramite.Cliente_Tramite,
+		"Servicio_Anterior": null,
+        "Servicio_Tramite": vars.resultadoProductos.Servicio_Tramite,
+        "Orden_Servicio": reBuildOrdenServicio(vars.ordenServicio.Orden_Servicio as Object,vars.agendamiento.confirmaAgendamiento),
+        "Agendamiento": vars.agendamiento.agendamiento,
+        "Orden_Activacion": null,
+  		"Cuenta_Facturacion_Anterior": null,
+		"Cuenta_Facturacion_Tramite": {
+		    "_id": {
+		      "\$oid": "000000000000000000000000"
+		    },
+		    "Fecha_Creacion": null,
+		    "Fecha_Modificacion": null,
+		    "Usuario_Modificacion": null,
+		    "Usuario_Creacion": null,
+		    "Actualizacion_Extractor": null,
+		    "Id_Cuenta_Facturacion": null,
+		    "Cliente_Basico": null,
+		    "Estado": null,
+		    "Tipo_Facturacion": "",
+		    "Tipo_Factura": "",
+		    "Tipo_Envio": "",
+		    "Valor_Factura": 0,
+		    "Valor_Factura_Formato": null,
+		    "Email_Facturacion": "",
+		    "Ciclo_Facturacion": null,
+		    "Dia_Corte": 0,
+		    "Mora": false,
+		    "Id_Direccion_Facturacion": 2,
+		    "Fecha_Suspension": null,
+		    "Ciclo_Charging": 0,
+		    "Codigo_Ciclo_Charging": 0,
+		    "Cuentas_Servicio": null,
+		    "Fecha_Corte_Facturacion": null
+		  },
+  		"Orden_Requiere_Disponibilidad": if(vars.ordenServicio.Factibilidad default false) true else null,
+	  	"Orden_Requiere_Agendamiento": if(vars.ordenServicio.Factibilidad default false) false else null,
+	  	"Precio_Total_Orden": "",
+	  	"Adjuntos": {
+        "Servicio": (inputData.attachments.service default []) map (item) -> {
+            "nombre": item.fileName,
+            "ruta": item.path,
+            "tamano": item.size
+        }
     },
-    
-    "Direcciones": inputData.requestCustomer.addresses map (addr, index) -> {
-      "Id_Direccion": addr.addressId,
-      "Direccion_Normalizada": addr.normalizedAddress,
-      "Tipo_Direccion": addr.addressType,
-      "Departamento": addr.state,
-      "Municipio": addr.municipality,
-      "Estado": addr.status,
-      "Seleccionada": addr.isSelected,
-      "Cobertura": if (addr.coverage != null) {
-        "Tipo_Cobertura": addr.coverage.coverageType,
-        "Estrato": addr.coverage.stratum,
-        "Tecnologia": addr.coverage.technology,
-        "Viable": addr.coverage.isViable
-      } else null
-    }
-  },
-
-  "Servicio_Tramite": {
-    "Id_Cuenta_Servicio": inputData.requestService.serviceAccountId,
-    "Bundle": {
-      "_id": { "\$oid": inputData.requestService.bundle.id },
-      "Nombre": inputData.requestService.bundle.name,
-      "Estado": inputData.requestService.bundle.status,
-      "Precio_Oferta": inputData.requestService.bundle.offerPrice map (price) -> {
-        "Precio_Sin_Iva": price.priceWithoutTax,
-        "Precio_Con_Iva": price.priceWithTax,
-        "Iva": price.tax
-      },
-      "Parametros_bundle": inputData.requestService.bundle.bundleParameters map (param) -> {
-        "Parametro": param.parameter,
-        "Valor": param.value
+	  	"Adjuntos_Cliente": null,
+  		"Adjuntos_Servicio": null,
+  		"Caracteristica_Orden": inputData.orderCharacteristics default [] map (item) -> {
+	        "Caracteristica": item.characteristic,
+	        "Valor": item.value
+    	},
+  		"Otros": {
+		    "Envio_Contrato": "",
+		    "Usuario_Venta": "",
+		    "Medio_Comunicacion": ""
+		  },
+		 "Presencial": false,
+  		 "OfertaSugerida": [],
+  	 	 "Reserva": null
       }
-    }
+    ]
   }
-}
-
-]
-
-}
-
+},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
 }]]></ee:set-payload>
 					</ee:message>
-					<ee:variables >
-						<ee:set-variable variableName="orderNumber" ><![CDATA[%dw 2.0
-output application/json
----
-vars.resultadoConsecutivo.result.value.Prefijo default "" ++ (vars.resultadoConsecutivo.result.value.Secuencia as String)]]></ee:set-variable>
+					<ee:variables>
 					</ee:variables>
 				</ee:transform>
-				<flow-ref doc:name="InsertOrder" doc:id="4e44b7c5-a077-40b5-bdf5-dddcc54d43ec" name="mongo-db-sapi-post-dynamic-clientSub_Flow"/>
-				<ee:transform doc:name="Transform Message" doc:id="bbc03bd9-0ff0-46c0-9495-68990edc0b33" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
+						<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="ee0f98ed-c50f-4ad3-91f2-ae34b3189eb0" message="#[payload&#93;"/> [STUDIO] -->
+						<flow-ref doc:name="InsertOrder" doc:id="4e44b7c5-a077-40b5-bdf5-dddcc54d43ec" name="generic-sapi-clientSub_Flow" />
+					</route>
+					<route >
+						<ee:transform doc:name="Set Body Insert MDM_REGLAS_ORDEN" doc:id="71ee1de7-cdbb-489e-9694-5eacbda60b35" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 {
-	code: if(payload.result.ok > 0) "200" else "500",
-	messageResponse: if(payload.result.ok > 0) "Order Created" else "Error Created Order",
-	order: {
-		orderNUmber: vars.orderNumber default "",
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+	  "query" : {
+	    "insert": "MDM_REGLAS_ORDEN",
+	    "documents": [
+	      {
+	        "Numero_Orden": vars.orderNumber as String,
+	        "Reglas_Aplicadas": vars.reglasAcumuladas
+	       }
+	      ]
+	 }
+    },
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
 		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Insert Reglas ejecutadas" doc:id="2ff8bbcd-c4b4-4bd6-9339-db7105347d54" name="generic-sapi-clientSub_Flow" />
+					</route>
+				</scatter-gather>
+				<flow-ref doc:name="Flow Reference" doc:id="34dda13e-683a-4022-a7f6-68efc9c77bc8" name="create-mdm-cd-servicioSub_Flow" target="mdm_cd_servicio"/>
+				<ee:transform doc:name="Transform Message" doc:id="bbc03bd9-0ff0-46c0-9495-68990edc0b33">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: if(payload."0".payload.result.ok > 0) "200" else "500",
+	messageResponse: if(payload."0".payload.result.ok > 0) "Order Created" else "Error Created Order",
+	order: {
+		orderNumber: vars.orderNumber default "",
+		cun: vars.cun.cun,
 		rulesApplied: vars.reglasAcumuladas map (regla) -> {
 			idRule: regla.idRegla,
 	        isValid: regla.esValido,
@@ -266,90 +484,26 @@ output application/json
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
+				<!-- [STUDIO:"Transform Message"]<ee:transform doc:name="Transform Message" doc:id="4f122348-b28f-42f1-b81c-01eb74285673" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+vars.ordenServicio&#93;&#93;></ee:set-payload>
+					</ee:message>
+				</ee:transform> [STUDIO] -->
 				
 </otherwise>
 		</choice>
 		
 	</sub-flow>
-	<sub-flow name="product-order-validate-rules-orchestratorSub_Flow" doc:id="2e2a5501-2313-41e1-8af2-f5cd6b25df57" >
-		<set-variable value="#[[]]" doc:name="Set Variable" doc:id="a7fee15c-0dcf-434a-9f9e-b9bcb6df581b" variableName="reglasAcumuladas"/>
-		<foreach doc:name="For Each Rule" doc:id="10a7c8d5-3856-49ab-8c6a-976faf12bfdd" collection="#[payload]">
-			<choice doc:name="Choice Action Type">
-        <when expression='#[payload.accion.sistema == "mongo-db-sapi-services"]'>
-					<set-variable value="#[payload]" doc:name="Set Variable" doc:id="b68959a2-89ca-4054-854a-7e71f9334d9e" variableName="currentRule"/>
-					<ee:transform doc:name="Transform Message" doc:id="a6b68854-8fc0-48d6-b393-bd49e827b16a" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
+	
 
-// 1. Obtenemos el Request Original
-var requestOriginal = vars.RequestOrder 
+	
 
-// 2. Función de navegación segura
-fun resolvePath(obj: Any, path: String) = 
-    if (path != null) 
-        path splitBy "." reduce (key, acc = obj) -> acc[key]
-    else null
+	
+	
+	
+	
 
-// 3. Construimos el filtro dinámico basado en las reglas
-var dynamicMatch = payload.accion.evaluacionRequest reduce (item, acc = {}) -> (
-    if (item.parametro != null and item.valor != null)
-        do {
-
-        	
-             // Resolvemos el valor real del request usando el path elegido
-           var valorReal =
-    if ((item.parametro default "") == "==" or isEmpty(item.parametro default ""))
-        item.comparacion
-    else
-        resolvePath(requestOriginal, item.parametro)
-            // Construimos la llave final (root o dot notation)
-            var llaveFinal = if (item.contenedor == "root") item.valor 
-                             else (item.contenedor ++ "." ++ item.valor)
-            // Aplicamos lógica de Regex si es necesario
-            var valorFinal = if (item.usaRegex == true) {"\$regex": valorReal} 
-                             else valorReal
-            ---
-            acc ++ { (llaveFinal): valorFinal }
-        }
-    else acc
-)
-
----
-{
-  "query": {
-    "aggregate": payload.accion.coleccion,
-    "pipeline": [
-      {
-        // Envolvemos el resultado en un $match para que Mongo filtre
-        "\$match": dynamicMatch
-      }
-    ],
-    "cursor": {}
-  }
-}]]></ee:set-payload>
-						</ee:message>
-						<ee:variables >
-							<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
-output application/json
----
-vars.currentRule.accion.metodo default "POST"]]></ee:set-variable>
-							<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
-output application/json
----
-vars.currentRule.accion.path default ""]]></ee:set-variable>
-						</ee:variables>
-					</ee:transform>
-					<flow-ref doc:name="Flow Reference" doc:id="79a6cdcc-47a6-4a48-8f46-f3dc5107ffc4" name="mongo-db-sapi-post-dynamic-clientSub_Flow"/>
-					<set-variable value="#[%dw 2.0&#10;output application/json&#10;&#10;// Importamos la librería de fechas&#10;import * from dw::core::Dates&#10;&#10;// 1. Datos de origen (usando tus nombres de variables actuales)&#10;var requestOriginal = vars.requestOriginal &#10;var mongoResponse = payload default {} &#10;var validaciones = vars.currentRule.accion.evaluacionRespuesta default []&#10;&#10;// --- FUNCIONES CORE ---&#10;fun resolvePath(obj: Any, path: Any, isManual: Boolean = false) = do {&#10;    var isSizeRequest = (path as String) matches /size\(.*\)/&#10;    var cleanPath = if (isSizeRequest) &#10;                        (path as String) replace &quot;size(&quot; with &quot;&quot; replace &quot;)&quot; with &quot;&quot;&#10;                    else path as String&#10;    &#10;    var fullPath = if (isManual) cleanPath&#10;                   else if (cleanPath contains &quot;payload.&quot;) cleanPath replace &quot;payload.&quot; with &quot;&quot; &#10;                   else if (cleanPath contains &quot;result.&quot;) cleanPath&#10;                   else &quot;result[0].&quot; ++ cleanPath&#10;    ---&#10;    do {&#10;        var extractedData = (fullPath as String) splitBy &quot;.&quot; reduce (key, acc = obj) -&gt; (&#10;            if (acc == null) null &#10;            else if (key contains &quot;[&quot;) do {&#10;                var parts = key splitBy &quot;[&quot;&#10;                var attr = parts[0]&#10;                var index = (parts[1] replace &quot;]&quot; with &quot;&quot;) as Number&#10;                ---&#10;                if (acc[attr] != null) acc[attr][index] else null&#10;            } else acc[key]&#10;        )&#10;        ---&#10;        if (isSizeRequest) &#10;            if (extractedData is Array) sizeOf(extractedData)&#10;            else if (extractedData is Object) sizeOf(keysOf(extractedData))&#10;            else if (extractedData == null) 0&#10;            else 1&#10;        else extractedData&#10;    }&#10;}&#10;&#10;fun getExpectedValue(expected: Any) = &#10;    if (expected != null and expected is String and (expected matches /\{\{.*\}\}/)) do {&#10;        var pathReq = expected replace &quot;{{&quot; with &quot;&quot; replace &quot;}}&quot; with &quot;&quot;&#10;        ---&#10;        (pathReq as String) splitBy &quot;.&quot; reduce (key, acc = requestOriginal) -&gt; acc[key]&#10;    }&#10;    else expected&#10;&#10;fun checkCondition(actual, operator, expected) = do {&#10;    var a = if (actual != null and !(actual is Array) and !(actual is Object)) trim(actual as String) else actual&#10;    var e = if (expected != null and !(expected is Array) and !(expected is Object)) trim(expected as String) else expected&#10;    ---&#10;    operator match {&#10;        case &quot;exists&quot; -&gt; actual != null&#10;        case &quot;not_exists&quot; -&gt; actual == null&#10;        case &quot;max_30_days&quot; -&gt; do {&#10;            var hoy = now() as Date&#10;            var fechaEvaluar = actual as Date default null&#10;            ---&#10;            if (fechaEvaluar != null) abs(daysBetween(fechaEvaluar, hoy)) &lt;= 30 else false&#10;        }&#10;        case &quot;&gt;&quot; -&gt; (actual default 0) &gt; (expected default 0)&#10;        case &quot;==&quot; -&gt; a == e&#10;        case &quot;!=&quot; -&gt; a != e&#10;        case &quot;is_not_empty&quot; -&gt; !isEmpty(actual)&#10;        else -&gt; false&#10;    }&#10;}&#10;&#10;// --- PROCESAMIENTO ---&#10;var listaResultados = validaciones map (item) -&gt; do {&#10;    var categoriaRequest = lower(requestOriginal.category default &quot;&quot;)&#10;    var pathFinalMongo = if (item.campoResultado contains &quot;{category}&quot;)&#10;                            if (categoriaRequest == &quot;lte&quot;) &#10;                                item.campoResultado replace &quot;{category}&quot; with &quot;score_movil&quot;&#10;                            else &#10;                                item.campoResultado replace &quot;{category}&quot; with &quot;score_fija&quot;&#10;                         else &#10;                            item.campoResultado&#10;&#10;    var isManual = (item.tipoEvaluacion default &quot;&quot;) == &quot;MANUAL&quot;&#10;    var valorEnMongo = resolvePath(mongoResponse, pathFinalMongo default &quot;&quot;, false)&#10;    var valorAComparar = if (isManual)&#10;                            resolvePath(requestOriginal, item.valorEsperado default &quot;&quot;, true)&#10;                         else&#10;                            getExpectedValue(item.valorEsperado)&#10;&#10;    var cumpleCondicion = checkCondition(valorEnMongo, item.logica, valorAComparar)&#10;    ---&#10;    {&#10;        descripcion: item.descripcion,&#10;        resultado: if (cumpleCondicion) &quot;OK&quot; else &quot;FALLO&quot;,&#10;        comparacion: if (item.logica == &quot;exists&quot;) &#10;                        (if (cumpleCondicion) &quot;El objeto existe&quot; else &quot;El objeto NO existe&quot;)&#10;                     else &#10;                        &quot;$(valorEnMongo default 'null') $(item.logica) $(valorAComparar default 'null')&quot;,&#10;        critica: (not cumpleCondicion) and (item.obligatoria default false),&#10;        obligatoria: item.obligatoria&#10;    }&#10;}&#10;&#10;// --- SALIDA PARA SET VARIABLE ---&#10;---&#10;do {&#10;    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío&#10;    var acumulado = vars.reglasAcumuladas default []&#10;    &#10;    // 2. Creamos el objeto de la regla actual&#10;    var resultadoActual = {&#10;        idRegla: vars.currentRule.idRegla default &quot;&quot;,&#10;        obligatoria: vars.currentRule.obligatoria default &quot;&quot;,&#10;        evaluacionDetallada: listaResultados map (r) -&gt; (r - &quot;critica&quot;),&#10;        esValido: if (isEmpty(listaResultados)) true &#10;                  else not (listaResultados.critica contains true),&#10;        respuestaRegla: if (not (listaResultados.critica contains true)) vars.currentRule.siSeCumple &#10;                        else vars.currentRule.siFalla&#10;    }&#10;    ---&#10;    // 3. Retornamos la lista con el nuevo elemento al final&#10;    acumulado ++ [resultadoActual]&#10;}]" doc:name="Set Variable" doc:id="449bb7b5-7175-437e-aae4-7cb8513036d9" variableName="reglasAcumuladas"/>
-            
-</when>
-				<otherwise >
-					<logger level="INFO" doc:name="Logger" doc:id="7951d58f-628b-4d7f-96a2-f51248f1e804" message='#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;	"regla" : "No se va a ejecutar esta regla: " ++ payload.idRegla&#10;}]'/>
-				</otherwise>
-    
-</choice>
-
-</foreach>
-	</sub-flow>
 </mule>
