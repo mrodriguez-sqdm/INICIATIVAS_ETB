@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="get-subscription-client-by-msisdn" doc:id="b7967a9f-edb0-433f-be5c-a1a6ef584d9a" >
+		<try doc:name="Try" doc:id="0ebadea8-d8e2-4c5b-a4c2-fb76e6db507e" >
+			<http:request method="GET" doc:name="Request" doc:id="c444ad43-894b-421c-b515-a00112c56754" path="${jsc-sapi.subscription.path}" config-ref="HTTP_Request_configuration_jsc">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"msisdn" : vars.connectionNumber
+}]]]></http:query-params>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="a2547be6-614a-453e-adde-fdb873e1932c" >
+					<set-variable value="p('jsc-sapi.subscription.errorMessage')" doc:name="Set Variable" doc:id="495da93e-732b-49c7-8c3a-9253dff1e53b" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="transferbalance-client" doc:id="cc294f69-02b6-4942-9ba7-2658b56c22cb">
+		<try doc:name="Try">
+			<http:request method="POST" doc:name="Transfer balance" doc:id="96fde76c-530d-46f0-8e01-c12d014a0393" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.transferbalance.path}">
+				<http:body><![CDATA[#[vars.request]]]></http:body>
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	"systemId" : vars.systemId,
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+				<http:query-params><![CDATA[#[output application/java
+---
+{
+	subscription : vars.sidOrigin
+}]]]></http:query-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="3c463bee-4f5c-4228-a37d-58eba1e655c7">
+					<set-variable value="#[p('jsc-sapi.transferbalance.errorMessage')]" doc:name="Set Error Message" doc:id="07b64aaa-305b-4e33-a782-27b575b0fbf0" variableName="errorMessageOutput"/>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

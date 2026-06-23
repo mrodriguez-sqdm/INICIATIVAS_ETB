@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+    <ee:object-store-caching-strategy name="CachingReglasOrden" doc:name="Caching Strategy" doc:id="d99cab08-88d2-4a5d-8822-3d080b45c229" keyGenerationExpression="#['reglas_mdm_orden']" objectStore="Object_store_reglas_orden"/>
+	<os:object-store name="Object_store_reglas_orden" doc:name="Object store" doc:id="46e0587c-e1af-420e-9a4b-31b51d4ebbcb" entryTtl="${execution-context-cache-order.entryTTL}" expirationInterval="${execution-context-cache-order.expirationInterval}" entryTtlUnit="${execution-context-cache-order.entryTtlUnit}" expirationIntervalUnit="${execution-context-cache-order.expirationIntervalUnit}"/>
+	
+	<sub-flow name="get-reglas-orden-mdm-cachingSub_Flow" doc:id="98a3f4f3-3b43-4240-a6b0-88bb9ee517d8" >
+	<ee:transform doc:name="http request reglas" doc:id="13670ae3-5435-4459-a392-71471c25ac38" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: {
+  		"query": {
+			"aggregate": "MDM_CONFIG_REGLAS_ORDEN",
+			"pipeline": [],
+			"cursor": {}
+   			}
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+				<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:cache doc:name="Cache" doc:id="21b90e3b-6bee-4656-a926-2ac2a84cb9c8" cachingStrategy-ref="CachingReglasOrden">
+			<flow-ref doc:name="System Generic (MDM_CONFIG_REGLAS_ORDEN)" doc:id="06be7d0a-ea1d-4d31-9ed6-e655cbd6699a" name="generic-sapi-clientSub_Flow" />
+			<ee:transform doc:name="Transform Message" doc:id="e5689109-8e4b-43d8-9910-083f987fbc41" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.result]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</ee:cache>
+	
+	</sub-flow>
+</mule>
