@@ -144,7 +144,7 @@ var currency = "1"
       "district": acctContact.district,
       "addressName": acctContact.addressName
     })) if (!isEmpty(account.contacts default []))
-  }) if (!isEmpty(customer default {})),
+  }) if (!isEmpty(account default {})),
   // Account Attributes Mapping
   ("acctAttrList": account.attributes map ((acctAttr) -> {
     "operate": operation,
