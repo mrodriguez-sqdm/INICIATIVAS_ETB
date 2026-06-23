@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="billingBalance-zsmart-orchestrator" doc:id="51250242-e967-4ae8-bedd-439a9c3299ec" >
+		<logger level="INFO" doc:name="Log Orchestration Start" doc:id="23c9d7c1-a033-4616-bb0e-6b5c8d194c31" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /billingBalance"]' />
+		<ee:transform doc:name="Transform Message" doc:id="22e140ed-8179-4202-bdb8-3ed8eca71082" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+---
+{
+  access_token: p('secure::zsmart.token'),
+  method: "queryAccountbalance",
+  version: "1.0",
+  content: {
+    msisdn: attributes.queryParams.msisdn,
+    accountCode: attributes.queryParams.accountCode
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="billing-zsmart-client" doc:id="c17e1927-c606-4754-8b59-3cdd03d21047" name="billing-zsmart-client" />
+		<choice doc:name="Choice" doc:id="0e4e733f-c534-4669-92df-0ba287a08adc" >
+			<when expression='(payload.res_code != "00000" or payload.result.resultCode != "0000")'>
+				<ee:transform doc:name="Transform Message" doc:id="58d62663-b8e7-4663-857a-0e4d69180981">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="zsmartError"><![CDATA[%dw 2.0
+output application/json
+var resCode = payload.res_code
+var resultResCode = payload.result.resultCode
+var resMessage = payload.res_message default ""
+var resultResMessage = payload.result.resultMsg default ""
+---
+if(resCode != "00000" and resultResCode != "0000")
+    resMessage ++ " - " ++ resultResMessage
+else if( resCode != "00000")
+    resMessage
+else if(resultResCode != "0000")  
+    resultResMessage
+else "Unexpected Error Processing Zsmart User Profile"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<raise-error doc:name="Raise error" doc:id="46e0bc5c-2052-46cc-a0a4-6e11f27e562c" type="ZSMART:BILLING_BALANCE_ERROR" description="#[vars.zsmartError]"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="63cb58e2-a9c3-44be-8dc6-ee2c17eaefc9">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "200",
+  "message": "Success",
+  "result": payload
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Log Orchestration End" doc:id="8c20d723-5161-4b29-b3f3-721f48899fd2" message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=GET /billingBalance"]' />
+	</sub-flow>
+</mule>
