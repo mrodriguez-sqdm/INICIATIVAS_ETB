@@ -73,7 +73,7 @@ output application/json  skipNullOn="everywhere"
       "district": acctContact.district,
       "addressName": acctContact.addressName
     })) if (!isEmpty(account.contacts default []))
-  }) if (!isEmpty(account default {})),,
+  }) if (!isEmpty(account default {})),
   // Account Attributes Mapping
   ("acctAttrList": account.attributes map ((acctAttr) -> {
     "operate": acctAttr.operate,
