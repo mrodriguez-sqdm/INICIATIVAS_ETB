@@ -19,17 +19,30 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 			<ee:variables>
 			</ee:variables>
 		</ee:transform>
+		<logger level="INFO" doc:name="post-lte-resources-orchestrator-sub-flow" doc:id="09b05b91-ff32-41fb-9e6c-634205c994f9" message="#[payload]" />
 		<flow-ref doc:name="get-lte-resources-soap-client-sub-flow"
 			doc:id="1a0d2f98-bb35-4cff-bf8a-5a83c66b3257"
 			name="get-lte-resources-soap-client-sub-flow" />
+		<logger level="INFO" doc:name="post-lte-resources-orchestrator-sub-flow" doc:id="5e51310e-5993-4604-b727-331a4d673f73" message="#[payload]" />
 		<choice doc:name="operation result"
 			doc:id="66599bbe-6664-4923-b00e-b17ab510e5ac">
 			<when
 				expression="#[(payload.body.GestionarInventarioLTEResponse.GestionarInventarioLTEResult.CodigoError as Number) != 0]">
-				<raise-error doc:name="POST_LTE_RESOURCES:RESULT_ERROR"
-					doc:id="d4e8110d-ea88-4c9b-81b1-0793e2c5cd33"
-					type="POST_LTE_RESOURCES:RESULT_ERROR"
-					description='#["OperationResult: " ++ (payload.body.GestionarInventarioLTEResponse.GestionarInventarioLTEResult.CodigoError as String) ++ " - " ++ (payload.body.GestionarInventarioLTEResponse.GestionarInventarioLTEResult.DescripcionError as String)]' />
+				<ee:transform doc:name="Transform Message" doc:id="add27955-8f9a-4a17-b4bb-40b58d964691" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "APP:BAD_REQUEST",
+  "message": (payload.body.Set_Order_PhaseResponse.Set_Order_PhaseResult.WSResponseHeader.service.statusDetail default "Invalid gateway or payment flow combination") as String
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
 			</when>
 			<otherwise>
 				<ee:transform doc:name="set json response"

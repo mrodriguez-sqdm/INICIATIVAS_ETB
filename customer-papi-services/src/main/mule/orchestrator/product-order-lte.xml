@@ -8,6 +8,7 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="post-set-order-Sub_Flow"
 		doc:id="103c8221-a039-46e5-a953-f2cde3fb2794">
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="ec0d7529-8c58-47fb-9b69-406e795a0da1" variableName="headers" />
 		<ee:transform doc:name="Transform Message"
 			doc:id="690dc5ea-7d07-4ca2-961c-011f2dc6b481">
 			<ee:message>
@@ -74,7 +75,7 @@ fun atdpDate() =
                     )
                     ++
                     {
-                        extractorUpdate: 1
+                        extractorUpdate: "1"
                     }
                 ),
 
@@ -95,7 +96,7 @@ fun atdpDate() =
 			doc:id="86421fb5-a6e2-47e4-8942-f20078c96967"
 			name="post-orders-sapi-client-sub-flow" target="responseOrderIni"/>
 		<choice doc:name="Choice" doc:id="ec01881c-bdd4-4b10-b060-34ea7c3369d7" >
-			<when expression='#[payload.responseBody.operationResult != "1"]'>
+			<when expression='#[vars.responseOrderIni.body.operationResult != "1"]'>
 				<raise-error doc:name="POST_SET_ORDER_SERVICE:RESULT_ERROR" doc:id="8e66028b-5ff0-4a66-a8c0-9ae2d324e9be" type="POST_SET_ORDER_SERVICE:RESULT_ERROR" description='#[ (payload.responseBody.operationResultDescription as String) ++ " - " ++ (payload.responseHeader.service.statusDetail as String)]' />
 			</when>
 			<otherwise >
@@ -119,7 +120,7 @@ fun colombiaDate(format) =
     pqrType: "VTA",
     pqrDate: colombiaDate("dd/MM/yyyy HH:mm:ss"),
     system: payloadRequest.channel,
-    orderNumber: vars.responseOrderIni.responseBody.databaseId,
+    orderNumber: vars.responseOrderIni.body.databaseId,
     connectionNumber: "",
     identification: payloadRequest.requestCustomer.documentNumber,
     identificationType: payloadRequest.requestCustomer.documentType,
@@ -128,27 +129,27 @@ fun colombiaDate(format) =
 			</ee:message>
 		</ee:transform>
 		<flow-ref doc:name="post-cun-assignments-clientSub_Flow" doc:id="6c367002-217c-4dc4-bdea-8b70d6fac6cb" name="post-cun-assignments-clientSub_Flow"/>
-		<ee:transform doc:name="Transform Message" doc:id="e39641ce-25f9-4d11-931b-269c2e2543cd" >
+		<logger level="INFO" doc:name="Logger" doc:id="d3910b43-1625-4119-976e-af9e07fdcb33" message="#[vars.reqIn]"/>
+		<ee:transform doc:name="Transform Message" doc:id="35b7f3ce-87c9-4532-9aeb-e9fa7411b5fa" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+
 var cun = payload.cun
+
 ---
 {
 	requestHeader: {
 		system: {
-			name: cun.system
+			name: vars.reqIn.channel
 		}
 	},
 	requestBody: {
-		id: vars.responseOrderIni.responseBody.mongoId,
+		id: vars.responseOrderIni.body.mongoId,
 		cun: cun.cunNumber,
-		documentType: cun.identificationType,
-		identificationNumber: cun.identification,
-		orderNumber: cun.orderNumber,
-		orderDetails: [{
-			connectionNumber: cun.connectionNumber
-		}],
+		documentType: vars.reqIn.requestCustomer.documentType,
+		identificationNumber: vars.reqIn.requestCustomer.documentNumber,
+		orderNumber: vars.responseOrderIni.body.databaseId,
 		"setType": "U"
 	}
 }]]></ee:set-payload>
@@ -156,8 +157,8 @@ var cun = payload.cun
 		</ee:transform>
 		<flow-ref doc:name="post-orders-sapi-client-sub-flow" doc:id="f5888fd7-4716-49fb-9466-0885dc2e55b2" name="post-orders-sapi-client-sub-flow"/>
 		<choice doc:name="Choice" doc:id="36fea015-e6ed-4000-be40-681c6c981fe9" >
-			<when expression='#[payload.responseBody.operationResult != "1"]'>
-				<raise-error doc:name="POST_SET_ORDER_SERVICE:RESULT_ERROR" doc:id="901972ec-9650-4c25-a434-3a06db79a4b8" type="POST_SET_ORDER_SERVICE:RESULT_ERROR" description='#[ (payload.responseBody.operationResultDescription as String) ++ " - " ++ (payload.responseHeader.service.statusDetail as String)]' />
+			<when expression='#[(payload.header.service.status default "") != "OK"]'>
+				<raise-error doc:name="POST_SET_ORDER_SERVICE:RESULT_ERROR" doc:id="901972ec-9650-4c25-a434-3a06db79a4b8" type="POST_SET_ORDER_SERVICE:RESULT_ERROR" description='#[ (payload.responseBody.operationResultDescription default "") ++ " - " ++ (payload.responseHeader.service.statusDetail default "") ]' />
 			</when>
 			<otherwise >
 				<flow-ref doc:name="post-set-order-phase(OrdenCreada)-Sub_Flow" doc:id="350826f4-fb8d-4ff6-9492-077defe353e5" name="post-set-order-phase(OrdenCreada)-Sub_Flow" />
@@ -178,9 +179,9 @@ output application/json
         }
     },
     requestBody: {
-        orderNumber: vars.responseOrderIni.responseBody.databaseId,
+        orderNumber: vars.responseOrderIni.body.databaseId,
         phase: "ORDEN CREADA",
-        updateUser: vars.payloadRequest.createdBy,
+        updateUser: vars.reqIn.createdBy,
         status: "EXITOSO"
     }
 }]]></ee:set-payload>
@@ -188,7 +189,7 @@ output application/json
 		</ee:transform>
 		<flow-ref doc:name="post-order-phases-sapi-client-sub-flow" doc:id="22064bbc-0b6b-4f2a-9c30-c595d3cf88dc" name="post-order-phases-sapi-client-sub-flow"/>
 		<choice doc:name="Choice" doc:id="3b50ab41-c116-48ba-9f1c-9b86e3e6123c" >
-			<when expression='#[payload.responseBody.status != "EXITOSO"]'>
+			<when expression='#[payload.body.operationResult != "1"]'>
 				<raise-error doc:name="POST_SET_ORDER_PHASES_SERVICE:RESULT_ERROR" doc:id="e8bc47ad-4494-4876-bf2e-274545750023" type="POST_SET_ORDER_PHASES_SERVICE:RESULT_ERROR" description='#[ (payload.responseBody.operationResultDescription as String) ++ " - " ++ (payload.responseHeader.service.statusDetail as String)]' />
 			</when>
 			<otherwise >
@@ -220,7 +221,7 @@ output application/json
 
 ---
 {
-  id: vars.responseOrderIni.responseBody.mongoId,
+  id: vars.responseOrderIni.body.mongoId,
   orderDetail: {
     productType: "Plan",
     productCode: "1807",
@@ -267,7 +268,7 @@ output application/json
 		</ee:transform>
 		<flow-ref doc:name="post-order-phases-sapi-client-sub-flow" doc:id="da350d42-02fe-4f65-b38a-4b905145d54e" name="post-order-phases-sapi-client-sub-flow" />
 		<choice doc:name="Choice" doc:id="53ff0095-4ab8-455b-8c8e-7256294053d7" >
-			<when expression='#[payload.responseBody.status != "EXITOSO"]' >
+			<when expression='#[(payload.header.service.status default "") != "OK"]' >
 				<raise-error doc:name="POST_SET_ORDER_PHASES_SERVICE:RESULT_ERROR" doc:id="3277f879-de5b-4395-a787-838b47ae2c64" type="POST_SET_ORDER_PHASES_SERVICE:RESULT_ERROR" description='#[ (payload.responseBody.operationResultDescription as String) ++ " - " ++ (payload.responseHeader.service.statusDetail as String)]' />
 			</when>
 			<otherwise >
@@ -276,12 +277,12 @@ output application/json
 		</choice>
 	</sub-flow>
 	<sub-flow name="post-order-bundles-Sub_Flow" doc:id="2d2523fd-389d-4897-ab5f-a22c98607743" >
-		<ee:transform doc:name="Transform Message" doc:id="c25708df-2930-4748-acd1-ca7e2a33b3d0" >
+		<ee:transform doc:name="Transform Message" doc:id="76590430-a615-4f69-9a97-5bfef46f5f36" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
-var items = vars.payloadResponseCmpOferProd.result default []
+var items = vars.payloadResponseCMP_OF_PROD.result default []
 
 var bundles = items filter ((item) -> item.tipo_producto == "BUNDLE")
 var primarios = items filter ((item) -> item.tipo_producto == "Primario")
@@ -305,8 +306,8 @@ fun getId(item) =
       id: getId(bundle),
       catalogId: bundle.id_producto default "",
       name: bundle.producto default "",
-      activationDate: true as String,
-      deactivationDate: true as String,
+      activationDate: true,
+      deactivationDate: true,
       primaryItems: primarios map (primary) -> {
         id: getId(primary),
         primaryId: primary.id_producto default "",
@@ -317,8 +318,8 @@ fun getId(item) =
           id: getId(secondary),
           secondaryId: secondary.id_producto default "",
           name: secondary.producto default "",
-          activationDate: true as String,
-          deactivationDate: true as String
+          activationDate: true,
+          deactivationDate: true
         }
       },
       optionalItems: []
@@ -328,8 +329,16 @@ fun getId(item) =
 			</ee:message>
 		</ee:transform>
 		<flow-ref doc:name="post-order-bundles-sapi-client-sub-flow" doc:id="24a77b6b-ea1d-4d54-b77e-0426f3f62d65" name="post-order-bundles-sapi-client-sub-flow" />
-		<choice doc:name="Choice" doc:id="aa877cfe-1e49-44d4-b926-06b7942983ac" >
-			<when expression='#[payload.responseBody.status != "EXITOSO"]' >
+		<ee:transform doc:name="Transform Message" doc:id="338dd782-29fc-4a02-9d39-8df8ec06084d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="b7e6dc49-6de6-42a8-bcbc-b266b64f3c07" >
+			<when expression='#[trim((payload.responseBody.operationResult default "") as String) != "1"]'>
 				<raise-error doc:name="POST_SET_ORDER_PHASES_SERVICE:RESULT_ERROR" doc:id="e55f7dba-d20b-4552-8119-114df99045f9" type="POST_SET_ORDER_PHASES_SERVICE:RESULT_ERROR" description='#[ (payload.responseBody.operationResultDescription as String) ++ " - " ++ (payload.responseHeader.service.statusDetail as String)]' />
 			</when>
 			<otherwise >
@@ -351,9 +360,9 @@ output application/json
         }
     },
     requestBody: {
-        orderNumber: vars.responseOrderIni.responseBody.databaseId,
+        orderNumber: vars.responseOrderIni.body.mongoId,
         phase: "ORDEN CREADA",
-        updateUser: vars.payloadRequest.createdBy,
+        updateUser: vars.reqIn.createdBy,
         status: "CLIENTE CARGADO"
     }
 }]]></ee:set-payload>
@@ -376,7 +385,7 @@ output application/json
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
-var orderId = vars.responseOrderIni.responseBody.databaseId default ""
+var orderId = vars.responseOrderIni.body.databaseId default ""
 
 ---
 {
@@ -407,7 +416,7 @@ var orderId = vars.responseOrderIni.responseBody.databaseId default ""
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
-var orderId = vars.responseOrderIni.responseBody.databaseId default ""
+var orderId = vars.responseOrderIni.body.databaseId default ""
 
 ---
 {
@@ -469,7 +478,7 @@ output application/json
         }
     },
     requestBody: {
-        orderNumber: vars.responseOrderIni.responseBody.databaseId,
+        orderNumber: vars.responseOrderIni.body.databaseId,
         phase: "INVENTARIO",
         updateUser: vars.reqIn.createdBy,
         status: "EXITOSO"
@@ -483,7 +492,7 @@ output application/json
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
-var orderId = vars.responseOrderIni.responseBody.databaseId default ""
+var orderId = vars.responseOrderIni.body.databaseId default ""
 
 fun colombiaDateTime() =
     (now() >> "America/Bogota") as String {
@@ -531,7 +540,7 @@ fun colombiaDateTime() =
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
-var orderNumber = vars.responseOrderIni.responseBody.databaseId
+var orderNumber = vars.responseOrderIni.body.databaseId
 var user = vars.reqIn.createdBy
 
 ---
@@ -567,7 +576,7 @@ var user = vars.reqIn.createdBy
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
-var orderId = vars.responseOrderIni.responseBody.databaseId default ""
+var orderId = vars.responseOrderIni.body.databaseId default ""
 
 fun colombiaDateTime() =
     (now() >> "America/Bogota") as String {

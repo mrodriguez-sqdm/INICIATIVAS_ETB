@@ -1,6 +1,11 @@
 %dw 2.0
 output application/xml skipNullOn = "everywhere"
 ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services
+
+fun validDate(value) =
+	if (value is Boolean) null
+	else value
+
 ---
 {
 	mdm#Set_Order_Bundle_Orden: {
@@ -24,16 +29,16 @@ ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services
 					mdm#Id: bundle.id,
 					mdm#id_catalogo: bundle.catalogId,
 					mdm#nombre: bundle.name,
-					mdm#fecha_activacion: bundle.activationDate,
-					mdm#fecha_inactivacion: bundle.deactivationDate,
+					mdm#fecha_activacion: validDate(bundle.activationDate),
+					mdm#fecha_inactivacion: validDate(bundle.deactivationDate),
 					mdm#primarios: {
 						mdm#MDM_Primario: bundle.primaryItems map (primary) -> {
 							mdm#Id: primary.id,
 							mdm#id_primario: primary.primaryId,
 							mdm#numero_conexion: primary.connectionNumber,
 							mdm#nombre: primary.name,
-							mdm#fecha_activacion: primary.activationDate,
-							mdm#fecha_inactivacion: primary.deactivationDate,
+							mdm#fecha_activacion: validDate(primary.activationDate),
+							mdm#fecha_inactivacion: validDate(primary.deactivationDate),
 							mdm#caracteristicas_primarios: {
 								mdm#MDM_Caracteristica: primary.primaryCharacteristics map (characteristic) -> {
 									mdm#Caracteristica: characteristic.characteristic,
@@ -45,8 +50,8 @@ ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services
 									mdm#Id: secondary.id,
 									mdm#id_secundario: secondary.secondaryId,
 									mdm#nombre: secondary.name,
-									mdm#fecha_activacion: secondary.activationDate,
-									mdm#fecha_inactivacion: secondary.deactivationDate,
+									mdm#fecha_activacion: validDate(secondary.activationDate),
+									mdm#fecha_inactivacion: validDate(secondary.deactivationDate),
 									mdm#caracteristicas_secundario: {
 										mdm#MDM_Caracteristica: secondary.secondaryCharacteristics map (characteristic) -> {
 											mdm#Caracteristica: characteristic.characteristic,
@@ -60,8 +65,8 @@ ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services
 									mdm#Id: additional.id,
 									mdm#id_adicional: additional.additionalId,
 									mdm#nombre: additional.name,
-									mdm#fecha_activacion: additional.activationDate,
-									mdm#fecha_inactivacion: additional.deactivationDate,
+									mdm#fecha_activacion: validDate(additional.activationDate),
+									mdm#fecha_inactivacion: validDate(additional.deactivationDate),
 									mdm#caracteristicas_adicional: {
 										mdm#MDM_Caracteristica: additional.additionalCharacteristics map (characteristic) -> {
 											mdm#Caracteristica: characteristic.characteristic,
@@ -78,8 +83,8 @@ ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services
 							mdm#id_opcional: optional.optionalId,
 							mdm#nombre: optional.name,
 							mdm#id_primario: optional.primaryId,
-							mdm#fecha_activacion: optional.activationDate,
-							mdm#fecha_inactivacion: optional.deactivationDate,
+							mdm#fecha_activacion: validDate(optional.activationDate),
+							mdm#fecha_inactivacion: validDate(optional.deactivationDate),
 							mdm#caracteristicas_opcional: {
 								mdm#MDM_Caracteristica: optional.optionalCharacteristics map (characteristic) -> {
 									mdm#Caracteristica: characteristic.characteristic,
