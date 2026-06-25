@@ -4,11 +4,35 @@ output application/json
 var firstDetailRef = (vars.payloadOri.references default [])[0]
 var gatewayOrder = vars.requestGateway.order default {}
 var gatewayAdditionalValues = gatewayOrder.additionalValues default {}
+var requestOri = vars.payloadOri
 
 var taxMap = {
 	"TX_TAX": "IVA",
 	"TX_TAX_RETURN_BASE": "BASE_GRAVABLE"
 }
+
+fun sumarTotalAmount(refs) =
+	sum((refs default []) map (($.totalAmount default 0) as Number))
+
+fun impuestosGateway() =
+	(gatewayAdditionalValues default {})
+		pluck ((v, k) ->
+			if (taxMap[k]?)
+				{
+					tipo: taxMap[k],
+					valor: (v.value default 0) as String
+				}
+			else null
+		)
+		filter ($ != null)
+
+fun impuestosPayloadOri(refs) =
+	((refs default []) flatMap ($.taxes default []))
+		groupBy $."type"
+		pluck ((items, tipo) -> {
+			tipo: tipo,
+			valor: (sum(items map (($.value default 0) as Number))) as String
+		})
 
 ---
 {
@@ -23,22 +47,16 @@ var taxMap = {
 	metodo_pago: vars.payloadOri.paymentMethod."type" default "",
 
 	referencias: {
-		referencia: gatewayOrder.referenceCode default "",
-		descripcion: gatewayOrder.description default "",
-		moneda: gatewayAdditionalValues.TX_VALUE.currency default "",
-		valor_pagar: (gatewayAdditionalValues.TX_VALUE.value default 0) as String,
+		referencia: gatewayOrder.referenceCode default ((vars.payloadOri.references default [])[0].reference) default "",
+		descripcion: gatewayOrder.description default ((vars.payloadOri.references default [])[0].description) default "",
+		moneda: gatewayAdditionalValues.TX_VALUE.currency default ((vars.payloadOri.references default [])[0].currency) default "",
+		valor_pagar: (gatewayAdditionalValues.TX_VALUE.value default sumarTotalAmount(vars.payloadOri.references default []) default 0) as String,
 
 		impuestos:
-			(gatewayAdditionalValues default {})
-				pluck ((v, k) ->
-					if (taxMap[k]?)
-						{
-							tipo: taxMap[k],
-							valor: (v.value default 0) as String
-						}
-					else null
-				)
-				filter ($ != null),
+			if (!isEmpty(impuestosGateway()))
+				impuestosGateway()
+			else
+				impuestosPayloadOri(vars.payloadOri.references default []),
 
 		detalle_referencias:
 			(vars.payloadOri.references default [])

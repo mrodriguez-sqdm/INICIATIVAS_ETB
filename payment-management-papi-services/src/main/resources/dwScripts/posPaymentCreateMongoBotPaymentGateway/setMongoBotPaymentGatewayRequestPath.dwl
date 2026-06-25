@@ -10,7 +10,7 @@ fun getLinea() =
     ((payload.referencias.detalle_referencias[0].atributos default [])
         filter ($.atributo == "LINEA"))[0].valor default ""
 
-var requestPayload = vars.vars.auditResponse
+var requestPayload = vars.auditResponse default payload
 ---
 {
   query: {
