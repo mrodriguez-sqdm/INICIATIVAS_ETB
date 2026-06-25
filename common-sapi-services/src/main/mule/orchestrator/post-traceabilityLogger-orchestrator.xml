@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="post-traceabilityLogs-orchestrator" doc:id="8e1ffe3e-8870-4415-99ce-765da446f26d" >
+		<flow-ref doc:name="Fetch OS identifier" doc:id="8d853021-5406-4e96-9799-283178606de8" name="objectStore-clientSub_Flow"/>
+		<ee:transform doc:name="set file path and content" doc:id="b03203b0-8d3d-456b-bb93-e46e39e0c067">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="fileContent"><![CDATA[%dw 2.0
+output text/plain
+var identifier = now() as String {format: "HHmmssSSS"}
+var timestamp = now() >> "America/Bogota"
+var completePayload = {
+  "numero_solicitud_app": payload.numero_solicitud_app  default "",
+  "tipo_auditoria": payload.tipo_auditoria default "",
+  "aplicacion": payload.aplicacion default "",
+  "iniciativa": payload.iniciativa default "",
+  "ip": payload.ip  default "",
+  "navegador":payload.navegador default "",
+  "nombre_equipo": payload.nombre_equipo  default "",
+  "usuario": payload.usuario  default "",
+  "operacion": payload.operacion  default "",
+  "resultado_operacion": payload.resultado_operacion  default "",
+  "fecha_solicitud": payload.fecha_solicitud  default ""
+}
+---
+(vars.sequentialID as String) ++ "-" ++ identifier ++ p('traceabilityLogs.separator') ++ 
+(completePayload pluck ($ default "") joinBy p('traceabilityLogs.separator')) ++ 
+p('traceabilityLogs.separator') ++ timestamp ++
+p('traceabilityLogs.separator') ++ timestamp  ++
+"\n"]]></ee:set-variable>
+				<ee:set-variable variableName="filePath"><![CDATA[%dw 2.0
+output application/json
+---
+p('traceabilityLogs.path') ++ 
+p('traceabilityLogs.file') ]]></ee:set-variable>
+				<ee:set-variable variableName="fileAction" ><![CDATA[%dw 2.0
+output application/java
+---
+"APPEND"]]></ee:set-variable>
+			
+</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="post-logs-client" doc:id="4e8c70f3-16d9-48a6-9ae8-e5d7babc77cd" name="post-traceabilityLogs-client" />
+	
+</sub-flow>
+	</mule>

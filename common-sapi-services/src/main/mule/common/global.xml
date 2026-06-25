@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+	xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+	xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:email="http://www.mulesoft.org/schema/mule/email"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd 
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd 
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd">
+	<http:listener-config name="HTTP_Listener_config"
+		doc:name="HTTP Listener config"
+		doc:id="2034ca7c-a036-42eb-9edc-c1f845b9a684">
+		<http:listener-connection host="0.0.0.0"
+			port="${http.private.port}"
+			readTimeout="${configurationTimeout.listener}"
+			connectionIdleTimeout="${configurationTimeout.listener}" />
+	</http:listener-config>
+	<apikit:config outboundHeadersMapName="outboundHeaders"
+		httpStatusVarName="httpStatus" doc:name="Router"
+		doc:id="1e8900ba-bb99-45a3-99a7-4632f57f2a29"
+		name="common-sapi-services-config" api="common-sapi-services.raml" />
+	<configuration-properties
+		doc:name="Configuration properties"
+		doc:id="4ea813fb-b56b-46f1-a938-73c970ca80db"
+		file="properties/${env}-properties.yaml" />
+	<api-gateway:autodiscovery
+		apiId="${autodiscovery}" ignoreBasePath="true"
+		doc:name="API Autodiscovery"
+		doc:id="c8ef3ece-4a16-45cc-99b1-28e90dfa0f08"
+		flowRef="common-sapi-services-main" />
+	<email:smtp-config name="Email_SMTP"
+		doc:name="Email SMTP" doc:id="80224bc8-0ecf-4806-9650-ea1a3a0027e0">
+		<email:smtp-connection host="${email.host}"
+			user="${email.from.address}" password="${email.from.password}"
+			port="${email.port}">
+			<email:properties>
+				<email:property key="mail.smtp.starttls.enable"
+					value="true" />
+			</email:properties>
+		</email:smtp-connection>
+	</email:smtp-config>
+	<sftp:config name="SFTP_Config_AuditLogs"
+		doc:name="SFTP Config" doc:id="335f8e94-4043-422a-82ae-2c5d6776657c">
+		<sftp:connection host="${sftp.host}"
+			port="${sftp.port}" username="${sftp.user}" password="${sftp.pass}">
+			<pooling-profile />
+			<sftp:preferred-authentication-methods />
+		</sftp:connection>
+	</sftp:config>
+	<sftp:config name="SFTP_Config_TraceabilityLogs"
+		doc:name="SFTP Config" doc:id="9449170f-a062-46fe-8a64-038e27487e68">
+		<sftp:connection host="${traceabilityLogs.sftp.host}"
+			port="${traceabilityLogs.sftp.port}"
+			username="${traceabilityLogs.sftp.user}"
+			password="${traceabilityLogs.sftp.pass}">
+			<pooling-profile />
+			<sftp:preferred-authentication-methods />
+		</sftp:connection>
+	</sftp:config>
+	<jms:config name="JMS_Config" doc:name="JMS Config"
+		doc:id="7b02b83b-276c-4e12-83ca-bfeec4989e01">
+		<jms:active-mq-connection />
+	</jms:config>
+	<import doc:name="Import"
+		doc:id="67a22a8c-4c7c-41f9-ac91-a986cada0af5" file="error-handler.xml" />
+	<import doc:name="Import"
+		doc:id="6763b9da-2524-487e-9741-ad84472d8f0c"
+		file="error-handler-v2.xml" />
+	<import doc:name="Import"
+		doc:id="17d1e986-1215-4f71-86cc-7f23ba3c6bcc"
+		file="error-handler-v2.xml" />
+	<import doc:name="Import"
+		doc:id="3f3caa99-e561-48bb-9a5c-0911237ff566" file="loggin.xml" />
+	<import doc:name="Import"
+		doc:id="7f859489-ea64-4435-8e8e-81762b3705b9"
+		file="audits-sapi-client.xml" />
+	<import doc:name="Import"
+		doc:id="658d0a52-f028-4723-a59b-dff50dd00094"
+		file="etb-common-lib.xml" />
+	<http:request-config
+		name="Request-token-configuration"
+		doc:name="HTTP Request configuration"
+		doc:id="bcfeb322-a98a-4f08-bf8a-51d73464dfd2" enableCookies="false" />
+	<os:object-store name="Object_store_log_seqID"
+		doc:name="Object store" doc:id="3d408056-de0b-44a1-90ec-693900412c98" />
+	<sftp:config name="SFTP_Config_portability"
+		doc:name="SFTP Config" doc:id="3f82f2cc-a6ae-4f4f-8d8a-6192069eeb06">
+		<sftp:connection
+			workingDir="${sftp-portability.workingDir}"
+			host="${sftp-portability.host}" port="${sftp-portability.port}"
+			username="${sftp-portability.user}"
+			password="${sftp-portability.pass}" />
+	</sftp:config>
+	<wsc:config name="Cun_Web_Service_Consumer_Config"
+		doc:name="Web Service Consumer Config"
+		doc:id="0ba85cb0-8553-48c4-b051-1aaca14a1326">
+		<wsc:connection soapVersion="SOAP12"
+			wsdlLocation="${cun.soap.protocol}${cun.soap.host}${cun.soap.wsdlPath}"
+			service="${cun.soap.service}" port="${cun.soap.port}" />
+	</wsc:config>
+	<secure-properties:config
+		name="Secure_Properties_Config" doc:name="Secure Properties Config"
+		doc:id="f5ad833c-62a7-441d-b39a-bf735034f37c"
+		file="secureProperties/${env}-secure-properties.yaml"
+		key="${secure.key}">
+		<secure-properties:encrypt
+			algorithm="Blowfish" />
+	</secure-properties:config>
+</mule>
