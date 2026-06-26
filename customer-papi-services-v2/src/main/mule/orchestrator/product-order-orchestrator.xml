@@ -99,6 +99,8 @@ fun findObject(nombreLlave) =
     (vars.resultadoSapi filter ($.llave == nombreLlave))[0].objeto default {}
 
 var objectCustomer = findObject("MDM_CLIENTE")
+
+var codigoGis = vars.RequestOrder.requestCustomer.addressGisCode
 ---
 {
   Cliente_Tramite: {
@@ -106,6 +108,7 @@ var objectCustomer = findObject("MDM_CLIENTE")
    "\$oid": objectCustomer."_id"."\$oid"
   },
     Tipo_Documento: objectCustomer.Tipo_Documento,
+    Numero_Documento: objectCustomer.Numero_Identificacion,
     Tipo_Cliente: objectCustomer.Tipo_Cliente,
     Nombre_Corto_Empresa: objectCustomer.Nombre_Corto_Empresa,
     Nombre_Cliente: objectCustomer.Nombre_Cliente,
@@ -155,7 +158,23 @@ var objectCustomer = findObject("MDM_CLIENTE")
     Primer_Apellido: objectCustomer.Primer_Apellido,
     Segundo_Apellido: objectCustomer.Segundo_Apellido default "",
     Fecha_Creacion: objectCustomer.Fecha_Creacion,
-    Direcciones: objectCustomer.Direcciones,
+    Direcciones: do {
+    var direccionesFiltradas = objectCustomer.Direcciones filter ($.Seleccionada == true)
+
+var instalacion = do {
+        var candidatas = direccionesFiltradas filter ($.Tipo_Direccion == "INSTALACION")
+        ---
+        if (isEmpty(codigoGis))
+            candidatas maxBy $.Id_Direccion
+        else
+            (candidatas filter ($.Cobertura.Direccion_GIS == codigoGis)) maxBy $.Id_Direccion
+    }
+
+    var facturacion = (direccionesFiltradas filter ($.Tipo_Direccion == "FACTURACION")) 
+        maxBy $.Id_Direccion
+    ---
+    [instalacion, facturacion] filter ($ != null)
+},
     Cuenta_Facturacion_Id: objectCustomer.Cuenta_Facturacion_Id,
     Cuenta_Servicio_Id: objectCustomer.Cuenta_Servicio_Id,
     Adjuntos_Cliente: objectCustomer.Adjuntos_Cliente,
@@ -182,8 +201,7 @@ var objectCustomer = findObject("MDM_CLIENTE")
       Tipo_Documento: c.Tipo_Documento
     },
     Comunicaciones_Cobranza: objectCustomer.Comunicaciones_Cobranza,
-    Usuario_Creacion: "",
-    Numero_Documento: objectCustomer.Numero_Identificacion
+    Usuario_Creacion: ""
   }
 }]]></ee:set-variable>
 							</ee:variables>
