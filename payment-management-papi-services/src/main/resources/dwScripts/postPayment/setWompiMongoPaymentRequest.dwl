@@ -12,6 +12,12 @@ var descripcionConcatenada =
         filter ($ != "")
     ) joinBy ", "
 
+fun fechaHoraColombia() =
+  (now() >> "America/Bogota") as String {
+    format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  }
+
+var fechaColombia = fechaHoraColombia()
 ---
 {
 	id_transaccion: vars.payloadOri.transactionId,
@@ -69,11 +75,14 @@ var descripcionConcatenada =
 
 	estado_transaccion: sapi.status default "CREATED",
 
-	fecha_registro: sapi.createdAt default "",
-
+	fecha_registro: fechaColombia,
+	      
 	fecha_respuesta_pasarela:
-		now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
+	  if (isEmpty(sapi.createdAt default ""))
+	    ""
+	  else
+	    ((sapi.createdAt as DateTime { unit: "milliseconds" }) >> "America/Bogota")
+	      as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
 
-	fecha_actualizacion:
-		now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+	fecha_actualizacion: fechaColombia
 }

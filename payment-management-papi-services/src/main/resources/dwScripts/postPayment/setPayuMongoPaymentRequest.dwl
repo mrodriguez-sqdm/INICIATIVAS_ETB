@@ -34,6 +34,13 @@ fun impuestosPayloadOri(refs) =
 			valor: (sum(items map (($.value default 0) as Number))) as String
 		})
 
+fun fechaHoraColombia() =
+  (now() >> "America/Bogota") as String {
+    format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  }
+
+var fechaColombia = fechaHoraColombia()
+
 ---
 {
 	id_transaccion: vars.payloadOri.transactionId,
@@ -94,14 +101,14 @@ fun impuestosPayloadOri(refs) =
 
 	estado_transaccion: vars.sapiResponse.data.state default "CREATED",
 
-	fecha_registro:
-		(vars.sapiResponse.data.operationDate default 0)
-			as DateTime { unit: "milliseconds" }
-			as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
-
+	fecha_registro: fechaColombia,
+	      
 	fecha_respuesta_pasarela:
-		now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+	  if (isEmpty(vars.sapiResponse.data.operationDate default ""))
+	    ""
+	  else
+	    ((vars.sapiResponse.data.operationDate as DateTime { unit: "milliseconds" }) >> "America/Bogota")
+	      as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
 
-	fecha_actualizacion:
-		now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" }
+	fecha_actualizacion: fechaColombia
 }

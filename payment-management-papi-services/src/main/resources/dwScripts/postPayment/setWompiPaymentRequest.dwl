@@ -5,7 +5,9 @@ var refs = payload.references default []
 var firstReference = refs[0] default {}
 var card = payload.paymentMethod.card default {}
 var fechaHora =
-    now() as String {format: "yyyyMMddHHmmss"}
+  (now() >> "America/Bogota") as String {
+    format: "yyyyMMddHHmmss"
+  }
 var referenceCode =
     if (sizeOf(refs) > 1)
         "MDM_PAGO_" ++ payload.customer.documentNumber ++ "_" ++ fechaHora

@@ -2,9 +2,11 @@
 output application/json
 
 fun fechaHoraColombia() =
-    ((now() >> "America/Bogota") as String {
-        format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
-    })
+  (now() >> "America/Bogota") as String {
+    format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  }
+
+var fechaColombia = fechaHoraColombia()
 
 fun getLinea() =
     ((payload.referencias.detalle_referencias[0].atributos default [])
@@ -43,18 +45,18 @@ var requestPayload = vars.auditResponse default payload
           { Attribute: "tipo_medio_pago", Value: "" },
           { Attribute: "ip", Value: "" }
         ],
-        Fecha_Actualizacion: fechaHoraColombia(),
-        Fecha_Solicitud: fechaHoraColombia(),
+        Fecha_Actualizacion: fechaColombia,
+        Fecha_Solicitud: fechaColombia,
         Num_Identificacion: requestPayload.cliente.numero_documento default "",
         Tipo_Identificacion: requestPayload.cliente.tipo_documento default "",
         Referencia_Venta: requestPayload.referencias.referencia default "",
-        Estado: "CREADO",
+        Estado: "CREATED",
         Tipo: "",
         Valor: requestPayload.referencias.valor_pagar default "",
         Fuente: requestPayload.atributos_pasarela.pasarela default "",
         Origen: requestPayload.atributos_pasarela.tipo_pasarela default "",
         Cuenta_Facturacion: getLinea(),
-        Estado_OCS: "CREADO",
+        Estado_OCS: "CREATED",
         Referencia_Transaccion: requestPayload.id_transaccion default ""
       }
     ]

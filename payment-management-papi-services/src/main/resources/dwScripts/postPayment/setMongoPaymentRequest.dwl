@@ -5,7 +5,9 @@ var refs = payload.references default []
 var firstDetailRef = refs[0]
 
 var fechaHora =
-    now() as String { format: "yyyyMMddHHmmss" }
+  (now() >> "America/Bogota") as String {
+    format: "yyyyMMddHHmmss"
+  }
 
 var referenceCode =
     if (sizeOf(refs) > 1)
@@ -16,6 +18,12 @@ var referenceCode =
 var allTaxes =
     refs flatMap ($.taxes default [])
 
+fun fechaHoraColombia() =
+  (now() >> "America/Bogota") as String {
+    format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  }
+
+var fechaColombia = fechaHoraColombia()
 ---
 {
     id_transaccion: payload.transactionId,
@@ -87,12 +95,9 @@ var allTaxes =
 
     estado_transaccion: payload.status,
 
-    fecha_registro:
-        now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+    fecha_registro: fechaColombia,
 
-    fecha_respuesta_pasarela:
-        now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+    fecha_respuesta_pasarela: fechaColombia,
 
-    fecha_actualizacion:
-        now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" }
+    fecha_actualizacion: fechaColombia
 }

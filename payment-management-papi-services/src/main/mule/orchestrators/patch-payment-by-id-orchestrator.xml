@@ -110,15 +110,21 @@ output application/json
 payload.CUS]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="cf8cabb7-5b88-49cd-bc32-a6431d6a756e" name="sapi-http-client-sub-flow"/>
-		<choice doc:name="Choice" doc:id="b46dd2da-ee91-4b1a-aaa4-3b11b6f929f2" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="5f956882-21be-4a67-8092-740a924603fb" >
+			<route >
+				<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="cf8cabb7-5b88-49cd-bc32-a6431d6a756e" name="sapi-http-client-sub-flow" />
+			</route>
+			<route >
+				<flow-ref doc:name="post-payment-by-id-mongo-bot-payment-gateway-orchestratorSub_Flow" doc:id="ca978570-6386-4f3a-ba0a-30d73fb72835" name="post-payment-by-id-mongo-bot-payment-gateway-orchestratorSub_Flow" />
+			</route>
+			<route >
+				<choice doc:name="Choice" doc:id="b46dd2da-ee91-4b1a-aaa4-3b11b6f929f2">
 			<when expression='#[%dw 2.0&#10;output application/java&#10;---&#10;sizeOf(&#10;    flatten(payload.referencias.detalle_referencias.atributos default [])&#10;        filter ((atributo) -&gt;&#10;            atributo.atributo == "TIPO_PAGO" and&#10;            upper(atributo.valor) != "RECARGA"&#10;        )&#10;) == 0]'>
 				<flow-ref doc:name="patch-payment-by-id-azure-event-orchestratorSub_Flow" doc:id="c8329285-dd33-4870-b8cc-00ceb461a8f4" name="patch-payment-by-id-azure-event-orchestratorSub_Flow" />
 			</when>
-			<when expression='#[%dw 2.0&#10;output application/java&#10;---&#10;sizeOf(&#10;    flatten(payload.referencias.detalle_referencias.atributos default [])&#10;        filter ((atributo) -&gt;&#10;            atributo.atributo == "TIPO_PAGO" and&#10;            upper(atributo.valor) != "FACTURA"&#10;        )&#10;) == 0]'>
-				<flow-ref doc:name="Flow Reference" doc:id="ca978570-6386-4f3a-ba0a-30d73fb72835" name="post-payment-by-id-mongo-bot-payment-gateway-orchestratorSub_Flow"/>
-			</when>
 		</choice>
+			</route>
+		</scatter-gather>
 		<ee:transform doc:name="Transform Message" doc:id="f55fd854-487e-4ecd-977b-b1af9851ed4f" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
@@ -126,7 +132,7 @@ output application/json
 ---
 {
 	"code": "201",
-	"message": "Registro creado con exito, Id transacción: " ++ (payload.id_transaccion as String default "")
+	"message": "Registro creado con exito, Id transacción: " ++ (payload[0].id_transaccion as String default "")
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
@@ -159,9 +165,11 @@ output application/json
 output application/json
 
 fun fechaHoraColombia() =
-    ((now() >> "America/Bogota") as String {
-        format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
-    })
+  (now() >> "America/Bogota") as String {
+    format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  }
+
+var fechaColombia = fechaHoraColombia()
 
 fun getEstadoPayu(statePol, responseCodePol) =
     do {
@@ -203,15 +211,19 @@ fun getEstadoPayu(statePol, responseCodePol) =
     updates: [
       {
         q: {
-          Referencia_Venta: payload.referencias.referencia
+          Referencia_Transaccion: payload.id_transaccion
         },
         u: {
-          "$set": {
+          "\$set": {
             Estado: getEstadoPayu(
               vars.payloadRequest.state_pol,
               vars.payloadRequest.response_code_pol
             ),
-            Fecha_Actualizacion: fechaHoraColombia()
+            Estado_OCS: getEstadoPayu(
+              vars.payloadRequest.state_pol,
+              vars.payloadRequest.response_code_pol
+            ),
+            Fecha_Actualizacion: fechaColombia
           }
         },
         multi: false

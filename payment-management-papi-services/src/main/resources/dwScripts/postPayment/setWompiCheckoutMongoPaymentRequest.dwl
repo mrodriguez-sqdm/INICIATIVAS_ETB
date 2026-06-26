@@ -4,6 +4,13 @@ output application/json
 var gateway = vars.requestGateway default {}
 var firstDetailRef = (vars.payloadOri.references default [])[0]
 
+fun fechaHoraColombia() =
+  (now() >> "America/Bogota") as String {
+    format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  }
+
+var fechaColombia = fechaHoraColombia()
+
 ---
 {
 	id_transaccion: vars.payloadOri.transactionId,
@@ -68,11 +75,14 @@ var firstDetailRef = (vars.payloadOri.references default [])[0]
 
 	estado_transaccion: "CREATED",
 
-	fecha_registro: vars.sapiResponse.data.createdAt default "",
-
+	fecha_registro: fechaColombia,
+	      
 	fecha_respuesta_pasarela:
-		now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
+	  if (isEmpty(vars.sapiResponse.data.createdAt default ""))
+	    ""
+	  else
+	    ((vars.sapiResponse.data.createdAt as DateTime { unit: "milliseconds" }) >> "America/Bogota")
+	      as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
 
-	fecha_actualizacion:
-		now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+	fecha_actualizacion: fechaColombia
 }

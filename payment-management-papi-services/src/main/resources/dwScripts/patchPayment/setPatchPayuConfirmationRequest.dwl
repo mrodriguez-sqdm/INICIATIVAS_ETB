@@ -2,9 +2,11 @@
 output application/json
 
 fun fechaHoraColombia() =
-    ((now() >> "America/Bogota") as String {
-        format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
-    })
+  (now() >> "America/Bogota") as String {
+    format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  }
+
+var fechaColombia = fechaHoraColombia()
 
 fun getEstadoPayu(statePol, responseCodePol) =
     do {
@@ -40,9 +42,9 @@ fun getEstadoPayu(statePol, responseCodePol) =
     }
 ---
 {
+	Fecha_Actualizacion: fechaColombia,
 	estado: getEstadoPayu(
               payload.state_pol,
               payload.response_code_pol
             )
-   
 }

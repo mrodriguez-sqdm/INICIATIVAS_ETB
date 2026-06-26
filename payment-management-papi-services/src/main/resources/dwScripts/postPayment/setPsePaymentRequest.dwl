@@ -6,7 +6,9 @@ var totalAmount = sum(refs map $.totalAmount)
 var ivaValue = sum(refs flatMap ($.taxes default []) filter ($."type" == "IVA") map $.value)
 var paymentDescription = (refs map $.description) joinBy ", "
 var fechaHora =
-    now() as String {format: "yyyyMMddHHmmss"}
+  (now() >> "America/Bogota") as String {
+    format: "yyyyMMddHHmmss"
+  }
 var documentTypeMap = {
 	CC: "CedulaDeCiudadania",
 	TI: "TarjetaDeIdentidad",

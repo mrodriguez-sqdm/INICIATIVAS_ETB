@@ -4,7 +4,9 @@ output application/json skipNullOn = "everywhere"
 var refs = payload.references default []
 
 var fechaHora =
-    now() as String {format: "yyyyMMddHHmmss"}
+  (now() >> "America/Bogota") as String {
+    format: "yyyyMMddHHmmss"
+  }
 
 var referenceCode =
     if (sizeOf(refs) > 1)

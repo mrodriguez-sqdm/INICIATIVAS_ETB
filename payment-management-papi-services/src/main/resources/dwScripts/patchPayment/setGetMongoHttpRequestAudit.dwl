@@ -7,7 +7,7 @@ var method = if (vars.payloadRequest.gateway != null and vars.payloadRequest.gat
 				"wompiWebhook"
 			  else if (vars.payloadRequest.properties? and vars.payloadRequest.transactionId?)
 				"payuWebhook"
-			  else if (payload.transaction_id? and payload.reference_sale?)
+			  else if (vars.payloadRequest.transaction_id? and vars.payloadRequest.reference_sale?)
                 "payuConfirmation"
 			  else ""
 
