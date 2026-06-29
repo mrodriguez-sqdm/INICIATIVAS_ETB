@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="agreement-get-orchestadorSub_Flow" doc:id="b0860e56-8ca6-4742-969e-d9ed5834fd70" >
+		<set-variable value="#[{&#10;    activeDate: &#10;        if (attributes.queryParams.ACTIVE_DATE != null)&#10;            ((attributes.queryParams.ACTIVE_DATE &#10;                as DateTime { format: &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot; }) &#10;                as String { format: &quot;dd/MM/yyyy&quot; })&#10;        else null,&#10;&#10;    cuentaPadre: attributes.queryParams.PARENT_ACCOUNT,&#10;    integrationId: attributes.queryParams.INTERACTION_ID&#10;}]" doc:name="Save Parameters" doc:id="e15c1919-9189-4d0d-9091-219f443a2e0f" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="5c681e50-f7fd-4536-b22b-4677e587476e" variableName="headers" />
+		<flow-ref doc:name="Flow Reference" doc:id="6679a871-3c66-4471-897f-6e7ac327ec62" name="get-PermanenceClause-portal-fija-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="fc2ecabe-4485-41bd-9e93-d89c9688ca44" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codeResponse: if (upper(payload.descError) == "OK") "200" else payload.resultado,
+  responseMessage: payload.descError
+} ++
+(
+  if (payload.clausula != null and payload.clausula.Internet is Object)
+  {
+    minimumTerm: {
+      clause: do {
+        var fechaFin = payload.clausula.Internet.fecha_fin default null
+        var fechaInicio = payload.clausula.Internet.fecha_inicio default null
+        var formatoFin =
+          if (fechaFin != null and sizeOf((fechaFin splitBy "/")[2]) == 2)
+            "dd/MM/yy"
+          else
+            "dd/MM/yyyy"
+        ---
+        {
+          parentAccount: payload.clausula.cuenta_padre default null,
+          integrationId: payload.clausula.integration_id default null,
+          internet: {
+            initialCharge: (payload.clausula.Internet.CargoInicial default 0) as Number,
+            currentBalance: (payload.clausula.Internet.SaldoActual default 0) as Number,
+            initialInstallments: (payload.clausula.Internet.CuotasInicial default 0) as Number,
+            currentInstallments: (payload.clausula.Internet.CuotasActual default 0) as Number,
+            startDate:
+              if (fechaInicio != null)
+                ((fechaInicio as Date { format: "dd/MM/yyyy" })
+                  as String { format: "yyyy-MM-dd" }) ++ "T00:00:00.000Z"
+              else null,
+            endDate:
+              if (fechaFin != null)
+                ((fechaFin as Date { format: formatoFin })
+                  as String { format: "yyyy-MM-dd" }) ++ "T00:00:00.000Z"
+              else null,
+            penaltyAmount: (payload.clausula.valor_penalidad default 0) as Number
+          }
+        }
+      }
+    }
+  }
+  else {}
+)
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
