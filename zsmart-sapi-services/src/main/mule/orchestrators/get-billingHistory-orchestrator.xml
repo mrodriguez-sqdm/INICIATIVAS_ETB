@@ -7,18 +7,24 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="billingHistory-zsmart-orchestrator" doc:id="2a4ea662-ad91-4bcf-b575-fc085de9108f" >
 		<try doc:name="Try" doc:id="d275e716-f265-466b-bae2-8447ec3921ca" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="01375bd3-e9f2-4c43-8a1d-16f1ce93f57d" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /billingHistory"]' />
-			<logger level="INFO" doc:name="Logger" doc:id="4a856d3d-83f1-49b8-9504-26075834052a" message="#[attributes.queryParams]"/>
 			<ee:transform doc:name="set zsmart request" doc:id="acf1dda1-abe7-4159-9588-affc3801bee4" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
+
+var transId =
+	if (!isEmpty(attributes.queryParams.msisdn))
+		attributes.queryParams.msisdn
+	else
+		attributes.queryParams.accountNumber
+
 ---
 {
   access_token: p('secure::zsmart.billingHistoryToken'),
   method: "billHistoryQuery",
   version: "1.0",
   content: {
-  	transactionID: "MULE" ++ (now() as String {format: "YYYYMMddHHmmss"}),
+  	transactionID: transId ++ (now() as String {format: "YYYYMMddHHmmss"}),
 	msisdn: attributes.queryParams.msisdn,
 	accountNumber: attributes.queryParams.accountNumber,
 	InvoiceNumber: attributes.queryParams.invoiceNumber,
@@ -44,7 +50,6 @@ output application/json
 attributes.queryParams.limit default 10]]></ee:set-variable>
 				</ee:variables>
 			</ee:transform>
-			<logger level="INFO" doc:name="Logger" doc:id="d16aa462-d7c5-40cc-8c72-8cb8087eb566" message="#[payload]"/>
 			<flow-ref doc:name="billing-zsmart-client" doc:id="d7a0817c-d44c-47f9-b016-af2db2177089" name="billing-zsmart-client" />
 			<choice doc:name="Choice" doc:id="89fe72ec-406e-465e-984e-1f38869601d8">
 			<when expression='#[(payload.res_code != "00000" or payload.result.resultCode != "0000")]'>
@@ -134,7 +139,7 @@ output application/java
 						</ee:variables>
 					</ee:transform>
 				</on-error-continue>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue1" doc:id="fb2278c6-bea3-4992-9449-a50e40e380b2" type="ZSMART:SYSTEM_ERROR" >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="fb2278c6-bea3-4992-9449-a50e40e380b2" type="ZSMART:SYSTEM_ERROR" >
 					<ee:transform doc:name="set system error" doc:id="f897f1c9-02eb-4f66-8b9f-97ba9f2d547c" >
 						<ee:message >
 							<ee:set-payload ><![CDATA[%dw 2.0
