@@ -29,7 +29,7 @@ output application/json  skipNullOn="everywhere"
   // Customer Mapping
   ("cust": {
     "operate": operation,
-    "custId": customer.custId,
+    "custId": customer.custId default transaction.custId,
     "custName": customer.custName,
     "firstName": customer.firstName,
     "lastName": customer.lastName,
@@ -85,7 +85,7 @@ output application/json  skipNullOn="everywhere"
   // Customer Attributes Mapping
   ("custAttrList": customer.attributes map ((custAttr) -> {
     "operate": custAttr.operate,
-    "custId": customer.custId,
+    "custId": customer.custId default transaction.custId,
     "attrCode": custAttr.attrCode,
     "value": custAttr.value,
     "effDate": custAttr.effectiveDate

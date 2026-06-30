@@ -28,7 +28,7 @@ output application/json  skipNullOn="everywhere"
   // Account Mapping
   ("account": {
     "operate": operation,
-    "acctId": account.acctId,
+    "acctId": account.acctId default transaction.acctId,
     "acctName": account.acctName,
     "billDeliveryType": account.billDeliveryType,
     "paymentMode": account.paymentMode,
@@ -77,7 +77,7 @@ output application/json  skipNullOn="everywhere"
   // Account Attributes Mapping
   ("acctAttrList": account.attributes map ((acctAttr) -> {
     "operate": acctAttr.operate,
-    "acctId": account.acctId,
+    "acctId": account.acctId default transaction.acctId,
     "attrCode": acctAttr.attrCode,
     "value": acctAttr.value,
     "effDate": acctAttr.effectiveDate
