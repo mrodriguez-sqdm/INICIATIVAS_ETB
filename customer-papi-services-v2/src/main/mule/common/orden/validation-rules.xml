@@ -21,48 +21,12 @@ output application/java
 []]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<foreach doc:name="For Each Rule" doc:id="e07dd5d5-68fc-412a-96da-5d030f6a9a69" collection="#[payload]">
+		<parallel-foreach doc:name="Parallel For Each" doc:id="bad7dc69-1d07-4439-a862-80e70954f9c0" collection="#[payload]" timeout="90000" target="reglasEvaluadas">
 			<set-variable value="#[payload]" doc:name="Set Variable currentRule" doc:id="1c6d896b-7a1f-4b65-ac66-06599c2c0855" variableName="currentRule" />
-			<choice doc:name="Choice" doc:id="ebf9c3a7-b87b-4b3d-816b-c5a60ce249ab" >
-				<when expression="#[%dw 2.0&#10;output application/json&#10;&#10;// IDs que la regla actual exige&#10;var idsRequeridos = vars.currentRule.dependencias.reglas default []&#10;&#10;// El histórico, si es la primera vez, será un array vacío&#10;var historico = vars.reglasAcumuladas default []&#10;&#10;// Buscamos en el histórico&#10;var dependenciasEncontradas = historico filter ((acumulada) -&gt; &#10;    idsRequeridos contains acumulada.idRegla&#10;)&#10;&#10;// PASO DE SEGURIDAD 1: ¿Están todas? &#10;// (Si es la primera ejecución y hay requeridas, esto dará FALSE automáticamente)&#10;var estanTodas = if (isEmpty(idsRequeridos)) true &#10;                 else sizeOf(dependenciasEncontradas) == sizeOf(idsRequeridos)&#10;&#10;// PASO DE SEGURIDAD 2: ¿Son válidas?&#10;var todasSonValidas = sizeOf(dependenciasEncontradas filter ($.esValido == false)) == 0&#10;&#10;---&#10;// Lógica para el Choice:&#10;// Si la regla dice que es dependiente, pero el historial no tiene lo que ella necesita... &#10;// devuelve TRUE (bloquea y manda al camino de error).&#10;(vars.currentRule.dependencias.esDependiente default false) and (!(estanTodas and todasSonValidas))]">
-					<ee:transform doc:name="Transform Message" doc:id="ab9f54a7-ffff-4e02-a5d3-db8b1f7b0363" >
-						<ee:message >
-						</ee:message>
-						<ee:variables >
-							<ee:set-variable variableName="reglasAcumuladas" ><![CDATA[%dw 2.0
-output application/json
----
-do {
-    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
-    var acumulado = vars.reglasAcumuladas default []
-    
-    // 2. Creamos el objeto de la regla actual
-    var resultadoActual = {
-		idRegla: vars.currentRule.idRegla default "",
-		obligatoria: vars.currentRule.obligatoria default false,
-		evaluacionDetallada: [{
-			descripcion: "No ejecutada: Una o más dependencias fallaron o no existen.",
-			comparacion: "N/A",
-			resultado: "FALLO",
-			critica: "",
-			obligatoria: ""
-			
-		}],
-		esValido: false,
-		respuestaRegla: vars.currentRule.siFalla default "Rechazo por dependencia",
-		estadoOrdenComercial: vars.currentRule.estadoOrdenComercial
-	}
-    ---
-    // 3. Retornamos la lista con el nuevo elemento al final
-    acumulado ++ [resultadoActual]
-}]]></ee:set-variable>
-						</ee:variables>
-					</ee:transform>
-				</when>
-				<otherwise >
-					<choice doc:name="Choice" doc:id="946c2ddc-4c9e-4f0b-9998-be465a6d9dc3" >
+		
+		<choice doc:name="Choice" doc:id="22f28cf9-6337-4760-bec3-accf84178eee" >
 				<when expression='#[vars.currentRule.accion.sistema == "mongo-db-sapi-services"]'>
-					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="677bdc18-41fa-4af3-8846-fd247c243632">
+					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="fa9bf00e-dc9c-4900-becd-5155225fe51e">
 						<ee:message>
 							<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -125,7 +89,7 @@ else
 						<ee:variables>
 						</ee:variables>
 					</ee:transform>
-					<ee:transform doc:name="Transform Message" doc:id="86ef7afc-c0c2-4473-87de-23459fc822b2">
+					<ee:transform doc:name="Transform Message" doc:id="7b4eb4e9-479e-47bb-87ce-2edcb460e169">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -154,9 +118,11 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+					<set-variable value="#[payload]" doc:name="Set body sapi" doc:id="f8e5b99d-c2e3-4fd9-a41e-2e5cf3506a8e" variableName="requestDataSapi" />
+					<flow-ref doc:name="Flow Reference" doc:id="55fb148d-7e25-461e-bd20-b0d1206a5c97" name="generic-sapi-clientSub_Flow" />
 				</when>
 	<when expression='#[vars.currentRule.accion.sistema == "oracle-sapi-services"]'>
-					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="3da6044d-8025-491a-bfdd-e780c88804a6">
+					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="aae12081-9a76-4e89-9abd-7f07652e6657">
 						<ee:message>
 							<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -216,7 +182,7 @@ else
 						<ee:variables>
 						</ee:variables>
 					</ee:transform>
-					<ee:transform doc:name="Transform Message" doc:id="45a77531-2ee6-4887-9307-103c91ae733a">
+					<ee:transform doc:name="Transform Message" doc:id="7a99b119-2384-4093-bcd0-f3513784ed1d">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -243,6 +209,8 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+					<set-variable value="#[payload]" doc:name="Set body sapi" doc:id="88ea03c3-b7ef-4a68-a156-a3624420c6ba" variableName="requestDataSapi" />
+					<flow-ref doc:name="Flow Reference" doc:id="7c06c57e-be13-491f-a8d4-f0a8b7eb108d" name="generic-oracle-sapi-clientSub_Flow" />
 				
 </when>
 				<otherwise >
@@ -252,30 +220,9 @@ output application/json
     description='#["La regla con ID " ++ (vars.currentRule.idRegla default "Desconocida") ++ " no tiene la conexion parametrizada."]'/>
 				</otherwise>
 			</choice>
-			<set-variable value="#[payload]" doc:name="Set body sapi" doc:id="24de40fa-00da-4976-ad03-305f620e90be" variableName="requestDataSapi"/>
-			<flow-ref doc:name="Flow Reference" doc:id="c033bf73-6178-4482-8c72-bb10317e8520" name="generic-sapi-clientSub_Flow" />
-			<ee:transform doc:name="Set Variables Reglas y resultadoSapi" doc:id="ad30b043-fd78-4045-94ef-5568d8024ca4" >
+			<ee:transform doc:name="set payload" doc:id="cf3c7edd-e495-4ec3-9d56-be06e248898b" >
 				<ee:message >
-				</ee:message>
-				<ee:variables >
-					<ee:set-variable variableName="resultadoSapi" ><![CDATA[%dw 2.0
-output application/json
----
-do {
-    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
-    var acumulado = vars.resultadoSapi default []
-    
-    // 2. Creamos el objeto de la regla actual
-    var resultadoActual = {
-        llave: vars.currentRule.accion.coleccion default "",
-        idRegla: vars.currentRule.idRegla default "",
-        objeto: payload.result[0] default {}
-    }
-    ---
-    // 3. Retornamos la lista con el nuevo elemento al final
-    acumulado ++ [resultadoActual]
-}]]></ee:set-variable>
-					<ee:set-variable variableName="reglasAcumuladas" ><![CDATA[%dw 2.0
+					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
 // Importamos la librería de fechas
@@ -395,12 +342,8 @@ var listaResultados = validaciones map (item) -> do {
 
 // --- SALIDA PARA SET VARIABLE ---
 ---
-do {
-    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
-    var acumulado = vars.reglasAcumuladas default []
-    
-    // 2. Creamos el objeto de la regla actual
-    var resultadoActual = {
+ {
+ 	resultadoRegla :{
         idRegla: vars.currentRule.idRegla default "",
         obligatoria: vars.currentRule.obligatoria default "",
         evaluacionDetallada: listaResultados map (r) -> (r - "critica"),
@@ -408,7 +351,29 @@ do {
                   else not (listaResultados.critica contains true),
         respuestaRegla: if (not (listaResultados.critica contains true)) vars.currentRule.siSeCumple 
                         else vars.currentRule.siFalla,
-        estadoOrdenComercial: vars.currentRule.estadoOrdenComercial
+        estadoOrdenComercial: vars.currentRule.estadoOrdenComercial,
+    },
+    resultadoSistema :{
+        llave: vars.currentRule.accion.coleccion default "",
+        idRegla: vars.currentRule.idRegla default "",
+        objeto: payload.result[0] default {}
+    }
+ }
+   ]]></ee:set-payload>
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="resultadoSapi" ><![CDATA[%dw 2.0
+output application/json
+---
+do {
+    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
+    var acumulado = vars.resultadoSapi default []
+    
+    // 2. Creamos el objeto de la regla actual
+    var resultadoActual = {
+        llave: vars.currentRule.accion.coleccion default "",
+        idRegla: vars.currentRule.idRegla default "",
+        objeto: payload.result[0] default {}
     }
     ---
     // 3. Retornamos la lista con el nuevo elemento al final
@@ -416,12 +381,68 @@ do {
 }]]></ee:set-variable>
 				</ee:variables>
 			</ee:transform>
-				</otherwise>
+		
+		
+		
+		</parallel-foreach>
+		<ee:transform doc:name="Set Variables Reglas y resultadoSapi" doc:id="59708b52-3088-45de-a81a-53d307ce338c" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="reglasAcumuladas" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.reglasEvaluadas map ((item) -> item.payload.resultadoRegla)]]></ee:set-variable>
+				<ee:set-variable variableName="resultadoSapi" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.reglasEvaluadas map ((item) -> item.payload.resultadoSistema)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<!-- [STUDIO:"For Each Rule"]<foreach doc:name="For Each Rule" doc:id="e07dd5d5-68fc-412a-96da-5d030f6a9a69" collection="#[payload&#93;">
+			<choice doc:name="Choice" doc:id="ebf9c3a7-b87b-4b3d-816b-c5a60ce249ab" >
+				<when expression="#[%dw 2.0&#10;output application/json&#10;&#10;// IDs que la regla actual exige&#10;var idsRequeridos = vars.currentRule.dependencias.reglas default [&#93;&#10;&#10;// El histórico, si es la primera vez, será un array vacío&#10;var historico = vars.reglasAcumuladas default [&#93;&#10;&#10;// Buscamos en el histórico&#10;var dependenciasEncontradas = historico filter ((acumulada) -&gt; &#10;    idsRequeridos contains acumulada.idRegla&#10;)&#10;&#10;// PASO DE SEGURIDAD 1: ¿Están todas? &#10;// (Si es la primera ejecución y hay requeridas, esto dará FALSE automáticamente)&#10;var estanTodas = if (isEmpty(idsRequeridos)) true &#10;                 else sizeOf(dependenciasEncontradas) == sizeOf(idsRequeridos)&#10;&#10;// PASO DE SEGURIDAD 2: ¿Son válidas?&#10;var todasSonValidas = sizeOf(dependenciasEncontradas filter ($.esValido == false)) == 0&#10;&#10;&#45;&#45;-&#10;// Lógica para el Choice:&#10;// Si la regla dice que es dependiente, pero el historial no tiene lo que ella necesita... &#10;// devuelve TRUE (bloquea y manda al camino de error).&#10;(vars.currentRule.dependencias.esDependiente default false) and (!(estanTodas and todasSonValidas))&#93;">
+					<ee:transform doc:name="Transform Message" doc:id="ab9f54a7-ffff-4e02-a5d3-db8b1f7b0363" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="reglasAcumuladas" ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+do {
+    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
+    var acumulado = vars.reglasAcumuladas default [&#93;
+    
+    // 2. Creamos el objeto de la regla actual
+    var resultadoActual = {
+		idRegla: vars.currentRule.idRegla default "",
+		obligatoria: vars.currentRule.obligatoria default false,
+		evaluacionDetallada: [{
+			descripcion: "No ejecutada: Una o más dependencias fallaron o no existen.",
+			comparacion: "N/A",
+			resultado: "FALLO",
+			critica: "",
+			obligatoria: ""
+			
+		}&#93;,
+		esValido: false,
+		respuestaRegla: vars.currentRule.siFalla default "Rechazo por dependencia",
+		estadoOrdenComercial: vars.currentRule.estadoOrdenComercial
+	}
+    &#45;&#45;-
+    // 3. Retornamos la lista con el nuevo elemento al final
+    acumulado ++ [resultadoActual&#93;
+}&#93;&#93;></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</when>
+				<otherwise >
+									</otherwise>
 			</choice>
 			
 
 
-</foreach>
+</foreach> [STUDIO] -->
 	</sub-flow>
 	
 	
