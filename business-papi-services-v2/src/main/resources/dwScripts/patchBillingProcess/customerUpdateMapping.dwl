@@ -65,7 +65,7 @@ output application/json  skipNullOn="everywhere"
     ("contactDtoList": customer.contacts map ((custContact) -> {
       "operate": custContact.operate,
       "contactType": custContact.contactType,
-      "contactID": custContact.contactId,
+      "contactId": custContact.contactId,
       "firstName": custContact.firstName,
       "lastName": custContact.lastName,
       "email": custContact.email,
