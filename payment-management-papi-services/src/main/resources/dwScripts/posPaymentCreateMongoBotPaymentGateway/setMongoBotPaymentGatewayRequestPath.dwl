@@ -12,6 +12,10 @@ fun getLinea() =
     ((payload.referencias.detalle_referencias[0].atributos default [])
         filter ($.atributo == "LINEA"))[0].valor default ""
 
+fun getTipo() =
+    ((requestPayload.referencias.detalle_referencias[0].atributos default [])
+        filter ($.atributo == "TIPO_PAGO"))[0].valor default ""
+
 var requestPayload = vars.auditResponse default payload
 ---
 {
@@ -51,7 +55,12 @@ var requestPayload = vars.auditResponse default payload
         Tipo_Identificacion: requestPayload.cliente.tipo_documento default "",
         Referencia_Venta: requestPayload.referencias.referencia default "",
         Estado: "CREATED",
-        Tipo: "",
+        Facturas: (requestPayload.referencias.detalle_referencias default []) map (factura) -> {
+		  Numero_Cuenta_Facturacion: factura.Numero_Cuenta_Facturacion default "",
+		  Numero_Factura: factura.numero_factura default factura.referencia default "",
+		  Valor: (factura.valor_pagar default 0) as Number
+		},
+		Tipo: getTipo(),
         Valor: requestPayload.referencias.valor_pagar default "",
         Fuente: requestPayload.atributos_pasarela.pasarela default "",
         Origen: requestPayload.atributos_pasarela.tipo_pasarela default "",

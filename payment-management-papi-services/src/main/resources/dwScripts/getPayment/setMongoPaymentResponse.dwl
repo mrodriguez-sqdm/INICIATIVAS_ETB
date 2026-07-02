@@ -25,6 +25,7 @@ var ref = payload.referencias
             referenceDetails:
                 (ref.detalle_referencias default []) map (d) -> {
                     reference: d.referencia,
+                    billingAccountNumber: d.Numero_Cuenta_Facturacion,
                     description: d.descripcion,
                     currency: d.moneda,
                     amountToPay: d.valor_pagar,

@@ -48,6 +48,7 @@ var fechaColombia = fechaHoraColombia()
 			(vars.payloadOri.references default [])
 			map (r) -> {
 				referencia: r.reference default "",
+				Numero_Cuenta_Facturacion: r.billingAccountNumber default "",
 				descripcion: r.description default "",
 				moneda: r.currency default "",
 				valor_pagar: (r.totalAmount default 0) as String,
