@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-billingAccountItem-orchestratorSub_Flow"
+		doc:id="3c655650-7cfd-46fa-bff2-99c43ce27a62">
+		<try doc:name="Try" doc:id="9230f925-15aa-4fa0-b90d-7615b92a5a6c">
+			<ee:transform doc:name="set billing params" doc:id="e8b7fa5d-a51e-40b5-8d60-354ddf910788">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="billingParams"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams]]></ee:set-variable>
+					<ee:set-variable variableName="billingHeaders"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('mongo-db-sapi.security.client-secret'),
+	"client_id": p('mongo-db-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<choice doc:name="Choice"
+				doc:id="a82f0867-17f6-463a-9beb-b96f8839eef0">
+				<when
+					expression="#[attributes.queryParams.'BILLING_ACCOUNT' != null and attributes.queryParams.'BILLING_ACCOUNT' != &quot;&quot;]">
+					<ee:transform doc:name="set Zsmart Request"
+						doc:id="1f23c560-0255-48c7-b3cd-0872ff211ff9">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+	basePath: p("zsmart-sapi.base-path"),
+	host: p("zsmart-sapi.host"),
+	port: p("zsmart-sapi.port"),
+	method: "GET",
+	path: p('zsmart-sapi.resources.billingAccountItem.path'),
+	body: {
+	},
+	headers: vars.billingHeaders default {
+	},
+	queryParameters: {
+		"msisdn": vars.billingParams.'CONNECTION_NUMBER',
+		"accountNumber": vars.billingParams.'BILLING_ACCOUNT',
+		"billNumber": vars.billingParams.'INVOICE_NUMBER',
+		"channelCode": vars.billingParams.'ORIGIN'
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+vars.billingParams.'BILLING_ACCOUNT']]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref
+						doc:name="System Generic (Zsmart Billing Account Item)"
+						doc:id="4e658f16-7bd0-41fd-8d9d-894205b749d8"
+						name="generic-sapi-clientSub_Flow" />
+					<ee:transform doc:name="set billing account item response"
+						doc:id="145f4541-6fd8-497a-9250-8ac46ad94ff9">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"codeResponse": "200",
+	"messageResponse": "OK",
+	"accounts": [{
+		"accountNumber": vars.billingAccount,
+		"items": [(payload.result.result.billAcctItemDto update {
+			case pb at .preBalance -> {
+				"value": if ( !isEmpty(pb) and isInteger(pb) ) pb
+              else
+                "0",
+				"formatted": if ( !isEmpty(pb) and isInteger(pb) ) pb as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case due at .due -> {
+				"value": if ( !isEmpty(due) and isInteger(due) ) due
+              else
+                "0",
+				"formatted": if ( !isEmpty(due) and isInteger(due) ) due as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case ac at .adjustCharge -> {
+				"value": if ( !isEmpty(ac) and isInteger(ac) ) ac
+              else
+                "0",
+				"formatted": if ( !isEmpty(ac) and isInteger(ac) ) ac as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case dc at .disputeCharge -> {
+				"value": if ( !isEmpty(dc) and isInteger(dc) ) dc
+              else
+                "0",
+				"formatted": if ( !isEmpty(dc) and isInteger(dc) ) dc as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case rc at .recvCharge -> {
+				"value": if ( !isEmpty(rc) and isInteger(rc) ) rc
+              else
+                "0",
+				"formatted": if ( !isEmpty(rc) and isInteger(rc) ) rc as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case li at .acctItemFeeDtoList -> li map ((item, index) -> item update {
+				case chrg at .charge -> {
+					"value": if ( !isEmpty(chrg) and isInteger(chrg) ) chrg
+                  else
+                    "0",
+					"formatted": if ( !isEmpty(chrg) and isInteger(chrg) ) chrg as Number as String {
+						format: "\$#,##0.00"
+					}
+                  else
+                    "0" as Number as String {
+						format: "\$#,##0.00"
+					}
+				}
+			})
+		}) mapObject (v, k) -> {
+			(if ( k as String == "acctItemFeeDtoList" ) "lineItems" else k): v
+		}]
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<when
+					expression="#[(attributes.queryParams.'CUSTOMER_ID_TYPE' != null and attributes.queryParams.'CUSTOMER_ID_TYPE' != &quot;&quot;) and (attributes.queryParams.'CUSTOMER_ID' != null and attributes.queryParams.'CUSTOMER_ID' != &quot;&quot;)]">
+					<ee:transform doc:name="set dynamicQuery request"
+						doc:id="5dbd7ff9-bc99-4665-8fc4-d6ddcb482afa">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: p('mongo-db-sapi.resources.dynamicQuery.base-path'),
+	body: {
+		"query": {
+			"aggregate": "MDM_CUENTA_FACTURACION",
+			"pipeline": [{
+				"\$match": {
+					"Tipo_Documento": vars.billingParams.'CUSTOMER_ID_TYPE',
+					"Numero_Identificacion": vars.billingParams.'CUSTOMER_ID'
+				}
+			}],
+			"cursor": {
+			}
+		}
+	},
+	headers: vars.billingHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref
+						doc:name="System Generic (MDM_CUENTA_FACTURACION)"
+						doc:id="a65cdf89-ec8b-4594-b1dd-4477b4067bae"
+						name="generic-sapi-clientSub_Flow" target="mdmCuentaFact" />
+					<ee:transform doc:name="set Zsmart Request"
+						doc:id="f9c0143b-55f3-4097-bda4-e1297bd4a0a8">
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "GET",
+    path: p('zsmart-sapi.resources.billingAccountItem.path'),
+    body: {},
+    headers: vars.billingHeaders default {},
+    queryParameters: {
+    	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
+    	"accountNumber": vars.mdmCuentaFact.result[0]."Cuenta_Facturacion",
+    	"billNumber": vars.billingParams.'INVOICE_NUMBER',
+    	"channelCode": vars.billingParams.'ORIGIN'
+    },
+    uriParameters: {}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+vars.mdmCuentaFact.result[0]."Cuenta_Facturacion"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref
+						doc:name="System Generic (Zsmart Billing Account Item)"
+						doc:id="032f2105-a0b6-4905-8f67-c681730026f7"
+						name="generic-sapi-clientSub_Flow" />
+					<ee:transform doc:name="set billing account item response"
+						doc:id="25d9428d-69d3-47f0-817d-dad93e55b42d">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"codeResponse": "200",
+	"messageResponse": "OK",
+	"accounts": [{
+		"accountNumber": vars.billingAccount,
+		"items": [(payload.result.result.billAcctItemDto update {
+			case pb at .preBalance -> {
+				"value": if ( !isEmpty(pb) and isInteger(pb) ) pb
+              else
+                "0",
+				"formatted": if ( !isEmpty(pb) and isInteger(pb) ) pb as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case due at .due -> {
+				"value": if ( !isEmpty(due) and isInteger(due) ) due
+              else
+                "0",
+				"formatted": if ( !isEmpty(due) and isInteger(due) ) due as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case ac at .adjustCharge -> {
+				"value": if ( !isEmpty(ac) and isInteger(ac) ) ac
+              else
+                "0",
+				"formatted": if ( !isEmpty(ac) and isInteger(ac) ) ac as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case dc at .disputeCharge -> {
+				"value": if ( !isEmpty(dc) and isInteger(dc) ) dc
+              else
+                "0",
+				"formatted": if ( !isEmpty(dc) and isInteger(dc) ) dc as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case rc at .recvCharge -> {
+				"value": if ( !isEmpty(rc) and isInteger(rc) ) rc
+              else
+                "0",
+				"formatted": if ( !isEmpty(rc) and isInteger(rc) ) rc as Number as String {
+					format: "\$#,##0.00"
+				}
+              else
+                "0" as Number as String {
+					format: "\$#,##0.00"
+				}
+			}
+          case li at .acctItemFeeDtoList -> li map ((item, index) -> item update {
+				case chrg at .charge -> {
+					"value": if ( !isEmpty(chrg) and isInteger(chrg) ) chrg
+                  else
+                    "0",
+					"formatted": if ( !isEmpty(chrg) and isInteger(chrg) ) chrg as Number as String {
+						format: "\$#,##0.00"
+					}
+                  else
+                    "0" as Number as String {
+						format: "\$#,##0.00"
+					}
+				}
+			})
+		}) mapObject (v, k) -> {
+			(if ( k as String == "acctItemFeeDtoList" ) "lineItems" else k): v
+		}]
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<otherwise>
+					<raise-error doc:name="BILLING_HISTORY:INVALID_PARAMS"
+						doc:id="bed226cc-d633-4c4e-8281-328993c38dd6"
+						type="BILLING_HISTORY:INVALID_PARAMS"
+						description="There was an error trying to retrieve BillingHistory information" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c5ee9b96-e078-4134-a1e3-1738569178f9" type="BILLING_ACCOUNT_ITEM:INVALID_PARAMS">
+					<ee:transform doc:name="set error" doc:id="3b9ad068-9b8e-4b5f-88c7-d8656c438c1d">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "BILLING_ACCOUNT_ITEM:INVALID_PARAMS",
+    "message": "At least 'BILLING_ACCOUNT' or both 'CUSTOMER_ID_TYPE' and 'CUSTOMER_ID' must be provided.",
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": "At least 'BILLING_ACCOUNT' or both 'CUSTOMER_ID_TYPE' and 'CUSTOMER_ID' must be provided."
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
