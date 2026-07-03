@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-orderOFSC-orchestratorSub_Flow" doc:id="7551fd24-aae5-4dbe-94f2-86ada964a9cc" >
+		<ee:transform doc:name="Request to XML" doc:id="39f688d5-0a50-4632-a3dd-b36a9356cc90" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns orq http://www.etb.com.co/orquestador
+---
+{
+  soapenv#"Envelope": {
+    soapenv#"Header": null,
+    soapenv#"Body": {
+      tem#"ObtenerOrdenOFSC": {
+        tem#"solicitud": {
+          orq#"Encabezado": {
+            orq#"Sistema": {
+              orq#"IdCorrelacion": correlationId,
+              orq#"Nombre": "MuleSoft"
+            }
+          },
+          orq#"DatosSolicitud": {
+            orq#"Orden": vars.orderNumber
+          }
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="get-orderOFSC-clientSub_Flow" doc:id="18c03653-4581-404c-9842-d7440fca9825" name="get-orderOFSC-clientSub_Flow"/>
+		<ee:transform doc:name="Response to JSON" doc:id="997f8dde-ff11-410c-aeb8-d196f186055a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var response = payload.Envelope.Body.ObtenerOrdenOFSCResponse.Resultado
+---
+if(response.Ordenes != null or !isEmpty(response.Ordenes))
+{
+    "Encabezado" : response.Encabezado,
+    "Cantidad": response.Cantidad,
+    "Ordenes": (response.Ordenes pluck $) map ((item, index) -> {
+	    ActivityId: item.ActivityId,
+	    Numero_Orden: item.Numero_Orden,
+	    Estado: item.Estado,
+	    Posicion: item.Posicion,
+	    InformacionAdicional: item.Informacion pluck $
+    })
+} else response
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

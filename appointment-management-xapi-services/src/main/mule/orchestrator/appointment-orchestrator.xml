@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-appointment-orchestratorSub_Flow" doc:id="84270ed2-0441-4161-a816-07f834a7ffda" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="60b041f4-8f72-422a-a632-711205b23f7e" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="fb8d4783-645f-4048-9377-3fd3c405c82a" variableName="headers" />
+		<ee:transform doc:name="Transform Message Bot Request" doc:id="9e13c4d5-f114-42d2-bfe4-4aaf8a731136" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  WSRequestHeader: {
+    System: {
+      name: vars.headers.name,
+      correlationID: vars.headers."X-CORRELATION-ID",
+      processingServer: ""
+    },
+    Property: []
+  },
+  WSRequestBody: {
+    Audit: {
+      Canal: vars.headers.name
+    },
+    Id_PQR: payload.pqr.id,
+    Date: payload.appointment.date,
+    Timeslot: payload.appointment.timeSlot,
+    Duration: payload.appointment.duration
+   
+  }
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="81b5bcb6-184f-4058-9531-d9dd18debd94" name="post-agenda-clientSub_Flow"/>
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="f12e1138-237b-4700-95ec-c9adee7928c3" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Bot Response" doc:id="e59fcfc4-e60b-4f71-8f0f-95903ba12040" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: vars.httpStatus,
+  code: payload.WSResponseHeader.Service.statusDetail[0].errorCode,
+  message: {
+  	message: payload.WSResponseHeader.Service.statusDetail[0].errorMessage
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateProperties-orchestratorSub_Flow" doc:id="ca34c0bd-6490-4c64-9d41-764c1c835b34" >
+		<ee:transform doc:name="Prepare request body" doc:id="fae6bcd7-d624-4518-aa00-0154ef1c7eb3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+var orderNumber = "12345"
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns orq http://www.etb.com.co/orquestador
+ns orq1 http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Entidades.Agendamiento
+ns tem http://tempuri.org/
+---
+soapenv#Envelope: {
+   soapenv#Header: null,
+   soapenv#Body: {
+      tem#ActualizarPropiedades: {
+         tem#solicitud: {
+            orq#Encabezado: {
+               orq#Sistema: {
+                  orq#IdCorrelacion: correlationId default attributes.headers.'x-correlation-id',
+                  orq#Nombre: "Mulesoft"
+               }
+            },
+            orq#DatosSolicitud: {
+            	orq#Orden: vars.orderNumber,
+               orq#propiedades: payload.updateProperties map ((item, index) -> {
+                   orq1#Propiedades: {
+                     orq1#Label: item.name,
+                     orq1#Value: item.value,
+                     orq1#Properties: null
+                  }
+               })
+            }
+         }
+      }
+   }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="7e9f71d7-82a0-4a9e-a763-473056331e0f" name="updateProperties-ofsc-clientSub_Flow"/>
+		<ee:transform doc:name="Payload to JSON" doc:id="6a672d4f-5957-4ce3-9cce-6778827cbe72" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="3291da22-ce2e-4570-a7ac-95ae051db78e" >
+			<when expression='#[payload.Envelope.Body.ActualizarPropiedadesResponse.Resultado.Codigo == "0"]'>
+				<ee:transform doc:name="Prepare output" doc:id="61ad6c57-6e6f-45be-bde3-5c7e54097378">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Dates
+---
+{
+  status: "PASS",
+  responseDate: payload.Envelope.Body.ActualizarPropiedadesResponse.Resultado.Encabezado.Servicio.FechaRespuesta,
+  code: payload.Envelope.Body.ActualizarPropiedadesResponse.Resultado.Codigo,
+  description: payload.Envelope.Body.ActualizarPropiedadesResponse.Resultado.Descripcion
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise error" doc:id="4c5d2576-b769-4144-986b-a850ee4911e8" type="OFSC:UPDPROPORDER01" description="Error de integracion."/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-searchTimeSlot-orchestador" doc:id="611da586-f39d-41fa-bab2-3df48a07037e" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="14fbe500-fa81-4cf9-896c-dbc5fcce1074" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Set Headers" doc:id="3d9f4003-9e1e-4e68-babf-941321e7d687" variableName="headers" />
+		
+		<ee:transform doc:name="Build Requests" doc:id="301c7d6a-a8ef-4ec3-b3d1-bbf662d4ca67">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import trim from dw::core::Strings
+output application/json
+
+var numDays = attributes.queryParams.numDays default "15"
+var area = attributes.queryParams.area default "SUBA"
+var date = attributes.queryParams.date default "2022-10-13"
+var rawCategories = attributes.queryParams.categories default ""
+
+var categoriesText = rawCategories as String replace "%2C" with ","
+var categories = categoriesText splitBy "," map (c) -> trim(c)
+
+---
+categories map (cat) -> {
+  numDays: numDays as String,
+  location: area,
+  timeSlot: "",
+  skill: cat,
+  date: date
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[[]]" doc:name="Init Responses" doc:id="fd71359c-e073-4919-bfe9-3d730ecca058" variableName="responses" />
+		<scatter-gather doc:name="Scatter-Gather" doc:id="c2323428-5865-4b8b-8572-9d5645e3b21d">
+			<route>
+						<foreach doc:name="Send Each Request" doc:id="e11bb9c9-377d-4da1-9356-1c326911e0e2" collection="#[payload]" >
+					<try doc:name="Try" doc:id="cb3790c4-4199-424e-b511-bead820cbcd5" >
+				<flow-ref doc:name="Go to Client" doc:id="fd6d3187-1a37-43da-a450-d6dfab23fdfd" name="post-capacity-client" />
+				<ee:transform doc:name="Append Successful Response" doc:id="c48d2d12-1c1b-4d4f-9609-db896e7edd69" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+		output application/json
+		---
+		(vars.responses default []) ++ [payload]
+		]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[payload]" doc:name="Set Variable" doc:id="6daa2f02-0c0c-42f4-86f6-92fd6ec0289a" variableName="responses" />
+						<error-handler >
+					<on-error-continue enableNotifications="true" logException="true" doc:name="OnError -&gt; Append FAIL" doc:id="cd4cc265-f575-4d40-b2c4-50a192201279" type="HTTP:INTERNAL_SERVER_ERROR" >
+						<set-variable value="#[(vars.responses default []) ++ [{&#10;                            status: 'FAIL',&#10;                            description: 'No Capacities',&#10;                            capacities: null&#10;                          }]]" doc:name="Append Error Response" doc:id="0b127812-a2df-4f6e-a0a6-f09fa7e210de" variableName="responses" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</foreach>
+			</route>
+			<route >
+				<flow-ref doc:name="Flow Reference" doc:id="4753f878-f92a-44fb-ba34-96884e47938b" name="mongo-db-sapi-get-franjas-clientSub_Flow"/>
+			</route>
+		</scatter-gather>
+		<set-variable value='#[payload."1"."payload".portal_unificado_conf[0].Parametros default []]' doc:name="Set Variable" doc:id="cf9d8dfd-536b-4642-853d-471cb2825127" variableName="timeslot_user"/>
+		<set-payload value="#[vars.responses]" doc:name="Set Payload" doc:id="90c5873b-9d8e-4f26-9176-7eee71f3dd90" />
+		<ee:transform doc:name="Filter Valid Responses or Return FAIL">
+      <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var caps = 
+  (payload
+    filter ((item) -> item.status == "PASS" and item.capacities != null)
+    flatMap ((item) -> item.capacities)
+    filter ((c) -> ((c.available default 0) as Number) > 150)) default []
+
+var groupedByDate = caps groupBy $.date
+
+fun obtenerValor(llave) =
+    (vars.timeslot_user filter ($.Llave == llave))[0].Valor default ""
+
+---
+{
+  items: groupedByDate pluck ((capacities, date) -> {
+    date: date,
+    areas: [
+      {
+        label: vars.parameters.area,
+        timeSlots: (capacities groupBy $.time_slot) pluck ((capsByTimeSlot, timeSlot) -> {
+          label: timeSlot,
+          timeslot_user: obtenerValor(timeSlot as String),
+          categories: capsByTimeSlot map (c) -> {
+            label: c.work_skill,
+            quota: (c.quota default 0) as Number,
+            used: ((c.quota default 0) as Number) - ((c.available default 0) as Number)
+          }
+        })
+      }
+    ]
+  })
+}]]></ee:set-payload>
+      </ee:message>
+    </ee:transform>
+	</sub-flow>
+  
+
+
+</mule>

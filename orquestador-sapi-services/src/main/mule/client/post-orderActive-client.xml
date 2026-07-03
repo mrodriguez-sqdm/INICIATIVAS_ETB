@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-orderActive-clientSub_Flow" doc:id="b2866b52-cffa-4b0c-93ad-8d95dfe69ccb" >
+		<async doc:name="Async" doc:id="0ba16c61-2931-4f96-9e15-fcabb27dbd45">
+			<flow-ref doc:name="Logger before" doc:id="b12a1344-c8f7-483b-b61e-09baa290cb52" name="loggin-client-call" />
+		</async>
+		<http:request method="POST" doc:name="Call orquestador" doc:id="0fafc5fd-81f5-4897-aad4-1d9c229bb80b" config-ref="HTTP_Request_configuration_Orquestador" path="${orquestador.path}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"SOAPAction" : p('orquestador.soapAction')
+}]]]></http:headers>
+		</http:request>
+		<async doc:name="Async" doc:id="57dcc94f-d5a3-4e66-8e9f-14d94dba952c" >
+			<flow-ref doc:name="Logger ACTIVACION_ESIM_LOG" doc:id="a4feba01-3a43-49d6-a59b-635ecef5f9ce" name="post-esimLog-clientSub_Flow" target="responseLog" />
+			<flow-ref doc:name="Logger after" doc:id="342db651-3217-4e2a-9931-32f94ada2ce0" name="loggin-client-call"/>
+		</async>
+	</sub-flow>
+	<sub-flow name="post-esimLog-clientSub_Flow" doc:id="d7523a9b-6395-432b-914f-ea537b250703" >
+		<ee:transform doc:name="Request" doc:id="39c0ec81-b7e5-4c15-be06-31bf21dd5582" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "Request" : write(vars.requestXml,"application/xml"),
+    "Response" : write(payload,"application/xml"),
+    "FechaEnvio" : vars.fechaRequest,
+    "FechaRespuesta" : now() >> "America/Bogota",
+    "Usuario" : vars.initialPayload.usuario,
+    "Aplicacion" : "OrquestadorLTE",
+    "ICCID" : vars.initialPayload.iccid
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="Request mong-db" doc:id="bfeeb5fb-6ff6-4a4f-b37f-500f316119c4" config-ref="HTTP_Request_configuration_mongo_db" path="${mongo-db-sapi.path.post-esim-log}" sendCorrelationId="ALWAYS" correlationId="#[correlationId]" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : vars.initialHeaders.'X-CORRELATION-ID' default correlationId,
+	"client_secret" : p('mongo-db-sapi.client_secret'),
+	"systemId" : vars.systemId,
+	"client_id" : p('mongo-db-sapi.client_id')
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+</mule>

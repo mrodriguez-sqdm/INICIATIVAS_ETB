@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-appointmentId-clientSub_Flow" doc:id="0a7853b3-8593-4a88-9f63-61f111e27416" >
+		<http:request method="GET" doc:name="Call oracle sapi" doc:id="eacd6027-d27b-4688-b87b-374247049cf1" config-ref="Oracle-Sapi-HTTP_Request_configuration" path="${oracle-sapi.assuranceOrder.path}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"source" : vars.headers.'source',
+	"X-CORRELATION-ID": vars.headers.'X-CORRELATION-ID',
+	"name" : vars.headers.'name',
+	"client_secret" : p('oracle-sapi.client_secret'),
+	"client_id" : p('oracle-sapi.client_id'),
+	"systemId": vars.headers.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	activityId : vars.params.id
+}]]]></http:uri-params>
+		</http:request>
+		<ee:transform doc:name="Transform Message" doc:id="72dc73a6-881a-4d61-a7e5-3b4d0ae54514" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  id: payload.activityId,
+  description: payload.XA_Segmento_Cliente,
+  category: if ((payload.apptNumber default "") contains "MDM-PQR") "ASEGURAMIENTO" else "APROVISIONAMIENTO",
+  externalId: payload.apptNumber,
+  startDateTime: "", 
+  endDateTime: "",
+  creationDate: payload.timeOfBooking,
+  status: payload.status,
+  appointmentCharacteristic: [
+    {
+      name: "workZone",
+      value: payload.workZone
+    },
+    {
+      name: "workSkill",
+      value: payload.XA_ACT_WORKSKILL
+    },
+    {
+      name: "duration",
+      value: payload.duration as String
+    },
+    {
+      name: "timeSlot",
+      value: payload.timeSlot
+    },
+    {
+      name: "date",
+      value: payload.date
+    }
+  ],
+  place: {
+    name: "Customer Home",
+    streetNumber: payload.streetAddress default "",
+    streetName: "",
+    city: payload.city,
+    stateOrProvince: payload.stateProvince,
+    country: payload.timeZone,
+    "@type": "PhysicalLocation"
+  },
+  relatedParty: [
+    {
+      id: payload.XA_ID,
+      name: payload.customerName,
+      role: "customer"
+    }
+  ]
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	
+</sub-flow>
+	<sub-flow name="post-capacity-client" doc:id="32fd23a2-c289-444d-ac56-f8bf4833f160" >
+		<http:request method="POST" doc:name="Call oracle sapi" doc:id="83ad56d5-0171-440b-a872-349bc6248921" config-ref="Oracle-Sapi-HTTP_Request_configuration" path="${oracle-sapi.getCapacity.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('credentials.client_secret'),
+	"client_id" : p('credentials.client_id'),
+	"systemId": vars.headers.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+
+</mule>
