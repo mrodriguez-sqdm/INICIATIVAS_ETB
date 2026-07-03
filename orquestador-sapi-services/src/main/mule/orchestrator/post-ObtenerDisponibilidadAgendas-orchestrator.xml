@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-ObtenerDisponibilidadAgendas-orchestratorSub_Flow" doc:id="2af17d11-f37a-4bbc-9bbb-76811b35b1e8" >
+		<ee:transform doc:name="Transform Message" doc:id="93396a1a-a20e-491b-84e1-73e024829443" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml skipNullOn = "everywhere"
+
+ns tem http://tempuri.org/
+ns orq http://www.etb.com.co/orquestador
+ns orq1 http://schemas.datacontract.org/2004/07/Orquestador.Contracts.Solicitudes
+
+var req = payload.ObtenerDisponibilidadAgendas.solicitudDisponibilidadAgenda
+---
+{
+  tem#ObtenerDisponibilidadAgendas: {
+    tem#solicitudDisponibilidadAgenda: {
+      orq#DatosSolicitud: {
+        orq1#FechaAgenda: (req.DatosSolicitud.FechaAgenda default "") replace "T" with " ",
+        orq1#NumeroOrden: req.DatosSolicitud.NumeroOrden default ""
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="40f67ef4-c9ba-441d-abc1-d763bbfda26c" name="post-ObtenerDisponibilidadAgendas-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="07cdaf61-1ccb-495d-ac9d-cab7acb2b03a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+ns tem http://tempuri.org/
+ns a http://www.etb.com.co/orquestador
+
+var res = payload.body.tem#ObtenerDisponibilidadAgendasResponse
+var resultado = res.tem#Resultado
+var agendas = resultado.a#fecha_agendas.*a#DisponibilidadAgenda default []
+---
+{
+  ObtenerDisponibilidadAgendasResponse: {
+    Resultado: {
+      Encabezado: {
+        Servicio: {
+          Codigo: resultado.a#Encabezado.a#Servicio.a#Codigo default null,
+          DetalleEstado: resultado.a#Encabezado.a#Servicio.a#DetalleEstado default null,
+          Estado: resultado.a#Encabezado.a#Servicio.a#Estado default null
+        },
+        Sistema: {
+          Nombre: resultado.a#Encabezado.a#Sistema.a#Nombre default null,
+          Servidor: resultado.a#Encabezado.a#Sistema.a#Servidor default null
+        }
+      },
+      fecha_agendas: {
+        DisponibilidadAgenda: agendas map (item) -> {
+          Zona: item.a#Zona default null,
+          color: item.a#color default null,
+          date: item.a#date default null,
+          quota: item.a#quota default null,
+          time_slot: item.a#time_slot default null
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
