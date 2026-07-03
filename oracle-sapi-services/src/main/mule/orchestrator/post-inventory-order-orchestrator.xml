@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd">
+	<sub-flow name="post-inventory-order-orchestrator-Sub_Flow" doc:id="c21aae00-27bd-423d-912a-81bb9eacd85c" >
+		<ee:transform doc:name="Transform Message" doc:id="f0f17142-8068-4d2f-8ea1-18c7d77fb728" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml skipNullOn="everywhere"
+
+ns open http://www.openuri.org/
+ns tec http://com/tecnocom
+
+var req = payload.doCompletarOrdenInventario.PeticionCompletarOrdenInventario
+var encabezado = req.EncabezadoMensaje
+var cuentasServicio = req.DetalleMensaje.CuentasServicio
+
+---
+{
+  open#doCompletarOrdenInventario: {
+    tec#PeticionCompletarOrdenInventario: {
+      tec#EncabezadoMensaje: {
+        tec#IdDisponibilidad: encabezado.IdDisponibilidad default "",
+        tec#NumeroOrdenAprovisionador: encabezado.NumeroOrdenAprovisionador default "",
+        tec#NumeroRevision: encabezado.NumeroRevision default "",
+        tec#FechaPeticionOrden: encabezado.FechaPeticionOrden default "",
+        tec#TecnologiaETB: encabezado.TecnologiaETB default ""
+      },
+
+      tec#DetalleMensaje: {
+        tec#CuentasServicio: {
+          tec#CuentaServicio: (cuentasServicio.CuentaServicio default []) map ((cuentaServicio) -> {
+            tec#IdCuentaServicio: cuentaServicio.IdCuentaServicio default "",
+
+            tec#ServiciosCompletar: {
+              tec#Servicio: (cuentaServicio.ServiciosCompletar default []) map ((servicio) -> {
+                tec#IdServicio: servicio.IdServicio default "",
+                tec#Accion: servicio.Accion default "",
+
+                tec#Equipos: {
+                  tec#EquipoCompletar: (servicio.Equipos default []) map ((equipo) -> {
+                    tec#IdServicio: equipo.IdServicio default "",
+                    tec#SerialEquipo: equipo.SerialEquipo default "",
+                    tec#MacEquipo: equipo.MacEquipo default "",
+                    tec#EstadoEquipo: equipo.EstadoEquipo default "",
+                    tec#Accion: equipo.Accion default "",
+
+                    tec#Puertos: {
+                      tec#Puerto: (equipo.Puertos default []) map ((puerto) -> {
+                        tec#NombrePuerto: puerto.NombrePuerto default "",
+                        tec#ServiciosPuerto: {
+                          tec#IdServicioPuerto: puerto.ServiciosPuerto.IdServicioPuerto default ""
+                        }
+                      })
+                    }
+                  })
+                }
+              })
+            }
+          }),
+
+          tec#Origen: cuentasServicio.Origen default ""
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="4b688ab2-d3a9-471f-80cd-a518635c30ee" name="post-inventory-order-client-Sub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="c5a6ac9b-b707-440a-a9b1-3badc2114fd5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+ns open http://www.openuri.org/
+ns tec http://com/tecnocom
+var body =
+  payload.body.open#doCompletarOrdenInventarioResponse.tec#RespuestaPeticionCompletarOrdenInventario
+var encabezado = body.tec#EncabezadoMensaje
+var resultado = body.tec#DetalleMensaje.tec#Resultado
+---
+{
+	cod_res: if ( (resultado.tec#Resultado default "") == "OK" ) "200"
+    else
+      resultado.tec#CodigoErrorResultado default "",
+	res: if ( (resultado.tec#Resultado default "") == "OK" ) "Consulta exitosa."
+    else
+      resultado.tec#DescripcionErrorResultado default "",
+	doCompletarOrdenInventarioResponse: {
+		RespuestaPeticionCompletarOrdenInventario: {
+			EncabezadoMensaje: {
+				IdDisponibilidad: encabezado.tec#IdDisponibilidad default "",
+				NumeroOrdenAprovisionador: encabezado.tec#NumeroOrdenAprovisionador default "",
+				NumeroRevision: (encabezado.tec#NumeroRevision default 0) as Number,
+				FechaPeticionOrden: encabezado.tec#FechaPeticionOrden default "",
+				TecnologiaETB: encabezado.tec#TecnologiaETB default ""
+			}
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>
