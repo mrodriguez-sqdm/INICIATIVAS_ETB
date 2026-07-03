@@ -6,7 +6,18 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
 http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
-	<sub-flow name="get-searchTimeSlot-orchestador" doc:id="611da586-f39d-41fa-bab2-3df48a07037e" >
+	<sub-flow name="get-searchTimeSlot-orchestador" doc:id="ae0223ef-230b-4b9f-99be-97d2371c8081" >
+		<choice doc:name="Choice" doc:id="6188de0f-7ece-4cd2-9fa9-6370b332c454" >
+			<when expression="#[payload.orderNumber? and !isEmpty(trim(payload.orderNumber))]">
+				<flow-ref doc:name="searchTimeSlot-orchestador-orquestadorSub_Flow" doc:id="05836ef7-1024-447c-ad90-a753d1c27049" name="searchTimeSlot-orchestador-orquestadorSub_Flow"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="searchTimeSlot-orchestador-ETASub_Flow" doc:id="c88890ff-694c-4463-b44d-b368cc8bc2a6" name="searchTimeSlot-orchestador-ETASub_Flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	
+	<sub-flow name="searchTimeSlot-orchestador-ETASub_Flow" doc:id="611da586-f39d-41fa-bab2-3df48a07037e" >
 		<ee:transform doc:name="Init vars Responses" doc:id="11cdf1e4-1c41-4121-9495-961514a3fece" >
 			<ee:message >
 			</ee:message>
@@ -142,6 +153,108 @@ fun obtenerValor(llave) =
 ]]></ee:set-payload>
       </ee:message>
     </ee:transform>
+	</sub-flow>
+	
+	<sub-flow name="searchTimeSlot-orchestador-orquestadorSub_Flow" doc:id="92eaa90a-1076-4d64-8752-af0f05287be7" >
+		<ee:transform doc:name="Transform Message" doc:id="08ce65f0-d447-47a1-8cbd-760b4f4b1da3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var params = vars.parameters
+---
+{
+  ObtenerDisponibilidadAgendas: {
+    solicitudDisponibilidadAgenda: {
+      DatosSolicitud: {
+        FechaAgenda: ((payload.date default "") ++ "T00:00:00.000Z"),
+        NumeroOrden: payload.orderNumber default ""
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="1faa056b-834e-4f7c-bc4a-acf81dfed587" message="#[payload]"/>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="17c47a90-7598-4621-88a9-c5b7d82dda5e" >
+			<route >
+				<flow-ref doc:name="orquestador-sapi-client-obtenerDisponibilidadAgendasSub_Flow" doc:id="838d1762-1574-4228-a192-0e97d6dbc260" name="orquestador-sapi-client-obtenerDisponibilidadAgendasSub_Flow" />
+				<logger level="INFO" doc:name="Logger" doc:id="c99f438e-5ad3-4dae-8f07-e8a2ff8811b2" message='#["Respuesta Orquestador Service: " ++ write(payload,"application/json")]'/>
+			</route>
+			<route >
+				<ee:transform doc:name="http request mongo franjas" doc:id="300b5e15-deb8-4a31-b9c3-88d694b7de71" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "GET",
+	path: "/unifiedPortalConf",
+	body: {},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		nombre: p('mongo-db-sapi.nombre-franja')
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="2269382f-df54-48b9-baaf-36aefdc8f9f6" name="generic-sapi-clientSub_Flow" />
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Transform Message" doc:id="fc4892a2-7d72-4d07-94d3-6b5529daf52f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+var agendas =
+    payload."0".payload.ObtenerDisponibilidadAgendasResponse.Resultado.fecha_agendas.DisponibilidadAgenda default []
+
+var franjas =
+    payload."1".payload.portal_unificado_conf[0].Parametros default []
+
+var franjasIndex = franjas groupBy $.Llave
+
+fun obtenerValor(llave) =
+    franjasIndex[llave][0].Valor default null
+
+---
+{
+  items: agendas map (agenda) -> {
+    date: agenda.date,
+    color: agenda.color,
+    areas: [
+      {
+        label: agenda.Zona,
+        timeSlots:
+          if (isEmpty(agenda.time_slot default null))
+            []
+          else
+            ((agenda.time_slot splitBy ",") distinctBy $)
+              map (slot) -> {
+                label: slot,
+                timeslot_user: obtenerValor(slot),
+                categories: []
+              }
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 	</sub-flow>
   
 

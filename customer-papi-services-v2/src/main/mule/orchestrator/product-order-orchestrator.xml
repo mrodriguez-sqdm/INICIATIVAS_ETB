@@ -217,8 +217,6 @@ var instalacion = do {
 						<flow-ref doc:name="Build code CUN" doc:id="6b6c6c5a-4097-4710-9f0b-4da15b4b08a5" name="build-CUN-orderSub_Flow" target="cun" />
 					</route>
 				</scatter-gather>
-				<flow-ref doc:name="Build Agendamiento" doc:id="6ae586c3-26a9-4edc-9a1a-9edb2a77f03d" name="build-agendamiento-orderSub_Flow" target="agendamiento"/>
-				<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="a996a268-4315-479c-9618-d02b3a3395a0" message="#[vars.agendamiento&#93;"/> [STUDIO] -->
 			<!-- ============================================================= -->
 <!-- INSERT CRITICO (sincrono): MDM_CD_ORDEN                       -->
 <!-- Su resultado determina el codigo 200/500 de la respuesta.     -->
@@ -254,29 +252,39 @@ fun calcularEstadoComercial(reglas) = do {
             "Reintentos": 0,
             "CodigoExcepcion": 0
         }
-      else if(not (vars.agendamiento.confirmaAgendamiento default true))
+      /*else if(not (vars.agendamiento.confirmaAgendamiento default true))
        {
             "Codigo": p("status-orchestrator.status-failed.agendamineto.code"),
             "Descripcion": p("status-orchestrator.status-failed.agendamineto.description"),
             "Fecha": fechaActual,
             "Reintentos": 0,
             "CodigoExcepcion": 0
-        }
+        }*/
     	else
         // CASO 1: Éxito total -> Estado Maestro
         {
-            "Codigo": p("status-orchestrator.code"),
-            "Descripcion": p("status-orchestrator.description"),
+            "Codigo": p('estado-orden-servicio.disponibilidad-factible.codigo'),
+            "Descripcion": p('estado-orden-servicio.disponibilidad-factible.descripcion'),
             "Fecha": fechaActual,
             "Reintentos": 0,
             "CodigoExcepcion": 0
         }
     else
-        (reglasExitosas[-1].estadoOrdenComercial ++ {
-        "Fecha": fechaActual default "" ,
+    	
+    if(not isEmpty(vars.ordenServicio.Factibilidad default true))
+       {
+            "Codigo": p("status-orchestrator.status-failed.disponibilidad.code"),
+            "Descripcion": p("status-orchestrator.status-failed.disponibilidad.description"),
+            "Fecha": fechaActual,
             "Reintentos": 0,
             "CodigoExcepcion": 0
-        } default {})
+        }else{
+        	 (reglasExitosas[-1].estadoOrdenComercial ++ {
+	        "Fecha": fechaActual default "" ,
+	            "Reintentos": 0,
+	            "CodigoExcepcion": 0
+	        } default {})
+          }
 }
 fun reBuildOrdenServicio(orden: Object, confirmaAgendamiento: Boolean) = do {
     if(confirmaAgendamiento)
@@ -335,8 +343,8 @@ fun reBuildOrdenServicio(orden: Object, confirmaAgendamiento: Boolean) = do {
         "Cliente_Tramite": vars.clienteTramite.Cliente_Tramite,
         "Servicio_Anterior": null,
         "Servicio_Tramite": vars.resultadoProductos.Servicio_Tramite,
-        "Orden_Servicio": reBuildOrdenServicio(vars.ordenServicio.Orden_Servicio as Object,vars.agendamiento.confirmaAgendamiento),
-        "Agendamiento": vars.agendamiento.agendamiento,
+        "Orden_Servicio": vars.ordenServicio.Orden_Servicio, // reBuildOrdenServicio(vars.ordenServicio.Orden_Servicio as Object,vars.agendamiento.confirmaAgendamiento),
+        "Agendamiento": {},//vars.agendamiento.agendamiento,
         "Orden_Activacion": null,
         "Cuenta_Facturacion_Anterior": null,
         "Cuenta_Facturacion_Tramite": {
@@ -420,7 +428,9 @@ fun reBuildOrdenServicio(orden: Object, confirmaAgendamiento: Boolean) = do {
     <!-- ASYNC: persistencias NO criticas, fuera del camino de respuesta -->
     <!-- ============================================================= -->
     <async doc:name="Async - persistencias secundarias" doc:id="b1b2b3b4-0002-0002-0002-000000000002">
-        <try doc:name="Try - persistencias secundarias" doc:id="b1b2b3b4-0002-0002-0002-000000000003">
+        <scatter-gather doc:name="Scatter-Gather" doc:id="3c9f159d-d73d-4cea-aa3a-47c1fe5f4970" >
+						<route >
+							<try doc:name="Try - persistencias secundarias" doc:id="b1b2b3b4-0002-0002-0002-000000000003">
 
             <!-- Insert auditoria de reglas -->
             <ee:transform doc:name="Set Body Insert MDM_REGLAS_ORDEN" doc:id="71ee1de7-cdbb-489e-9694-5eacbda60b35">
@@ -458,22 +468,25 @@ output application/json
 }]]></ee:set-payload>
                 </ee:message>
             </ee:transform>
-            <flow-ref doc:name="Insert Reglas ejecutadas" doc:id="2ff8bbcd-c4b4-4bd6-9339-db7105347d54" name="generic-sapi-clientSub_Flow"/>
+            <flow-ref doc:name="Insert Reglas ejecutadas" doc:id="2ff8bbcd-c4b4-4bd6-9339-db7105347d54" name="generic-sapi-clientSub_Flow" />
 
             <!-- Insert servicio (mismo sub-flow de hoy) -->
-            <flow-ref doc:name="create-mdm-cd-servicio" doc:id="34dda13e-683a-4022-a7f6-68efc9c77bc8" name="create-mdm-cd-servicioSub_Flow"/>
+            <flow-ref doc:name="create-mdm-cd-servicio" doc:id="34dda13e-683a-4022-a7f6-68efc9c77bc8" name="create-mdm-cd-servicioSub_Flow" />
 
             <!-- Si una persistencia secundaria falla, NO afecta la respuesta -->
             <!-- (ya se devolvio al canal). Solo se registra para conciliacion. -->
             <error-handler>
-                <on-error-continue doc:name="On Error Continue - persistencia secundaria"
-                    doc:id="b1b2b3b4-0002-0002-0002-000000000004" type="ANY">
-                    <logger level="ERROR" doc:name="Log fallo persistencia secundaria"
-                        doc:id="b1b2b3b4-0002-0002-0002-000000000005"
-                        message='#["[ORDER][ASYNC][FALLO] Fallo persistencia secundaria (reglas/servicio) para Numero_Orden: " ++ (vars.orderNumber default "N/A") ++ ". CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default "N/A") ++ " | Error: " ++ (error.description default "desconocido")]'/>
+                <on-error-continue doc:name="On Error Continue - persistencia secundaria" doc:id="b1b2b3b4-0002-0002-0002-000000000004" type="ANY">
+                    <logger level="ERROR" doc:name="Log fallo persistencia secundaria" doc:id="b1b2b3b4-0002-0002-0002-000000000005" message='#["[ORDER][ASYNC][FALLO] Fallo persistencia secundaria (reglas/servicio) para Numero_Orden: " ++ (vars.orderNumber default "N/A") ++ ". CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default "N/A") ++ " | Error: " ++ (error.description default "desconocido")]' />
                 </on-error-continue>
             </error-handler>
         </try>
+						</route>
+						<route >
+							<flow-ref doc:name="Build Agendamiento" doc:id="6ae586c3-26a9-4edc-9a1a-9edb2a77f03d" name="build-agendamiento-orderSub_Flow" target="agendamiento" />
+							<flow-ref doc:name="Flow Reference" doc:id="854ba9c0-da1b-4d88-b691-85d91dd34668" name="update-agendamiento-order-orchestratorSub_Flow" target="updateOrden"/>
+						</route>
+					</scatter-gather>
     </async>
 
     <!-- ============================================================= -->

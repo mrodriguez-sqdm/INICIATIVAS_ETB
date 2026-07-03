@@ -914,7 +914,7 @@ obtenerDireccionPorId(vars.resultadoProductos.Servicio_Tramite.Id_Direccion_Inst
 				</ee:transform>
 		<choice doc:name="Choice" doc:id="2e5c564c-fff0-4acd-9573-2dd69cae61e7" >
 			<when expression="#[vars.ordenServicio.Factibilidad]">
-				<ee:transform doc:name="Build Requests" doc:id="8507b08f-cce4-4a3d-876e-fe3639e0f765">
+				<!-- [STUDIO:"Build Requests"]<ee:transform doc:name="Build Requests" doc:id="8507b08f-cce4-4a3d-876e-fe3639e0f765">
 							<ee:message>
 								<ee:set-payload><![CDATA[%dw 2.0
 import trim from dw::core::Strings
@@ -931,7 +931,7 @@ var rawCategories = vars.categoria default ""
 var categoriesText = rawCategories as String replace "%2C" with ","
 var categories = categoriesText splitBy "," map (c) -> trim(c)
 
----
+&#45;&#45;-
 categories map (cat) -> {
   numDays: numDays as String,
   location: area,
@@ -939,14 +939,24 @@ categories map (cat) -> {
   skill: cat,
   date: date
 }
-				]]></ee:set-payload>
+				&#93;&#93;></ee:set-payload>
 							</ee:message>
 					<ee:variables >
 					</ee:variables>
 						
-</ee:transform>
-			
-				<logger level="INFO" doc:name="Logger" doc:id="0f732347-3cd6-4cad-8409-c004aad52e8b" message="#[payload]"/>
+</ee:transform> [STUDIO] -->
+				<ee:transform doc:name="Transform Message" doc:id="5b468903-4b9c-40dc-9917-90fa2a2fd1e8">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	date: vars.fechaActual.fecha_diaSiguiente,
+	orderNumber: vars.orderNumber
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="0f732347-3cd6-4cad-8409-c004aad52e8b" message='#[payload]' />
 				<try doc:name="Try" doc:id="a2e4d5ec-14bf-4843-9f0a-28a1e33cd97a" >
 					<flow-ref doc:name="Go searchTimeSlot" doc:id="94d6bce5-20c5-41c2-af4f-17934c94b9e9" name="get-searchTimeSlot-orchestador" />
 					<ee:transform doc:name="set Agendamiento" doc:id="97833b44-e8ac-45cb-a1c4-8e68319e5bdd">
@@ -954,12 +964,11 @@ categories map (cat) -> {
 						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
-
+// Fecha del primer item (se sigue usando para el campo top-level Fecha_Agenda)
 var fechaAgenda = {
 	"\$date": (payload.items[0].date as Date) as String {format: "yyyy-MM-dd'T00:00:00.000Z'"}
 }
 
-// Definición de la función de homologación
 fun homologarTipoActuacion(tipo: String) = (
     tipo match {
         case "F.O. (VOIP/HSI)" -> "F.O. (HSI/VOIP)"
@@ -967,68 +976,50 @@ fun homologarTipoActuacion(tipo: String) = (
     }
     )
 
-// --- FUNCIÓN REPLANTEADA CON ENFOQUE ACUMULADOR (REDUCE) ---
 fun obtenerFormatoFO() = do {
-    // 1. Mapeamos los servicios para extraer SOLO el string de la familia de cada uno
     var listaDeFamilias = (vars.resultadoProductos.Servicio_Tramite.Bundle.Primarios default []) map (servicio) -> do {
-        // Buscamos el atributo "FAMILIA" dentro de ESTE servicio específico
         var atributoFamilia = (servicio.Atributos default []) filter ($.Nombre == "FAMILIA")
         ---
-        // Retornamos el Valor (ej: "HSI") o null si este servicio no tiene esa familia
         atributoFamilia[0].Valor default null
     }
-    
-    // 2. Quitamos los nulos y los duplicados de la lista de strings antes de acumular
     var familiasLimpia = (listaDeFamilias filter ($ != null)) distinctBy $
-
-    // 3. AQUÍ ESTÁ TU LÓGICA: Pasa el primero guarda, pasa el segundo concatena
-    // 'acumulador' empieza vacío (""). 'item' es la familia actual en el ciclo.
     var textoConcatenado = familiasLimpia reduce (item, acumulador = "") -> (
-        if (acumulador == "") item 
+        if (acumulador == "") item
         else acumulador ++ "/" ++ item
     )
     ---
-    // 4. Formato final
     if (textoConcatenado != "") "F.O. ($(textoConcatenado))" else "F.O."
 }
 
-var misTimeSlots = payload.items[0].areas[0].timeSlots
+// --- AQUÍ EL CAMBIO CLAVE ---
+// Recorremos TODOS los items (días) y por cada uno generamos sus cuotas
+var todasLasCuotas = (payload.items default []) flatMap (item) -> do {
+    var fechaItem = {
+        "\$date": (item.date as Date) as String {format: "yyyy-MM-dd'T00:00:00.000Z'"}
+    }
 
-// 2. Limpieza de duplicados 
-var slotsLimpios = do {
-    var agrupados = misTimeSlots groupBy $.timeslot_user
+    var misTimeSlots = (item.areas[0].timeSlots default [])
+
+    var slotsLimpios = do {
+        var agrupados = misTimeSlots groupBy $.timeslot_user
+        ---
+        (agrupados pluck (listaSlots, horario) -> do {
+            if (sizeOf(listaSlots) > 1)
+                listaSlots filter ($.label matches /.*\d+/)
+            else
+                listaSlots
+        }) flatMap ($)
+    }
     ---
-    (agrupados pluck (listaSlots, horario) -> do {
-        if (sizeOf(listaSlots) > 1)
-            listaSlots filter ($.label matches /.*\d+/)
-        else
-            listaSlots
-    }) flatMap ($)
-}
-
-
----
- {
- 	"agendamiento": if (sizeOf(payload.items default []) > 0){	
-    "Fecha_Agenda" : fechaAgenda,
-    "Tipo_Actuacion" : homologarTipoActuacion(obtenerFormatoFO()), // F.O. (VOIP) Voz  // F.O. (VOIP) Voz // "F.O. (HSI/VOIP)" Internet+VozoTV
-    "Habilidad_Trabajo" : "MPPFTTH", // CONSTANTE
-    "Duracion" : "120", // CONSTANTE
-    "Codigo_Instalador" : "", // CONSTANTE
-    "Enriquecida" : false, // CONSTANTE
-    "Agenda" : false, // CONSTANTE
-    "Fecha_Vigencia_Capacidad" : {
-        "\$date": vars.fechaActual.fecha_HoraAdicional
-     },
-    "ListaCuotas": slotsLimpios map (slot, index) -> do {
+    slotsLimpios map (slot) -> do {
         var categoria = slot.categories[0] default {}
-        
-        var timeSlotFormateado = slot.label replace /([a-zA-Z]+)(\d+)/ with ((match) -> 
+
+        var timeSlotFormateado = slot.label replace /([a-zA-Z]+)(\d+)/ with ((match) ->
             match[1] ++ "_" ++ match[2]
         )
         ---
         {
-            "Fecha": fechaAgenda,
+            "Fecha": fechaItem,
             "TimeSlot": timeSlotFormateado,
             "Skill": categoria.label default "",
             "Capacidad": categoria.quota as String default "0",
@@ -1036,6 +1027,22 @@ var slotsLimpios = do {
             "Descripcion": slot.timeslot_user
         }
     }
+}
+
+---
+ {
+ 	"agendamiento": if (sizeOf(payload.items default []) > 0){
+    "Fecha_Agenda" : fechaAgenda,
+    "Tipo_Actuacion" : homologarTipoActuacion(obtenerFormatoFO()),
+    "Habilidad_Trabajo" : "MPPFTTH",
+    "Duracion" : "120",
+    "Codigo_Instalador" : "",
+    "Enriquecida" : false,
+    "Agenda" : false,
+    "Fecha_Vigencia_Capacidad" : {
+        "\$date": vars.fechaActual.fecha_HoraAdicional
+     },
+    "ListaCuotas": todasLasCuotas
  }else {},
     "confirmaAgendamiento": if (sizeOf(payload.items default []) > 0) true else false
  }]]></ee:set-payload>
@@ -1043,6 +1050,7 @@ var slotsLimpios = do {
 					<ee:variables>
 					</ee:variables>
 				</ee:transform>
+					<logger level="INFO" doc:name="Logger" doc:id="23e0aee9-b3d9-4a6f-b7da-2b11db794b16" message="#[payload]"/>
 					<error-handler >
 						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e419225d-3c52-44e8-9c35-8ab088ba4e3f" type="ANY">
 							<logger level="INFO" doc:name="Logger" doc:id="13e002d1-dbce-4e83-951c-7f0224fdf8e9" message='#["Agendamiento no disponible: " ++ error.detailedDescription]'/>

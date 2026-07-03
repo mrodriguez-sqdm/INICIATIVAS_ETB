@@ -584,6 +584,76 @@ output application/json
 			</otherwise>
 		</choice>
 	</sub-flow>
+	<sub-flow name="update-agendamiento-order-orchestratorSub_Flow" doc:id="fbf6c238-9b59-48c1-bbdc-8841cfe0f042" >
+		<ee:transform doc:name="http Request Update Orden - Agendamiento" doc:id="d58e2a75-fe71-4c51-8f67-58e06bb71d63">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var esAgendado = vars.agendamiento.confirmaAgendamiento default false
+var esDisponible = vars.ordenServicio.Factibilidad default false
+
+var codigoEstado = if (esAgendado)
+        p('estado-orden-servicio.ejecutar-agenda.codigo')
+    else
+        p('status-orchestrator.status-failed.agendamineto.code')
+
+var descripcionEstado = if (esAgendado)
+        p('estado-orden-servicio.ejecutar-agenda.descripcion')
+    else
+        p('status-orchestrator.status-failed.agendamineto.description')
+
+var fechaActualIso = (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+
+
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: {
+    "query": {
+        "update": "MDM_CD_ORDEN",
+        "updates": [
+            {
+                "q": { "Numero_Orden": vars.orderNumber },
+                "u": {
+                    "\$set": {
+                        "Fecha_Modificacion": { "\$date": fechaActualIso },
+                        
+                        ("Estado_Orden_Comercial.Codigo": codigoEstado ) if (esDisponible),
+                        ("Estado_Orden_Comercial.Descripcion": descripcionEstado ) if (esDisponible),
+                        ("Estado_Orden_Comercial.Fecha": { "\$date": fechaActualIso } ) if (esDisponible),
+
+                        ("Orden_Servicio.Estado_Orden.Codigo": codigoEstado ) if (esDisponible),
+                        ("Orden_Servicio.Estado_Orden.Descripcion": descripcionEstado ) if (esDisponible),
+                        ("Orden_Servicio.Estado_Orden.Fecha": { "\$date": fechaActualIso }) if (esDisponible),
+
+                        ("Agendamiento": vars.agendamiento.agendamiento) if (esAgendado)
+                    }
+                },
+                "upsert": false,
+                "multi": false
+            }
+        ]
+    }
+},
+    headers: {
+        "client_secret": p('mongo-db-sapi.security.client-secret'),
+        "client_id": p('mongo-db-sapi.security.client-id'),
+        "name": vars.headers.name,
+        "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+        "source": vars.headers.source,
+        "systemId": vars.headers.systemId
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="ae2f6e7c-87c6-4e11-bba9-2124436229a6" name="generic-sapi-clientSub_Flow"/>
+		<logger level="INFO" doc:name="Logger" doc:id="7d6e4334-e220-42b5-95ee-1999de2300d2" message="#[payload]"/>
+	</sub-flow>
 	
 	
 </mule>
