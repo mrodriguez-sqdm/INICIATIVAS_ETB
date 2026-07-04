@@ -9,9 +9,10 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
 http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd">
 	<sub-flow name="post-cun-assignments-orchestrator-sub-flow" doc:id="bd1db943-e523-4a66-83e9-feae5f7ff764" >
-		<ee:transform doc:name="set xml request" doc:id="20d794de-6e99-4af9-869f-3738359b9112" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<try doc:name="Try" doc:id="ac0cbc09-f77a-4499-8719-e92c2e293738" >
+			<ee:transform doc:name="set xml request" doc:id="20d794de-6e99-4af9-869f-3738359b9112">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 ns tem http://tempuri.org/
 output application/xml  skipNullOn = "everywhere", writeDeclaredNamespaces = "All"
 var origin = lower(payload.user)
@@ -33,8 +34,8 @@ var pass = "secure::cun.soap.credentials." ++ origin ++ ".pass"
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="cun-soap-client-sub-flow" doc:id="572ac639-89fe-4fa2-b9ef-e46c4c71c53e" name="cun-soap-client-sub-flow"/>
-		<choice doc:name="validate soap response" doc:id="bc050317-1899-4975-be58-98854effcd57" >
+			<flow-ref doc:name="cun-soap-client-sub-flow" doc:id="572ac639-89fe-4fa2-b9ef-e46c4c71c53e" name="cun-soap-client-sub-flow" />
+			<choice doc:name="validate soap response" doc:id="bc050317-1899-4975-be58-98854effcd57">
 			<when expression='#[payload.body.AsignarCUNResponse.AsignarCUNResult.CodError == "5015" or payload.body.AsignarCUNResponse.AsignarCUNResult.CodError == "5014"]'>
 				<ee:transform doc:name="set json response" doc:id="022ffe1c-eaac-45f9-b203-c8846a91826d">
 			<ee:message>
@@ -62,9 +63,62 @@ var cunResponse = payload.body.AsignarCUNResponse.AsignarCUNResult
 			</ee:message>
 		</ee:transform>
 			</when>
-			<otherwise >
-				<raise-error doc:name="POST_CUN_ASSIGNMENT:RESULT_ERROR" doc:id="6ce77fc1-40d0-472b-ab4f-b379f5c0537b" type="POST_CUN_ASSIGNMENT:RESULT_ERROR" description='#["AsignarCUNResult: " ++ (payload.body.AsignarCUNResponse.AsignarCUNResult.CodError as String) ++ " - " ++ (payload.body.AsignarCUNResponse.AsignarCUNResult.NomError as String)]'/>
+			<otherwise>
+				<raise-error doc:name="POST_CUN_ASSIGNMENT:RESULT_ERROR" doc:id="6ce77fc1-40d0-472b-ab4f-b379f5c0537b" type="POST_CUN_ASSIGNMENT:RESULT_ERROR" description='#["AsignarCUNResult: " ++ (payload.body.AsignarCUNResponse.AsignarCUNResult.CodError as String) ++ " - " ++ (payload.body.AsignarCUNResponse.AsignarCUNResult.NomError as String)]' />
 			</otherwise>
 		</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="19fb2127-1026-4170-9eac-8019ccd0d406" type="POST_CUN_ASSIGNMENT:RESULT_ERROR">
+					<ee:transform doc:name="set result error" doc:id="d0c41cef-1a1b-48b0-9f38-80c5f9edbba8" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "400",
+	"code": "POST_CUN_ASSIGNMENT:RESULT_ERROR",
+	"message": error.description,
+	"messageServer": error.description,
+	"cause": [{
+		"origin": "common-sapi-services",
+		"message": error.description
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="d96707c9-ab13-45d1-9839-c3efecaa021f" type="WSC:SOAP_FAULT">
+					<ee:transform doc:name="set fault error" doc:id="ec0a8ed7-b115-4060-aa82-c97d8d523e7c" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "500",
+	"code": "WSC:SOAP_FAULT",
+	"message": error.description,
+	"messageServer": error.description,
+	"cause": [{
+		"origin": "common-sapi-services",
+		"message": error.description
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-propagate>
+			</error-handler>
+		</try>
 	</sub-flow>
 </mule>
