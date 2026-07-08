@@ -64,7 +64,6 @@ var requestPayload = vars.auditResponse default payload
         Valor: requestPayload.referencias.valor_pagar default "",
         Fuente: requestPayload.atributos_pasarela.pasarela default "",
         Origen: requestPayload.atributos_pasarela.tipo_pasarela default "",
-        Cuenta_Facturacion: getLinea(),
         Estado_OCS: "CREATED",
         Referencia_Transaccion: requestPayload.id_transaccion default ""
       }
