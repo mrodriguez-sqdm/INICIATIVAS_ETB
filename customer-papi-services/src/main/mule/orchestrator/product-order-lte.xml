@@ -95,6 +95,7 @@ fun atdpDate() =
 		<flow-ref doc:name="post-orders-sapi-client-sub-flow"
 			doc:id="86421fb5-a6e2-47e4-8942-f20078c96967"
 			name="post-orders-sapi-client-sub-flow" target="responseOrderIni"/>
+		<logger level="INFO" doc:name="responseOrderIni" doc:id="56a177ac-bf58-461b-821a-4a17e150547f" message="#[vars.responseOrderIni]"/>
 		<choice doc:name="Choice" doc:id="ec01881c-bdd4-4b10-b060-34ea7c3369d7" >
 			<when expression='#[vars.responseOrderIni.body.operationResult != "1"]'>
 				<ee:transform doc:name="Transform Message" doc:id="20454810-e611-414c-8778-d4e063dae96c" >
@@ -256,54 +257,66 @@ output application/json
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
+var productoPrimario =
+    ((payload.result default [])
+        filter ($.tipo_producto == "Primario"))[0] default {}
+
 ---
 {
-  id: vars.responseOrderIni.body.mongoId,
-  orderDetail: {
-    productType: "Plan",
-    productCode: "1807",
-    product: "TELEFONIA MOVIL (LTE)",
-    planOffer: "PLAN SUPERSONICA PRO PREPAGO",
-    offerValue: "0",
-    serviceClass: "LTE PREPAID",
-    action: "ADD",
-    serviceMode: "PREPAGO",
-    serviceCharacteristics: [
-      {
-        characteristic: "RVC PARM Index DS",
-        value: "NA"
-      },
-      {
-        characteristic: "Price",
-        value: "0"
-      },
-      {
-        characteristic: "NOMBRE PLAN",
-        value: (payload.result filter ($.tipo_producto == "Primario"))[0].producto default ""
-      },
-      {
-        characteristic: "RVC FEAT",
-        value: "NA"
-      },
-      {
-        characteristic: "Service_Class",
-        value: "LTE PREPAGO"
-      },
-      {
-        characteristic: "Modalidad_Servicio",
-        value: "PREPAGO"
-      },
-      {
-        characteristic: "MODO ADQUISICION EQUIPO",
-        value: "PROPIO"
-      }
-    ]
+  requestHeader: {
+    system: {},
+    properties: []
   },
-  setType: "U"
+  requestBody: {
+    id: vars.responseOrderIni.body.mongoId default "",
+    orderDetails: [
+      {
+        productType: "Plan",
+        productCode: "1807",
+        product: "TELEFONIA MOVIL (LTE)",
+        planOffer: "PLAN SUPERSONICA PRO PREPAGO",
+        offerValue: 0,
+        serviceClass: "LTE PREPAID",
+        action: "ADD",
+        serviceMode: "PREPAGO",
+        serviceCharacteristics: [
+          {
+            characteristic: "RVC PARM Index DS",
+            value: "NA"
+          },
+          {
+            characteristic: "Price",
+            value: "0"
+          },
+          {
+            characteristic: "NOMBRE PLAN",
+            value: productoPrimario.producto default ""
+          },
+          {
+            characteristic: "RVC FEAT",
+            value: "NA"
+          },
+          {
+            characteristic: "Service_Class",
+            value: "LTE PREPAGO"
+          },
+          {
+            characteristic: "Modalidad_Servicio",
+            value: "PREPAGO"
+          },
+          {
+            characteristic: "MODO ADQUISICION EQUIPO",
+            value: "PROPIO"
+          }
+        ]
+      }
+    ],
+    setType: "U"
+  }
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="post-order-phases-sapi-client-sub-flow" doc:id="da350d42-02fe-4f65-b38a-4b905145d54e" name="post-order-phases-sapi-client-sub-flow" />
+		<flow-ref doc:name="post-orders-sapi-client-sub-flow" doc:id="da350d42-02fe-4f65-b38a-4b905145d54e" name="post-orders-sapi-client-sub-flow" />
 		<choice doc:name="Choice" doc:id="53ff0095-4ab8-455b-8c8e-7256294053d7" >
 			<when expression='#[(payload.header.service.status default "") != "OK"]'>
 				<ee:transform doc:name="Transform Message" doc:id="da216000-4625-4376-af15-9747c4699a9a" >
@@ -516,9 +529,11 @@ output application/json
 		</choice>
 	</sub-flow>
 	<sub-flow name="post-add-characteristics-order-Sub_Flow" doc:id="f0e4206c-fed1-47ee-90b7-fe4f26671912" >
-		<ee:transform doc:name="Transform Message" doc:id="3a648b70-6fbb-400f-b042-c22ad5c2694f" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<scatter-gather doc:name="Scatter-Gather" doc:id="598d01f9-a7e3-412b-873e-cfc50cb9a962" >
+			<route >
+				<ee:transform doc:name="Transform Message" doc:id="3a648b70-6fbb-400f-b042-c22ad5c2694f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
 var orderId = vars.responseOrderIni.body.databaseId default ""
@@ -537,15 +552,15 @@ var orderId = vars.responseOrderIni.body.databaseId default ""
             Caracteristicas_Orden: {
               "\$each": [
                 {
-                  Caracteristica: "iccid",
-                  Valor: payload.iccid,
-                  Accion: "iccid",
+                  Caracteristica: "ICCID",
+                  Valor: payload.iccid default "",
+                  Accion: "",
                   actualizacion_extractor: "1"
                 },
                 {
-                  Caracteristica: "msisdn",
-                  Valor: payload.msisdn,
-                  Accion: "msisdn",
+                  Caracteristica: "MSISDN",
+                  Valor: payload.msisdn default "",
+                  Accion: "",
                   actualizacion_extractor: "1"
                 }
               ]
@@ -558,13 +573,64 @@ var orderId = vars.responseOrderIni.body.databaseId default ""
   }
 }]]></ee:set-payload>
 			</ee:message>
-			<ee:variables >
-				<ee:set-variable variableName="responseResources" ><![CDATA[payload]]></ee:set-variable>
+			<ee:variables>
+				<ee:set-variable variableName="responseResources"><![CDATA[payload]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="128feb99-7b5c-477b-b34e-ee085c338c39" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="128feb99-7b5c-477b-b34e-ee085c338c39" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+			</route>
+			<route >
+				<ee:transform doc:name="Transform Message" doc:id="c23ba716-70ff-4da0-85d4-34c0282ac3e9" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var orderId = vars.responseOrderIni.body.databaseId default ""
+
+---
+{
+  query: {
+    update: "MDM_ORDEN_SERVICIO",
+    updates: [
+      {
+        q: {
+          Id_Orden_Sistema_Origen: orderId
+        },
+        u: {
+          "\$set": {
+            Numero_Conexion: payload.msisdn default ""
+          },
+          "\$push": {
+            Caracteristica_Servicio: {
+              "\$each": [
+                {
+                  Caracteristica: "ICCID",
+                  Valor: payload.iccid default "",
+                  Accion: "",
+                  actualizacion_extractor: "1"
+                },
+                {
+                  Caracteristica: "MSISDN",
+                  Valor: payload.msisdn default "",
+                  Accion: "",
+                  actualizacion_extractor: "1"
+                }
+              ]
+            }
+          }
+        },
+        multi: false
+      }
+    ]
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="6175806f-dcc8-4e1c-85e4-99c1efed99f0" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+			</route>
+		</scatter-gather>
 		<choice doc:name="Choice" doc:id="6e124fa1-b8b6-42c3-9abb-819233c51097" >
-			<when expression='#[(payload.result.nModified as String) != "1"]'>
+			<when expression='#[((payload."0".payload.result.nModified default 0) as String) != "1"&#10;and&#10;((payload."1".payload.result.nModified default 0) as String) != "1"]'>
 				<ee:transform doc:name="Transform Message" doc:id="096483fe-1f10-4a21-a696-416fd9a14305" >
 					<ee:message >
 						<ee:set-payload ><![CDATA[%dw 2.0
