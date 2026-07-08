@@ -558,17 +558,20 @@ var orderId = vars.responseOrderIni.body.databaseId default ""
   }
 }]]></ee:set-payload>
 			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="responseResources" ><![CDATA[payload]]></ee:set-variable>
+			</ee:variables>
 		</ee:transform>
 		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="128feb99-7b5c-477b-b34e-ee085c338c39" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
 		<choice doc:name="Choice" doc:id="6e124fa1-b8b6-42c3-9abb-819233c51097" >
-			<when expression='#[payload.result.nModified != "1"]'>
+			<when expression='#[(payload.result.nModified as String) != "1"]'>
 				<ee:transform doc:name="Transform Message" doc:id="096483fe-1f10-4a21-a696-416fd9a14305" >
 					<ee:message >
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 payload ++ {
-  orderStep: "Añadir Caracteristicas"
+  orderStep: "Error - Añadir Caracteristicas"
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
@@ -607,31 +610,74 @@ output application/json
 output application/json
 
 var orderId = vars.responseOrderIni.body.databaseId default ""
+var reqIn = vars.reqIn default {}
+var resources = vars.responseResources default {}
 
 fun colombiaDateTime() =
     (now() >> "America/Bogota") as String {
-        format: "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
     }
 
 ---
 {
   query: {
-    update: "MDM_ACTIVACION_ESIM",
-    updates: [
+    insert: "MDM_ACTIVACION_ESIM",
+    documents: [
       {
-        q: {
-          Numero_Orden: orderId
+        Fecha_Creacion: {
+          "\$date": colombiaDateTime()
         },
-        u: {
-          "\$set": {
-            Estado: "RESERVADO",
-            Usuario_Modificacion: vars.reqIn.updatedBy,
-            Fecha_Modificacion: {
-              "\$date": colombiaDateTime()
-            }
+        Usuario_Creacion: reqIn.createdBy default reqIn.updatedBy default "",
+        Fecha_Modificacion: {
+          "\$date": colombiaDateTime()
+        },
+        Usuario_Modificacion: reqIn.updatedBy default "",
+        Canal: reqIn.channel default "",
+        Estado: "RESERVADO",
+        EnvioResponsys: true,
+        Fecha_Activacion: null,
+        ICCID: resources.iccid default "",
+        MSISDN: resources.msisdn default "",
+        IMSI: resources.imsi default "",
+        Numero_Documento: reqIn.requestCustomer.documentNumber default "",
+        Numero_Orden: orderId,
+        ParametrosResponsys: [
+          {
+            Parametro: "EMAIL_ADDRESS_",
+            Valor: reqIn.email default ""
+          },
+          {
+            Parametro: "MOBILE_NUMBER_",
+            Valor: resources.msisdn default ""
+          },
+          {
+            Parametro: "NOMBRE",
+            Valor: reqIn.fullName default ""
+          },
+          {
+            Parametro: "ICCID",
+            Valor: resources.iccid default ""
+          },
+          {
+            Parametro: "IMG_QR",
+            Valor: ""
+          },
+          {
+            Parametro: "CEDULA",
+            Valor: reqIn.documentNumber default ""
+          },
+          {
+            Parametro: "URL_MANUAL_EQUIPO",
+            Valor: ""
+          },
+          {
+            Parametro: "PORTABILIDAD",
+            Valor: reqIn.portability default "NO"
           }
-        },
-        multi: false
+        ],
+        Reenvio: [],
+        Tipo_Documento: reqIn.documentType default "",
+        Tramite: reqIn.processType default ""
       }
     ]
   }
@@ -640,14 +686,14 @@ fun colombiaDateTime() =
 		</ee:transform>
 		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="1e218027-cc89-4912-89ec-2361aa9052e3" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
 		<choice doc:name="Choice" doc:id="7a4a4110-04c8-42ea-9ca4-d42c359a206e" >
-			<when expression='#[payload.result.nModified != "1"]'>
+			<when expression='#[(payload.result.n as String) != "1"]'>
 				<ee:transform doc:name="Transform Message" doc:id="297ed2d6-47a3-424d-9719-09c1cf66bb93" >
 					<ee:message >
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 payload ++ {
-  orderStep: "Inventario Exitoso"
+  orderStep: "Error - Inventario Exitoso"
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
@@ -699,14 +745,28 @@ output application/json
 {
   "status": 'FAIL',
   "code": payload.responseBody.response.code as String,
-  "message": (payload.responseBody.response.description default "Error - Activación") as String,
+  "message":
+    if (
+        !isEmpty(payload.responseBody.response.description default "") or
+        !isEmpty(payload.responseBody.response.customDescription default "")
+    )
+        (payload.responseBody.response.description default "") ++
+        " - " ++
+        (payload.responseBody.response.customDescription default "")
+    else
+        "Error - Activación",
   "orderStep": "Activación"
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
 			</when>
 			<otherwise>
-				<ee:transform doc:name="Transform Message" doc:id="f454eace-6e49-4616-bf7f-4e7d5839f138">
+				<flow-ref doc:name="product-order-lteSub_Flow" doc:id="67184dc9-9311-4360-8db4-e76dda45a566" name="product-order-lteSub_Flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="product-order-lteSub_Flow" doc:id="eb71d3d2-5877-4f4f-ba2e-d200004f8801" >
+		<ee:transform doc:name="Transform Message" doc:id="f454eace-6e49-4616-bf7f-4e7d5839f138">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -743,7 +803,38 @@ fun colombiaDateTime() =
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="a1a05903-7dab-44c1-afc8-ce73d38c3d56" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="a1a05903-7dab-44c1-afc8-ce73d38c3d56" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="08e80c53-5601-4a90-9307-28bebf82091e" >
+			<when expression='#[(payload.result.nModified as String) != "1"]' >
+				<ee:transform doc:name="Transform Message" doc:id="499d4e54-7afa-4b28-b6d2-e36ffd3d9ac1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload ++ {
+  orderStep: "Error - Actualización activación"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message" doc:id="385ad228-0b89-42fa-868b-86eb06dcef45" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var orderNumber = vars.responseOrderIni.body.databaseId default ""
+
+---
+{
+  responseCode: "200",
+  message: "Se ha creado correctamente la orden",
+  result: {
+    orderNumber: orderNumber
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
 			</otherwise>
 		</choice>
 	</sub-flow>
