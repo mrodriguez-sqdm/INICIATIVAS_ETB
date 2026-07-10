@@ -54,7 +54,7 @@ var requestPayload = vars.auditResponse default payload
         Num_Identificacion: requestPayload.cliente.numero_documento default "",
         Tipo_Identificacion: requestPayload.cliente.tipo_documento default "",
         Referencia_Venta: requestPayload.referencias.referencia default "",
-        Estado: "CREATED",
+        Estado: requestPayload.estado_transaccion default "CREATED",
         Facturas: (requestPayload.referencias.detalle_referencias default []) map (factura) -> {
 		  Numero_Cuenta_Facturacion: factura.Numero_Cuenta_Facturacion default "",
 		  Numero_Factura: factura.numero_factura default factura.referencia default "",
@@ -64,7 +64,7 @@ var requestPayload = vars.auditResponse default payload
         Valor: requestPayload.referencias.valor_pagar default "",
         Fuente: requestPayload.atributos_pasarela.pasarela default "",
         Origen: requestPayload.atributos_pasarela.tipo_pasarela default "",
-        Estado_OCS: "CREATED",
+        Estado_OCS: requestPayload.estado_transaccion default "CREATED",
         Referencia_Transaccion: requestPayload.id_transaccion default ""
       }
     ]

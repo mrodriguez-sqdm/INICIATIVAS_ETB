@@ -19,11 +19,11 @@ var systemKey =
 var configKey = systemKey ++ "-sapi"
 
 var paymentId = if (method == "wompiWebhook")
-					{id: payload.data.transaction.id}
+					{id: payload.data.transaction.reference}
 				else if (method == "payuWebhook")
 					{id: payload.transactionId}
 				else if (method == "payuConfirmation")
-        			{id: payload.transaction_id }
+        			{id: payload.reference_sale }
 				else
 					{ id: attributes.uriParams.paymentId }
 
