@@ -1,10 +1,12 @@
 %dw 2.0
 var serviceEventId = "25"
 var transaction = payload.transaction
-var customer = payload.customer default {}
-var account = payload.account default {}
+var customer = payload.customer default {
+}
+var account = payload.account default {
+}
 var services = payload.services default []
-var productInstId = transaction.prodInstId
+var serviceNumber = transaction.serviceNumber
 var operation = "M"
 var currency = "1"
 output application/json  skipNullOn = "everywhere"
@@ -18,7 +20,7 @@ output application/json  skipNullOn = "everywhere"
 		"serviceEventId": serviceEventId,
 		"custId": transaction.custId,
 		"acctId": transaction.acctId,
-		"prodInstId": productInstId,
+		"serviceNumber": serviceNumber,
 		"salesChannel": transaction.salesChannel,
 		"salesDepartment": transaction.salesDepartment,
 		"salesCity": transaction.salesCity,
@@ -29,7 +31,6 @@ output application/json  skipNullOn = "everywhere"
 	// services Mapping
 	("billProdInstList": services map ((service) -> {
 		"operate": operation,
-		"prodInstId": service.prodInstId,
 		"areaCode": service.areaCode,
 		"serviceNumber": service.serviceNumber,
 		"socialLevel": service.socialLevel,
@@ -48,10 +49,11 @@ output application/json  skipNullOn = "everywhere"
 		("contactDtoList": service.contacts map ((serviceContact) -> {
 			"contactType": serviceContact.contactType,
 			"operate": operation,
-			"contactID": serviceContact.contactId,
+			"contactId": serviceContact.contactId,
 			"firstName": serviceContact.firstName,
 			"lastName": serviceContact.lastName,
 			"email": serviceContact.email,
+			"sms": serviceContact.sms,
 			"mobilePhone": serviceContact.mobilePhone,
 			"whatsapp": serviceContact.whatsApp,
 			"fixedPhone": serviceContact.fixedPhone,
@@ -69,7 +71,6 @@ output application/json  skipNullOn = "everywhere"
 	("chargeList": services flatMap (chl) -> chl.charges default [] map (charge) -> {
 		"billingNbr": charge.billingNbr,
 		"basicCharge": charge.basicCharge,
-		"prodInstId": chl.prodInstId,
 		"acctId": account.acctId,
 		"chargeType": charge."type",
 		"perCharge": charge.perCharge,
