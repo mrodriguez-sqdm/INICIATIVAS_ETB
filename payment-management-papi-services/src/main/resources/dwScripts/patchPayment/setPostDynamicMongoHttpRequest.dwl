@@ -5,8 +5,8 @@ output application/json
     "host": p("mongo-sapi.host"),
     "port": p("mongo-sapi.port"),
     "basepath": p("mongo-sapi.basepath"),
-    "method": p("mongo-sapi.postDynamicQuery.method"),
-    "path": p("mongo-sapi.postDynamicQuery.path"),
+    "method": p("mongo-sapi.postDynamicQueryAutoG.method"),
+    "path": p("mongo-sapi.postDynamicQueryAutoG.path"),
     "headers": {
         "client_id": p("secure::app.credentials.clientId"),
         "client_secret": p("secure::app.credentials.clientSecret"),
