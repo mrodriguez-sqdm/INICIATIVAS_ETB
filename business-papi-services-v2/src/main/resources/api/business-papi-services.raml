@@ -11,6 +11,29 @@ traits:
 mediaType: 
   - application/json
 
+annotationTypes:
+  operationId: string
+
+types:
+  BillingSaleRequest:               !include datatypes/request/processes/sale.raml
+  BillingSaleBundleRequest:         !include datatypes/request/processes/sale-bundle.raml
+  BillingPlanChangeRequest:         !include datatypes/request/processes/plan-change.raml
+  BillingPlanChangeBundleRequest:   !include datatypes/request/processes/plan-change-bundle.raml
+  BillingSvaRequest:                !include datatypes/request/processes/sva.raml
+  BillingSuspensionRequest:         !include datatypes/request/processes/suspension.raml
+  BillingRestorationRequest:        !include datatypes/request/processes/restoration.raml
+  BillingSuspensionFraudRequest:    !include datatypes/request/processes/suspension-fraud.raml
+  BillingRestorationFraudRequest:   !include datatypes/request/processes/restoration-fraud.raml
+  BillingNumberChangeRequest:       !include datatypes/request/processes/number-change.raml
+  BillingVolCancRequest:            !include datatypes/request/processes/voluntary-cancellation.raml
+  BillingStratumChangeRequest:      !include datatypes/request/processes/stratum-change.raml
+  BillingOwnershipTransferRequest:  !include datatypes/request/processes/ownership-transfer.raml
+  BillingCycleChangeRequest:        !include datatypes/request/processes/billing-cycle-change.raml
+  BillingCustomerUpdateRequest:     !include datatypes/request/processes/customer-update.raml
+  BillingAccountUpdateRequest:      !include datatypes/request/processes/account-update.raml
+  BillingAddressChangeRequest:      !include datatypes/request/processes/address-change.raml
+  BillingNewCustomerRequest:        !include datatypes/request/processes/new-customer.raml
+  BillingNewAccountRequest:         !include datatypes/request/processes/new-account.raml
 
 /partyInteraction:
   post:
@@ -427,3 +450,164 @@ mediaType:
             application/json:
               type: !include /datatypes/response/error.raml
               example: !include /examples/response/error-500.json
+/billing-process:
+  post:
+    (operationId): create-BillingProcess
+    is: [security_client_id,tibcoHeaders]
+    displayName: Create Billing Resource
+    description: |
+      Creates a new resource in ZSmart.
+      Accepted processCodes:
+        - SALE         → serviceEventId=1.   Creates customer, account and service. Supports existing custId/acctId via transaction.custId/acctId.
+        - SALE_BUNDLE  → serviceEventId=808.   Creates customer, account and service with bundle members. Supports existing custId/acctId via transaction.custId/acctId.
+        - NEW_CUSTOMER → serviceEventId=806. Creates a new customer (cust node) in ZSmart. Returns custId.
+        - NEW_ACCOUNT  → serviceEventId=807. Creates a new billing account for an existing customer. Returns acctId.
+    body:
+      application/json:
+        type: !include schemas/post-billing-process-schema.json
+        examples:
+          SALE:                         !include examples/request/sale.json
+          SALE_BUNDLE:                  !include examples/request/sale-bundle.json
+          SALE_NEW_CUSTOMER:            !include examples/request/sale-new-customer.json
+          SALE_NEW_ACCOUNT:             !include examples/request/sale-new-account.json
+          SALE_EXISTING_CUST_ACCT:      !include examples/request/sale-existing-customer-account.json
+          SALE_WITH_CHARGE:             !include examples/request/sale-with-charge.json
+          NEW_CUSTOMER:                 !include examples/request/new-customer.json
+          NEW_ACCOUNT:                  !include examples/request/new-account.json
+    responses:
+      201:
+        description: Resource created successfully.
+        body:
+          application/json:
+            type: !include datatypes/response/billing-process-response.raml
+            examples:
+              SALE:         !include examples/response/sale-201.json
+              SALE_BUNDLE:  !include examples/response/sale-201.json
+              NEW_CUSTOMER: !include examples/response/new-customer-201.json
+              NEW_ACCOUNT:  !include examples/response/new-account-201.json
+      400:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-401.json
+      409:
+        description: Duplicate request — transaction.id already processed within 24h.
+        body:
+          application/json:
+            type: !include datatypes/response/billing-process-response.raml
+            example: !include examples/response/sale-201.json
+      422:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-422.json
+      503:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-503.json
+      504:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-504.json
+
+  patch:
+    (operationId): update-BillingProcess
+    is: [security_client_id,tibcoHeaders]
+    displayName: Update Billing Resource
+    description: |
+      Modifies or terminates an existing resource in ZSmart.
+      Accepted processCodes:
+        - PLAN_CHANGE            → serviceEventId=329
+        - PLAN_CHANGE_BUNDLE     → serviceEventId=809
+        - SVA                    → serviceEventId=189
+        - SUSPENSION             → serviceEventId=28
+        - RESTORATION            → serviceEventId=29
+        - SUSPENSION_FRAUD       → serviceEventId=25
+        - RESTORATION_FRAUD      → serviceEventId=26
+        - NUMBER_CHANGE          → serviceEventId=32
+        - VOLUNTARY_CANCELLATION → serviceEventId=46 (terminates one service; customer/account remain if multi-service)
+        - STRATUM_CHANGE         → serviceEventId=50
+        - OWNERSHIP_TRANSFER     → serviceEventId=67
+        - BILLING_CYCLE_CHANGE   → serviceEventId=234 (postpaid accounts only)
+        - CUSTOMER_UPDATE        → serviceEventId=802
+        - ACCOUNT_UPDATE         → serviceEventId=803
+        - ADDRESS_CHANGE         → serviceEventId=805
+    body:
+      application/json:
+        type: !include schemas/patch-billing-process-schema.json
+        examples:
+          PLAN_CHANGE:            !include examples/request/plan-change.json
+          PLAN_CHANGE_BUNDLE:     !include examples/request/plan-change-bundle.json
+          SVA:                    !include examples/request/sva.json
+          SUSPENSION:             !include examples/request/suspension.json
+          RESTORATION:            !include examples/request/restoration.json
+          SUSPENSION_FRAUD:       !include examples/request/suspension-fraud.json
+          RESTORATION_FRAUD:      !include examples/request/restoration-fraud.json
+          NUMBER_CHANGE:          !include examples/request/number-change.json
+          VOLUNTARY_CANCELLATION: !include examples/request/voluntary-cancellation.json
+          OWNERSHIP_TRANSFER_EXISTING_CUST_ACCT: !include examples/request/ownership-transfer-existing-cust-acct.json
+          OWNERSHIP_TRANSFER_EXISTING_CUST_NEW_ACCT: !include examples/request/ownership-transfer-existing-cust-new-acct.json
+          OWNERSHIP_TRANSFER_NEW_CUST_NEW_ACCT: !include examples/request/ownership-transfer-new-cust-new-acct.json
+          BILLING_CYCLE_CHANGE:   !include examples/request/billing-cycle-change.json
+          CUSTOMER_UPDATE:        !include examples/request/customer-update.json
+          ACCOUNT_UPDATE:         !include examples/request/account-update.json
+          ADDRESS_CHANGE:         !include examples/request/address-change.json
+    responses:
+      200:
+        description: Resource modified successfully.
+        body:
+          application/json:
+            type: !include datatypes/response/billing-process-response.raml
+            examples:
+              PLAN_CHANGE:            !include examples/response/plan-change-200.json
+              PLAN_CHANGE_BUNDLE:     !include examples/response/plan-change-200.json
+              SVA:                    !include examples/response/sva-200.json
+              SUSPENSION:             !include examples/response/suspension-200.json
+              RESTORATION:            !include examples/response/restoration-200.json
+              SUSPENSION_FRAUD:       !include examples/response/suspension-fraud-200.json
+              RESTORATION_FRAUD:      !include examples/response/restoration-fraud-200.json
+              NUMBER_CHANGE:          !include examples/response/number-change-200.json
+              VOLUNTARY_CANCELLATION: !include examples/response/voluntary-cancellation-200.json
+              OWNERSHIP_TRANSFER:     !include examples/response/ownership-transfer-200.json
+              BILLING_CYCLE_CHANGE:   !include examples/response/billing-cycle-change-200.json
+              CUSTOMER_UPDATE:        !include examples/response/customer-update-200.json
+              ACCOUNT_UPDATE:         !include examples/response/account-update-200.json
+              ADDRESS_CHANGE:         !include examples/response/address-change-200.json
+      400:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-401.json
+      409:
+        description: Duplicate request — transaction.id already processed within 24h.
+        body:
+          application/json:
+            type: !include datatypes/response/billing-process-response.raml
+            example: !include examples/response/plan-change-200.json
+      422:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-422.json
+      503:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-503.json
+      504:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-504.json
