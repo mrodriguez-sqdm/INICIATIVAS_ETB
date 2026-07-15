@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-billingDispute-orchestratorSub_Flow"
+		doc:id="3c655650-7cfd-46fa-bff2-99c43ce27a62">
+		<try doc:name="Try" doc:id="9230f925-15aa-4fa0-b90d-7615b92a5a6c">
+			<ee:transform doc:name="set billing params" doc:id="e8b7fa5d-a51e-40b5-8d60-354ddf910788">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="billingParams"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams]]></ee:set-variable>
+					<ee:set-variable variableName="billingHeaders"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('mongo-db-sapi.security.client-secret'),
+	"client_id": p('mongo-db-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<choice doc:name="Choice"
+				doc:id="a82f0867-17f6-463a-9beb-b96f8839eef0">
+				<when
+					expression="#[(attributes.queryParams.'CUSTOMER_ID_TYPE' != null and attributes.queryParams.'CUSTOMER_ID_TYPE' != &quot;&quot;) and (attributes.queryParams.'CUSTOMER_ID' != null and attributes.queryParams.'CUSTOMER_ID' != &quot;&quot;)]">
+					<ee:transform doc:name="set request"
+						doc:id="5dbd7ff9-bc99-4665-8fc4-d6ddcb482afa">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Tipo_Documento": vars.billingParams.'CUSTOMER_ID_TYPE',
+	"Numero_Identificacion": vars.billingParams.'CUSTOMER_ID'
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref
+						doc:name="System (get-v1-billingAccounts)"
+						doc:id="a65cdf89-ec8b-4594-b1dd-4477b4067bae"
+						name="get-billingAccounts-mongo-sapi-services-clientSub_Flow" target="billingAccounts" />
+					<ee:transform doc:name="set Zsmart Request"
+						doc:id="f9c0143b-55f3-4097-bda4-e1297bd4a0a8">
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "GET",
+    path: p('zsmart-sapi.resources.queryDispute.path'),
+    body: {},
+    headers: vars.billingHeaders default {},
+    queryParameters: {
+    	"accountNumber": vars.billingAccounts.result[0]."Cuenta_Facturacion",
+    	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
+    	"channelCode": vars.billingParams.'ORIGIN',
+    	"queryClosedFlag": vars.billingParams.'QUERY_CLOSED_FLAG',
+        "beginDate": vars.billingParams.'START_DATE',
+        "endDate": vars.billingParams.'END_DATE'
+    },
+    uriParameters: {}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+vars.mdmCuentaFact.result[0]."Cuenta_Facturacion"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref
+						doc:name="System Generic (Zsmart Billing Account Item)"
+						doc:id="032f2105-a0b6-4905-8f67-c681730026f7"
+						name="generic-sapi-clientSub_Flow" />
+					<ee:transform doc:name="set billing account item response"
+						doc:id="25d9428d-69d3-47f0-817d-dad93e55b42d">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    res_code: payload.res_code,
+    res_message: payload.res_message,
+    result: {
+        disputeExDtoList: (payload.result.disputeExDtoList default []) map (dispute) -> {
+            amount: dispute.amount,
+            createdDate: dispute.createdDate,
+            disputeID: dispute.disputeID,
+            disputeItemExDtoList: (dispute.disputeItemExDtoList default []) map (item) -> {
+                glID: item.glID,
+                refInvoiceNumber: item.refInvoiceNumber,
+                amount: item.amount,
+                glTypeID: item.glTypeID,
+                glTypeName: item.glTypeName
+            },
+            remarks: dispute.remarks,
+            status: dispute.status
+        },
+        resultCode: payload.result.resultCode,
+        resultMsg: payload.result.resultMsg
+    }
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<otherwise>
+					<raise-error doc:name="BILLING_ACCOUNT_ITEM:INVALID_PARAMS"
+						doc:id="bed226cc-d633-4c4e-8281-328993c38dd6"
+						type="BILLING_ACCOUNT_ITEM:INVALID_PARAMS"
+						description="There was an error trying to retrieve BillingAccountItem information" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c5ee9b96-e078-4134-a1e3-1738569178f9" type="BILLING_ACCOUNT_ITEM:INVALID_PARAMS">
+					<ee:transform doc:name="set error" doc:id="3b9ad068-9b8e-4b5f-88c7-d8656c438c1d">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "BILLING_ACCOUNT_ITEM:INVALID_PARAMS",
+    "message": "At least 'BILLING_ACCOUNT' or both 'CUSTOMER_ID_TYPE' and 'CUSTOMER_ID' must be provided.",
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": "At least 'BILLING_ACCOUNT' or both 'CUSTOMER_ID_TYPE' and 'CUSTOMER_ID' must be provided."
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
