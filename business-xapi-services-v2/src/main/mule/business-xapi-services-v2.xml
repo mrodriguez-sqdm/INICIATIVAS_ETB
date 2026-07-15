@@ -11,8 +11,51 @@
             </http:error-response>
         </http:listener>
         <flow-ref doc:name="Call initial Logger" doc:id="a7f232fa-b352-425b-9077-a015c63d0a0d" name="initial-loggin-Sub_Flow" />
-        <apikit:router config-ref="business-xapi-services-config" />
-        <async doc:name="Async" doc:id="16ee4743-5e23-483f-a3f2-5c11f1c79597">
+        <try doc:name="Try" doc:id="bf7f9965-7ced-4494-a278-453da848272f" >
+			<apikit:router config-ref="business-xapi-services-config" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="db8a02c7-4470-4fa7-b0fc-58d2404acf66" type="APIKIT:BAD_REQUEST" when='#[(error.description contains "/processCode") and (error.description contains "is not a valid enum value")]'>
+					<ee:transform doc:name="clean json schema error" doc:id="384659ac-e0e8-4b73-8a64-21e5e27284c8" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var validProcessCodes = ["PLAN_CHANGE", "PLAN_CHANGE_BUNDLE", "SVA", "SUSPENSION", 
+    "SUSPENSION_FRAUD", "RESTORATION", "RESTORATION_FRAUD", "NUMBER_CHANGE", 
+    "VOLUNTARY_CANCELLATION", "STRATUM_CHANGE", "ADDRESS_CHANGE", "OWNERSHIP_TRANSFER", 
+    "ACCOUNT_UPDATE", "BILLING_CYCLE_CHANGE", "CUSTOMER_UPDATE",
+    "SALE", "SALE_BUNDLE", "NEW_CUSTOMER", "NEW_ACCOUNT"]
+var fullDesc = (error.description default "") as String
+var cleaned = if ( fullDesc contains "Invalid schema for content type application/json. Errors: " ) fullDesc replace "Invalid schema for content type application/json. Errors: " with ""
+else fullDesc
+var rawParts = (cleaned splitBy "\n") map trim($) filter ($ != "")
+var requestProcessCode = (payload.processCode default "") as String
+var isValidProcessCode = validProcessCodes contains requestProcessCode
+var processCodeErrors = rawParts filter ($ contains "is not a valid enum value")
+var realErrors        = rawParts filter (!($ contains "is not a valid enum value"))
+var processCodeUnique = if ( not isValidProcessCode and sizeOf(processCodeErrors) > 0 ) [processCodeErrors[0]]
+else []
+var cleanParts = realErrors ++ processCodeUnique
+var cleanMessage = "Invalid schema for content type application/json. Errors: " ++ (cleanParts joinBy "\n")
+---
+{
+	"status": "400",
+	"code": "BILLING_PROCESS:INVALID_PARAMS",
+	"message": "business-xapi-services-v2: " ++ cleanMessage,
+	"messageServer": "business-xapi-services-v2: " ++ cleanMessage,
+	"cause": [{
+		"origin": "business-xapi-services-v2",
+		"message": cleanMessage
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="16ee4743-5e23-483f-a3f2-5c11f1c79597">
             <flow-ref doc:name="Call logger" doc:id="998e6969-a309-42c8-a6e6-9b4f484396e8" name="loggin-client-call" />
         </async>
         <error-handler ref="common-error-handler-v2" />

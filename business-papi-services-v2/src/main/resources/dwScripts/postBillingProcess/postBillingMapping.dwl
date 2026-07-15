@@ -5,6 +5,7 @@ var serviceEventId = payload.processCode  match {
 	case "SALE" -> "1"
     case "NEW_CUSTOMER" -> "806"
     case "NEW_ACCOUNT" -> "807"
+    case "SALE_BUNDLE" -> "808"
     else -> fail("Invalid Process Code")
 }
 var transaction = payload.transaction
@@ -176,6 +177,10 @@ var currency = "1"
 		"destDepartment": service.destDepartment,
 		"destCity": service.destCity,
 		"destAddress": service.destAddress,
+		("bundleMemberList": service.bundleMembers map ((bundleMember) -> {
+			"operate": bundleMember.operate,
+			"serviceNumber": bundleMember.serviceNumber
+		})) if (!isEmpty(service.bundleMembers default [])),
 		("contactDtoList": service.contacts map ((serviceContact) -> {
 			"contactType": serviceContact.contactType,
 			"operate": operation,
@@ -198,7 +203,7 @@ var currency = "1"
 		})) if (!isEmpty(service.contacts default []))
 	})) if (!isEmpty(services default [])),
 	// Service Attributes Mapping
-	("billProdInstAttrList": services flatMap (bpi) -> bpi.attributes map ((serviceAttr) -> {
+	("billProdInstAttrList": services flatMap (bpi) -> bpi.attributes default [] map ((serviceAttr) -> {
 		"operate": operation,
 		"serviceNumber": bpi.serviceNumber,
 		"attrCode": serviceAttr.attrCode,
@@ -223,7 +228,7 @@ var currency = "1"
 		"effDate": offerAttr.effectiveDate
 	})) if (!isEmpty(flatten(services.offers..attributes default []))),
 	// Service Charges Mapping
-	("chargeList": services flatMap (chl) -> chl.charges map (charge) -> {
+	("chargeList": services flatMap (chl) -> chl.charges default [] map (charge) -> {
 		"billingNbr": charge.billingNbr,
 		"basicCharge": charge.basicCharge,
 		"acctId": account.acctId,
