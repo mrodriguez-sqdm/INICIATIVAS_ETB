@@ -75,6 +75,8 @@ var getTA = payload
     },
     detalle_referencias: (getTA.referencias.detalle_referencias default []) map (detalle) -> {
       referencia: detalle.referencia,
+      numero_factura: detalle.numero_factura,
+      numero_cuenta_facturacion: detalle.Numero_Cuenta_Facturacion,
       descripcion: detalle.descripcion,
       moneda: detalle.moneda,
       valor_pagar: detalle.valor_pagar,
@@ -124,10 +126,10 @@ payload.CUS]]></ee:set-variable>
 			</when>
 		</choice>
 			</route>
+			<route >
+				<flow-ref doc:name="post-payment-zsmart-orchestratorSub_Flow" doc:id="0d692447-df67-40cd-8399-8c8181584278" name="post-payment-zsmart-orchestratorSub_Flow" />
+			</route>
 		</scatter-gather>
-		<async doc:name="Async" doc:id="41db7c5a-84d3-4ebe-8d82-6b91e83d1216">
-					<flow-ref doc:name="post-payment-zsmart-orchestratorSub_Flow" doc:id="0d692447-df67-40cd-8399-8c8181584278" name="post-payment-zsmart-orchestratorSub_Flow" />
-				</async>
 		<ee:transform doc:name="Transform Message" doc:id="f55fd854-487e-4ecd-977b-b1af9851ed4f" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
@@ -248,15 +250,19 @@ fun getEstadoPayu(statePol, responseCodePol) =
 output application/json
 ---
 {
-	"accountNumber": payload.CUS,
-	"payAmount": payload.referencias.'valor_pagar',
-	"currencyCode": "COP",
-	"channelCode": "USSD",
-	"bankCode": payload.'entidad_bancaria',
-	"paymentDate": payload.'fecha_respuesta_pasarela',
-	"paymentParamList": []
-}
-]]></ee:set-payload>
+	"accountNumber": payload.referencias.detalle_referencias[0].numero_cuenta_facturacion,
+	"payAmount": payload.referencias.valor_pagar,
+	"currencyCode": payload.referencias.moneda,
+	"channelCode": payload.referencias.atributos_pasarela.pasarela,
+	"paymentmethodCode": payload.metodo_pago,
+	"bankAccountNumber": p("zsmart-sapi.fields.accountId"),
+	"bankCode": payload.entidad_bancaria,
+	"paymentDate": payload.fecha_respuesta_pasarela,
+	"paymentParamList": (payload.referencias.detalle_referencias default []) map (detalle) -> {
+		"invoiceNumber": detalle.numero_factura,
+		"settleAmount": detalle.valor_pagar
+	}
+}]]></ee:set-payload>
 			</ee:message>
 			<ee:variables >
 				<ee:set-variable resource="dwScripts/patchPayment/setPostZsmartHttpRequest.dwl" variableName="httpRequest" />
