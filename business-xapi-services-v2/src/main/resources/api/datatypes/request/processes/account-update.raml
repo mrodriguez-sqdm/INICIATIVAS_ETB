@@ -1,0 +1,234 @@
+#%RAML 1.0 DataType
+type: !include ../billing-process-base.raml
+discriminatorValue: ACCOUNT_UPDATE
+description: |
+  Update billing account profile. ZSmart: serviceEventId=803 (Change account profile).
+  business-papi resolves: serviceEventId=803, account(operate=M, acctId).
+  Only fields present in the request are updated — send only what changes.
+  corte and defaultAccount are tachado in spec V1.1 — use BILLING_CYCLE_CHANGE (234) to change billing cycle.
+  Nodes map: transaction->header, account->account, account.attributes[]->acctAttrList, account.contacts[]->account.contactDtoList.
+properties:
+  processCode:
+    type: string
+    enum: [ACCOUNT_UPDATE]
+    required: true
+
+  transaction:
+    type: object
+    required: true
+    description: "Transaction header. -> header"
+    properties:
+      id:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Unique transaction ID. -> header.transactionId"
+        example: TRX202603190085
+        required: true
+      timestamp:
+        type: string
+        minLength: 19
+        maxLength: 19
+        description: "Operation timestamp YYYY-MM-DD HH:MM:SS. -> header.createDate. ZSmart spec defines length 14 (YYYYMMDDHHMMSS) but accepts format with separators as confirmed by real request samples."
+        example: '2026-03-19 10:00:00'
+        required: true
+      orderItemId:
+        type: string
+        minLength: 1
+        maxLength: 22
+        description: "CRM order item ID. -> header.orderItemId"
+        example: OI20260319015678-001
+        required: true
+      custId:
+        type: integer
+        maximum: 999999999999999
+        description: "ZSmart customer ID (max 15 digits). -> header.custId"
+        example: 12345678
+        required: true
+      acctId:
+        type: integer
+        maximum: 999999999999999
+        description: "ZSmart billing account ID (max 15 digits). -> header.acctId"
+        example: 14000001234
+        required: false
+      salesChannel:
+        type: integer
+        enum: [1, 2, 4, 5, 7, 106]
+        description: "Channel ID. 1=POS, 2=WAP, 4=SMS, 5=USSD, 7=IVR, 106=System default. -> header.salesChannel"
+        example: 1
+        required: true
+      comments:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Order comments. -> header.comments"
+        example: 'Account profile update'
+        required: false
+
+  account:
+    type: object
+    required: true
+    description: "Billing account data to update. -> account (operate=M). Send only fields that change."
+    properties:
+      acctId:
+        type: integer
+        maximum: 999999999999999
+        description: "ZSmart billing account ID. Mandatory for account update. -> account.acctId"
+        example: 14000001234
+        required: true
+      acctName:
+        type: string
+        minLength: 1
+        maxLength: 256
+        description: "Account name. -> account.acctName"
+        example: Juan Perez Premium
+        required: false
+      billDeliveryType:
+        type: string
+        minLength: 1
+        maxLength: 30
+        description: "B=Email, A=Post, W=WhatsApp, S=SMS. Comma-separated for multiple. -> account.billDeliveryType"
+        example: 'B'
+        required: false
+      parentAcctId:
+        type: integer
+        maximum: 999999999999999
+        description: "Parent account ID for hierarchical accounts. -> account.parentAcctId"
+        example: 14000000001
+        required: false
+      billFlag:
+        type: string
+        enum: ['Yes', 'No']
+        description: "Payment responsible flag. -> account.billFlag"
+        example: 'Yes'
+        required: false
+      taxExempt:
+        type: string
+        enum: ['Yes', 'No']
+        description: "Tax exemption flag. -> account.taxExempt"
+        example: 'No'
+        required: false
+      dunningExemption:
+        type: string
+        enum: ['No', 'Temporary', 'Total']
+        description: "Dunning exception setting. Not applied for prepaid. -> account.dunningExemption"
+        example: 'No'
+        required: false
+      dunningExemEff:
+        type: string
+        minLength: 19
+        maxLength: 19
+        description: "Dunning exception start date YYYY-MM-DD HH:MM:SS. Only effective when dunningExemption=Temporary. -> account.dunningExemEff"
+        example: '2026-03-19 00:00:00'
+        required: false
+      dunningExemExp:
+        type: string
+        minLength: 19
+        maxLength: 19
+        description: "Dunning exception end date YYYY-MM-DD HH:MM:SS. Only effective when dunningExemption=Temporary. -> account.dunningExemExp"
+        example: '2026-12-31 23:59:59'
+        required: false
+      contractName:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: "Contract name. One contract per account. -> account.contractName"
+        example: 'CONTRATO-2026-001'
+        required: false
+      roundingAdjustmentFlag:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Flag for rounding adjustment to nearest ten on invoice. -> account.roundingAdjustmentFlag"
+        example: 'Yes'
+        required: false
+      previousBalanceFlag:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Flag for displaying previous balance on invoice. -> account.previousBalanceFlag"
+        example: 'Yes'
+        required: false
+      coverPageOnlyFlag:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Flag for sending only the invoice cover page. -> account.coverPageOnlyFlag"
+        example: 'No'
+        required: false
+      interestChargeFlag:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Flag for charging late payment interest. -> account.interestChargeFlag"
+        example: 'Yes'
+        required: false
+      interestRateType:
+        type: string
+        enum: ['1', '2']
+        description: "1=Interbank, 2=Subsidiary. Required when interestChargeFlag=Yes. -> account.interestRateType"
+        example: '1'
+        required: false
+      dunningManagementTime:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Portfolio management timeframe: 1=first, 2=second, 3=third overdue invoice. -> account.dunningManagementTime"
+        example: '2'
+        required: false
+      country:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Country of account address. -> account.country"
+        example: Colombia
+        required: false
+      departament:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "DANE department code. -> account.departament"
+        example: '11'
+        required: false
+      city:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "DANE city code. -> account.city"
+        example: '11001'
+        required: false
+      district:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Locality/Commune. -> account.district"
+        example: Chapinero
+        required: false
+      address:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Account address. -> account.address"
+        example: Cra 7 # 32-16
+        required: false
+      paymentTerm:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Payment period for postpaid invoice in days, default 0. -> account.paymentTerm"
+        example: '15'
+        required: false
+      attributes:
+        type: array
+        required: false
+        minItems: 1
+        description: "Extended account attributes to add or modify. -> acctAttrList"
+        items: !include ../common/AttributeItemWithOperate.raml
+      contacts:
+        type: array
+        required: false
+        minItems: 1
+        description: "Contacts to add or modify. contactType: 505=Bill Delivery, 506=Cobranza, 507=Commercial Register, 508=Administrator, 509=Collection Notification, 511=Ley 2300. Not applied for prepaid. -> account.contactDtoList"
+        items: !include ../common/ContactItemWithOperate.raml
+examples:
+  ACCOUNT_UPDATE: !include ../../../examples/request/account-update.json

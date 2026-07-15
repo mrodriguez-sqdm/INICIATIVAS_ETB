@@ -1,0 +1,637 @@
+#%RAML 1.0 DataType
+type: object #!include ../billing-process-base.raml
+discriminatorValue: SALE
+description: |
+  New Connection. ZSmart: serviceEventId=1 (New Connection).
+  Single atomic call — creates customer, account and service in one ZSmart transaction (v1.1).
+  billing-papi resolves: serviceEventId=1, operate=A for all nodes, chargeType mapping, currencyId=1.
+  cust and account nodes are included only when customer/account are new in ZSmart.
+  Nodes map 1-to-1 with ZSmart: transaction->header, customer->cust, customer.attributes[]->custAttrList,
+  account->account, account.attributes[]->acctAttrList,
+  services[]->billProdInstList, services[].attributes[]->billProdInstAttrList,
+  services[].offers[]->billOfferInstList, services[].offers[].attributes[]->billOfferInstAttrList,
+  services[].charges[]->chargeList.
+properties:
+  processCode:
+    type: string
+    enum: [SALE]
+    required: true
+  transaction:
+    type: object
+    required: true
+    description: "Transaction header. -> header"
+    properties:
+      id:
+        type: string
+        pattern: ^[0-9]+$
+        minLength: 1
+        maxLength: 15
+        description: "Unique transaction ID. -> header.transactionId"
+        example: '202603190012'
+        required: true
+      timestamp:
+        type: string
+        minLength: 19
+        maxLength: 19
+        description: "Operation timestamp YYYY-MM-DD HH:MM:SS. -> header.createDate. ZSmart spec defines length 14 (YYYYMMDDHHMMSS) but accepts format with separators as confirmed by real request samples. business-papi must NOT strip separators before forwarding."
+        example: '2026-03-19 10:00:00'
+        required: true
+      orderItemId:
+        type: string
+        minLength: 1
+        maxLength: 22
+        description: "CRM order item ID. -> header.orderItemId"
+        example: OI20260319001234-001
+        required: true
+      serviceNumber:
+        type: string
+        minLength: 1
+        maxLength: 30
+        example: "98765"
+        required: true
+        description: "CRM subscriber instance ID for this order. Must match the prodInstId of the main service in services[]. -> header.serviceNumber" 
+      salesChannel:
+        type: integer
+        enum: [1, 2, 4, 5, 7, 106]
+        description: "Channel ID. 1=POS, 2=WAP, 4=SMS, 5=USSD, 7=IVR, 106=System default. -> header.salesChannel"
+        example: 1
+        required: true
+      salesDepartment:
+        type: string
+        minLength: 1
+        maxLength: 10
+        description: "DANE department code of sales agent. Used for tax calculation. -> header.salesDepartment"
+        example: '11'
+        required: false
+      salesCity:
+        type: string
+        minLength: 1
+        maxLength: 10
+        description: "DANE city code of sales agent. Used for tax calculation. -> header.salesCity"
+        example: '11001'
+        required: false
+      custId:
+        type: integer
+        maximum: 999999999999999
+        description: "ZSmart customer ID (max 15 digits). Mandatory when customer already exists (existing customer new connection). custId and customer node cannot both be empty. -> header.custId"
+        example: 12345678
+        required: false
+      acctId:
+        type: integer
+        maximum: 999999999999999
+        description: "ZSmart account ID (max 15 digits). Mandatory when account already exists. Not required for prepaid. -> header.acctId"
+        example: 14000001234
+        required: false
+      po:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Purchase order number. -> header.po"
+        example: 'PO-2026-00123'
+        required: false
+      billType:
+        type: string
+        enum: ['1', '2']
+        description: "1=Monthly invoice (default), 2=Sales invoice. Only for postpaid. -> header.billType"
+        example: '1'
+        required: false
+      comments:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Order comments. -> header.comments"
+        example: 'Customer requested e-invoice'
+        required: false
+
+  customer:
+    type: object
+    required: false
+    description: "New customer data. Omit if customer already exists in ZSmart — send transaction.custId instead. -> cust node (operate=A)"
+    properties:
+      typeFlag:
+        type: string
+        enum: ['1', '2']
+        maxLength: 1
+        description: "1=Personal, 2=Business. -> cust.typeFlag"
+        example: '1'
+        required: true
+      firstName:
+        type: string
+        minLength: 1
+        maxLength: 255
+        description: "First name (individual). -> cust.firstName"
+        example: Juan
+        required: false
+      lastName:
+        type: string
+        minLength: 1
+        maxLength: 255
+        description: "Last name (individual). -> cust.lastName"
+        example: Perez
+        required: false
+      middleName:
+        type: string
+        minLength: 1
+        maxLength: 255
+        description: "Middle name. -> cust.middleName"
+        example: Carlos
+        required: false
+      secondLastName:
+        type: string
+        minLength: 1
+        maxLength: 255
+        description: "Second last name. -> cust.secondLastName"
+        example: Gomez
+        required: false
+      custName:
+        type: string
+        minLength: 1
+        maxLength: 255
+        description: "Business name (B2B only). -> cust.custName"
+        example: Empresa SAS
+        required: false
+      nombreJuridico:
+        type: string
+        minLength: 1
+        maxLength: 255
+        description: "Legal registered name (B2B). -> cust.nombreJuridico"
+        example: Empresa S.A.S.
+        required: false
+      title:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Title (Mr. or Mrs.). -> cust.title"
+        example: Mr.
+        required: false
+      docType:
+        type: string
+        enum: [CC, CE, NIT, PEP, PPT]
+        description: "Document type. CC, CE, NIT, PEP, PPT. Mandatory for new customer. -> cust.docType"
+        example: CC
+        required: false
+      docNumber:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Document number. Mandatory for new customer. -> cust.docNumber"
+        example: '1023456789'
+        required: false
+      issueLugar:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: "Organization where the document was issued. -> cust.issueLugar"
+        example: 'Registraduria Nacional'
+        required: false
+      issueDate:
+        type: string
+        description: "Document issue date yyyy-mm-dd. -> cust.issueDate"
+        example: '2010-03-15'
+        required: false
+      docExpDate:
+        type: string
+        description: "Document expiry date yyyy-mm-dd. -> cust.docExpDate"
+        example: '2035-03-15'
+        required: false
+      birthday:
+        type: string
+        description: "Birth date yyyy-mm-dd. -> cust.birthday"
+        example: '1990-05-15'
+        required: false
+      gender:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Male|Female|Company. -> cust.gender"
+        example: Male
+        required: false
+      occupation:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: "Profession of the customer. -> cust.occupation"
+        example: Engineer
+        required: false
+      industry:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: "Industry type (B2B). -> cust.industry"
+        example: Technology
+        required: false
+      contactPhone:
+        type: string
+        minLength: 1
+        maxLength: 20
+        description: "Primary mobile phone. -> cust.contactPhone"
+        example: '3001234567'
+        required: true
+      email:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: "Primary email. -> cust.email"
+        example: juan.perez@email.com
+        required: true
+      country:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Country of residential address. -> cust.country"
+        example: 'Colombia'
+        required: true
+      departament:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "DANE department code. -> cust.departament"
+        example: '11'
+        required: true
+      city:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "DANE city code. -> cust.city"
+        example: '11001'
+        required: true
+      district:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Locality/Commune. -> cust.district"
+        example: Chapinero
+        required: false
+      address:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Registered address. -> cust.address"
+        example: 'Cra 7 # 32-16'
+        required: false
+      customerSegment:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Customer segment. -> cust.customerSegment"
+        example: RESIDENCIAL
+        required: true
+      subSegmento:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Customer subsegment. -> cust.subSegmento"
+        example: MASS
+        required: true
+      categoria:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Gold|Silver|Bronze|Platinum. -> cust.categoria"
+        example: Bronze
+        required: true
+      habeasData:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Data treatment consent Yes/No. -> cust.habeasData"
+        example: 'Yes'
+        required: true
+      autoretentionFlag:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Self-withholding tax flag Yes/No. -> cust.autoretentionFlag"
+        example: 'No'
+        required: false
+      vipFlag:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "VIP customer flag Yes/No. -> cust.vipFlag"
+        example: 'No'
+        required: false
+      paymentRiskLevel:
+        type: string
+        enum: ['1', '2', '3', '4', '5', '6']
+        description: "Payment risk level. 1=Normal_High, 2=Normal_Very High, 3=Normal_High Medium, 4=Normal_Medium, 5=Normal_Low, 6=Normal_Very Low. Default 6. -> cust.paymentRiskLevel"
+        example: '6'
+        required: false
+      blockNotification:
+        type: string
+        minLength: 1
+        maxLength: 30
+        description: "Channels blocked for notification before dunning. E=Email, C=Call, W=WhatsApp, S=SMS. Multiple values comma-separated (e.g. 'E, C'). -> cust.blockNotification"
+        example: 'E, C'
+        required: false
+      contacts:
+        type: array
+        required: false
+        description: "Customer contacts (501=Commercial, 502=Legal, 503=Notification, 504=Delivery Address). -> cust.contactDtoList"
+        items: !include ../common/ContactItem.raml
+      attributes:
+        type: array
+        required: false
+        description: "Extended attributes for this customer. -> custAttrList (operate=A)"
+        items: !include ../common/AttributeItem.raml
+
+  account:
+    type: object
+    required: false
+    description: "New billing account. Omit if account already exists in ZSmart. -> account node (operate=A)"
+    properties:
+      acctName:
+        type: string
+        minLength: 1
+        maxLength: 256
+        description: "Billing account name. ZSmart generates it if not sent (customer_name+3-digit seq). -> account.acctName"
+        example: 'Juan Perez 001'
+        required: false
+      billDeliveryType:
+        type: string
+        minLength: 1
+        maxLength: 30
+        description: "B=Email, A=Post, W=WhatsApp, S=SMS. Comma-separated for multiple. Default B. Mandatory for postpaid. -> account.billDeliveryType"
+        example: 'B'
+        required: false
+      paymentMode:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Pre-paid or Post-paid. Defined by ZSmart per offer config. Default postpaid. -> account.paymentMode"
+        example: 'Post-paid'
+        required: false
+      corte:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Billing cut day (1-28). Calculated by CRM and sent to ZSmart. Mandatory for new postpaid account. ZSmart updates billing cycle automatically when changed. -> account.corte"
+        example: '15'
+        required: false
+      parentAcctId:
+        type: integer
+        description: "Parent account ID for hierarchy. -> account.parentAcctId"
+        example: 14000000001
+        required: false
+      billFlag:
+        type: string
+        enum: ['Yes', 'No']
+        description: "Payment responsible. Defined in CRM. -> account.billFlag"
+        example: 'Yes'
+        required: true
+      taxExempt:
+        type: string
+        enum: ['Yes', 'No']
+        description: "Tax exempt. -> account.taxExempt"
+        example: 'No'
+        required: false
+      dunningExemption:
+        type: string
+        enum: ['No', 'Temporary', 'Total']
+        description: "Whether dunning will be triggered or not. -> account.dunningExemption"
+        example: 'No'
+        required: false
+      dunningExemEff:
+        type: string
+        description: "Dunning exemption start date YYYY-MM-DD HHMMSS. Only effective when dunningExemption=Temporary. -> account.dunningExemEff"
+        example: '2026-03-19 000000'
+        required: false
+      dunningExemExp:
+        type: string
+        description: "Dunning exemption end date YYYY-MM-DD HHMMSS. Only effective when dunningExemption=Temporary. -> account.dunningExemExp"
+        example: '2026-06-19 000000'
+        required: false
+      contractName:
+        type: string
+        minLength: 1
+        maxLength: 60
+        description: "Contract name. One contract per account. -> account.contractName"
+        example: PLATINUM_ANNUAL_CONTRACT
+        required: false
+      roundingAdjustmentFlag:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Apply rounding adjustment to nearest ten Yes/No -> account.roundingAdjustmentFlag"
+        example: 'No'
+        required: false
+      previousBalanceFlag:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Show previous balance on invoice Yes/No. -> account.previousBalanceFlag"
+        example: 'Yes'
+        required: false
+      coverPageOnlyFlag:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Customer receives invoice cover page only Yes/No. -> account.coverPageOnlyFlag"
+        example: 'No'
+        required: false
+      interestChargeFlag:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Charge late payment interest Yes/No. -> account.interestChargeFlag"
+        example: 'No'
+        required: false
+      interestRateType:
+        type: string
+        enum: ['1', '2']
+        description: "Type of interest rate to be charged. 1=Interbank, 2=Subsidiary. Required when interestChargeFlag=Yes. -> account.interestRateType"
+        example: '1'
+        required: false
+      dunningManagementTime:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Collections start from 1st, 2nd or 3rd overdue invoice. -> account.dunningManagementTime"
+        example: '1'
+        required: false
+      country:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Country. -> account.country"
+        example: 'Colombia'
+        required: true
+      departament:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "DANE department code. -> account.departament"
+        example: '11'
+        required: true
+      city:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "DANE city code. -> account.city"
+        example: '11001'
+        required: true
+      district:
+        type: string
+        minLength: 1
+        maxLength: 15
+        description: "Locality/Commune. -> account.district"
+        example: Chapinero
+        required: false
+      address:
+        type: string
+        minLength: 1
+        maxLength: 200
+        description: "Registered address. -> account.address"
+        example: 'Cra 7 # 32-16'
+        required: false
+      paymentTerm:
+        type: string
+        minLength: 1
+        maxLength: 6
+        description: "Payment period days. Default 0. -> account.paymentTerm"
+        example: '0'
+        required: false
+      contacts:
+        type: array
+        required: false
+        description: "Account contacts (505=Bill Delivery, 506=Cobranza, 507=Commercial Register, 508=Administrator, 509=Collection Notification, 511=Ley 2300). -> account.contactDtoList"
+        items: !include ../common/ContactItem.raml
+      attributes:
+        type: array
+        required: false
+        description: "Extended attributes for this billing account. -> acctAttrList (operate=A)"
+        items: !include ../common/AttributeItem.raml
+
+  services:
+    type: array
+    required: true
+    minItems: 1
+    description: "Service instances to create. One item for standalone, multiple sharing bundleIdCRM for bundle (Double/Triple play). -> billProdInstList (operate=A)"
+    items:
+      type: object
+      properties:
+        areaCode:
+          type: string
+          minLength: 1
+          maxLength: 16
+          description: "Service number area prefix. -> billProdInst.areaCode"
+          example: '601'
+          required: true
+        serviceNumber:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: "Service number without prefix. -> billProdInst.serviceNumber"
+          example: '5551234'
+          required: true
+        effectiveDate:
+          type: string
+          minLength: 19
+          maxLength: 19
+          description: "Service effective date YYYY-MM-DD HH:MM:SS. -> billProdInst.effDate. ZSmart spec defines length 14 (YYYYMMDDHHMMSS) but accepts format with separators as confirmed by real request samples."
+          example: '2026-03-19 10:00:00'
+          required: true
+        offerCode:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: "Main offer code. -> billProdInst.offerCode"
+          example: PLAN_PSTN_100
+          required: true
+        socialLevel:
+          type: string
+          enum: ['', '1', '2', '3', '4', '5', '6']
+          description: "Social stratum 1-6. Default empty. -> billProdInst.socialLevel"
+          example: '3'
+          required: false
+        department:
+          type: string
+          minLength: 1
+          maxLength: 15
+          description: "DANE department where service is installed. -> billProdInst.department"
+          example: '11'
+          required: false
+        city:
+          type: string
+          minLength: 1
+          maxLength: 15
+          description: "DANE city where service is installed. -> billProdInst.city"
+          example: '11001'
+          required: false
+        address:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: "Address where service is installed. -> billProdInst.address"
+          example: 'Cra 7 # 32-16'
+          required: false
+        originalDepartment:
+          type: string
+          minLength: 1
+          maxLength: 15
+          description: "Link origin department. Required for Dedicated Links / MPLS / Corporate VPN. -> billProdInst.originalDepartment"
+          example: '11'
+          required: false
+        originalCity:
+          type: string
+          minLength: 1
+          maxLength: 15
+          description: "Link origin city. Required for Dedicated Links / MPLS / Corporate VPN. -> billProdInst.originalCity"
+          example: '11001'
+          required: false
+        originalAddress:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: "Link origin address. Required for Dedicated Links / MPLS / Corporate VPN. -> billProdInst.originalAddress"
+          example: 'Cra 7 # 32-16'
+          required: false
+        destDepartment:
+          type: string
+          minLength: 1
+          maxLength: 15
+          description: "Link destination department. Required for Dedicated Links / MPLS / Corporate VPN. -> billProdInst.destDepartment"
+          example: '05'
+          required: false
+        destCity:
+          type: string
+          minLength: 1
+          maxLength: 15
+          description: "Link destination city. Required for Dedicated Links / MPLS / Corporate VPN. -> billProdInst.destCity"
+          example: '05001'
+          required: false
+        destAddress:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: "Link destination address. Required for Dedicated Links / MPLS / Corporate VPN. -> billProdInst.destAddress"
+          example: Calle 50 # 10-20
+          required: false
+        contacts:
+          type: array
+          required: false
+          description: "Subscriber authorized users (510=Authorized user). -> billProdInst.contactDtoList"
+          items: !include ../common/ContactItem.raml
+        attributes:
+          type: array
+          required: false
+          description: "Extended attributes for this service instance. -> billProdInstAttrList (operate=A)"
+          items: !include ../common/AttributeItem.raml
+        offers:
+          type: array
+          required: true
+          minItems: 1
+          description: "Offer instances for this service (main and additional offers). -> billOfferInstList (operate=A)"
+          items: !include ../common/OfferItem.raml
+        charges:
+          type: array
+          required: false
+          minItems: 1
+          description: "One-off or advance charges for this service. -> chargeList (charge.prodInstId resolved from services[].prodInstId by business-papi)"
+          items: !include ../common/ChargeItem.raml
+examples:
+  SALE: !include ../../../examples/request/sale.json
+  SALE_NEW_CUSTOMER: !include ../../../examples/request/sale-new-customer.json
+  SALE_NEW_ACCOUNT: !include ../../../examples/request/sale-new-account.json
+  SALE_EXISTING_CUST_ACCT: !include ../../../examples/request/sale-existing-customer-account.json
+  SALE_WITH_CHARGE: !include ../../../examples/request/sale-with-charge.json

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
-	<flow name="business-xapi-services-main">
+    <flow name="business-xapi-services-main">
         <http:listener config-ref="business-xapi-services-httpListenerConfig" path="/v2/*">
             <http:response statusCode="#[vars.httpStatus default 200]">
                 <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
@@ -11,13 +11,55 @@
             </http:error-response>
         </http:listener>
         <flow-ref doc:name="Call initial Logger" doc:id="a7f232fa-b352-425b-9077-a015c63d0a0d" name="initial-loggin-Sub_Flow" />
-		<apikit:router config-ref="business-xapi-services-config" />
-		<async doc:name="Async" doc:id="16ee4743-5e23-483f-a3f2-5c11f1c79597" >
-			<flow-ref doc:name="Call logger" doc:id="998e6969-a309-42c8-a6e6-9b4f484396e8" name="loggin-client-call" />
-		</async>
-		<error-handler ref="common-error-handler-v2" />
-    
-</flow>
+        <try doc:name="Try" doc:id="b04f0136-b1f0-4ad3-92c2-d4ac644b11c1" >
+			<apikit:router config-ref="business-xapi-services-config" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="77201d88-30eb-4e49-9df9-5ce782cec7ae" type="APIKIT:BAD_REQUEST" when='#[(error.description contains "/processCode") and (error.description contains "is not a valid enum value")]'>
+					<ee:transform doc:name="clear json schema error" doc:id="d048a58f-3d19-48a7-99f8-615dc2647271">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var validProcessCodes = ["PLAN_CHANGE", "PLAN_CHANGE_BUNDLE", "SVA", "SUSPENSION", 
+    "SUSPENSION_FRAUD", "RESTORATION", "RESTORATION_FRAUD", "NUMBER_CHANGE", 
+    "VOLUNTARY_CANCELLATION", "STRATUM_CHANGE", "ADDRESS_CHANGE", "OWNERSHIP_TRANSFER", 
+    "ACCOUNT_UPDATE", "BILLING_CYCLE_CHANGE", "CUSTOMER_UPDATE",
+    "SALE", "SALE_BUNDLE", "NEW_CUSTOMER", "NEW_ACCOUNT"]
+var fullDesc = (error.description default "") as String
+var cleaned = if ( fullDesc contains "Invalid schema for content type application/json. Errors: " ) fullDesc replace "Invalid schema for content type application/json. Errors: " with ""
+else fullDesc
+var rawParts = (cleaned splitBy "\n") map trim($) filter ($ != "")
+var requestProcessCode = (payload.processCode default "") as String
+var isValidProcessCode = validProcessCodes contains requestProcessCode
+var processCodeErrors = rawParts filter ($ contains "is not a valid enum value")
+var realErrors        = rawParts filter (!($ contains "is not a valid enum value"))
+var processCodeUnique = if ( not isValidProcessCode and sizeOf(processCodeErrors) > 0 ) [processCodeErrors[0]]
+else []
+var cleanParts = realErrors ++ processCodeUnique
+var cleanMessage = "Invalid schema for content type application/json. Errors: " ++ (cleanParts joinBy "\n")
+---
+{
+	"status": "400",
+	"code": "BILLING_PROCESS:INVALID_PARAMS",
+	"message": "business-xapi-services-v2: " ++ cleanMessage,
+	"messageServer": "business-xapi-services-v2: " ++ cleanMessage,
+	"cause": [{
+		"origin": "business-xapi-services-v2",
+		"message": cleanMessage
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="16ee4743-5e23-483f-a3f2-5c11f1c79597">
+            <flow-ref doc:name="Call logger" doc:id="998e6969-a309-42c8-a6e6-9b4f484396e8" name="loggin-client-call" />
+        </async>
+        <error-handler ref="common-error-handler-v2" />
+    </flow>
     <flow name="business-xapi-services-console">
         <http:listener config-ref="business-xapi-services-httpListenerConfig" path="/console/*">
             <http:response statusCode="#[vars.httpStatus default 200]">
@@ -29,39 +71,39 @@
             </http:error-response>
         </http:listener>
         <apikit:console config-ref="business-xapi-services-config" />
-    
-</flow>
+    </flow>
     <flow name="patch:\partyInteraction:application\json:business-xapi-services-config">
-		<flow-ref doc:name="Flow Reference" doc:id="864dff42-952c-4020-afd9-9d4d6c35c7c3" name="partyInteraction-update-business-papi-v2-clientSub_Flow"/>
-
+        <flow-ref doc:name="Flow Reference" doc:id="864dff42-952c-4020-afd9-9d4d6c35c7c3" name="partyInteraction-update-business-papi-v2-clientSub_Flow" />
     </flow>
     <flow name="post:\partyInteraction:application\json:business-xapi-services-config">
-		<flow-ref doc:name="Flow Reference" doc:id="10bd5951-40c2-4d20-b307-75607c0cdedc" name="partyInteraction-create-business-papi-v2-clientSub_Flow"/>
-
+        <flow-ref doc:name="Flow Reference" doc:id="10bd5951-40c2-4d20-b307-75607c0cdedc" name="partyInteraction-create-business-papi-v2-clientSub_Flow" />
     </flow>
-	<flow name="get:\billingAccount:business-xapi-services-config">
-		<flow-ref doc:name="Flow Reference" doc:id="2f9cb454-7f37-48e5-8232-09d545d61f63" name="billingAccount-get-business-papi-v2-clientSub_Flow"/>
-
+    <flow name="get:\billingAccount:business-xapi-services-config">
+        <flow-ref doc:name="Flow Reference" doc:id="2f9cb454-7f37-48e5-8232-09d545d61f63" name="billingAccount-get-business-papi-v2-clientSub_Flow" />
     </flow>
-	<flow name="get:\agreement:business-xapi-services-config">
-		<flow-ref doc:name="Flow Reference" doc:id="2d152ea7-1767-4eec-add5-846b86be153c" name="agreement-get-business-papi-v2-clientSub_Flow"/>
-
+    <flow name="get:\agreement:business-xapi-services-config">
+        <flow-ref doc:name="Flow Reference" doc:id="2d152ea7-1767-4eec-add5-846b86be153c" name="agreement-get-business-papi-v2-clientSub_Flow" />
     </flow>
-	<flow name="post:\agreement:application\json:business-xapi-services-config" doc:id="f6a7b8c9-post-agreement-xapi">
-		<set-variable value="#[payload]" doc:name="inputPayload create agreement" variableName="inputPayload" />
-		<flow-ref doc:name="POST PAPI create agreement" doc:id="a7b8c9d0-post-ag" name="agreement-post-business-papi-v2-clientSub_Flow"/>
-	</flow>
-	<flow name="get:\party:business-xapi-services-config" doc:id="1556c980-8b60-46d3-a236-1d2ef98aca00" >
-		<flow-ref doc:name="Flow Reference" doc:id="142c2b9c-2ccf-4f17-af16-cdd334d7ab09" name="party-get-business-papi-v2-clientSub_Flow"/>
-	</flow>
-	<flow name="get:\party\(id):business-xapi-services-config" doc:id="0e7514d6-fbea-45d7-8539-92a3a469eff1" >
-		<flow-ref doc:name="Flow Reference" doc:id="052dab55-b51e-4599-9dee-d72a9d05dfa3" name="party-id-get-business-papi-v2-clientSub_Flow"/>
-	</flow>
-
-	<flow name="patch:\subscriber\(id):application\json:business-xapi-services-config">
-		<flow-ref doc:name="Flow Reference" name="subscriber-update-business-papi-v2-clientSub_Flow"/>
-	</flow>
-	<flow name="post:\parties:application\json:business-xapi-services-config" doc:id="3d66f705-bb44-4feb-8bab-5704fe4daf07" >
-		<flow-ref doc:name="Flow Reference" doc:id="44fe8d0d-9aa6-45ce-990c-d20d28103e11" name="parties-business-papi-v2-clientSub_Flow"/>
-	</flow>
+    <flow name="post:\agreement:application\json:business-xapi-services-config" doc:id="f6a7b8c9-post-agreement-xapi">
+        <set-variable value="#[payload]" doc:name="inputPayload create agreement" variableName="inputPayload" />
+        <flow-ref doc:name="POST PAPI create agreement" doc:id="a7b8c9d0-post-ag" name="agreement-post-business-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\party:business-xapi-services-config" doc:id="1556c980-8b60-46d3-a236-1d2ef98aca00">
+        <flow-ref doc:name="Flow Reference" doc:id="142c2b9c-2ccf-4f17-af16-cdd334d7ab09" name="party-get-business-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\party\(id):business-xapi-services-config" doc:id="0e7514d6-fbea-45d7-8539-92a3a469eff1">
+        <flow-ref doc:name="Flow Reference" doc:id="052dab55-b51e-4599-9dee-d72a9d05dfa3" name="party-id-get-business-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="patch:\subscriber\(id):application\json:business-xapi-services-config">
+        <flow-ref doc:name="Flow Reference" name="subscriber-update-business-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\parties:application\json:business-xapi-services-config" doc:id="3d66f705-bb44-4feb-8bab-5704fe4daf07">
+        <flow-ref doc:name="Flow Reference" doc:id="44fe8d0d-9aa6-45ce-990c-d20d28103e11" name="parties-business-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\billing-process:application\json:business-xapi-services-config">
+		<flow-ref doc:name="post-billing-business-papi-v2-clientSub_Flow" doc:id="266fdc86-fdda-4b90-b8fe-b7840f9137a8" name="post-billing-business-papi-v2-clientSub_Flow" />
+    </flow>
+	<flow name="patch:\billing-process:application\json:business-xapi-services-config">
+		<flow-ref doc:name="patch-billing-business-papi-v2-clientSub_Flow" doc:id="2659c2f2-8d56-4c30-b6be-04e8b3cf7ca3" name="patch-billing-business-papi-v2-clientSub_Flow" />
+    </flow>
 </mule>
