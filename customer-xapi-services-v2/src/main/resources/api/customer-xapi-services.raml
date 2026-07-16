@@ -849,3 +849,478 @@ securitySchemes:
         body:
           application/json:
             type: !include datatypes/response/error.raml
+
+/billingBalance:
+  get:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+    displayName: Consultar saldo de cuenta de facturación
+    description: |
+      Query postpaid billing account balance from ZSmart (queryAccountbalance — v0.8).
+      Expired balances are not returned.
+      Negative balance = account has money; positive = account has debt.
+      At least one search key must be provided:
+        - CONNECTION_NUMBER (MSISDN)
+        - BILLING_ACCOUNT (ZSmart account number)
+        - CUSTOMER_ID_TYPE + CUSTOMER_ID (compound key — both required together)
+    queryParameters:
+      ORIGIN:
+        type: string
+        example: "WHATSAPP"
+        description: Canal de origen
+        required: true
+      CONNECTION_NUMBER:
+        type: string
+        example: "6015551234"
+        description: |
+          Service MSISDN (area code + number). Search key.
+          ZSmart: msisdn. At least one search key must be present.
+        required: false
+      BILLING_ACCOUNT:
+        type: string
+        example: "14000001234"
+        description: |
+          ZSmart billing account number. Search key.
+          ZSmart: accountCode. At least one search key must be present.
+        required: false
+      CUSTOMER_ID_TYPE:
+        type: string
+        enum: ["CC","CE","NIT","PEP","PPT"]
+        example: "CC"
+        description: |
+          Document type. Compound key — must be sent together with CUSTOMER_ID. ZSmart spec values:
+          - CC: CEDULA DE CIUDADANIA
+          - CE: CEDULA DE EXTRANJERIA
+          - NIT: NIT
+          - PEP: PERMISO ESPECIAL PERMANENCIA
+          - PPT: PERMISO PROECCION TEMPORAL
+        required: false
+      CUSTOMER_ID:
+        type: string
+        example: "1023456789"
+        description: |
+          Document number. Compound key — must be sent together with CUSTOMER_ID_TYPE.
+          ZSmart: resolved to msisdn or accountCode via customer lookup.
+        required: false
+    responses:
+      200:
+        body:
+          application/json:
+            type: !include datatypes/response/get-billingBalance.raml
+            example: !include examples/response/get-billingBalance.json
+      400:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-401.json
+      404:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-404.json
+      500:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-500.json
+
+/billingHistory:
+  get:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+    displayName: Consultar historial de facturas
+    description: |
+      Query postpaid account bill history from ZSmart (billHistoryQuery — v0.8).
+      Default: returns last 6 billed billing cycles when no date range is specified.
+      Max date range: 6 months between START_TIME and END_TIME.
+      At least one search key must be provided:
+        - CONNECTION_NUMBER (MSISDN)
+        - BILLING_ACCOUNT (ZSmart account number)
+        - CUSTOMER_ID_TYPE + CUSTOMER_ID (compound key — both required together)
+      If INVOICE_NUMBER is provided, other filters still apply as additional constraints.
+    queryParameters:
+      ORIGIN:
+        type: string
+        example: "WHATSAPP"
+        description: Canal de origen
+        required: true
+      CONNECTION_NUMBER:
+        type: string
+        example: "6015551234"
+        description: |
+          Service MSISDN (area code + number). Search key.
+          ZSmart: msisdn. At least one search key must be present.
+        required: false
+      BILLING_ACCOUNT:
+        type: string
+        example: "14000001234"
+        description: |
+          ZSmart billing account number. Search key.
+          ZSmart: accountNumber. At least one search key must be present.
+        required: false
+      CUSTOMER_ID_TYPE:
+        type: string
+        enum: ["CC","CE","NIT","PEP","PPT"]
+        example: "CC"
+        description: |
+          Document type. Compound key — must be sent together with CUSTOMER_ID. ZSmart spec values:
+          - CC: CEDULA DE CIUDADANIA
+          - CE: CEDULA DE EXTRANJERIA
+          - NIT: NIT
+          - PEP: PERMISO ESPECIAL PERMANENCIA
+          - PPT: PERMISO PROECCION TEMPORAL
+        required: false
+      CUSTOMER_ID:
+        type: string
+        example: "1023456789"
+        description: |
+          Document number. Compound key — must be sent together with CUSTOMER_ID_TYPE.
+          ZSmart: resolved to accountNumber via customer lookup.
+        required: false
+      INVOICE_NUMBER:
+        type: string
+        example: "INV-2026-001234"
+        description: "Filter by specific invoice number. ZSmart: invoiceNumber."
+        required: false
+      START_TIME:
+        type: string
+        example: "2026-01-01"
+        description: |
+          Filter start date YYYY-MM-DD. If provided, END_TIME is also required.
+          Bills filtered by billing cycle end date within the range.
+          ZSmart: startTime.
+        required: false
+      END_TIME:
+        type: string
+        example: "2026-03-31"
+        description: |
+          Filter end date YYYY-MM-DD. If provided, START_TIME is also required.
+          Max range: 6 months from START_TIME. ZSmart: endTime.
+        required: false
+      BILL_TYPE:
+        type: string
+        enum: ["1","2","3"]
+        example: "1"
+        description: |
+          Invoice type filter. 1=Monthly invoice, 2=Sales invoice, 3=Instant Bill.
+          Omit to return all types. ZSmart: billType.
+        required: false
+      LIMIT:
+        type: number
+        example: 10
+        description: Maximum number of invoices to return.
+        required: false
+      OFFSET:
+        type: number
+        example: 0
+        description: Pagination offset.
+        required: false
+    responses:
+      200:
+        body:
+          application/json:
+            type: !include datatypes/response/get-billingHistory.raml
+            example: !include examples/response/get-billingHistory.json
+      400:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-401.json
+      404:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-404.json
+      500:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-500.json
+
+/billingSubscriberProfile:
+  get:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+    displayName: Consultar Perfil del Suscriptor
+    description: |
+      Retrieves the current profile of a subscriber from ZSmart, including state, account,
+      customer data, active balances, additional offers and product attributes.
+      ZSmart operation: querySubscriberProfile — v0.9.
+    queryParameters:
+      serviceNumber:
+        type: string
+        description: "Service number (MSISDN) of the subscriber. ZSmart: querySubscriberProfile.serviceNumber"
+        example: '6015551234'
+        required: true
+    responses:
+      200:
+        body:
+          application/json:
+            type: !include datatypes/response/get-billingSubscriberProfile.raml
+            example: !include examples/response/get-billingSubscriberProfile-200.json
+      400:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-401.json
+      404:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-404.json
+      500:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-500.json
+
+/billingClearance:
+  post:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+    displayName: Solicitar Paz y Salvo de Facturación
+    description: |
+      Queries the customer's due amount in ZSmart and, if the customer is not in dunning status,
+      sends a billing clearance certificate (paz y salvo) to the provided email address.
+      ZSmart operation: applyETBCertification.
+    body:
+      application/json:
+        type: !include datatypes/request/post-billingClearance.raml
+        example: !include examples/request/post-billingClearance.json
+    responses:
+      200:
+        body:
+          application/json:
+            type: !include datatypes/response/post-billingClearance.raml
+            example: !include examples/response/post-billingClearance-200.json
+      400:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-401.json
+      404:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-404.json
+      500:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-500.json
+
+/billingAccountItem:
+  get:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+    displayName: Consultar Items de Cuenta de Facturación (Desglose de Cargos)
+    description: |
+      Query detailed billing account items (line items breakdown) from ZSmart (queryBillAcctItem — v1.1).
+      Returns the detailed breakdown of charges, taxes, adjustments, and disputes for a specific invoice.
+      Per ZSmart spec §6.8, requires INVOICE_NUMBER (mandatory) and at least one search key:
+        - CONNECTION_NUMBER (MSISDN)
+        - BILLING_ACCOUNT (ZSmart account number)
+        - CUSTOMER_ID_TYPE + CUSTOMER_ID (compound key — both required together)
+      If searching by document, multiple accounts may be resolved; items are returned for each account.
+    queryParameters:
+      ORIGIN:
+        type: string
+        example: "WEB"
+        description: Canal de origen (requerido)
+        required: true
+      CONNECTION_NUMBER:
+        type: string
+        example: "6015551234"
+        description: |
+          Service MSISDN (area code + number). Search key.
+          ZSmart: msisdn. At least one search key must be present.
+        required: false
+      BILLING_ACCOUNT:
+        type: string
+        example: "14000001234"
+        description: |
+          ZSmart billing account number. Search key.
+          ZSmart: accountNumber. At least one search key must be present.
+        required: false
+      CUSTOMER_ID_TYPE:
+        type: string
+        enum: ["CC","CE","NIT","PEP","PPT"]
+        example: "CC"
+        description: |
+          Document type. Compound key — must be sent together with CUSTOMER_ID.
+          - CC: CEDULA DE CIUDADANIA
+          - CE: CEDULA DE EXTRANJERIA
+          - NIT: NIT
+          - PEP: PERMISO ESPECIAL PERMANENCIA
+          - PPT: PERMISO PROECCION TEMPORAL
+        required: false
+      CUSTOMER_ID:
+        type: string
+        example: "1023456789"
+        description: |
+          Document number. Compound key — must be sent together with CUSTOMER_ID_TYPE.
+          ZSmart: resolved via MDM lookup to msisdn or accountNumber.
+        required: false
+      INVOICE_NUMBER:
+        type: string
+        example: "INV-2026-001234"
+        description: |
+          Invoice/Bill number to retrieve line items for. MANDATORY — specifies which invoice's detailed breakdown to return.
+          ZSmart: billNumber.
+        required: true
+    responses:
+      200:
+        body:
+          application/json:
+            type: !include datatypes/response/get-billingAccountItem.raml
+            example: !include examples/response/get-billingAccountItem.json
+      400:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include examples/response/error-401.json
+      404:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include examples/response/error-404.json
+      500:
+        body:
+          application/json:
+            type: !include /datatypes/response/error.raml
+            example: !include examples/response/error-500.json            
+
+/billingDispute:
+  get:
+    is:
+      - tibcoHeaders
+    securedBy: [etb_oauth_2_0]
+    displayName: Consultar disputas de cuenta de facturación
+    description: |
+      Query dispute records for a billing account from ZSmart (qryDispute — v1.1, §6.11).
+      Returns open and/or closed disputes within an optional date range.
+      At least one search key must be provided:
+        - CONNECTION_NUMBER (MSISDN)
+        - BILLING_ACCOUNT (ZSmart account number)
+        - CUSTOMER_ID_TYPE + CUSTOMER_ID (compound key — both required together)
+      queryClosedFlag=Y (default) returns open AND closed disputes.
+      queryClosedFlag=N returns only open/active disputes.
+    queryParameters:
+      ORIGIN:
+        type: string
+        example: "WEB"
+        description: Canal de origen ZSmart channelCode (M)
+        required: true
+      CONNECTION_NUMBER:
+        type: string
+        example: "6015551234"
+        description: |
+          Service MSISDN (area code + number). Search key.
+          ZSmart: msisdn. At least one search key must be present.
+        required: false
+      BILLING_ACCOUNT:
+        type: string
+        example: "14000001234"
+        description: |
+          ZSmart billing account number. Search key.
+          ZSmart: accountNumber. At least one search key must be present.
+        required: false
+      CUSTOMER_ID_TYPE:
+        type: string
+        enum: ["CC","CE","NIT","PEP","PPT"]
+        example: "CC"
+        description: |
+          Document type. Compound key — must be sent together with CUSTOMER_ID.
+          - CC: CEDULA DE CIUDADANIA
+          - CE: CEDULA DE EXTRANJERIA
+          - NIT: NIT
+          - PEP: PERMISO ESPECIAL PERMANENCIA
+          - PPT: PERMISO PROECCION TEMPORAL
+        required: false
+      CUSTOMER_ID:
+        type: string
+        example: "1023456789"
+        description: |
+          Document number. Compound key — must be sent together with CUSTOMER_ID_TYPE.
+          ZSmart: resolved via MDM lookup to msisdn or accountNumber.
+        required: false
+      QUERY_CLOSED_FLAG:
+        type: string
+        enum: ["Y","N"]
+        example: "Y"
+        description: |
+          Whether closed disputes are included in the response.
+          Y (default): returns open AND closed disputes.
+          N: returns only open/active disputes.
+          ZSmart: queryClosedFlag (O)
+        required: false
+      START_DATE:
+        type: string
+        example: "2026-01-01 00:00:00"
+        description: |
+          Start date filter YYYY-MM-DD HH:MM:SS. If provided, END_DATE is required.
+          ZSmart: beginDate (O)
+        required: false
+      END_DATE:
+        type: string
+        example: "2026-06-30 23:59:59"
+        description: |
+          End date filter YYYY-MM-DD HH:MM:SS. If provided, START_DATE is required.
+          ZSmart: endDate (O)
+        required: false
+    responses:
+      200:
+        body:
+          application/json:
+            type: !include datatypes/response/get-billingDispute.raml
+            example: !include examples/response/get-billingDispute.json
+      400:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-400.json
+      401:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-401.json
+      404:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-404.json
+      500:
+        body:
+          application/json:
+            type: !include datatypes/response/error.raml
+            example: !include examples/response/error-500.json
