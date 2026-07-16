@@ -1,0 +1,128 @@
+#%RAML 1.0 DataType
+type: object
+description: |
+  Dispute records for a billing account from ZSmart (qryDispute — v1.1, §6.11).
+  Returns disputes within an optional date range, including their line items.
+
+  **Single Account (by CONNECTION_NUMBER or BILLING_ACCOUNT):**
+  Returns dispute data in `accounts[0].disputes[]` for that single account.
+
+  **Multiple Accounts (Document Lookup by CUSTOMER_ID_TYPE + CUSTOMER_ID):**
+  customer-papi resolves document to multiple billing accounts via mongo-sapi (MDM_CUENTA_FACTURACION).
+  For each account, ZSmart qryDispute is called independently.
+  Returns array of account results in `accounts[]`, each containing accountNumber + disputes[].
+
+  **Dispute status values (ZSmart):**
+    Processing  - dispute is under review
+    Adjusting   - approved, financial adjustment in progress
+    Solved      - approved and adjustment applied
+    Closed      - rejected or finalized
+
+  **queryClosedFlag:**
+    Y (default): returns open AND closed disputes
+    N: returns only open/active disputes
+
+properties:
+  codeResponse:
+    type: string
+    example: '200'
+    required: false
+  messageResponse:
+    type: string
+    example: 'OK'
+    required: false
+  accounts:
+    type: array
+    required: false
+    description: |
+      List of billing accounts with their dispute records.
+      Single account: array with 1 item.
+      Document lookup: array with N items (one per resolved account from MDM).
+      Each item corresponds to an independent ZSmart qryDispute call, so each has its own transactionID.
+    items:
+      type: object
+      properties:
+        transactionID:
+          type: string
+          description: "Transaction identifier echoed from ZSmart qryDispute response. ZSmart: transactionID (O)"
+          example: 'TRX20260625001234'
+          required: false
+        accountNumber:
+          type: string
+          description: "Billing account number (from ZSmart or MDM_CUENTA_FACTURACION). ZSmart: accountNumber"
+          example: '14000001234'
+          required: true
+        disputes:
+          type: array
+          required: false
+          description: "List of disputes for this account. ZSmart: disputeExDtoList"
+          items:
+            type: object
+            properties:
+              disputeID:
+                type: string
+                maxLength: 12
+                description: "Unique dispute identifier. ZSmart: disputeID (M)"
+                example: '12345'
+                required: true
+              amount:
+                type: string
+                maxLength: 18
+                description: "Total disputed amount. ZSmart: amount (M)"
+                example: '150000'
+                required: true
+              remarks:
+                type: string
+                maxLength: 4000
+                description: "Additional remarks for the dispute. ZSmart: remarks (O)"
+                example: 'Cargo no reconocido en factura INV-2026-001234'
+                required: false
+              createdDate:
+                type: string
+                maxLength: 20
+                description: "Dispute creation date YYYY-MM-DD HH:MM:SS. ZSmart: createdDate (M)"
+                example: '2026-05-10 09:30:00'
+                required: true
+              status:
+                type: string
+                maxLength: 20
+                description: "Dispute status: Processing | Adjusting | Solved | Closed. ZSmart: status (M)"
+                example: 'Processing'
+                required: true
+              disputeItems:
+                type: array
+                required: false
+                description: "Line items included in this dispute. ZSmart: disputeItemExDtoList (O)"
+                items:
+                  type: object
+                  properties:
+                    glID:
+                      type: string
+                      maxLength: 6
+                      description: "Dispute item identifier. ZSmart: glID (M)"
+                      example: '501'
+                      required: true
+                    refInvoiceNumber:
+                      type: string
+                      maxLength: 30
+                      description: "Referenced invoice number for credit note. ZSmart: refInvoiceNumber (O)"
+                      example: 'INV-2026-001234'
+                      required: false
+                    amount:
+                      type: string
+                      maxLength: 18
+                      description: "Amount disputed for this line item. ZSmart: amount (M)"
+                      example: '150000'
+                      required: true
+                    glTypeID:
+                      type: string
+                      maxLength: 6
+                      description: "Account item type group identifier. ZSmart: glTypeID (M)"
+                      example: '123'
+                      required: true
+                    glTypeName:
+                      type: string
+                      maxLength: 60
+                      description: "Account item type group name. ZSmart: glTypeName (M)"
+                      example: 'Service Charge'
+                      required: true
