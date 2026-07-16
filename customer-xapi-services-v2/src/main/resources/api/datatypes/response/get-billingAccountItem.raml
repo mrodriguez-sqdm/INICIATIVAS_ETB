@@ -1,0 +1,205 @@
+#%RAML 1.0 DataType
+type: object
+description: |
+  Detailed billing account items (line items/charges breakdown) from ZSmart (queryBillAcctItem — v1.1).
+  Returns the detailed breakdown of charges for a specific invoice, including line items, taxes, adjustments, and disputes.
+  Per spec §6.8, requires billNumber (mandatory) and either accountNumber or msisdn.
+
+  **Single Account (by CONNECTION_NUMBER or BILLING_ACCOUNT):**
+  Returns item data in `accounts[0].items[]` array for that single account.
+
+  **Multiple Accounts (Document Lookup by CUSTOMER_ID_TYPE + CUSTOMER_ID):**
+  customer-papi resolves document to multiple billing accounts via mongo-sapi (MDM_CUENTA_FACTURACION).
+  For each account, ZSmart queryBillAcctItem is called independently for each billNumber.
+  Returns array of account results in `accounts[]`, where each item contains accountNumber + items[].
+
+  **Note on billNumber parameter:**
+  QueryBillAcctItem requires a specific billNumber (invoice) to query. When searching by document (CUSTOMER_ID_TYPE + CUSTOMER_ID),
+  the INVOICE_NUMBER query parameter becomes mandatory to specify which invoice's items to retrieve.
+properties:
+  codeResponse:
+    type: string
+    example: '200'
+    required: false
+  messageResponse:
+    type: string
+    example: 'OK'
+    required: false
+  accounts:
+    type: array
+    required: false
+    description: |
+      List of billing accounts with their detailed line items for the queried invoice(s).
+      - Single account query: array with 1 item
+      - Multiple account query: array with N items (one per resolved account from MDM)
+    items:
+      type: object
+      properties:
+        accountNumber:
+          type: string
+          description: "Billing account number. ZSmart: accountNumber"
+          example: '14000001234'
+          required: true
+        items:
+          type: array
+          required: false
+          description: "Detailed billing item breakdown (charges, fees, adjustments, disputes) for the invoice. ZSmart: billAcctItemDto"
+          items:
+            type: object
+            properties:
+              billID:
+                type: string
+                description: "Bill ID identifier. ZSmart: billID"
+                example: '12345'
+                required: false
+              billNumber:
+                type: string
+                description: "Bill/Invoice number. ZSmart: billNumber"
+                example: 'INV-2026-001234'
+                required: false
+              billingCycleID:
+                type: string
+                description: "Billing cycle identifier. ZSmart: billingCycleID"
+                example: '202603'
+                required: false
+              billingCycleTypeName:
+                type: string
+                description: "Billing cycle type name (e.g., Monthly, Immediate). ZSmart: billingCycleTypeName"
+                example: 'Monthly'
+                required: false
+              billingCycleBeginDate:
+                type: string
+                description: "Billing cycle begin date YYYY-MM-DD HH:MM:SS. ZSmart: billingCycleBeginDate"
+                example: '2026-03-01 00:00:00'
+                required: false
+              billingCycleEndDate:
+                type: string
+                description: "Billing cycle end date YYYY-MM-DD HH:MM:SS. ZSmart: billingCycleEndDate"
+                example: '2026-03-31 23:59:59'
+                required: false
+              preBalance:
+                type: object
+                required: false
+                description: "Previous balance carried forward from prior cycle. ZSmart: preBalance"
+                properties:
+                  value:
+                    type: string
+                    example: '0'
+                    required: false
+                  formatted:
+                    type: string
+                    example: '$ 0'
+                    required: false
+              due:
+                type: object
+                required: false
+                description: "Total due amount for the billing cycle. ZSmart: due"
+                properties:
+                  value:
+                    type: string
+                    description: "Raw due amount"
+                    example: '145000'
+                    required: false
+                  formatted:
+                    type: string
+                    description: "Formatted due amount"
+                    example: '$ 145,000'
+                    required: false
+              adjustCharge:
+                type: object
+                required: false
+                description: "Total adjustments/credits applied. ZSmart: adjustCharge"
+                properties:
+                  value:
+                    type: string
+                    example: '0'
+                    required: false
+                  formatted:
+                    type: string
+                    example: '$ 0'
+                    required: false
+              disputeCharge:
+                type: object
+                required: false
+                description: "Total disputed amount. ZSmart: disputeCharge"
+                properties:
+                  value:
+                    type: string
+                    example: '0'
+                    required: false
+                  formatted:
+                    type: string
+                    example: '$ 0'
+                    required: false
+              recvCharge:
+                type: object
+                required: false
+                description: "Receivable charge (amount outstanding). ZSmart: recvCharge"
+                properties:
+                  value:
+                    type: string
+                    description: "Raw receivable amount (negative = credit)"
+                    example: '-2000000'
+                    required: false
+                  formatted:
+                    type: string
+                    description: "Formatted receivable amount"
+                    example: '$ 2,000,000'
+                    required: false
+              lineItems:
+                type: array
+                required: false
+                description: "Detailed line items (service charges, taxes, etc.) for this invoice. ZSmart: acctItemFeeDtoList"
+                items:
+                  type: object
+                  properties:
+                    acctItemID:
+                      type: string
+                      description: "Account item ID. ZSmart: acctItemID"
+                      example: '12345'
+                      required: false
+                    acctItemTypeID:
+                      type: string
+                      description: "Account item type ID code. ZSmart: acctItemTypeID"
+                      example: '1'
+                      required: false
+                    acctItemTypeName:
+                      type: string
+                      description: "Account item type name (e.g., Service, Tax, Discount). ZSmart: acctItemTypeName"
+                      example: 'Service Charge'
+                      required: false
+                    subsID:
+                      type: string
+                      description: "Subscription ID if applicable. ZSmart: subsID"
+                      example: '98765'
+                      required: false
+                    serviceNumber:
+                      type: string
+                      description: "Service number/MSISDN if applicable. ZSmart: serviceNumber"
+                      example: '6015551234'
+                      required: false
+                    charge:
+                      type: object
+                      required: false
+                      description: "Charge amount for this line item. ZSmart: charge"
+                      properties:
+                        value:
+                          type: string
+                          description: "Raw charge amount"
+                          example: '50000'
+                          required: false
+                        formatted:
+                          type: string
+                          description: "Formatted charge amount"
+                          example: '$ 50,000'
+                          required: false
+                    billingPlanType:
+                      type: string
+                      description: "Billing plan type code. ZSmart: billingPlanType"
+                      example: '1'
+                      required: false
+                    taxTypeCode:
+                      type: string
+                      description: "Tax type code or category. ZSmart: taxTypeCode"
+                      example: 'VAT'
+                      required: false
