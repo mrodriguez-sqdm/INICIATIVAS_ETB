@@ -3,7 +3,6 @@ var serviceEventId = "803"
 var transaction = payload.transaction
 var account = payload.account default {
 }
-var services = payload.services default []
 var operation = "M"
 var currency = "1"
 output application/json  skipNullOn = "everywhere"
@@ -47,7 +46,7 @@ output application/json  skipNullOn = "everywhere"
 		"interestRateType": account.interestRateType,
 		"dunningManagementTime": account.dunningManagementTime,
 		"country": account.country,
-		"departament": account.departament,
+		"department": account.department,
 		"city": account.city,
 		"district": account.district,
 		"address": account.address,
@@ -78,7 +77,7 @@ output application/json  skipNullOn = "everywhere"
 	// Account Attributes Mapping
 	("acctAttrList": account.attributes map ((acctAttr) -> {
 		"operate": acctAttr.operate,
-		"acctId": account.acctId default transaction.acctId,
+		"acctId": acctAttr.acctId default transaction.acctId,
 		"attrCode": acctAttr.attrCode,
 		"value": acctAttr.value,
 		"effDate": acctAttr.effectiveDate

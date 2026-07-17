@@ -1,7 +1,8 @@
 %dw 2.0
 var serviceEventId = "805"
 var transaction = payload.transaction
-var services = payload.services default []
+var service = payload.service default {
+}
 var serviceNumber = transaction.serviceNumber
 var operation = "M"
 var currency = "1"
@@ -25,14 +26,12 @@ output application/json  skipNullOn = "everywhere"
 		"comments": transaction.comments
 	},
 	// services Mapping
-	("billProdInstList": services map ((service) -> {
+	("billProdInst": {
 		"operate": operation,
-		"areaCode": service.areaCode,
 		"serviceNumber": service.serviceNumber,
 		"socialLevel": service.socialLevel,
 		"effDate": service.effectiveDate,
 		"offerCode": service.offerCode,
-		"bundleIdCRM": service.bundleIdCRM,
 		"department": service.department,
 		"city": service.city,
 		"address": service.address,
@@ -62,34 +61,35 @@ output application/json  skipNullOn = "everywhere"
 			"district": serviceContact.district,
 			"addressName": serviceContact.addressName
 		})) if (!isEmpty(service.contacts default []))
-	})) if (!isEmpty(services default [])),
+	}) if (!isEmpty(service default {
+	})),
 	// Service Attributes Mapping
-	("billProdInstAttrList": services flatMap (bpi) -> bpi.attributes default [] map ((serviceAttr) -> {
+	("billProdInstAttrList": service.attributes default [] map ((serviceAttr) -> {
 		"operate": serviceAttr.operate,
-		"serviceNumber": bpi.serviceNumber,
+		"serviceNumber": service.serviceNumber,
 		"attrCode": serviceAttr.attrCode,
 		"value": serviceAttr.value,
 		"effDate": serviceAttr.effectiveDate
-	})) if (!isEmpty(flatten(services.attributes default []))),
+	})) if (!isEmpty(flatten(service.attributes default []))),
 	// Service Offers Mapping
-	("billOfferInstList": services flatMap (boi) -> boi.offers default [] map ((offer) -> {
+	("billOfferInstList": service.offers default [] map ((offer) -> {
 		"operate": offer.operate,
 		"offerInstIdCRM": offer.offerInstanceIdCRM,
 		"offerCode": offer.offerCode,
 		"effDate": offer.effectiveDate,
 		"expDate": offer.expirationDate,
-		"instanceIdCRM": boi.serviceNumber
-	})) if (!isEmpty(flatten(services.offers default []))),
+		"instanceIdCRM": service.serviceNumber
+	})) if (!isEmpty(flatten(service.offers default []))),
 	// Service Offers Attributes Mapping
-	("billOfferInstAttrList": services flatMap (boi) -> boi.offers default [] flatMap (o) -> o.attributes default [] map ((offerAttr) -> {
+	("billOfferInstAttrList": service.offers default [] flatMap (so) -> so.attributes default [] map ((offerAttr) -> {
 		"operate": offerAttr.operate,
-		"offerInstIdCRM": o.offerInstanceIdCRM,
+		"offerInstIdCRM": so.offerInstanceIdCRM,
 		"attrCode": offerAttr.attrCode,
 		"value": offerAttr.value,
 		"effDate": offerAttr.effectiveDate
-	})) if (!isEmpty(flatten(services.offers default []))),
+	})) if (!isEmpty(flatten(service.offers default []))),
 	// Service Charges Mapping
-	("chargeList": services flatMap (chl) -> chl.charges default [] map (charge) -> {
+	("chargeList": service.charges default [] map (charge) -> {
 		"billingNbr": charge.billingNbr,
 		"basicCharge": charge.basicCharge,
 		"chargeType": charge."type",
@@ -100,5 +100,5 @@ output application/json  skipNullOn = "everywhere"
 		"origAcctItemTypeCode": charge.origAcctItemTypeCode,
 		"currencyId": currency,
 		"paidFlag": charge.paidFlag
-	}) if (!isEmpty(flatten(services.charges default [])))
+	}) if (!isEmpty(flatten(service.charges default [])))
 }

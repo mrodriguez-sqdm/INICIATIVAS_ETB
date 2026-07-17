@@ -5,7 +5,8 @@ var customer = payload.customer default {
 }
 var account = payload.account default {
 }
-var services = payload.services default []
+var service = payload.service default {
+}
 var serviceNumber = transaction.serviceNumber
 var operation = "M"
 var currency = "1"
@@ -29,14 +30,12 @@ output application/json  skipNullOn = "everywhere"
 		"comments": transaction.comments
 	},
 	// services Mapping
-	("billProdInstList": services map ((service) -> {
+	("billProdInst": {
 		"operate": operation,
-		"areaCode": service.areaCode,
 		"serviceNumber": service.serviceNumber,
 		"socialLevel": service.socialLevel,
 		"effDate": service.effectiveDate,
 		"offerCode": service.offerCode,
-		"bundleIdCRM": service.bundleIdCRM,
 		"department": service.department,
 		"city": service.city,
 		"address": service.address,
@@ -48,7 +47,7 @@ output application/json  skipNullOn = "everywhere"
 		"destAddress": service.destAddress,
 		("contactDtoList": service.contacts map ((serviceContact) -> {
 			"contactType": serviceContact.contactType,
-			"operate": operation,
+			"operate": serviceContact.operate default operation,
 			"contactId": serviceContact.contactId,
 			"firstName": serviceContact.firstName,
 			"lastName": serviceContact.lastName,
@@ -66,13 +65,14 @@ output application/json  skipNullOn = "everywhere"
 			"district": serviceContact.district,
 			"addressName": serviceContact.addressName
 		})) if (!isEmpty(service.contacts default []))
-	})) if (!isEmpty(services default [])),
+	}) if (!isEmpty(service default {
+	})),
 	// Service Attributes Mapping
-	("billProdInstAttrList": services flatMap (bpi) -> bpi.attributes default [] map ((serviceAttr) -> {
-		"operate": operation,
-		"serviceNumber": bpi.serviceNumber,
+	("billProdInstAttrList": service.attributes default [] map ((serviceAttr) -> {
+		"operate": serviceAttr.operate default operation,
+		"serviceNumber": service.serviceNumber,
 		"attrCode": serviceAttr.attrCode,
 		"value": serviceAttr.value,
 		"effDate": serviceAttr.effectiveDate
-	})) if (!isEmpty(flatten(services.attributes default []))),
+	})) if (!isEmpty(flatten(service.attributes default []))),
 }

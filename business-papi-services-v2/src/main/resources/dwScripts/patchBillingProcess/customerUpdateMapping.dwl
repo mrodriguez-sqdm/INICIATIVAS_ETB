@@ -3,9 +3,6 @@ var serviceEventId = "802"
 var transaction = payload.transaction
 var customer = payload.customer default {
 }
-var account = payload.account default {
-}
-var services = payload.services default []
 var operation = "M"
 var currency = "1"
 output application/json  skipNullOn = "everywhere"
@@ -49,7 +46,7 @@ output application/json  skipNullOn = "everywhere"
 		"contactPhone": customer.contactPhone,
 		"email": customer.email,
 		"country": customer.country,
-		"departament": customer.departament,
+		"department": customer.department,
 		"city": customer.city,
 		"district": customer.district,
 		"address": customer.address,

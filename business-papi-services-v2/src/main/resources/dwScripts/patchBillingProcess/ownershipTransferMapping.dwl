@@ -3,11 +3,8 @@ var serviceEventId = "67"
 var transaction = payload.transaction
 var customer = payload.newCustomer default {
 }
-var customerAttr = payload.newCustAttributes default []
 var account = payload.newAccount default {
 }
-var accountAttr = payload.newAcctAttributes default []
-var services = payload.services default []
 var serviceNumber = transaction.serviceNumber
 var operationServices = "M"
 var operation = "A"
@@ -56,7 +53,7 @@ output application/json  skipNullOn = "everywhere"
 		"contactPhone": customer.contactPhone,
 		"email": customer.email,
 		"country": customer.country,
-		"departament": customer.departament,
+		"department": customer.department,
 		"city": customer.city,
 		"district": customer.district,
 		"address": customer.address,
@@ -69,7 +66,7 @@ output application/json  skipNullOn = "everywhere"
 		"vipFlag": customer.vipFlag,
 		"paymentRiskLevel": customer.paymentRiskLevel,
 		"blockNotification": customer.blockNotification,
-		("contactDtoList": customer.contacts map ((custContact) -> {
+		("contactDtoList": customer.contacts default [] map ((custContact) -> {
 			"operate": custContact.operate default operation,
 			"contactType": custContact.contactType,
 			"contactId": custContact.contactId,
@@ -92,13 +89,13 @@ output application/json  skipNullOn = "everywhere"
 	}) if (!isEmpty(customer default {
 	})),
 	// Customer Attributes Mapping
-	("custAttrList": customerAttr map ((custAttr) -> {
-		"operate": operation,
-		"custId": customer.custId default transaction.custId,
+	("custAttrList": customer.attributes default [] map ((custAttr) -> {
+		"operate": custAttr.operate default operation,
+		"custId": custAttr.custId default transaction.custId,
 		"attrCode": custAttr.attrCode,
 		"value": custAttr.value,
 		"effDate": custAttr.effectiveDate
-	})) if (!isEmpty(customerAttr default [])),
+	})) if (!isEmpty(customer.attributes default [])),
 	// Account Mapping
 	("account": {
 		"operate": operation,
@@ -122,7 +119,7 @@ output application/json  skipNullOn = "everywhere"
 		"interestRateType": account.interestRateType,
 		"dunningManagementTime": account.dunningManagementTime,
 		"country": account.country,
-		"departament": account.departament,
+		"department": account.department,
 		"city": account.city,
 		"district": account.district,
 		"address": account.address,
@@ -152,64 +149,11 @@ output application/json  skipNullOn = "everywhere"
 	}) if (!isEmpty(account default {
 	})),
 	// Account Attributes Mapping
-	("acctAttrList": accountAttr map ((acctAttr) -> {
-		"operate": operation,
-		"acctId": account.acctId default transaction.acctId,
+	("acctAttrList": account.attributes map ((acctAttr) -> {
+		"operate": acctAttr.operate default operation,
+		"acctId": acctAttr.acctId default transaction.acctId,
 		"attrCode": acctAttr.attrCode,
 		"value": acctAttr.value,
 		"effDate": acctAttr.effectiveDate
-	})) if (!isEmpty(accountAttr default [])),
-	// services Mapping
-	("billProdInstList": services map ((service) -> {
-		"operate": operationServices,
-		"areaCode": service.areaCode,
-		"serviceNumber": service.serviceNumber,
-		"socialLevel": service.socialLevel,
-		"effDate": service.effectiveDate,
-		"offerCode": service.offerCode,
-		"bundleIdCRM": service.bundleIdCRM,
-		"department": service.department,
-		"city": service.city,
-		"address": service.address,
-		"originalDepartment": service.originalDepartment,
-		"originalCity": service.originalCity,
-		"originalAddress": service.originalAddress,
-		"destDepartment": service.destDepartment,
-		"destCity": service.destCity,
-		"destAddress": service.destAddress,
-		("contactDtoList": service.contacts map ((serviceContact) -> {
-			"contactType": serviceContact.contactType,
-			"operate": operationServices,
-			"contactId": serviceContact.contactId,
-			"firstName": serviceContact.firstName,
-			"lastName": serviceContact.lastName,
-			"email": serviceContact.email,
-			"sms": serviceContact.sms,
-			"mobilePhone": serviceContact.mobilePhone,
-			"whatsapp": serviceContact.whatsApp,
-			"fixedPhone": serviceContact.fixedPhone,
-			"contactDocType": serviceContact.contactDocType,
-			"contactDocNo": serviceContact.contactDocNo,
-			"contactDocExpDate": serviceContact.DocExpDate,
-			"country": serviceContact.country,
-			"department": serviceContact.department,
-			"city": serviceContact.city,
-			"district": serviceContact.district,
-			"addressName": serviceContact.addressName
-		})) if (!isEmpty(service.contacts default []))
-	})) if (!isEmpty(services default [])),
-	// Service Charges Mapping
-	("chargeList": services flatMap (chl) -> chl.charges default [] map (charge) -> {
-		"billingNbr": charge.billingNbr,
-		"basicCharge": charge.basicCharge,
-		"acctId": account.acctId,
-		"chargeType": charge."type",
-		"perCharge": charge.perCharge,
-		"acctItemTypeCode": charge.acctItemTypeCode,
-		"installmentPlanId": charge.installmentPlanId,
-		"prodInstFlag": charge.prodInstFlag,
-		"origAcctItemTypeCode": charge.origAcctItemTypeCode,
-		"currencyId": currency,
-		"paidFlag": charge.paidFlag
-	}) if (!isEmpty(flatten(services.charges default [])))
+	})) if (!isEmpty(account.attributes default [])),
 }

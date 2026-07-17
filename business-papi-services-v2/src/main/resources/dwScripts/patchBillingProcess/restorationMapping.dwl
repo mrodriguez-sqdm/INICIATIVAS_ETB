@@ -5,7 +5,8 @@ var customer = payload.customer default {
 }
 var account = payload.account default {
 }
-var services = payload.services default []
+var service = payload.service default {
+}
 var serviceNumber = transaction.serviceNumber
 var operation = "M"
 var currency = "1"
@@ -29,14 +30,12 @@ output application/json  skipNullOn = "everywhere"
 		"comments": transaction.comments
 	},
 	// services Mapping
-	("billProdInstList": services map ((service) -> {
+	("billProdInst": {
 		"operate": operation,
-		"areaCode": service.areaCode,
 		"serviceNumber": service.serviceNumber,
 		"socialLevel": service.socialLevel,
 		"effDate": service.effectiveDate,
 		"offerCode": service.offerCode,
-		"bundleIdCRM": service.bundleIdCRM,
 		"department": service.department,
 		"city": service.city,
 		"address": service.address,
@@ -48,7 +47,7 @@ output application/json  skipNullOn = "everywhere"
 		"destAddress": service.destAddress,
 		("contactDtoList": service.contacts map ((serviceContact) -> {
 			"contactType": serviceContact.contactType,
-			"operate": operation,
+			"operate": serviceContact.operate default operation,
 			"contactId": serviceContact.contactId,
 			"firstName": serviceContact.firstName,
 			"lastName": serviceContact.lastName,
@@ -66,12 +65,13 @@ output application/json  skipNullOn = "everywhere"
 			"district": serviceContact.district,
 			"addressName": serviceContact.addressName
 		})) if (!isEmpty(service.contacts default []))
-	})) if (!isEmpty(services default [])),
+	}) if (!isEmpty(service default {
+	})),
 	// Service Charges Mapping
-	("chargeList": services flatMap (chl) -> chl.charges default [] map (charge) -> {
+	("chargeList": service.charges default [] map (charge) -> {
 		"billingNbr": charge.billingNbr,
 		"basicCharge": charge.basicCharge,
-		"acctId": account.acctId,
+		"acctId": charge.acctId default transaction.acctId,
 		"chargeType": charge."type",
 		"perCharge": charge.perCharge,
 		"acctItemTypeCode": charge.acctItemTypeCode,
@@ -80,5 +80,5 @@ output application/json  skipNullOn = "everywhere"
 		"origAcctItemTypeCode": charge.origAcctItemTypeCode,
 		"currencyId": currency,
 		"paidFlag": charge.paidFlag
-	}) if (!isEmpty(flatten(services.charges default [])))
+	}) if (!isEmpty(flatten(service.charges default [])))
 }

@@ -46,7 +46,7 @@ output application/json  skipNullOn = "everywhere"
 		"interestRateType": account.interestRateType,
 		"dunningManagementTime": account.dunningManagementTime,
 		"country": account.country,
-		"departament": account.departament,
+		"department": account.department,
 		"city": account.city,
 		"district": account.district,
 		"address": account.address,

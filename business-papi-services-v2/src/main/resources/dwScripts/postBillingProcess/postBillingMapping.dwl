@@ -58,7 +58,7 @@ var currency = "1"
 		"contactPhone": customer.contactPhone,
 		"email": customer.email,
 		"country": customer.country,
-		"departament": customer.departament,
+		"department": customer.department,
 		"city": customer.city,
 		"district": customer.district,
 		"address": customer.address,
@@ -73,7 +73,7 @@ var currency = "1"
 		"blockNotification": customer.blockNotification,
 		("contactDtoList": customer.contacts map ((custContact) -> {
 			"contactType": custContact.contactType,
-			"operate": operation,
+			"operate": custContact.operate default operation,
 			"contactId": custContact.contactId,
 			"firstName": custContact.firstName,
 			"lastName": custContact.lastName,
@@ -95,7 +95,7 @@ var currency = "1"
 	})),
 	// Customer Attributes Mapping
 	("custAttrList": customer.attributes map ((custAttr) -> {
-		"operate": operation,
+		"operate": custAttr.operate default operation,
 		"custId": customer.custId default transaction.custId,
 		"attrCode": custAttr.attrCode,
 		"value": custAttr.value,
@@ -124,7 +124,7 @@ var currency = "1"
 		"interestRateType": account.interestRateType,
 		"dunningManagementTime": account.dunningManagementTime,
 		"country": account.country,
-		"departament": account.departament,
+		"department": account.department,
 		"city": account.city,
 		"district": account.district,
 		"address": account.address,
@@ -132,7 +132,7 @@ var currency = "1"
 		"effDate": account.effDate,
 		("contactDtoList": account.contacts map ((acctContact) -> {
 			"contactType": acctContact.contactType,
-			"operate": operation,
+			"operate": acctContact.operate default operation,
 			"contactId": acctContact.contactId,
 			"firstName": acctContact.firstName,
 			"lastName": acctContact.lastName,
@@ -154,7 +154,7 @@ var currency = "1"
 	})),
 	// Account Attributes Mapping
 	("acctAttrList": account.attributes map ((acctAttr) -> {
-		"operate": operation,
+		"operate": acctAttr.operate default operation,
 		"acctId": account.acctId default transaction.acctId,
 		"attrCode": acctAttr.attrCode,
 		"value": acctAttr.value,
@@ -178,12 +178,12 @@ var currency = "1"
 		"destCity": service.destCity,
 		"destAddress": service.destAddress,
 		("bundleMemberList": service.bundleMembers map ((bundleMember) -> {
-			"operate": bundleMember.operate,
+			"operate": bundleMember.operate default operation,
 			"serviceNumber": bundleMember.serviceNumber
 		})) if (!isEmpty(service.bundleMembers default [])),
 		("contactDtoList": service.contacts map ((serviceContact) -> {
 			"contactType": serviceContact.contactType,
-			"operate": operation,
+			"operate": serviceContact.operate default operation,
 			"contactId": serviceContact.contactId,
 			"firstName": serviceContact.firstName,
 			"lastName": serviceContact.lastName,
@@ -204,7 +204,7 @@ var currency = "1"
 	})) if (!isEmpty(services default [])),
 	// Service Attributes Mapping
 	("billProdInstAttrList": services flatMap (bpi) -> bpi.attributes default [] map ((serviceAttr) -> {
-		"operate": operation,
+		"operate": serviceAttr.operate default operation,
 		"serviceNumber": bpi.serviceNumber,
 		"attrCode": serviceAttr.attrCode,
 		"value": serviceAttr.value,
@@ -212,7 +212,7 @@ var currency = "1"
 	})) if (!isEmpty(flatten(services.attributes default []))),
 	// Service Offers Mapping
 	("billOfferInstList": services flatMap (boi) -> boi.offers default [] map ((offer) -> {
-		"operate": operation,
+		"operate": offer.operate default operation,
 		"offerInstIdCRM": offer.offerInstanceIdCRM,
 		"offerCode": offer.offerCode,
 		"effDate": offer.effectiveDate,
@@ -221,7 +221,7 @@ var currency = "1"
 	})) if (!isEmpty(flatten(services.offers default []))),
 	// Service Offers Attributes Mapping
 	("billOfferInstAttrList": services flatMap (boi) -> boi.offers default [] flatMap (o) -> o.attributes default [] map ((offerAttr) -> {
-		"operate": operation,
+		"operate": offerAttr.operate default operation,
 		"offerInstIdCRM": o.offerInstanceIdCRM,
 		"attrCode": offerAttr.attrCode,
 		"value": offerAttr.value,
@@ -231,7 +231,7 @@ var currency = "1"
 	("chargeList": services flatMap (chl) -> chl.charges default [] map (charge) -> {
 		"billingNbr": charge.billingNbr,
 		"basicCharge": charge.basicCharge,
-		"acctId": account.acctId,
+		"acctId": charge.acctId default transaction.acctId,
 		"chargeType": charge."type",
 		"perCharge": charge.perCharge,
 		"acctItemTypeCode": charge.acctItemTypeCode,

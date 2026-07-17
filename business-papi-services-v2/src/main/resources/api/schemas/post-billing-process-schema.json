@@ -1,11 +1,8 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
   "title": "BillingProcessPostRequest",
+  "description": "Datatype comun para POST /billing-process. El payload se valida segun el valor de processCode (discriminador), que selecciona una de las 4 variantes de proceso soportadas: SALE, SALE_BUNDLE, NEW_CUSTOMER, NEW_ACCOUNT. Cada variante reutiliza los datatypes comunes definidos en $defs (AttributeItem, ContactItem, OfferItem, ChargeItem, bundleMemberItem y sus variantes con 'operate') tal como estan modelados en los RAML datatypes de origen.",
   "type": "object",
-  "required": [
-    "processCode",
-    "transaction"
-  ],
   "properties": {
     "processCode": {
       "type": "string",
@@ -14,155 +11,203 @@
         "SALE_BUNDLE",
         "NEW_CUSTOMER",
         "NEW_ACCOUNT"
-      ]
+      ],
+      "description": "Discriminador del proceso de negocio. Determina que rama del oneOf aplica."
     }
   },
-  "if": {
-    "properties": {
-      "processCode": {
-        "const": "SALE"
-      }
-    }
-  },
-  "then": {
-    "$ref": "#/definitions/Sale"
-  },
-  "else": {
-    "if": {
-      "properties": {
-        "processCode": {
-          "const": "SALE_BUNDLE"
-        }
-      }
+  "required": [
+    "processCode"
+  ],
+  "oneOf": [
+    {
+      "$ref": "#/definitions/Sale"
     },
-    "then": {
+    {
       "$ref": "#/definitions/SaleBundle"
     },
-    "else": {
-      "if": {
-        "properties": {
-          "processCode": {
-            "const": "NEW_CUSTOMER"
-          }
-        }
-      },
-      "then": {
-        "$ref": "#/definitions/NewCustomer"
-      },
-      "else": {
-        "$ref": "#/definitions/NewAccount"
-      }
-    }
-  },
-  "definitions": {
-    "TransactionBase": {
-      "type": "object",
-      "required": [
-        "id",
-        "timestamp",
-        "orderItemId",
-        "salesChannel"
-      ],
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "timestamp": {
-          "type": "string",
-          "minLength": 19,
-          "maxLength": 19
-        },
-        "orderItemId": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 22
-        },
-        "salesChannel": {
-          "type": "integer",
-          "enum": [
-            1,
-            2,
-            4,
-            5,
-            7,
-            106
-          ]
-        },
-        "serviceNumber": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 30
-        },
-        "custId": {
-          "type": "integer",
-          "maximum": 999999999999999
-        },
-        "acctId": {
-          "type": "integer",
-          "maximum": 999999999999999
-        },
-        "salesDepartment": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 10
-        },
-        "salesCity": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 10
-        },
-        "po": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "billType": {
-          "type": "string",
-          "enum": [
-            "1",
-            "2"
-          ]
-        },
-        "comments": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        }
-      }
+    {
+      "$ref": "#/definitions/NewCustomer"
     },
+    {
+      "$ref": "#/definitions/NewAccount"
+    }
+  ],
+  "definitions": {
     "AttributeItem": {
       "type": "object",
-      "required": [
-        "attrCode",
-        "value"
-      ],
+      "description": "Extended attribute key-value pair. Used en custAttrList, acctAttrList, billProdInstAttrList, billOfferInstAttrList.",
       "properties": {
         "attrCode": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 30
+          "maxLength": 30,
+          "description": "Attribute code as configured in ZSmart. -> attrCode"
         },
         "value": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 255
+          "maxLength": 255,
+          "description": "Attribute value. -> value"
         },
         "effectiveDate": {
           "type": "string",
           "minLength": 19,
-          "maxLength": 19
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Effective date. -> effDate"
         },
         "expirationDate": {
           "type": "string",
           "minLength": 19,
-          "maxLength": 19
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Expiration date. -> expDate"
         }
-      }
+      },
+      "required": [
+        "attrCode",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "AttributeItemWithOperate": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/AttributeItem"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operate": {
+              "type": "string",
+              "enum": [
+                "A",
+                "M",
+                "D"
+              ],
+              "description": "A=Add, M=Modify, D=Delete. -> operate"
+            }
+          },
+          "required": [
+            "operate"
+          ]
+        }
+      ],
+      "description": "Extended attribute con operate. Usado cuando CRM controla add/modify/delete de atributos."
     },
     "ContactItem": {
       "type": "object",
+      "description": "Contact person asociado a un customer, account o service. contactType varia segun contexto (Customer: 501-504, Account: 505-509,511, Service: 510).",
+      "properties": {
+        "contactType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 6,
+          "description": "Contact role code. -> contactDto.contactType"
+        },
+        "contactId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 6,
+          "description": "Unique ID de ZSmart, mandatorio para modificar un contacto. -> contactDto.contactId"
+        },
+        "firstName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "-> contactDto.firstName"
+        },
+        "lastName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "-> contactDto.lastName"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "-> contactDto.email"
+        },
+        "sms": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "-> contactDto.sms"
+        },
+        "mobilePhone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "-> contactDto.mobilePhone"
+        },
+        "fixedPhone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "-> contactDto.fixedPhone"
+        },
+        "whatsApp": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "-> contactDto.whatsApp"
+        },
+        "contactDocType": {
+          "type": "string",
+          "enum": [
+            "CC",
+            "CE",
+            "NIT",
+            "PEP",
+            "PPT"
+          ],
+          "description": "Document type. -> contactDto.contactDocType"
+        },
+        "contactDocNo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Document number. -> contactDto.contactDocNo"
+        },
+        "contactDocExpDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Document expiry date. -> contactDto.contactDocExpDate"
+        },
+        "country": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Only Colombia accepted. -> contactDto.country"
+        },
+        "department": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 15,
+          "description": "DANE department code. -> contactDto.department"
+        },
+        "city": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 15,
+          "description": "DANE city code. -> contactDto.city"
+        },
+        "district": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Locality/Commune. -> contactDto.district"
+        },
+        "addressName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Street name. -> contactDto.addressName"
+        }
+      },
       "required": [
         "contactType",
         "firstName",
@@ -174,51 +219,73 @@
         "city",
         "addressName"
       ],
+      "additionalProperties": false
+    },
+    "ContactItemWithOperate": {
+      "type": "object",
+      "description": "Contact con operate explicito. Todos los campos son opcionales excepto operate.",
       "properties": {
+        "operate": {
+          "type": "string",
+          "enum": [
+            "A",
+            "M"
+          ],
+          "description": "A=Add, M=Modify. -> contactDto.operate"
+        },
         "contactType": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 6
+          "maxLength": 6,
+          "description": "Contact role code. -> contactDto.contactType"
         },
         "contactId": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 6
+          "maxLength": 20,
+          "description": "ZSmart contact ID. Mandatory cuando operate=M. -> contactDto.contactId"
         },
         "firstName": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 255
+          "maxLength": 255,
+          "description": "-> contactDto.firstName"
         },
         "lastName": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 255
+          "maxLength": 255,
+          "description": "-> contactDto.lastName"
         },
         "email": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 60
+          "maxLength": 60,
+          "description": "-> contactDto.email"
         },
         "sms": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 60
+          "maxLength": 60,
+          "description": "-> contactDto.sms"
         },
         "mobilePhone": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 60
+          "maxLength": 60,
+          "description": "-> contactDto.mobilePhone"
         },
         "fixedPhone": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 60
+          "maxLength": 60,
+          "description": "-> contactDto.fixedPhone"
         },
         "whatsApp": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 60
+          "maxLength": 60,
+          "description": "-> contactDto.whatsApp"
         },
         "contactDocType": {
           "type": "string",
@@ -228,775 +295,263 @@
             "NIT",
             "PEP",
             "PPT"
-          ]
+          ],
+          "description": "Document type. -> contactDto.contactDocType"
         },
         "contactDocNo": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 60
+          "maxLength": 60,
+          "description": "Document number. -> contactDto.contactDocNo"
         },
         "contactDocExpDate": {
           "type": "string",
           "minLength": 10,
-          "maxLength": 10
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Document expiry date. -> contactDto.contactDocExpDate"
         },
         "country": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 120
+          "maxLength": 120,
+          "description": "Only Colombia accepted. -> contactDto.country"
         },
         "department": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 15
+          "maxLength": 15,
+          "description": "DANE department code. -> contactDto.department"
         },
         "city": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 15
+          "maxLength": 15,
+          "description": "DANE city code. -> contactDto.city"
         },
         "district": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 100
+          "maxLength": 100,
+          "description": "Locality/Commune. -> contactDto.district"
         },
         "addressName": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 255
+          "maxLength": 255,
+          "description": "Street name. -> contactDto.addressName"
         }
-      }
-    },
-    "OfferItem": {
-      "type": "object",
+      },
       "required": [
-        "offerInstanceIdCRM",
-        "offerCode",
-        "effectiveDate"
+        "operate"
       ],
-      "properties": {
-        "offerInstanceIdCRM": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 30
-        },
-        "offerCode": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 60
-        },
-        "effectiveDate": {
-          "type": "string",
-          "minLength": 19,
-          "maxLength": 19
-        },
-        "expirationDate": {
-          "type": "string",
-          "minLength": 19,
-          "maxLength": 19
-        },
-        "attributes": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/AttributeItem"
-          }
-        }
-      }
+      "additionalProperties": false
     },
     "ChargeItem": {
       "type": "object",
-      "required": [
-        "type",
-        "acctItemTypeCode",
-        "paidFlag",
-        "currencyId"
-      ],
+      "description": "One-off o advance charge. Usado en chargeList.",
       "properties": {
         "type": {
           "type": "string",
           "enum": [
             "1",
             "7"
-          ]
+          ],
+          "description": "1=One-off charge/Installment, 7=Advance payment. -> charge.chargeType"
         },
         "basicCharge": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 30
+          "maxLength": 30,
+          "description": "Charge amount en PESO. Debe ser positivo. -> charge.basicCharge"
         },
         "acctItemTypeCode": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 30
+          "maxLength": 30,
+          "description": "Account item type code configurado en ZSmart. -> charge.acctItemTypeCode"
         },
         "paidFlag": {
           "type": "string",
           "enum": [
             "Y",
             "N"
-          ]
+          ],
+          "description": "Y=paid en CRM, N=collect en ZSmart. -> charge.paidFlag"
         },
         "acctId": {
           "type": "integer",
-          "maximum": 999999999999999
+          "maximum": 999999999999999,
+          "description": "Account ID. -> charge.acctId"
         },
         "billingNbr": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 30
+          "maxLength": 30,
+          "description": "Service number con prefijo. -> charge.billingNbr"
         },
         "currencyId": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 4
+          "maxLength": 4,
+          "description": "Currency. 1=PESO (default). -> charge.currencyId"
         },
         "perCharge": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 30
+          "maxLength": 30,
+          "description": "Monthly charge amount para installment plans. -> charge.perCharge"
         },
         "installmentPlanId": {
           "type": "integer",
-          "maximum": 999999999999
+          "maximum": 999999999999999,
+          "description": "Installment plan ID (max 12 digitos). -> charge.installmentPlanId"
         },
         "prodInstFlag": {
           "type": "string",
           "enum": [
             "0",
             "1"
-          ]
+          ],
+          "description": "Restrict charge a este subscriber. -> charge.prodInstFlag"
         },
         "origAcctItemTypeCode": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 30
+          "maxLength": 30,
+          "description": "Original account item type code. -> charge.origAcctItemTypeCode"
         }
-      }
-    },
-    "BundleMemberItem": {
-      "type": "object",
+      },
       "required": [
-        "operate",
-        "serviceNumber"
+        "type",
+        "acctItemTypeCode",
+        "paidFlag",
+        "currencyId"
       ],
+      "additionalProperties": false
+    },
+    "OfferItem": {
+      "type": "object",
+      "description": "Offer instance asociada a un service. Usado en billOfferInstList.",
+      "properties": {
+        "offerInstanceIdCRM": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30,
+          "description": "CRM offer instance ID (max 15 digitos). -> billOfferInst.offerInstIdCRM"
+        },
+        "offerCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Offer code (main o additional). -> billOfferInst.offerCode"
+        },
+        "effectiveDate": {
+          "type": "string",
+          "minLength": 19,
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Offer effective date. -> billOfferInst.effDate"
+        },
+        "expirationDate": {
+          "type": "string",
+          "minLength": 19,
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Offer expiration date. -> billOfferInst.expDate"
+        },
+        "attributes": {
+          "type": "array",
+          "description": "Extended attributes para esta offer instance. -> billOfferInstAttrList",
+          "items": {
+            "$ref": "#/definitions/AttributeItem"
+          }
+        }
+      },
+      "required": [
+        "offerInstanceIdCRM",
+        "offerCode",
+        "effectiveDate"
+      ],
+      "additionalProperties": false
+    },
+    "OfferItemAD": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/OfferItem"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operate": {
+              "type": "string",
+              "enum": [
+                "A",
+                "D"
+              ],
+              "description": "A=Add new offer, D=Delete current offer. -> operate"
+            }
+          },
+          "required": [
+            "operate"
+          ]
+        }
+      ],
+      "description": "Offer instance con operate A o D unicamente. Usado en plan-change."
+    },
+    "OfferItemWithOperate": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/OfferItem"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operate": {
+              "type": "string",
+              "enum": [
+                "A",
+                "M",
+                "D"
+              ],
+              "description": "A=Add, M=Modify, D=Delete. -> operate"
+            }
+          },
+          "required": [
+            "operate"
+          ]
+        }
+      ],
+      "description": "Offer instance con operate explicito. Usado cuando CRM controla add/modify/delete de additional offers."
+    },
+    "bundleMemberItem": {
+      "type": "object",
+      "description": "Bundle members asociados a un service.",
       "properties": {
         "operate": {
           "type": "string",
           "enum": [
             "A",
             "M"
-          ]
+          ],
+          "description": "A=Add new bundle subscriber, M=Modify existing subscriber to bundle. -> bundleMemberList.operate"
         },
         "serviceNumber": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 30
+          "maxLength": 30,
+          "description": "Service number del subscriber sin prefijo. -> bundleMemberList.serviceNumber"
         }
-      }
-    },
-    "CustomerNode": {
-      "type": "object",
+      },
       "required": [
-        "typeFlag",
-        "contactPhone",
-        "email",
-        "country",
-        "departament",
-        "city",
-        "customerSegment",
-        "subSegmento",
-        "categoria",
-        "habeasData"
+        "operate",
+        "serviceNumber"
       ],
-      "properties": {
-        "custId": {
-          "type": "integer",
-          "maximum": 999999999999999
-        },
-        "typeFlag": {
-          "type": "string",
-          "enum": [
-            "1",
-            "2"
-          ]
-        },
-        "firstName": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "lastName": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "middleName": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "secondLastName": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "custName": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "nombreJuridico": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "title": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "gender": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "birthday": {
-          "type": "string",
-          "minLength": 10,
-          "maxLength": 10
-        },
-        "docType": {
-          "type": "string",
-          "enum": [
-            "CC",
-            "CE",
-            "NIT",
-            "PEP",
-            "PPT"
-          ]
-        },
-        "docNumber": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "issueLugar": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 60
-        },
-        "issueDate": {
-          "type": "string",
-          "minLength": 10,
-          "maxLength": 10
-        },
-        "docExpDate": {
-          "type": "string",
-          "minLength": 10,
-          "maxLength": 10
-        },
-        "occupation": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 60
-        },
-        "industry": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 60
-        },
-        "contactPhone": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 20
-        },
-        "email": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 60
-        },
-        "country": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "departament": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "city": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "district": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "address": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "customerSegment": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "subSegmento": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "categoria": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "habeasData": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "autoretentionFlag": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "vipFlag": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "paymentRiskLevel": {
-          "type": "string",
-          "enum": [
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6"
-          ]
-        },
-        "blockNotification": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 30
-        },
-        "contacts": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/ContactItem"
-          }
-        },
-        "attributes": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/AttributeItem"
-          }
-        }
-      }
-    },
-    "AccountNode": {
-      "type": "object",
-      "required": [
-        "billFlag",
-        "country",
-        "departament",
-        "city"
-      ],
-      "properties": {
-        "acctName": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 256
-        },
-        "billDeliveryType": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 30
-        },
-        "paymentMode": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "corte": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "parentAcctId": {
-          "type": "integer",
-          "maximum": 999999999999999
-        },
-        "billFlag": {
-          "type": "string",
-          "enum": [
-            "Yes",
-            "No"
-          ]
-        },
-        "taxExempt": {
-          "type": "string",
-          "enum": [
-            "Yes",
-            "No"
-          ]
-        },
-        "dunningExemption": {
-          "type": "string",
-          "enum": [
-            "No",
-            "Temporary",
-            "Total"
-          ]
-        },
-        "dunningExemEff": {
-          "type": "string",
-          "minLength": 19,
-          "maxLength": 19
-        },
-        "dunningExemExp": {
-          "type": "string",
-          "minLength": 19,
-          "maxLength": 19
-        },
-        "contractName": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 60
-        },
-        "roundingAdjustmentFlag": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 6
-        },
-        "previousBalanceFlag": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 6
-        },
-        "coverPageOnlyFlag": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 6
-        },
-        "interestChargeFlag": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 6
-        },
-        "interestRateType": {
-          "type": "string",
-          "enum": [
-            "1",
-            "2"
-          ]
-        },
-        "dunningManagementTime": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 6
-        },
-        "country": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "departament": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "city": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "district": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "address": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "paymentTerm": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 6
-        },
-        "contacts": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/ContactItem"
-          }
-        },
-        "attributes": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/AttributeItem"
-          }
-        }
-      }
-    },
-    "ServiceItem": {
-      "type": "object",
-      "required": [
-        "areaCode",
-        "serviceNumber",
-        "effectiveDate",
-        "offerCode",
-        "offers"
-      ],
-      "properties": {
-        "areaCode": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 16
-        },
-        "serviceNumber": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 30
-        },
-        "effectiveDate": {
-          "type": "string",
-          "minLength": 19,
-          "maxLength": 19
-        },
-        "offerCode": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 60
-        },
-        "socialLevel": {
-          "type": "string",
-          "enum": [
-            "",
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6"
-          ]
-        },
-        "department": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "city": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "address": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "originalDepartment": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "originalCity": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "originalAddress": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "destDepartment": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "destCity": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "destAddress": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "contacts": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/ContactItem"
-          }
-        },
-        "attributes": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/AttributeItem"
-          }
-        },
-        "offers": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/OfferItem"
-          }
-        },
-        "charges": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/ChargeItem"
-          }
-        }
-      }
-    },
-    "ServiceItemBundle": {
-      "type": "object",
-      "required": [
-        "serviceNumber",
-        "effectiveDate",
-        "offerCode",
-        "offers"
-      ],
-      "properties": {
-        "areaCode": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 16
-        },
-        "serviceNumber": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 30
-        },
-        "effectiveDate": {
-          "type": "string",
-          "minLength": 19,
-          "maxLength": 19
-        },
-        "offerCode": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 60
-        },
-        "socialLevel": {
-          "type": "string",
-          "enum": [
-            "",
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6"
-          ]
-        },
-        "department": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "city": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "address": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "originalDepartment": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "originalCity": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "originalAddress": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "destDepartment": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "destCity": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 15
-        },
-        "destAddress": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "contacts": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/ContactItem"
-          }
-        },
-        "bundleMembers": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/BundleMemberItem"
-          }
-        },
-        "attributes": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/AttributeItem"
-          }
-        },
-        "offers": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/OfferItem"
-          }
-        },
-        "charges": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/ChargeItem"
-          }
-        }
-      }
+      "additionalProperties": false
     },
     "Sale": {
-      "required": [
-        "processCode",
-        "transaction",
-        "services"
-      ],
+      "type": "object",
+      "description": "SALE — New Connection (ZSmart serviceEventId=1). Crea customer, account y service en una transaccion atomica.",
       "properties": {
         "processCode": {
           "type": "string",
@@ -1005,38 +560,641 @@
           ]
         },
         "transaction": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/TransactionBase"
+          "type": "object",
+          "description": "-> header",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Unique transaction ID. -> header.transactionId"
             },
-            {
-              "required": [
-                "serviceNumber"
-              ]
+            "timestamp": {
+              "type": "string",
+              "minLength": 19,
+              "maxLength": 19,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+              "description": "-> header.createDate"
+            },
+            "orderItemId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 22,
+              "description": "-> header.orderItemId"
+            },
+            "serviceNumber": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "description": "CRM subscriber instance ID. Debe coincidir con el prodInstId del main service. -> header.serviceNumber"
+            },
+            "salesChannel": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                4,
+                5,
+                7,
+                106
+              ],
+              "description": "1=POS,2=WAP,4=SMS,5=USSD,7=IVR,106=System default. -> header.salesChannel"
+            },
+            "salesDepartment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10,
+              "description": "-> header.salesDepartment"
+            },
+            "salesCity": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10,
+              "description": "-> header.salesCity"
+            },
+            "custId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Mandatorio si el customer ya existe. -> header.custId"
+            },
+            "acctId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Mandatorio si el account ya existe. -> header.acctId"
+            },
+            "po": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> header.po"
+            },
+            "billType": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "-> header.billType"
+            },
+            "comments": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> header.comments"
             }
-          ]
+          },
+          "required": [
+            "id",
+            "timestamp",
+            "orderItemId",
+            "serviceNumber",
+            "salesChannel"
+          ],
+          "additionalProperties": false
         },
         "customer": {
-          "$ref": "#/definitions/CustomerNode"
+          "type": "object",
+          "description": "Omitir si el customer ya existe (usar transaction.custId). -> cust (operate=A)",
+          "properties": {
+            "typeFlag": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "1=Personal, 2=Business. -> cust.typeFlag"
+            },
+            "firstName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.firstName"
+            },
+            "lastName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.lastName"
+            },
+            "middleName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.middleName"
+            },
+            "secondLastName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.secondLastName"
+            },
+            "custName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Business name (B2B only). -> cust.custName"
+            },
+            "nombreJuridico": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Legal registered name (B2B). -> cust.nombreJuridico"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Title. -> cust.title"
+            },
+            "docType": {
+              "type": "string",
+              "enum": [
+                "CC",
+                "CE",
+                "NIT",
+                "PEP",
+                "PPT"
+              ],
+              "description": "-> cust.docType"
+            },
+            "docNumber": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.docNumber"
+            },
+            "issueLugar": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.issueLugar"
+            },
+            "issueDate": {
+              "type": "string",
+              "description": "yyyy-mm-dd. -> cust.issueDate"
+            },
+            "docExpDate": {
+              "type": "string",
+              "description": "yyyy-mm-dd. -> cust.docExpDate"
+            },
+            "birthday": {
+              "type": "string",
+              "description": "yyyy-mm-dd. -> cust.birthday"
+            },
+            "gender": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Male|Female|Company. -> cust.gender"
+            },
+            "occupation": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.occupation"
+            },
+            "industry": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.industry"
+            },
+            "contactPhone": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "description": "-> cust.contactPhone"
+            },
+            "email": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.email"
+            },
+            "country": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.country"
+            },
+            "department": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.department"
+            },
+            "city": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.city"
+            },
+            "district": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.district"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> cust.address"
+            },
+            "customerSegment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.customerSegment"
+            },
+            "subSegmento": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.subSegmento"
+            },
+            "categoria": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Gold|Silver|Bronze|Platinum. -> cust.categoria"
+            },
+            "habeasData": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Yes/No. -> cust.habeasData"
+            },
+            "autoretentionFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Yes/No. -> cust.autoretentionFlag"
+            },
+            "vipFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Yes/No. -> cust.vipFlag"
+            },
+            "paymentRiskLevel": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6"
+              ],
+              "description": "-> cust.paymentRiskLevel"
+            },
+            "blockNotification": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "description": "E,C,W,S comma-separated. -> cust.blockNotification"
+            },
+            "contacts": {
+              "type": "array",
+              "description": "Customer contacts (501=Commercial,502=Legal,503=Notification,504=Delivery Address). -> cust.contactDtoList",
+              "items": {
+                "$ref": "#/definitions/ContactItem"
+              }
+            },
+            "attributes": {
+              "type": "array",
+              "description": "Extended attributes. -> custAttrList (operate=A)",
+              "items": {
+                "$ref": "#/definitions/AttributeItem"
+              }
+            }
+          },
+          "required": [
+            "typeFlag",
+            "contactPhone",
+            "email",
+            "country",
+            "department",
+            "city",
+            "customerSegment",
+            "subSegmento",
+            "categoria",
+            "habeasData"
+          ],
+          "additionalProperties": false
         },
         "account": {
-          "$ref": "#/definitions/AccountNode"
+          "type": "object",
+          "description": "Omitir si el account ya existe. -> account (operate=A)",
+          "properties": {
+            "acctName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "-> account.acctName"
+            },
+            "billDeliveryType": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "description": "B=Email,A=Post,W=WhatsApp,S=SMS. -> account.billDeliveryType"
+            },
+            "paymentMode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Pre-paid/Post-paid. -> account.paymentMode"
+            },
+            "corte": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Billing cut day (1-28). -> account.corte"
+            },
+            "parentAcctId": {
+              "type": "integer",
+              "description": "-> account.parentAcctId"
+            },
+            "billFlag": {
+              "type": "string",
+              "enum": [
+                "Yes",
+                "No"
+              ],
+              "description": "-> account.billFlag"
+            },
+            "taxExempt": {
+              "type": "string",
+              "enum": [
+                "Yes",
+                "No"
+              ],
+              "description": "-> account.taxExempt"
+            },
+            "dunningExemption": {
+              "type": "string",
+              "enum": [
+                "No",
+                "Temporary",
+                "Total"
+              ],
+              "description": "-> account.dunningExemption"
+            },
+            "dunningExemEff": {
+              "type": "string",
+              "description": "YYYY-MM-DD HHMMSS. -> account.dunningExemEff"
+            },
+            "dunningExemExp": {
+              "type": "string",
+              "description": "YYYY-MM-DD HHMMSS. -> account.dunningExemExp"
+            },
+            "contractName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> account.contractName"
+            },
+            "roundingAdjustmentFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.roundingAdjustmentFlag"
+            },
+            "previousBalanceFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.previousBalanceFlag"
+            },
+            "coverPageOnlyFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.coverPageOnlyFlag"
+            },
+            "interestChargeFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.interestChargeFlag"
+            },
+            "interestRateType": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "-> account.interestRateType"
+            },
+            "dunningManagementTime": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.dunningManagementTime"
+            },
+            "country": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.country"
+            },
+            "department": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.department"
+            },
+            "city": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.city"
+            },
+            "district": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.district"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> account.address"
+            },
+            "paymentTerm": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.paymentTerm"
+            },
+            "contacts": {
+              "type": "array",
+              "description": "Account contacts (505,506,507,508,509,511). -> account.contactDtoList",
+              "items": {
+                "$ref": "#/definitions/ContactItem"
+              }
+            },
+            "attributes": {
+              "type": "array",
+              "description": "Extended attributes. -> acctAttrList (operate=A)",
+              "items": {
+                "$ref": "#/definitions/AttributeItem"
+              }
+            }
+          },
+          "required": [
+            "billFlag",
+            "country",
+            "department",
+            "city"
+          ],
+          "additionalProperties": false
         },
         "services": {
           "type": "array",
           "minItems": 1,
+          "description": "-> billProdInstList (operate=A)",
           "items": {
-            "$ref": "#/definitions/ServiceItem"
+            "type": "object",
+            "properties": {
+              "serviceNumber": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 30,
+                "description": "-> billProdInst.serviceNumber"
+              },
+              "effectiveDate": {
+                "type": "string",
+                "minLength": 19,
+                "maxLength": 19,
+                "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+                "description": "-> billProdInst.effDate"
+              },
+              "offerCode": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60,
+                "description": "Main offer code. -> billProdInst.offerCode"
+              },
+              "socialLevel": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6"
+                ],
+                "description": "-> billProdInst.socialLevel"
+              },
+              "department": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.department"
+              },
+              "city": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.city"
+              },
+              "address": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "-> billProdInst.address"
+              },
+              "originalDepartment": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "Requerido para Dedicated Links/MPLS/Corporate VPN. -> billProdInst.originalDepartment"
+              },
+              "originalCity": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.originalCity"
+              },
+              "originalAddress": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "-> billProdInst.originalAddress"
+              },
+              "destDepartment": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.destDepartment"
+              },
+              "destCity": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.destCity"
+              },
+              "destAddress": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "-> billProdInst.destAddress"
+              },
+              "contacts": {
+                "type": "array",
+                "description": "Authorized users (510). -> billProdInst.contactDtoList",
+                "items": {
+                  "$ref": "#/definitions/ContactItem"
+                }
+              },
+              "attributes": {
+                "type": "array",
+                "description": "-> billProdInstAttrList (operate=A)",
+                "items": {
+                  "$ref": "#/definitions/AttributeItem"
+                }
+              },
+              "offers": {
+                "type": "array",
+                "minItems": 1,
+                "description": "-> billOfferInstList (operate=A)",
+                "items": {
+                  "$ref": "#/definitions/OfferItem"
+                }
+              },
+              "charges": {
+                "type": "array",
+                "minItems": 1,
+                "description": "-> chargeList",
+                "items": {
+                  "$ref": "#/definitions/ChargeItem"
+                }
+              }
+            },
+            "required": [
+              "serviceNumber",
+              "effectiveDate",
+              "offerCode",
+              "offers"
+            ],
+            "additionalProperties": false
           }
         }
-      }
-    },
-    "SaleBundle": {
+      },
       "required": [
         "processCode",
         "transaction",
         "services"
       ],
+      "additionalProperties": false
+    },
+    "SaleBundle": {
+      "type": "object",
+      "description": "SALE_BUNDLE — New Connection bundle (ZSmart serviceEventId=808). Doble/Triple play; los services comparten bundleIdCRM.",
       "properties": {
         "processCode": {
           "type": "string",
@@ -1045,38 +1203,648 @@
           ]
         },
         "transaction": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/TransactionBase"
+          "type": "object",
+          "description": "-> header",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Unique transaction ID. -> header.transactionId"
             },
-            {
-              "required": [
-                "serviceNumber"
-              ]
+            "timestamp": {
+              "type": "string",
+              "minLength": 19,
+              "maxLength": 19,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+              "description": "-> header.createDate"
+            },
+            "orderItemId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 22,
+              "description": "-> header.orderItemId"
+            },
+            "serviceNumber": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "description": "CRM subscriber instance ID. Debe coincidir con el prodInstId del main service. -> header.serviceNumber"
+            },
+            "salesChannel": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                4,
+                5,
+                7,
+                106
+              ],
+              "description": "1=POS,2=WAP,4=SMS,5=USSD,7=IVR,106=System default. -> header.salesChannel"
+            },
+            "salesDepartment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10,
+              "description": "-> header.salesDepartment"
+            },
+            "salesCity": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10,
+              "description": "-> header.salesCity"
+            },
+            "custId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Mandatorio si el customer ya existe. -> header.custId"
+            },
+            "acctId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Mandatorio si el account ya existe. -> header.acctId"
+            },
+            "po": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> header.po"
+            },
+            "billType": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "-> header.billType"
+            },
+            "comments": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> header.comments"
             }
-          ]
+          },
+          "required": [
+            "id",
+            "timestamp",
+            "orderItemId",
+            "serviceNumber",
+            "salesChannel"
+          ],
+          "additionalProperties": false
         },
         "customer": {
-          "$ref": "#/definitions/CustomerNode"
+          "type": "object",
+          "description": "Omitir si el customer ya existe (usar transaction.custId). -> cust (operate=A)",
+          "properties": {
+            "typeFlag": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "1=Personal, 2=Business. -> cust.typeFlag"
+            },
+            "firstName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.firstName"
+            },
+            "lastName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.lastName"
+            },
+            "middleName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.middleName"
+            },
+            "secondLastName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.secondLastName"
+            },
+            "custName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Business name (B2B only). -> cust.custName"
+            },
+            "nombreJuridico": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Legal registered name (B2B). -> cust.nombreJuridico"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Title. -> cust.title"
+            },
+            "docType": {
+              "type": "string",
+              "enum": [
+                "CC",
+                "CE",
+                "NIT",
+                "PEP",
+                "PPT"
+              ],
+              "description": "-> cust.docType"
+            },
+            "docNumber": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.docNumber"
+            },
+            "issueLugar": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.issueLugar"
+            },
+            "issueDate": {
+              "type": "string",
+              "description": "yyyy-mm-dd. -> cust.issueDate"
+            },
+            "docExpDate": {
+              "type": "string",
+              "description": "yyyy-mm-dd. -> cust.docExpDate"
+            },
+            "birthday": {
+              "type": "string",
+              "description": "yyyy-mm-dd. -> cust.birthday"
+            },
+            "gender": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Male|Female|Company. -> cust.gender"
+            },
+            "occupation": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.occupation"
+            },
+            "industry": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.industry"
+            },
+            "contactPhone": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "description": "-> cust.contactPhone"
+            },
+            "email": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.email"
+            },
+            "country": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.country"
+            },
+            "department": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.department"
+            },
+            "city": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.city"
+            },
+            "district": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.district"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> cust.address"
+            },
+            "customerSegment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.customerSegment"
+            },
+            "subSegmento": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.subSegmento"
+            },
+            "categoria": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Gold|Silver|Bronze|Platinum. -> cust.categoria"
+            },
+            "habeasData": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Yes/No. -> cust.habeasData"
+            },
+            "autoretentionFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Yes/No. -> cust.autoretentionFlag"
+            },
+            "vipFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Yes/No. -> cust.vipFlag"
+            },
+            "paymentRiskLevel": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6"
+              ],
+              "description": "-> cust.paymentRiskLevel"
+            },
+            "blockNotification": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "description": "E,C,W,S comma-separated. -> cust.blockNotification"
+            },
+            "contacts": {
+              "type": "array",
+              "description": "Customer contacts (501=Commercial,502=Legal,503=Notification,504=Delivery Address). -> cust.contactDtoList",
+              "items": {
+                "$ref": "#/definitions/ContactItem"
+              }
+            },
+            "attributes": {
+              "type": "array",
+              "description": "Extended attributes. -> custAttrList (operate=A)",
+              "items": {
+                "$ref": "#/definitions/AttributeItem"
+              }
+            }
+          },
+          "required": [
+            "typeFlag",
+            "contactPhone",
+            "email",
+            "country",
+            "department",
+            "city",
+            "customerSegment",
+            "subSegmento",
+            "categoria",
+            "habeasData"
+          ],
+          "additionalProperties": false
         },
         "account": {
-          "$ref": "#/definitions/AccountNode"
+          "type": "object",
+          "description": "Omitir si el account ya existe. -> account (operate=A)",
+          "properties": {
+            "acctName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "-> account.acctName"
+            },
+            "billDeliveryType": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "description": "B=Email,A=Post,W=WhatsApp,S=SMS. -> account.billDeliveryType"
+            },
+            "paymentMode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Pre-paid/Post-paid. -> account.paymentMode"
+            },
+            "corte": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Billing cut day (1-28). -> account.corte"
+            },
+            "parentAcctId": {
+              "type": "integer",
+              "description": "-> account.parentAcctId"
+            },
+            "billFlag": {
+              "type": "string",
+              "enum": [
+                "Yes",
+                "No"
+              ],
+              "description": "-> account.billFlag"
+            },
+            "taxExempt": {
+              "type": "string",
+              "enum": [
+                "Yes",
+                "No"
+              ],
+              "description": "-> account.taxExempt"
+            },
+            "dunningExemption": {
+              "type": "string",
+              "enum": [
+                "No",
+                "Temporary",
+                "Total"
+              ],
+              "description": "-> account.dunningExemption"
+            },
+            "dunningExemEff": {
+              "type": "string",
+              "description": "YYYY-MM-DD HHMMSS. -> account.dunningExemEff"
+            },
+            "dunningExemExp": {
+              "type": "string",
+              "description": "YYYY-MM-DD HHMMSS. -> account.dunningExemExp"
+            },
+            "contractName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> account.contractName"
+            },
+            "roundingAdjustmentFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.roundingAdjustmentFlag"
+            },
+            "previousBalanceFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.previousBalanceFlag"
+            },
+            "coverPageOnlyFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.coverPageOnlyFlag"
+            },
+            "interestChargeFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.interestChargeFlag"
+            },
+            "interestRateType": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "-> account.interestRateType"
+            },
+            "dunningManagementTime": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.dunningManagementTime"
+            },
+            "country": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.country"
+            },
+            "department": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.department"
+            },
+            "city": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.city"
+            },
+            "district": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.district"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> account.address"
+            },
+            "paymentTerm": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.paymentTerm"
+            },
+            "contacts": {
+              "type": "array",
+              "description": "Account contacts (505,506,507,508,509,511). -> account.contactDtoList",
+              "items": {
+                "$ref": "#/definitions/ContactItem"
+              }
+            },
+            "attributes": {
+              "type": "array",
+              "description": "Extended attributes. -> acctAttrList (operate=A)",
+              "items": {
+                "$ref": "#/definitions/AttributeItem"
+              }
+            }
+          },
+          "required": [
+            "billFlag",
+            "country",
+            "department",
+            "city"
+          ],
+          "additionalProperties": false
         },
         "services": {
           "type": "array",
           "minItems": 1,
+          "description": "-> billProdInstList (operate=A)",
           "items": {
-            "$ref": "#/definitions/ServiceItemBundle"
+            "type": "object",
+            "properties": {
+              "serviceNumber": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 30,
+                "description": "-> billProdInst.serviceNumber"
+              },
+              "effectiveDate": {
+                "type": "string",
+                "minLength": 19,
+                "maxLength": 19,
+                "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+                "description": "-> billProdInst.effDate"
+              },
+              "offerCode": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60,
+                "description": "Main offer code. -> billProdInst.offerCode"
+              },
+              "socialLevel": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6"
+                ],
+                "description": "-> billProdInst.socialLevel"
+              },
+              "department": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.department"
+              },
+              "city": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.city"
+              },
+              "address": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "-> billProdInst.address"
+              },
+              "originalDepartment": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "Requerido para Dedicated Links/MPLS/Corporate VPN. -> billProdInst.originalDepartment"
+              },
+              "originalCity": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.originalCity"
+              },
+              "originalAddress": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "-> billProdInst.originalAddress"
+              },
+              "destDepartment": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.destDepartment"
+              },
+              "destCity": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 15,
+                "description": "-> billProdInst.destCity"
+              },
+              "destAddress": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "-> billProdInst.destAddress"
+              },
+              "contacts": {
+                "type": "array",
+                "description": "Authorized users (510). -> billProdInst.contactDtoList",
+                "items": {
+                  "$ref": "#/definitions/ContactItem"
+                }
+              },
+              "attributes": {
+                "type": "array",
+                "description": "-> billProdInstAttrList (operate=A)",
+                "items": {
+                  "$ref": "#/definitions/AttributeItem"
+                }
+              },
+              "offers": {
+                "type": "array",
+                "minItems": 1,
+                "description": "-> billOfferInstList (operate=A)",
+                "items": {
+                  "$ref": "#/definitions/OfferItem"
+                }
+              },
+              "charges": {
+                "type": "array",
+                "minItems": 1,
+                "description": "-> chargeList",
+                "items": {
+                  "$ref": "#/definitions/ChargeItem"
+                }
+              },
+              "bundleMembers": {
+                "type": "array",
+                "description": "-> billProdInst.bundleMemberList",
+                "items": {
+                  "$ref": "#/definitions/bundleMemberItem"
+                }
+              }
+            },
+            "required": [
+              "serviceNumber",
+              "effectiveDate",
+              "offerCode",
+              "offers"
+            ],
+            "additionalProperties": false
           }
         }
-      }
-    },
-    "NewCustomer": {
+      },
       "required": [
         "processCode",
         "transaction",
-        "customer"
+        "services"
       ],
+      "additionalProperties": false
+    },
+    "NewCustomer": {
+      "type": "object",
+      "description": "NEW_CUSTOMER — Crea un customer en ZSmart sin service (ZSmart serviceEventId=806).",
       "properties": {
         "processCode": {
           "type": "string",
@@ -1085,19 +1853,316 @@
           ]
         },
         "transaction": {
-          "$ref": "#/definitions/TransactionBase"
+          "type": "object",
+          "description": "-> header",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "-> header.transactionId"
+            },
+            "timestamp": {
+              "type": "string",
+              "minLength": 19,
+              "maxLength": 19,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+              "description": "-> header.createDate"
+            },
+            "orderItemId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 22,
+              "description": "-> header.orderItemId"
+            },
+            "custId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Mandatorio si el customer ya existe (existing customer new connection). -> header.custId"
+            },
+            "salesChannel": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                4,
+                5,
+                7,
+                106
+              ],
+              "description": "-> header.salesChannel"
+            },
+            "comments": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> header.comments"
+            }
+          },
+          "required": [
+            "id",
+            "timestamp",
+            "orderItemId",
+            "salesChannel"
+          ],
+          "additionalProperties": false
         },
         "customer": {
-          "$ref": "#/definitions/CustomerNode"
+          "type": "object",
+          "description": "-> cust (operate=A)",
+          "properties": {
+            "custId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Mandatorio si el customer ya existe. -> header.custId"
+            },
+            "typeFlag": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "1=Personal, 2=Business. -> cust.typeFlag"
+            },
+            "firstName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.firstName"
+            },
+            "lastName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.lastName"
+            },
+            "middleName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.middleName"
+            },
+            "secondLastName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.secondLastName"
+            },
+            "custName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.custName"
+            },
+            "nombreJuridico": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> cust.nombreJuridico"
+            },
+            "gender": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Male, Female o Company. -> cust.gender"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.title"
+            },
+            "birthday": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 10,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "-> cust.birthday"
+            },
+            "docType": {
+              "type": "string",
+              "enum": [
+                "CC",
+                "CE",
+                "NIT",
+                "PEP",
+                "PPT"
+              ],
+              "description": "-> cust.docType"
+            },
+            "docNumber": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.docNumber"
+            },
+            "issueLugar": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.issueLugar"
+            },
+            "issueDate": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 10,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "-> cust.issueDate"
+            },
+            "docExpDate": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 10,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "-> cust.docExpDate"
+            },
+            "occupation": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.occupation"
+            },
+            "industry": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.industry"
+            },
+            "contactPhone": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "description": "-> cust.contactPhone"
+            },
+            "email": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> cust.email"
+            },
+            "country": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.country"
+            },
+            "department": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.department"
+            },
+            "city": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.city"
+            },
+            "district": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.district"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> cust.address"
+            },
+            "customerSegment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.customerSegment"
+            },
+            "subSegmento": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.subSegmento"
+            },
+            "categoria": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "Gold|Silver|Bronze|Platinum. -> cust.categoria"
+            },
+            "habeasData": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.habeasData"
+            },
+            "autoretentionFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.autoretentionFlag"
+            },
+            "vipFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> cust.vipFlag"
+            },
+            "paymentRiskLevel": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6"
+              ],
+              "description": "-> cust.paymentRiskLevel"
+            },
+            "blockNotification": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "description": "-> cust.blockNotification"
+            },
+            "attributes": {
+              "type": "array",
+              "description": "-> custAttrList",
+              "items": {
+                "$ref": "#/definitions/AttributeItem"
+              }
+            },
+            "contacts": {
+              "type": "array",
+              "description": "501=Commercial,502=Legal,503=Notification,504=Delivery Address. -> cust.contactDtoList",
+              "items": {
+                "$ref": "#/definitions/ContactItem"
+              }
+            }
+          },
+          "required": [
+            "typeFlag",
+            "contactPhone",
+            "email",
+            "country",
+            "department",
+            "city",
+            "customerSegment",
+            "subSegmento",
+            "categoria",
+            "habeasData"
+          ],
+          "additionalProperties": false
         }
-      }
-    },
-    "NewAccount": {
+      },
       "required": [
         "processCode",
         "transaction",
-        "account"
+        "customer"
       ],
+      "additionalProperties": false
+    },
+    "NewAccount": {
+      "type": "object",
+      "description": "NEW_ACCOUNT — Crea un billing account para un customer existente (ZSmart serviceEventId=807).",
       "properties": {
         "processCode": {
           "type": "string",
@@ -1106,21 +2171,260 @@
           ]
         },
         "transaction": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/TransactionBase"
+          "type": "object",
+          "description": "-> header",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "-> header.transactionId"
             },
-            {
-              "required": [
-                "custId"
-              ]
+            "timestamp": {
+              "type": "string",
+              "minLength": 19,
+              "maxLength": 19,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+              "description": "-> header.createDate"
+            },
+            "orderItemId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 22,
+              "description": "-> header.orderItemId"
+            },
+            "custId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Mandatorio — el account debe estar ligado a un customer existente. -> header.custId"
+            },
+            "acctId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "Mandatorio si el account ya existe. No requerido para prepago. -> header.acctId"
+            },
+            "salesChannel": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                4,
+                5,
+                7,
+                106
+              ],
+              "description": "-> header.salesChannel"
+            },
+            "salesDepartment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10,
+              "description": "-> header.salesDepartment"
+            },
+            "salesCity": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10,
+              "description": "-> header.salesCity"
+            },
+            "comments": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "-> header.comments"
             }
-          ]
+          },
+          "required": [
+            "id",
+            "timestamp",
+            "orderItemId",
+            "custId",
+            "salesChannel"
+          ],
+          "additionalProperties": false
         },
         "account": {
-          "$ref": "#/definitions/AccountNode"
+          "type": "object",
+          "description": "-> account (operate=A)",
+          "properties": {
+            "acctName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "-> account.acctName"
+            },
+            "acctId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "-> header.acctId"
+            },
+            "billDeliveryType": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "description": "-> account.billDeliveryType"
+            },
+            "corte": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.corte"
+            },
+            "parentAcctId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "-> account.parentAcctId"
+            },
+            "billFlag": {
+              "type": "string",
+              "enum": [
+                "Yes",
+                "No"
+              ],
+              "description": "-> account.billFlag"
+            },
+            "taxExempt": {
+              "type": "string",
+              "enum": [
+                "Yes",
+                "No"
+              ],
+              "description": "-> account.taxExempt"
+            },
+            "dunningExemption": {
+              "type": "string",
+              "enum": [
+                "No",
+                "Temporary",
+                "Total"
+              ],
+              "description": "-> account.dunningExemption"
+            },
+            "dunningExemEff": {
+              "type": "string",
+              "minLength": 19,
+              "maxLength": 19,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+              "description": "Solo efectivo cuando dunningExemption=Temporary. -> account.dunningExemEff"
+            },
+            "dunningExemExp": {
+              "type": "string",
+              "minLength": 19,
+              "maxLength": 19,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+              "description": "Solo efectivo cuando dunningExemption=Temporary. -> account.dunningExemExp"
+            },
+            "contractName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "-> account.contractName"
+            },
+            "roundingAdjustmentFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.roundingAdjustmentFlag"
+            },
+            "previousBalanceFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.previousBalanceFlag"
+            },
+            "coverPageOnlyFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.coverPageOnlyFlag"
+            },
+            "interestChargeFlag": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.interestChargeFlag"
+            },
+            "interestRateType": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "Requerido cuando interestChargeFlag=Yes. -> account.interestRateType"
+            },
+            "dunningManagementTime": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.dunningManagementTime"
+            },
+            "country": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.country"
+            },
+            "department": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.department"
+            },
+            "city": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.city"
+            },
+            "district": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 15,
+              "description": "-> account.district"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "-> account.address"
+            },
+            "paymentTerm": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6,
+              "description": "-> account.paymentTerm"
+            },
+            "attributes": {
+              "type": "array",
+              "minItems": 1,
+              "description": "-> acctAttrList",
+              "items": {
+                "$ref": "#/definitions/AttributeItem"
+              }
+            },
+            "contacts": {
+              "type": "array",
+              "minItems": 1,
+              "description": "505,506,507,508,509,511. -> account.contactDtoList",
+              "items": {
+                "$ref": "#/definitions/ContactItem"
+              }
+            }
+          },
+          "required": [
+            "billFlag",
+            "country",
+            "department",
+            "city"
+          ],
+          "additionalProperties": false
         }
-      }
+      },
+      "required": [
+        "processCode",
+        "transaction",
+        "account"
+      ],
+      "additionalProperties": false
     }
   }
 }
