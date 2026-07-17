@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-query-suscriber-profile-orchestratorSub_Flow" doc:id="f052bf81-1351-476c-9109-44a06a8a5fb2" >
+		<ee:transform doc:name="set query-suscriber-profile params" doc:id="8533911b-d77f-40ae-a5aa-7f5ef6808827" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="queryHeaders" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set Zsmart Request" doc:id="c9782a1b-1b49-494c-93b5-9c4ab21bacb1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "GET",
+    path: p('zsmart-sapi.resources.querySuscriberProfile.path'),
+    body: {},
+    headers: vars.queryHeaders default {},
+    queryParameters: {
+    	"serviceNumber": vars.queryParams.serviceNumber,
+    	"areaCode": vars.queryParams.areaCode
+    },
+    uriParameters: {}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart query-suscriber-profile)" doc:id="7ebe5f8a-49b1-47b6-8ea6-2ca06eb62267" name="generic-zsmart-sapi-clientSub_Flow" />
+		<ee:transform doc:name="set query-suscriber-profile response" doc:id="63eaaafa-1073-4ab3-9cbf-f192592ea2b4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+var response = payload.result.result
+var subscriber = response.subscriberProfile default {}
+---
+{
+  codeResponse: payload.status default "",
+  messageResponse: if ((payload.status default "") as String == "200")
+    "OK"
+  else
+    payload.message default response.resultMsg default "",
+  subscriberProfile: {
+    serviceNumber: subscriber.serviceNumber default "",
+    state: subscriber.state default "",
+    activeDate: subscriber.activeDate default "",
+    updateDate: subscriber.updateDate default "",
+    accountCode: subscriber.accountCode default "",
+    custCode: subscriber.custCode default "",
+    customerName: subscriber.customerName default "",
+    preFlag: subscriber.preFlag default "",
+
+    balList: (subscriber.balList default []) map (balance) -> {
+      balId: balance.balId default "",
+      acctResCode: balance.acctResCode default "",
+      acctResName: balance.acctResName default "",
+      unitType: balance.unitType default "",
+      currencyType: balance.currencyType default "",
+      balance: balance.balance default "",
+      effDate: balance.effDate default "",
+      expDate: balance.expDate default "",
+      updateDate: balance.updateDate default "",
+      offerCode: balance.offerCode default "",
+      offerName: balance.offerName default ""
+    },
+
+    additionalOfferInstList:
+      (subscriber.additionalOfferInstList default []) map (offer) -> {
+        offerCode: offer.offerCode default "",
+        offerName: offer.offerName default "",
+        effDate: offer.effDate default "",
+        expDate: offer.expDate default "",
+        saleListPrice: offer.saleListPrice default "",
+        rentListPrice: offer.rentListPrice default "",
+        offerInstAttrList:
+          (offer.offerInstAttrList default []) map (attribute) -> {
+            attrCode: attribute.attrCode default "",
+            attrName: attribute.attrName default "",
+            attrValue: attribute.attrValue default ""
+          }
+      },
+
+    prodInstAttrList:
+      (subscriber.prodInstAttrList default []) map (attribute) -> {
+        attrCode: attribute.attrCode default "",
+        attrName: attribute.attrName default "",
+        attrValue: attribute.attrValue default ""
+      }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
