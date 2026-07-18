@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "BillingProcessPostRequest",
   "description": "Datatype comun para POST /billing-process. El payload se valida segun el valor de processCode (discriminador), que selecciona una de las 4 variantes de proceso soportadas: SALE, SALE_BUNDLE, NEW_CUSTOMER, NEW_ACCOUNT. Cada variante reutiliza los datatypes comunes definidos en $defs (AttributeItem, ContactItem, OfferItem, ChargeItem, bundleMemberItem y sus variantes con 'operate') tal como estan modelados en los RAML datatypes de origen.",
   "type": "object",
@@ -17,20 +17,6 @@
   },
   "required": [
     "processCode"
-  ],
-  "oneOf": [
-    {
-      "$ref": "#/definitions/Sale"
-    },
-    {
-      "$ref": "#/definitions/SaleBundle"
-    },
-    {
-      "$ref": "#/definitions/NewCustomer"
-    },
-    {
-      "$ref": "#/definitions/NewAccount"
-    }
   ],
   "definitions": {
     "AttributeItem": {
@@ -71,29 +57,51 @@
       "additionalProperties": false
     },
     "AttributeItemWithOperate": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/AttributeItem"
+      "type": "object",
+      "description": "Extended attribute con operate explicito. Usado cuando CRM controla add/modify/delete de atributos (aplanado: no allOf, evita conflicto con additionalProperties:false del tipo base). NOTA: 'operate' se acepta pero no se exige — en trafico real (p.ej. SVA) a veces se omite.",
+      "properties": {
+        "operate": {
+          "type": "string",
+          "enum": [
+            "A",
+            "M",
+            "D"
+          ],
+          "description": "A=Add, M=Modify, D=Delete. -> operate"
         },
-        {
-          "type": "object",
-          "properties": {
-            "operate": {
-              "type": "string",
-              "enum": [
-                "A",
-                "M",
-                "D"
-              ],
-              "description": "A=Add, M=Modify, D=Delete. -> operate"
-            }
-          },
-          "required": [
-            "operate"
-          ]
+        "attrCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30,
+          "description": "Attribute code as configured in ZSmart. -> attrCode"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Attribute value. -> value"
+        },
+        "effectiveDate": {
+          "type": "string",
+          "minLength": 19,
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Effective date. -> effDate"
+        },
+        "expirationDate": {
+          "type": "string",
+          "minLength": 19,
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Expiration date. -> expDate"
         }
+      },
+      "required": [
+        "operate",
+        "attrCode",
+        "value"
       ],
-      "description": "Extended attribute con operate. Usado cuando CRM controla add/modify/delete de atributos."
+      "additionalProperties": false
     },
     "ContactItem": {
       "type": "object",
@@ -223,7 +231,7 @@
     },
     "ContactItemWithOperate": {
       "type": "object",
-      "description": "Contact con operate explicito. Todos los campos son opcionales excepto operate.",
+      "description": "Contact con operate explicito. Todos los campos son opcionales excepto operate.\nNOTA: 'operate' se acepta pero no se exige — en trafico real (p.ej. STRATUM_CHANGE) a veces se omite y se envia el contacto completo sin operate.",
       "properties": {
         "operate": {
           "type": "string",
@@ -342,10 +350,10 @@
           "description": "Street name. -> contactDto.addressName"
         }
       },
+      "additionalProperties": false,
       "required": [
         "operate"
-      ],
-      "additionalProperties": false
+      ]
     },
     "ChargeItem": {
       "type": "object",
@@ -476,53 +484,113 @@
       "additionalProperties": false
     },
     "OfferItemAD": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/OfferItem"
+      "type": "object",
+      "description": "Offer instance con operate A o D unicamente. Usado en plan-change (aplanado).",
+      "properties": {
+        "operate": {
+          "type": "string",
+          "enum": [
+            "A",
+            "D"
+          ],
+          "description": "A=Add new offer, D=Delete current offer. -> operate"
         },
-        {
-          "type": "object",
-          "properties": {
-            "operate": {
-              "type": "string",
-              "enum": [
-                "A",
-                "D"
-              ],
-              "description": "A=Add new offer, D=Delete current offer. -> operate"
-            }
-          },
-          "required": [
-            "operate"
-          ]
+        "offerInstanceIdCRM": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30,
+          "description": "CRM offer instance ID (max 15 digitos). -> billOfferInst.offerInstIdCRM"
+        },
+        "offerCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Offer code (main o additional). -> billOfferInst.offerCode"
+        },
+        "effectiveDate": {
+          "type": "string",
+          "minLength": 19,
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Offer effective date. -> billOfferInst.effDate"
+        },
+        "expirationDate": {
+          "type": "string",
+          "minLength": 19,
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Offer expiration date. -> billOfferInst.expDate"
+        },
+        "attributes": {
+          "type": "array",
+          "description": "Extended attributes para esta offer instance. -> billOfferInstAttrList",
+          "items": {
+            "$ref": "#/definitions/AttributeItem"
+          }
         }
+      },
+      "required": [
+        "operate",
+        "offerInstanceIdCRM",
+        "offerCode",
+        "effectiveDate"
       ],
-      "description": "Offer instance con operate A o D unicamente. Usado en plan-change."
+      "additionalProperties": false
     },
     "OfferItemWithOperate": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/OfferItem"
+      "type": "object",
+      "description": "Offer instance con operate explicito. Usado cuando CRM controla add/modify/delete de additional offers (aplanado).",
+      "properties": {
+        "operate": {
+          "type": "string",
+          "enum": [
+            "A",
+            "M",
+            "D"
+          ],
+          "description": "A=Add, M=Modify, D=Delete. -> operate"
         },
-        {
-          "type": "object",
-          "properties": {
-            "operate": {
-              "type": "string",
-              "enum": [
-                "A",
-                "M",
-                "D"
-              ],
-              "description": "A=Add, M=Modify, D=Delete. -> operate"
-            }
-          },
-          "required": [
-            "operate"
-          ]
+        "offerInstanceIdCRM": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30,
+          "description": "CRM offer instance ID (max 15 digitos). -> billOfferInst.offerInstIdCRM"
+        },
+        "offerCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Offer code (main o additional). -> billOfferInst.offerCode"
+        },
+        "effectiveDate": {
+          "type": "string",
+          "minLength": 19,
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Offer effective date. -> billOfferInst.effDate"
+        },
+        "expirationDate": {
+          "type": "string",
+          "minLength": 19,
+          "maxLength": 19,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "Offer expiration date. -> billOfferInst.expDate"
+        },
+        "attributes": {
+          "type": "array",
+          "description": "Extended attributes para esta offer instance. -> billOfferInstAttrList",
+          "items": {
+            "$ref": "#/definitions/AttributeItem"
+          }
         }
+      },
+      "required": [
+        "operate",
+        "offerInstanceIdCRM",
+        "offerCode",
+        "effectiveDate"
       ],
-      "description": "Offer instance con operate explicito. Usado cuando CRM controla add/modify/delete de additional offers."
+      "additionalProperties": false
     },
     "bundleMemberItem": {
       "type": "object",
@@ -2425,6 +2493,52 @@
         "account"
       ],
       "additionalProperties": false
+    }
+  },
+  "if": {
+    "properties": {
+      "processCode": {
+        "const": "SALE"
+      }
+    }
+  },
+  "then": {
+    "$ref": "#/definitions/Sale"
+  },
+  "else": {
+    "if": {
+      "properties": {
+        "processCode": {
+          "const": "SALE_BUNDLE"
+        }
+      }
+    },
+    "then": {
+      "$ref": "#/definitions/SaleBundle"
+    },
+    "else": {
+      "if": {
+        "properties": {
+          "processCode": {
+            "const": "NEW_CUSTOMER"
+          }
+        }
+      },
+      "then": {
+        "$ref": "#/definitions/NewCustomer"
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "processCode": {
+              "const": "NEW_ACCOUNT"
+            }
+          }
+        },
+        "then": {
+          "$ref": "#/definitions/NewAccount"
+        }
+      }
     }
   }
 }
