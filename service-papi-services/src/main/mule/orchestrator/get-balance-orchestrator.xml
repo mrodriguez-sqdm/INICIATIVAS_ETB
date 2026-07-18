@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="get-balance-orchestratorFlow" doc:id="3c410dfa-dd70-44b7-91a9-9718dea9736c" >
+				<flow-ref doc:name="Find SID" doc:id="77103ce6-f8e9-4291-9e16-03a68fb94e7c" name="get-subscription-client-by-msisdn"/>
+		<logger level="DEBUG" doc:name="Logger" doc:id="f5313417-e581-4c08-97ba-654b82234f59" message="#[pruebass: payload]"/>
+		<ee:transform doc:name="Map Out" doc:id="e880fb2d-5023-424f-82fa-f4450b2c4b33" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "id": payload.content[0].id,
+    "name": payload.content[0].name,
+    "status": payload.content[0].status,
+    "billingType": payload.content[0].billingType,
+    "balance": (payload.content[0].balance.amount default 0) as String {format: "0.000000"},
+    "externalID":payload.content[0].externalID,
+    "suscriberId": payload.content[0].subscriber.id
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7539ecb1-d06f-44a8-a276-f27330af0608" >
+				<ee:transform doc:name="Error output" doc:id="79c42afe-41ca-4df1-abd0-1c115450a0ee" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "GET_BALANCE",
+	"message": {
+	  "message": vars.errorMessageOutput
+	},
+	"messageServer": "Error obtaining subscription balance",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>

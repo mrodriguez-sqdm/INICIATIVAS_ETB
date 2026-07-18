@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-recuperacionExperiencia-orchestratorSub_Flow" doc:id="7a42a99f-b949-4fc5-bba0-ac6d227d42fa" >
+		<flow-ref doc:name="Go to Exclusion Clientes" doc:id="374826b4-43f3-4db0-b4ac-6b892918f167" name="get-exclusionClientes-client" target="responseClientExcluded"/>
+		<choice doc:name="Choice" doc:id="9b2b4802-74c9-4f57-bcd3-0e019ca97fe9" >
+			<when expression="#[isEmpty(vars.responseClientExcluded)]">
+				<flow-ref doc:name="Consultar Configuraciones" doc:id="bb19bf55-1249-47ea-9a2d-57d039ce72dc" name="consultar-configuraciones" />
+				<scatter-gather doc:name="Scatter-Gather" doc:id="10a8e763-1f2a-43de-9fa8-1a2051b1e256" >
+					<route >
+						<flow-ref doc:name="Get pqrs" doc:id="33ee1bec-e15e-4554-8880-96373f788de0" name="consultar-pqrs"/>
+					</route>
+					<route >
+						<flow-ref doc:name="Get Ordenes" doc:id="c7a0c4a0-e29a-4e93-b64c-878e5980aee5" name="get-ordenes-client"/>
+						<ee:transform doc:name="Filter Ordenes" doc:id="e615f223-3640-4bb1-a401-29b8bd32520a" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="ordenesFiltradas" ><![CDATA[%dw 2.0
+output application/json
+var rangoFecha = vars.configurations.clienteRecurrente.RangoFechaPQR
+---
+payload filter ($.Fecha_Creacion >= rangoFecha and $.Fecha_Creacion <= now())]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</route>
+					<route >
+						<flow-ref doc:name="Get Encuestas" doc:id="24247c94-d0c1-443d-8aad-2f72dc83ee5b" name="get-encuestas-client"/>
+						<ee:transform doc:name="Response encuestas" doc:id="ab9613fb-5ccb-4edf-93be-c576638b36c2" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="encuestasResponse" ><![CDATA[%dw 2.0
+output application/json
+var initial = {
+    "sumSat": 0,
+    "satQ": 0,
+    "sumTra": 0,
+    "traQ": 0,
+    "sumEff": 0,
+    "effQ": 0
+}
+var processSurveys = payload reduce ((item, accumulator=initial) -> {
+   "sumSat": accumulator.sumSat + item.satisfaction * item.satQuestions,
+   "satQ": accumulator.satQ + item.satQuestions,
+   "sumTra": accumulator.sumTra + item.transactional * item.traQuestions,
+   "traQ": accumulator.traQ + item.traQuestions,
+   "sumEff": accumulator.sumEff + item.efford * item.effQuestions,
+   "effQ": accumulator.effQ + item.effQuestions
+})
+var finalResults = {
+    "sat": if (processSurveys.satQ == 0) 0 else processSurveys.sumSat / processSurveys.satQ,
+    "tra": if (processSurveys.traQ == 0) 0 else processSurveys.sumTra / processSurveys.traQ,
+    "eff": if (processSurveys.effQ == 0) 0 else processSurveys.sumEff / processSurveys.effQ
+}
+---
+(finalResults.sat >= vars.configurations.clienteRecurrente.RecExp_scoreSat) or 
+(finalResults.tra >= vars.configurations.clienteRecurrente.RecExp_scoreTra) or
+(finalResults.eff < vars.configurations.clienteRecurrente.RecExp_scoreEsf)]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</route>
+				</scatter-gather>
+				<ee:transform doc:name="Recurrencia vars" doc:id="48747506-22a3-40e4-8d06-ff14549d13af">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="recurrentePqrs" ><![CDATA[%dw 2.0
+output application/json
+---
+sizeOf(vars.pqrsFiltrados filter ($.tipologia.motivo == "FALLA TECNICA")) >= (vars.configurations.clienteRecurrente.CantidadPQRs as Number)]]></ee:set-variable>
+						<ee:set-variable variableName="recurrenteVisitas" ><![CDATA[%dw 2.0
+output application/json
+---
+sizeOf(vars.visitasFiltradas filter (["FTTH", "FO"] contains $.tecnologia)) >= (vars.configurations.clienteRecurrente.CantPQRFTTH as Number) or
+sizeOf(vars.visitasFiltradas filter (["FTTC", "COBRE", "CU"] contains $.tecnologia)) >= (vars.configurations.clienteRecurrente.CantPQRFTTCCOBRE as Number)]]></ee:set-variable>
+						<ee:set-variable variableName="recurrenteAgendamientos" ><![CDATA[%dw 2.0
+output application/json
+---
+(sizeOf(vars.agendasFiltradas) >= 2)]]></ee:set-variable>
+						<ee:set-variable variableName="recurrenteTramites" ><![CDATA[%dw 2.0
+output application/json
+---
+sizeOf(vars.ordenesFiltradas) + sizeOf(vars.pqrsFiltrados filter ($.tipologia.motivo != "FALLA TECNICA")) >= (vars.configurations.clienteRecurrente.RecExp_CantidadPQRs as Number)
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Input tipo atencion" doc:id="77d9c813-1ac2-4d8a-a015-7972bee51d63">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"ClienteConcurrenteComercial" : vars.recurrenteTramites,
+	"EncuestaCliente" : vars.encuestasResponse,
+	"ClienteConcurrenteTecnico" : (vars.recurrentePqrs) or (vars.recurrenteVisitas) or (vars.recurrenteAgendamientos)
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Get Tipo Atencion" doc:id="5e45f619-9e66-4eeb-aa27-4d6cb845be02" name="get-tipoAtencion-client"/>
+				<ee:transform doc:name="Prepare Output" doc:id="be50734b-b645-4104-a3bb-cc828c7e0f95" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "cliente":{
+        "numeroIdentificacion": vars.numeroIdentificacion,
+        "tipoIdentificacion": vars.tipoIdentificacion
+    },
+    "encuestas": vars.encuestasResponse,
+    "recurrente":{
+        "agendamientos": vars.recurrenteAgendamientos,
+        "comercial": vars.recurrenteTramites,
+        "pqrs": vars.recurrentePqrs,
+        "tecnico": (!isEmpty(vars.pqrsFiltrados)) or (!isEmpty(vars.agendasFiltradas)) or (!isEmpty(vars.visitasFiltradas)),
+        "tramites": vars.recurrenteTramites,
+        "visitas": vars.recurrenteVisitas
+    },
+    "tipoAtencion": payload[0].Valor
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Response Cliente Excluido" doc:id="4130b852-51dc-4f5d-b888-d97aada69c83" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "cliente":{
+        "numeroIdentificacion": vars.numeroIdentificacion,
+        "tipoIdentificacion": vars.tipoIdentificacion
+    },
+    "descripcion": "El cliente se encuentra excluido."
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="consultar-configuraciones" doc:id="87b84fae-5f6b-46e3-a505-1829efd26bef">
+		<scatter-gather doc:name="Scatter-Gather" doc:id="9f5efd2f-0e69-4fb8-b1bb-c7d4110f447c">
+					<route>
+						<set-variable value="#[p('mongo-cf-sapi.parametros.clienteRecurrente')]" doc:name="Cliente Recurrente" doc:id="7dbda331-d93b-4453-a355-c63cfab69f16" variableName="currentParameter" />
+						<flow-ref doc:name="Go to Parameter Client" doc:id="337f5b43-1ea5-47e0-92e7-792943cb7901" name="get-parameters-client" />
+				<ee:transform doc:name="Validations" doc:id="70bbe273-236b-42d1-a9dc-7a3082c3ad96" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Periods
+---
+{
+    ClienteRecurrente: (payload[0].Valores filter $.Codigo == "ActiveIniClieRecu")[0].Nombre,
+    MotivosPQRs: (payload[0].Valores filter $.Codigo == "MotivoFiltro").Nombre,
+    SintomasPQRs: flatten(((payload[0].Valores filter $.Codigo == "MotivoFiltro").Descripcion) map ((item, index) -> item splitBy  ",")),
+    Tecnologias: (payload[0].Valores filter $.Codigo == "Tecnologias")[0].Nombre splitBy ",",
+    RangoFechaPQR: now() - days((payload[0].Valores filter $.Codigo == "RangoDiasConsulta").Nombre[0] as Number),
+    CantidadPQRs: (payload[0].Valores filter $.Codigo == "CantidadPQRs").Nombre[0],
+    CantPQRFTTH: (payload[0].Valores filter $.Codigo == "CantidadPQRsTecno").Nombre[0],
+    CantPQRFTTCCOBRE: (payload[0].Valores filter $.Codigo == "CantidadPQRsTecnologia").Nombre[0],
+    RecExp_scoreSat: (payload[0].Valores filter $.Codigo == "RecExp_scoreSat").Nombre[0],
+    RecExp_scoreTra: (payload[0].Valores filter $.Codigo == "RecExp_scoreTra").Nombre[0],
+    RecExp_scoreEsf: (payload[0].Valores filter $.Codigo == "RecExp_scoreEsf").Nombre[0],
+    RecExp_CantidadPQRs: (payload[0].Valores filter $.Codigo == "RecExp_CantidadPQRs").Nombre[0]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</route>
+					<route>
+						<set-variable value="#[p('mongo-cf-sapi.parametros.agendaTmr.primero')]" doc:name="Agenda TMR I" doc:id="d3f3ee4f-6764-423e-a261-b68a70d45d4a" variableName="currentParameter" />
+						<flow-ref doc:name="Go to Parameter Client" doc:id="78563db9-cd2a-4004-9b5e-e4276275758a" name="get-parameters-client" />
+				<ee:transform doc:name="Validations" doc:id="0b1187df-8607-420b-bcf5-1216f5e5b583" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload[0].Valores.Codigo[0]]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</route>
+					<route>
+						<set-variable value="#[p('mongo-cf-sapi.parametros.agendaTmr.segundo')]" doc:name="Agenda TMR II" doc:id="f24ce092-5b0c-4dba-bdf4-606ea527f233" variableName="currentParameter" />
+						<flow-ref doc:name="Go to Parameter Client" doc:id="85e6aad0-9c61-4782-9293-1dc17b48ccda" name="get-parameters-client" />
+				<ee:transform doc:name="Validations" doc:id="2ba77684-3d03-4b65-a6a9-38909f4db21b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload[0].Valores filter $.Codigo == "ON"]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</route>
+					<route>
+						<set-variable value="#[p('mongo-cf-sapi.parametros.visitasTecnicas')]" doc:name="Visitas Tecnicas" doc:id="abe564b0-e92b-40ed-a8a0-bf84a28c4651" variableName="currentParameter" />
+						<flow-ref doc:name="Go to Parameter Client" doc:id="636ed028-eeeb-4a38-8980-185cbf000097" name="get-parameters-client" />
+				<ee:transform doc:name="Validations" doc:id="aaf009ec-cf61-42ee-a2eb-318c7818d391" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload[0].Valores filter $.Codigo == "ON"]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</route>
+				</scatter-gather>
+		<ee:transform doc:name="Homologate" doc:id="db127227-9418-4eef-9b4b-84df97f6cf04">
+					<ee:message>
+					</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="configurations" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	clienteRecurrente: payload.'0'.payload,
+	agendaTmrValidation: payload.'1'.payload,
+	agendaTmrEncendido: payload.'2'.payload,
+	visitasTecnicasEncendido: payload.'3'.payload
+}]]></ee:set-variable>
+			</ee:variables>
+				</ee:transform>
+	</sub-flow>
+	<sub-flow name="consultar-pqrs" doc:id="9d0855d8-f441-4d9b-9bc1-5d4f0d36e5c6" >
+		<try doc:name="Try" doc:id="2e8674df-817b-4e4f-9979-ade36d98ef11" >
+			<flow-ref doc:name="Get PQRs" doc:id="23975fe2-efec-419d-98c0-2d12cc6abc92" name="get-pqrs-client" />
+			<set-payload value="#[payload]" doc:name="Set Payload" doc:id="b066ba23-77d0-47ff-b878-125060eb6be5" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b639697e-d57e-45e4-8091-352d77230375" when="#[error.muleMessage.payload.titulo?]">
+					<ee:transform doc:name="Transform Message" doc:id="6442d2d3-f701-451d-b0c5-71b42bf5ddbb" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="Filtrar PQRs" doc:id="89451dae-728c-47cb-b0e3-0e98878f2d4c" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="pqrsFiltrados" ><![CDATA[%dw 2.0
+output application/json
+var tecnologias = vars.configurations.clienteRecurrente.Tecnologias
+var rangoFecha = vars.configurations.clienteRecurrente.RangoFechaPQR
+var motivo = vars.configurations.clienteRecurrente.MotivosPQRs
+var sintoma = vars.configurations.clienteRecurrente.SintomasPQRs
+---
+payload filter ((item, index) -> 
+	(tecnologias contains  item.tecnologia) and 
+	(rangoFecha <= item.fecha_creacion) and 
+	(!(sintoma contains item.tipologia.sintoma)) and
+    (item.numero_conexion == vars.numeroInicial)
+)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Agendas TMR?" doc:id="10d81331-b012-4c5d-b850-b8fbb4ecfb85" >
+			<when expression='#[!isEmpty(vars.pqrsFiltrados) and vars.configurations.agendaTmrValidation == "true" and !isEmpty(vars.configurations.agendaTmrEncendido)]'>
+				<set-variable value="#[vars.pqrsFiltrados.numero_pqr]" doc:name="Input Agenda TMR" doc:id="49013c85-4ab8-4e31-862d-b943987db655" variableName="inputAgendaTmr" />
+				<try doc:name="Try" doc:id="b27921dd-26cd-4610-8b84-39d1ca03ad13" >
+					<flow-ref doc:name="Get Agendas Tmr" doc:id="1bd131fd-701b-4eb0-828b-7805561addd3" name="get-agendaTmr-client" target="agendasFiltradas" />
+					<ee:transform doc:name="Filtrar visitas tecnicas" doc:id="2c6a69d6-2011-42d6-9fae-72e5b7ad74e5">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="visitasFiltradas"><![CDATA[%dw 2.0
+output application/json
+---
+if (isEmpty(vars.configurations.visitasTecnicasEncendido))
+vars.agendasFiltradas
+else do{
+	var pqrsNumbersFiltered = (vars.pqrsFiltrados filter !isBlank($.num_incidendia_remedy)).numero_pqr
+	---
+	vars.agendasFiltradas filter (pqrsNumbersFiltered contains $.order_number)
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="659dc21b-ab53-41e8-a193-81f3e553ffbe" >
+							<ee:transform doc:name="Empty Agenda TMR y Visitas" doc:id="129e23e2-e810-47bd-bdca-225e61b63258" >
+								<ee:message />
+								<ee:variables >
+									<ee:set-variable variableName="visitasFiltradas" ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-variable>
+									<ee:set-variable variableName="agendasFiltradas" ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<when expression="#[!isEmpty(vars.pqrsFiltrados) and !isEmpty(vars.configurations.visitasTecnicasEncendido)]">
+				<set-variable value="#[(vars.pqrsFiltrados filter !isBlank($.num_incidendia_remedy)).numero_pqr]" doc:name="Input Agenda TMR" doc:id="b0093b7c-c138-4372-b9ed-ccc434c750d2" variableName="inputAgendaTmr" />
+				<try doc:name="Try" doc:id="92fe9bdb-5408-49a4-b1f4-854239130e1d" >
+					<flow-ref doc:name="Get visitas tecnicas" doc:id="4409fdc2-332b-48bf-894c-88c5ac186399" name="get-agendaTmr-client" target="visitasFiltradas" />
+					<ee:transform doc:name="Empty Agenda TMR" doc:id="c6c73ef9-c80e-41df-9727-1e7d11700d6d">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="agendasFiltradas"><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="57998bb9-e512-4cdd-ad9e-1e2cd9e177a3" >
+							<ee:transform doc:name="Empty Agenda TMR y Visitas" doc:id="3a995e20-7aff-4f6a-b098-ae90a9a7d5f9" >
+								<ee:message />
+								<ee:variables >
+									<ee:set-variable variableName="visitasFiltradas" ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-variable>
+									<ee:set-variable variableName="agendasFiltradas" ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Empty Agenda TMR y Visitas" doc:id="3b76ada5-4e30-4c15-8bf3-50b10a7bd63c" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="visitasFiltradas" ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-variable>
+						<ee:set-variable variableName="agendasFiltradas" ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="jsc-sapi-services-main">
+        <http:listener config-ref="jsc-sapi-services-httpListenerConfig" path="/jsc/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+		<set-variable value='#[attributes.headers.logs default "oracle"]' doc:name="Set logs" doc:id="a1685b6a-1137-41ae-ae73-4653cf1b5e6f" variableName="logs"/>
+		<try doc:name="Try" doc:id="f27bd0a9-8eb1-4963-9b3c-e2fce9996c3e" >
+			<flow-ref doc:name="Call initial Logger" doc:id="941ff066-2188-409e-8eca-46989ec8c892" name="initial-loggin-Sub_Flow" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="3b698eb1-43ff-477f-93cd-d4f10d2c0323" >
+					<logger level="INFO" doc:name="Logger" doc:id="05c2be7a-71d9-4439-ac18-e30a9c835110" message="#[error]" category="error_loggin"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+        <flow-ref doc:name="Get token" doc:id="87dd2b0a-e87d-4624-b8d2-896e282eec5d" name="get-token-sub-flow" target="token"/>
+		<apikit:router config-ref="jsc-sapi-services-config" />
+		<try doc:name="Try" doc:id="fc81662b-3590-4b15-8ab8-2aa332f2b1a4" >
+			<async doc:name="Async" doc:id="ab71f6d7-4de7-4a5f-a9b0-a17f4a90c9a5">
+			<flow-ref doc:name="Call logger" doc:id="178acdd7-ae60-4c92-9e28-1a3c47a5b91e" name="loggin-client-call" />
+		</async>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="07754267-8306-463f-8029-27715227711a" >
+					<logger level="INFO" doc:name="Logger" doc:id="c799ae2b-2c8a-425d-8e2e-8b8284a1e792" message="#[error]" category="error_loggin"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<error-handler ref="common-error-handler-v2" />
+    </flow>
+    <flow name="jsc-sapi-services-console">
+        <http:listener config-ref="jsc-sapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="jsc-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="patch:\v1\order\(id):jsc-sapi-services-config" doc:id="8216d05c-946e-4f4b-9a94-0104e1bbdf97">
+        <flow-ref doc:name="Go to Handler" doc:id="312e8ef0-1a53-414b-a8b8-4fd986eaa26c" name="patch-orderById-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\sim\(iccid)\(order_id):jsc-sapi-services-config" doc:id="e73fb38f-e512-4ab8-95a4-e479fe0586fc">
+        <flow-ref doc:name="Go to Handler" doc:id="dc974bf0-3f2e-4b1c-acb1-d34ce4a9c741" name="patch-sim-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\msisdn\(msisdn)\(order_id):jsc-sapi-services-config" doc:id="656760bd-abef-4334-93f1-f7545d2963fd">
+        <flow-ref doc:name="Go to Handler" doc:id="fa8e0da4-67c7-4599-a8a5-d9e2f60e5961" name="patch-msidn-services-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\subscriber:jsc-sapi-services-config" doc:id="67c8a7ba-ae8f-4fb2-99b3-e70ded1f116e">
+        <flow-ref doc:name="Go to Handler" doc:id="48c8a7e9-2dab-4e83-9030-cd8905e030ed" name="get-suscriber-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\order:application\json:jsc-sapi-services-config" doc:id="ce348b8e-459f-4adf-998f-154f07316857">
+        <flow-ref doc:name="Go to Handler" doc:id="797cb19d-157d-4665-9118-62356f6d56ea" name="post-order-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\subscriber:application\json:jsc-sapi-services-config" doc:id="d16af48f-a085-41ac-bb66-1d43f88b7692">
+        <flow-ref doc:name="Go to Handler" doc:id="594c9f00-aaaf-4e38-a6c2-9213da0d1a02" name="post-subscriber-handlerSub_Flow" />
+    </flow>
+    <flow name="refreshToken" doc:id="cb72bfef-9e5b-49ed-888f-8e740da15ed3">
+        <scheduler doc:name="Scheduler" doc:id="fac08ea6-6e0e-4d8b-9298-73a6a6ba004a">
+            <scheduling-strategy>
+                <fixed-frequency frequency="${token.frequency}" timeUnit="HOURS" />
+            </scheduling-strategy>
+        </scheduler>
+        <flow-ref doc:name="Go to Handler" doc:id="8fa12365-6867-455c-9319-45572cda5277" name="refresh-token-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\billing\ba\(id):application\json:jsc-sapi-services-config" doc:id="dc0c2f3f-5f20-41a9-9b59-d5936363202f" >
+		<flow-ref doc:name="Go to Handler" doc:id="f25c646e-5d41-40c9-b4e9-768d78294ff9" name="patch-billing-ba-id-handlerSub_Flow"/>
+	</flow>
+	<flow name="post:\v1\billing\ba:application\json:jsc-sapi-services-config" doc:id="eba36f56-3e71-4d8d-984e-26aeb2bfe0a1">
+        <flow-ref doc:name="Go to Handler" doc:id="fce42013-7f41-4c44-b75a-6bbe3e05463b" name="post-billing-ba-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\subscription\(subscriptionID):application\json:jsc-sapi-services-config" doc:id="0081ec1f-e85b-4b0a-b8b4-b9e89902d145">
+        <flow-ref doc:name="Go to Handler" doc:id="1f72e882-a92f-4687-ba90-ce9fbd380470" name="patch-subscription-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\sim\(iccid):jsc-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="90fdb9c0-7ff5-471c-90d6-338f82a1518f" name="get-sim-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\msisdn\(msisdn):jsc-sapi-services-config" doc:id="1840968b-4845-4d4d-b6fa-bd7aea7a5b53">
+        <flow-ref doc:name="Go to Handler" doc:id="19c99c4e-0eba-4227-bf86-8701783663f9" name="get-msisdn-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\topup:application\json:jsc-sapi-services-config" doc:id="a81aee5e-38e7-44f9-b2f8-4ac506cdb709">
+        <flow-ref doc:name="Go to Handler" doc:id="b68cab93-6fe4-4719-ada0-e05c3c0e36b7" name="post-topup-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\subscription:jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="8a722e8d-b1cf-482c-8dfc-a2050456d343" name="get-subscription-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\subscription\group\(SID):jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="06c6f65d-29f2-402b-b600-28d4aa4e13e8" name="get-subscription-SID-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\groupinstance\(groupInstanceId)\member:application\json:jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="2c34306c-ed4f-4031-a8a4-8d9ea2de89f4" name="post-groupinstance-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\pkgi\(pkgi_id):jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="962b45a8-af10-4c8a-9ca4-e5720de1b8cd" name="get-pkgi-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\billing\ba:jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="6c7b0030-cb79-4c3d-992d-205cac7e2475" name="get-billing-ba-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\pkgi\(pkgi_id):jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="e2fead4e-14aa-4cf0-ab68-133092c66b79" name="patch-pkgi-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\pkgi:jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="63150893-e6d7-45e4-9fef-f041212d326c" name="get-pkgiBySID-handlerSub_Flow" />
+    </flow>
+    <flow name="delete:\v1\msisdn\(msisdn):jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="a1c56863-6342-41f3-b1c1-325ee75eb4cb" name="delete-msisdn-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\consumption\(id)\details:jsc-sapi-services-config" doc:id="b0ff0208-afd3-49a7-a3b2-9068f24e95cd">
+        <flow-ref doc:name="Go to Handler" doc:id="3123b4a8-d13d-4b07-9adf-93e167346a20" name="get-consumption-details-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\msisdn:application\json:jsc-sapi-services-config" doc:id="72a7d8a5-adf1-470f-a46c-5afb4526756c">
+        <flow-ref doc:name="Go to handler" doc:id="8e098310-8247-46d4-b28c-76b39d033825" name="post-msisdn-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\subscription\(subscription_id)\change-owner\(subscriber_id):application\json:jsc-sapi-services-config" doc:id="5c4b8474-8f0c-48e7-99be-33c2adcc80ff">
+        <flow-ref doc:name="Go to handler" doc:id="6f14d0ac-3e8e-45a0-ac2d-e0ac9da86a97" name="post-assignSubscriptionToSubscriber-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\subscription\(subscription_id):application\json:jsc-sapi-services-config" doc:id="68fb69da-7832-4397-bbc5-f106a684063d">
+        <flow-ref doc:name="Go to Handler" doc:id="b3311723-8957-4e8b-818d-9b803ba4a4fd" name="patch-subscription-handlerSub_Flow" />
+    </flow>
+    <flow name="delete:\v1\groupinstance\(groupInstanceId)\member\(memberId):jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="ce3887f0-3944-4b0d-bcf6-897c1e670da9" name="delete-groupInstanceMember-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\groupinstance\member:jsc-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="fc5f8e49-219b-419e-9598-5699630e47f0" name="get-groupInstanceMember-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\subscription\(subscription_id)\features:jsc-sapi-services-config" doc:id="248748ec-1d69-4fc4-a25f-e0af69daa4e0">
+        <flow-ref doc:name="Go to Handler" doc:id="fc2e0396-b732-4b7a-8099-17988a98eb2d" name="get-subscription-id-features-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\subscription\(subscription_id)\features:application\json:jsc-sapi-services-config" doc:id="140df62f-4d96-4a26-ab49-8d50922e88d5">
+        <flow-ref doc:name="Go to Handler" doc:id="a12692e5-b6e9-4746-ab59-7c5a2c243734" name="patch-subscription-id-features-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\balance:jsc-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="23a1ed3f-da5c-4a0d-8b0f-a2ab75f69243" name="get-balance-structured-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\transferbalance:application\json:jsc-sapi-services-config">
+        <flow-ref doc:name="Go to post-transferbalance-handlerSub_Flow" doc:id="a24c202d-eb12-481c-8bb8-4f420d9564ba" name="post-transferbalance-handlerSub_Flow" />
+    </flow>
+	<flow name="patch:\v1\msisdn\(msisdn):application\json:jsc-sapi-services-config">
+		<flow-ref doc:name="Go to patch-msisdn-handlerSub_Flow" doc:id="19495a75-13cb-49b5-b5f3-55b77ec1decc" name="patch-msisdn-handlerSub_Flow"/>
+    </flow>
+	<flow name="get:\v1\subscription\(msisdn)\imei:jsc-sapi-services-config" doc:id="95aa906f-a85f-4b8f-9134-e1ba2c1b50c7" >
+		<flow-ref doc:name="Go to get-subscription-msisdn-imei-handlerSub_Flow" doc:id="8d253d7a-2cb4-4f12-b81c-ddf3097e8249" name="get-subscription-msisdn-imei-handlerSub_Flow"/>
+	</flow>
+    <flow name="post:\v1\smpp\sendMessage:application\json:jsc-sapi-services-config">
+		<flow-ref doc:name="Go to smpp handler" doc:id="882df7b3-f0ae-4e99-9358-2364b5ce5b68" name="post-sendMessage-handlerSub_Flow"/>
+    </flow>
+	<flow name="patch:\v1\subscriber\(id):application\json:jsc-sapi-services-config" doc:id="6d7bf0ec-7ddb-49cd-90cd-8a8d155587b8" >
+		<flow-ref doc:name="Flow Reference" doc:id="99b485c2-f425-44cd-b183-b6b20d92539b" name="patch-subscriber-clientSub_Flow"/>
+	</flow>
+	<flow name="get:\v1\dppi\(id):jsc-sapi-services-config" doc:id="5a10fb53-104c-4d7f-bca8-3743c06f0436" >
+		<flow-ref doc:name="Flow Reference" doc:id="f948937e-a57a-46c1-bca9-a792b0bdd833" name="get-dppi-id-clientSub_Flow"/>
+	</flow>
+</mule>

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="post-transferbalance-orchestratorFlow" doc:id="3c410dfa-dd70-44b7-91a9-9718dea9736c" >
+				<set-variable value="#[payload]" doc:name="Set Variable requestTransferBalance" doc:id="4458f2fc-8f26-4bbb-b8de-a3e01e180b68" variableName="requestTransferBalance" />
+		<set-variable value="#[vars.inputPayload.msisdnOrig]" doc:name="Set Variable connectionNumber" doc:id="1af289b4-8b7d-4e98-b160-feb4a8c8cd89" variableName="connectionNumber"/>
+		<flow-ref doc:name="Find origin SID" doc:id="77103ce6-f8e9-4291-9e16-03a68fb94e7c" name="get-subscription-client-by-msisdn"/>
+		<set-variable value="#[payload.content[0].id]" doc:name="Set Variable sidOrigin" doc:id="4c5fc3fd-d8a4-407d-986b-e77e4c464b2e" variableName="sidOrigin"/>
+		<set-variable value="#[vars.inputPayload.msisdnDest]" doc:name="Set Variable connectionNumber " doc:id="4731ace7-1674-4ce3-847d-5b3c0696f682" variableName="connectionNumber" />
+		<flow-ref doc:name="Find destino SID" doc:id="60c014db-4e5d-4556-93d3-d5af2d620918" name="get-subscription-client-by-msisdn" />
+		<set-variable value="#[payload.content[0].id]" doc:name="Set Variable sidDestino" doc:id="e7f3d061-324e-425b-a9eb-3a69124cd7ac" variableName="sidDestino"/>
+		<set-variable value="#[payload]" doc:name="Set Variable responseJsc" doc:id="3de9a470-a423-4ad2-b380-5111464f37d9" variableName="responseJsc" />
+		<ee:transform doc:name="Set request" doc:id="2d9a75e6-b344-4a49-aa8b-6640ab0f07b3" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="request" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    amount: {
+        amount: vars.inputPayload.monto,
+        currency: p('jsc-sapi.transferbalance.currency')
+    },
+    subscription: vars.sidDestino,
+    msisdn: vars.inputPayload.msisdnDest,
+    channel: p('jsc-sapi.transferbalance.channel'),
+    comment: p('jsc-sapi.transferbalance.comment')
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="EDR_LOG" doc:id="6d48124e-e2f4-4ee6-a4eb-4eef77be7c0e" message='#[%dw 2.0&#10;output text/plain&#10;---&#10;"Request transfer balance jsc pasasaldo: " ++&#10;(write(payload, "application/json")) ++&#10;" | Status: " ++&#10;((attributes.statusCode default "N/A") as String)]' />
+		<flow-ref doc:name="Go to transfer " doc:id="f9f1fa22-63ab-4114-bbae-49be5ea8e4c0" name="transferbalance-client"/>
+		<logger level="INFO" doc:name="EDR_LOG" doc:id="6ec0eb2e-efd0-4c67-80f8-20296d7ba8c2" message='#[%dw 2.0&#10;output text/plain&#10;---&#10;"Response transfer balance jsc pasasaldo: " ++&#10;(write(payload, "application/json")) ++&#10;" | Status: " ++&#10;((attributes.statusCode default "N/A") as String)]' />
+		<ee:transform doc:name="Transform Message" doc:id="73bf4fb4-4ccc-4931-9684-9bf565f918fa">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="eventType"><![CDATA['PASASALDO']]></ee:set-variable>
+				<ee:set-variable variableName="httpStatusCode"><![CDATA[attributes.statusCode]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="ebbad9d4-2d5a-4266-9a4a-3bda09c389f2">
+			<flow-ref doc:name="insert-log-edrSub_Flow" doc:id="5ead163e-e597-4903-b6cd-ea5a5e822a1d" name="insert-log-edrSub_Flow" />
+		</async>
+		<ee:transform doc:name="Set response" doc:id="e367016f-a7c1-4f47-855b-b546e2e43590" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "OK",
+	topupDonor: payload.topupDonor.id,
+    topupDonee: payload.topupDonee.id,
+    description: "Transferencia de saldo exitosa"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7539ecb1-d06f-44a8-a276-f27330af0608" >
+				<ee:transform doc:name="Error output" doc:id="79c42afe-41ca-4df1-abd0-1c115450a0ee" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "TRANSFER_BALANCE",
+	"message": {
+	  "message": vars.errorMessageOutput
+	},
+	"messageServer": "Error transfering balance",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>

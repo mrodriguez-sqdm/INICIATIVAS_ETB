@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="get-bagsOffer-orchestratorSub_Flow" doc:id="2915bb46-e0c4-4f22-a219-22bc60e7527f" >
+		<try doc:name="Try" doc:id="6fbb8f23-c0cf-4de7-ad16-65e870b69b87" >
+			<flow-ref doc:name="Go to Get commercial catalog" doc:id="61b22272-c3c6-4a4b-86bc-999f4d3f4b4d" name="get-commercial-catalog" target="commercialCatalog" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d962acc3-c19c-4b03-98c6-813df7788487" type="HTTP:NOT_FOUND">
+					<set-variable value="#[true]" doc:name="set error" doc:id="6d6d89e1-adcf-434a-bcac-c2e2dcfb2bbd" variableName="isError"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="error?" doc:id="7f9ba6d0-01ea-4dcd-91e8-6dd48991b83e" >
+			<when expression='#[vars.isError]'>
+				<ee:transform doc:name="Set error" doc:id="d9734913-6668-43f1-abdc-3b32c147aa57" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "commercial catalog is empty"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "mvne-xapi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set grouping number array" doc:id="d89aa022-0da7-4601-9c25-5f0e25e37085">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+(vars.commercialCatalog.Num_Agrupacion default []) distinctBy $]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<try doc:name="Try" doc:id="64a4c6dc-2ee4-4dd4-a50a-fe0aa1af9085">
+					<flow-ref doc:name="Go to Get product offer" doc:id="a2f69125-b531-4fa1-96d1-97467e34a7bc" name="get-product-offer" target="productOffer" />
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="194b92b9-6204-47fd-8b76-e3cea336dc6b" type="HTTP:NOT_FOUND">
+							<set-variable value="#[true]" doc:name="set error" doc:id="791b795c-eddc-48b4-a350-baa4d26cd612" variableName="isError" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<choice doc:name="error?" doc:id="da28258c-3d84-4d60-b9e0-fb5c29cb08d4">
+					<when expression='#[vars.isError]'>
+						<ee:transform doc:name="Set error" doc:id="7ac6015c-fb99-4564-9c74-aef66bff9b8c" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "product offer not found"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "mvne-xapi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Set response" doc:id="fcd2af8a-68b1-497b-b498-c928d54cadb2" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.commercialCatalog map ((item, index) -> 
+    {
+		"grupo": item.Num_Agrupacion,
+		"bolsas": (vars.productOffer filter $.num_agrupacion == item.Num_Agrupacion) map {
+            "id": $.id_producto,
+            "nombre": $.producto,
+            "valor": $.valor_espec_tecnica_oferta[0].valor
+        }
+	}
+)]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			
+</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
