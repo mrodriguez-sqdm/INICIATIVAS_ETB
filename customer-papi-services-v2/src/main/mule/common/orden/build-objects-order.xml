@@ -450,6 +450,7 @@ output application/json
 	<sub-flow name="build-OrdenServicio-Sub_Flow" doc:id="d5e323dc-fb73-4912-8fc5-75735d56b0dd" >
 		<choice doc:name="Choice" doc:id="9752f5c1-3a73-4d00-8cbb-227b55d35152" >
 			<when expression="#[not isEmpty(vars.resultadoProductos)]">
+				<flow-ref doc:name="Go To Get Atributos" doc:id="1c7a63b1-a94c-4bf5-8b4b-caf118e344e6" name="build-attributos-cmp-producto-orderSub_Flow" target="atributos_cmp_producto"/>
 				<ee:transform doc:name="Declare Variables" doc:id="eb1badab-f553-4cca-a8b6-bfc84b3eb320">
 					<ee:message>
 					</ee:message>
@@ -488,6 +489,31 @@ fun buscarAccionAdd(listaAcciones) = (
     (listaAcciones filter ($.Accion == "ADD"))[0] default {}
 )
 
+fun buildAtributos(codigo) = do {
+    var match = (vars.atributos_cmp_producto.result filter ($.cod_configuracion == codigo))[0]
+    ---
+    if (match != null)
+        flatten([
+            (match.atributos_agendamiento default []) map (attr) -> {
+                "Nombre": attr.Nombre,
+                "Valor": attr.valor,
+                "Tipo": attr.Tipo_Atributo
+            },
+            (match.atributos_disponibilidad default []) map (attr) -> {
+                "Nombre": attr.Nombre,
+                "Valor": attr.valor,
+                "Tipo": attr.Tipo_Atributo
+            },
+            (match.atributos_aprovisionamiento default []) map (attr) -> {
+                "Nombre": attr.Nombre,
+                "Valor": attr.valor,
+                "Tipo": attr.Tipo_Atributo
+            }
+        ])
+    else []
+}
+
+
 var objectAccion = buscarAccionAdd(vars.claseServicioHijo.Acciones)
 
 
@@ -502,14 +528,7 @@ do {
 		"Agendamiento": objectAccion.Agendamiento,
 		"Aprovisionamiento": objectAccion.Aprovisionamiento,
 		"Disponibilidad": objectAccion.Disponibilidad,
-		"Atributos": payload.Atributos map (item, index) -> {
-	        "Nombre": item.Nombre,
-	        "Valor": item.Valor,
-	        "Tipo": item.Tipo_Atributo,
-	        "Clase": item.Clase_Atributo,
-	        "Nuevo": true, // Valor fijo
-	        "Display": 0   // Valor fijo
-    	},
+		"Atributos": buildAtributos(payload.Codigo_Configuracion),
 		"Clase_Servicio": vars.claseServicioHijo.Nombre,
 		"Codigo_Configuracion": payload.Codigo_Configuracion,
 		"Extendido": vars.claseServicioHijo.Extendida,
@@ -546,6 +565,30 @@ fun buscarAccionAdd(listaAcciones) = (
     (listaAcciones filter ($.Accion == "ADD"))[0] default {}
 )
 
+fun buildAtributos(codigo) = do {
+    var match = (vars.atributos_cmp_producto.result filter ($.cod_configuracion == codigo))[0]
+    ---
+    if (match != null)
+        flatten([
+            (match.atributos_agendamiento default []) map (attr) -> {
+                "Nombre": attr.Nombre,
+                "Valor": attr.valor,
+                "Tipo": attr.Tipo_Atributo
+            },
+            (match.atributos_disponibilidad default []) map (attr) -> {
+                "Nombre": attr.Nombre,
+                "Valor": attr.valor,
+                "Tipo": attr.Tipo_Atributo
+            },
+            (match.atributos_aprovisionamiento default []) map (attr) -> {
+                "Nombre": attr.Nombre,
+                "Valor": attr.valor,
+                "Tipo": attr.Tipo_Atributo
+            }
+        ])
+    else []
+}
+
 var objectAccion = buscarAccionAdd(vars.claseServicio.Acciones)
 
 
@@ -560,14 +603,8 @@ do {
 		"Agendamiento": objectAccion.Agendamiento,
 		"Aprovisionamiento": objectAccion.Aprovisionamiento,
 		"Disponibilidad": objectAccion.Disponibilidad,
-		"Atributos": payload.Atributos map (item, index) -> {
-	        "Nombre": item.Nombre,
-	        "Valor": item.Valor,
-	        "Tipo": item.Tipo_Atributo,
-	        "Clase": item.Clase_Atributo,
-	        "Nuevo": true, // Valor fijo
-	        "Display": 0   // Valor fijo
-    	},"Clase_Servicio": vars.claseServicio.Nombre,
+		"Atributos": buildAtributos(payload.Codigo_Configuracion),
+		"Clase_Servicio": vars.claseServicio.Nombre,
 		"Codigo_Configuracion": payload.Codigo_Configuracion,
 		"Extendido": vars.claseServicio.Extendida,
 		"Id_Clase_Servicio": payload.Id_Clase_Servicio,
@@ -588,7 +625,7 @@ do {
 }]]></ee:set-variable>
 						</ee:variables>
 					</ee:transform>
-					<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="48e00616-5504-4cce-8ac7-8fe57497a22f" message="#[vars.serviciosPrimarios&#93;"/> [STUDIO] -->
+					<logger level="INFO" doc:name="Logger" doc:id="48e00616-5504-4cce-8ac7-8fe57497a22f" message="#[vars.serviciosPrimarios]"/>
 		</foreach>
 			</when>
 			<otherwise >
@@ -1103,5 +1140,84 @@ output application/json
 				</ee:transform>
 			</otherwise>
 		</choice>
+	</sub-flow>
+	<sub-flow name="build-attributos-cmp-producto-orderSub_Flow" doc:id="96fa88e2-f17c-43fd-a67c-ee0a11b4b677" >
+		<set-variable value="#[%dw 2.0&#10;output application/json&#10;&#10;var primarios = vars.resultadoProductos.Servicio_Tramite.Bundle.Primarios default []&#10;---&#10;flatten(&#10;    primarios map ((primario) -&gt;&#10;        [primario.Codigo_Configuracion default null]&#10;            ++ ((primario.Secundarios default []) map ((secundario) -&gt; secundario.Codigo_Configuracion default null))&#10;    )&#10;) filter ($ != null)]" doc:name="Set Variable" doc:id="2ee0c3e3-1750-464a-8935-336e9122602b" variableName="CodigosConfiguracion"/>
+		<ee:transform doc:name="queryAtributos" doc:id="5ac9e542-653b-4c82-93f1-8e3dc7ed9f4c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: {
+  "query": {
+    "aggregate": "CMP_PRODUCTO",
+    "pipeline": [
+      {
+        "\$match": {
+          "cod_configuracion": {
+            "\$in": vars.CodigosConfiguracion
+          }
+        }
+      },
+      {
+        "\$project": {
+          "_id": 0,
+          "cod_configuracion": 1,
+          "atributos_disponibilidad": 1,
+          "atributos_agendamiento": 1,
+          "atributos_aprovisionamiento": 1
+        }
+      }
+    ],
+    "cursor": {}
+  }
+	},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+ ]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+				<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="c2ee10c4-72f0-4953-81bf-7844a4d1ff5c" message='#["atributos cmp: " ++ write(payload,"application/json")]'/>
+		<flow-ref doc:name="Go to CMP_PRODUCTO" doc:id="d2eb129a-5bb6-4923-8405-cccd0a293cc4" name="generic-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="set response atributos" doc:id="3a82e04f-8e3d-4dbc-9744-415e61421aa9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var resultValue = payload.result default {}
+---
+{
+  result: if (resultValue is Array) resultValue else []
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 	</sub-flow>
 </mule>
