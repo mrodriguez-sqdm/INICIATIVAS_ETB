@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+	xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<sub-flow name="get-billingInvoicePDF-orchestratorSub_Flow"
+		doc:id="9d2591da-be60-48d7-90b9-d2682a603932">
+		<try doc:name="Try" doc:id="2005bb80-aa59-42f5-bc86-774c8a25ded9" >
+			<ee:transform doc:name="set billing variables" doc:id="d57e280a-c684-402b-8199-47ea11df6724">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="billingInvoice"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.'BILLING_INVOICE']]></ee:set-variable>
+				<ee:set-variable variableName="billingHeaders"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			<choice doc:name="Choice billingInvoice Param" doc:id="b6f44a8a-f208-4bee-a2ba-f72d1d8b47d4">
+			<when expression='#[vars.billingInvoice == "POSTPAID"]'>
+					<ee:transform doc:name="set postpaid variables" doc:id="e41e511a-ebfe-4b9f-9660-64fd3077c8ad">
+					<ee:variables>
+						<ee:set-variable variableName="transactionId"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.'TRANSACTION_ID']]></ee:set-variable>
+						<ee:set-variable variableName="invoiceNumber"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.'INVOICE_NUMBER']]></ee:set-variable>
+						<ee:set-variable variableName="accountNumber"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.'BILLING_ACCOUNT']]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					<validation:all doc:name="All" doc:id="769bea3e-784e-455e-9714-2a7ab1ffcd44">
+						<validation:is-not-blank-string doc:name="invoiceNumber Is not blank string" doc:id="d61a906b-b312-4fae-b598-c760f51fb2a0" value="#[vars.invoiceNumber]" message="Required parameter INVOICE_NUMBER is missing." />
+						<validation:is-not-blank-string doc:name="accountNumber Is not blank string" doc:id="f72fa0a2-6163-4561-bb32-1ec71975f099" value="#[vars.accountNumber]" message="Required parameter BILLING_ACCOUNT is missing." />
+					</validation:all>
+			</when>
+			<otherwise>
+					<ee:transform doc:name="set prepaid variables" doc:id="5f43d7a7-7765-4597-a0f2-2970593974f9">
+						<ee:variables>
+							<ee:set-variable variableName="transactionId"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.'TRANSACTION_ID']]></ee:set-variable>
+							<ee:set-variable variableName="invoiceType"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.'INVOICE_TYPE']]></ee:set-variable>
+							<ee:set-variable variableName="comments"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.'COMMENTS']]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<validation:all doc:name="All" doc:id="fa33d6e5-58fe-4b7a-b7e6-dc1665b6e70d">
+						<validation:is-not-blank-string doc:name="transactionId Is not blank string" doc:id="3d51a66e-18ec-4004-9e84-b31667b90850" value="#[vars.transactionId]" message="Required parameter TRANSACTION_ID is missing." />
+						<validation:is-not-blank-string doc:name="invoiceType Is not blank string" doc:id="6da2b8ac-2380-46d7-a09e-e56425b92e48" value="#[vars.invoiceType]" message="Required parameter INVOICE_TYPE is missing." />
+					</validation:all>
+			</otherwise>
+		</choice>
+			<ee:transform doc:name="set Zsmart Request" doc:id="d5b7173d-bffc-4dd7-bea4-8658b8030a3f">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var billingInvoicePdfPath = if ( vars.billingInvoice == "POSTPAID" ) p('zsmart-sapi.resources.queryBillPDF.path') else p('zsmart-sapi.resources.queryInvoicePDF.path')
+---
+{
+	basePath: p("zsmart-sapi.base-path"),
+	host: p("zsmart-sapi.host"),
+	port: p("zsmart-sapi.port"),
+	method: "GET",
+	path: billingInvoicePdfPath,
+	body: {
+	},
+	headers: vars.billingHeaders default {
+	},
+	queryParameters: {
+		"transactionID": vars.transactionId,
+		"invoiceType": vars.invoiceType,
+		"invoiceNumber": vars.invoiceNumber,
+		"accountNumber": vars.accountNumber,
+		"comments": vars.comments
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+vars.billingParams.'BILLING_ACCOUNT']]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+			<flow-ref doc:name="System Generic (Zsmart Billing History)" doc:id="64b63c0f-f4c5-4b51-9e40-fa6f878bc75b" name="generic-zsmart-sapi-clientSub_Flow" />
+			<ee:transform doc:name="set billingInvoicePDF response" doc:id="65707029-f2ac-4d65-a09b-21f094d77359">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var transactionId = payload.result.result.transactionID
+---
+{
+	"codeResponse": "200",
+	"messageResponse": "OK",
+	"billingInvoicePdf": {transactionID: transactionId} ++ payload.result.result.invoiceObj
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="9a760754-c03c-4ac7-99e5-dfd80355bf15" type="VALIDATION:MULTIPLE" >
+					<ee:transform doc:name="set prepaid validation error" doc:id="3b9d8c50-7429-4e1b-aaf0-2c878705c9ad" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "BILLING_INVOICE_PDF:INVALID_PARAMS",
+    "message": error.description,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

@@ -9,7 +9,7 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="get-billingAccountItem-orchestratorSub_Flow"
 		doc:id="3c655650-7cfd-46fa-bff2-99c43ce27a62">
 		<try doc:name="Try" doc:id="9230f925-15aa-4fa0-b90d-7615b92a5a6c">
-			<ee:transform doc:name="set billing params" doc:id="e8b7fa5d-a51e-40b5-8d60-354ddf910788">
+			<ee:transform doc:name="set billing variables" doc:id="e8b7fa5d-a51e-40b5-8d60-354ddf910788">
 				<ee:message />
 				<ee:variables>
 					<ee:set-variable variableName="billingParams"><![CDATA[%dw 2.0
@@ -20,8 +20,8 @@ attributes.queryParams]]></ee:set-variable>
 output application/json
 ---
 {
-	"client_secret": p('mongo-db-sapi.security.client-secret'),
-	"client_id": p('mongo-db-sapi.security.client-id'),
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
 	"name": attributes.headers.name,
 	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
 	"source": attributes.headers.source,
@@ -29,14 +29,57 @@ output application/json
 }]]></ee:set-variable>
 				</ee:variables>
 			</ee:transform>
-			<choice doc:name="Choice"
+			<choice doc:name="Choice Billing  Params"
 				doc:id="a82f0867-17f6-463a-9beb-b96f8839eef0">
 				<when
-					expression="#[attributes.queryParams.'BILLING_ACCOUNT' != null and attributes.queryParams.'BILLING_ACCOUNT' != &quot;&quot;]">
-					<ee:transform doc:name="set Zsmart Request"
-						doc:id="1f23c560-0255-48c7-b3cd-0872ff211ff9">
+					expression="#[!isEmpty(trim(vars.billingParams.'CONNECTION_NUMBER')) or !isEmpty(trim(vars.billingParams.'BILLING_ACCOUNT'))]">
+					<flow-ref doc:name="get-billingAccountItem-zsmart-request" doc:id="13a14a3e-06cb-4aac-864f-a95c46ef3094" name="get-billingAccountItem-zsmart-request"/>
+				</when>
+				<when expression="#[!isEmpty(trim(vars.billingParams.'CUSTOMER_ID_TYPE')) and !isEmpty(trim(vars.billingParams.'CUSTOMER_ID'))]" >
+					<flow-ref doc:name="get-billingAccountItem-request-by-customer" doc:id="bf7234c2-5634-48fb-8d5f-654e74b649be" name="get-billingAccountItem-request-by-customer"/>
+				</when>
+				<otherwise>
+					<raise-error doc:name="BILLING_ACCOUNT_ITEM:INVALID_PARAMS"
+						doc:id="bed226cc-d633-4c4e-8281-328993c38dd6"
+						type="BILLING_ACCOUNT_ITEM:INVALID_PARAMS"
+						description="There was an error trying to retrieve BillingAccountItem information" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c5ee9b96-e078-4134-a1e3-1738569178f9" type="BILLING_ACCOUNT_ITEM:INVALID_PARAMS">
+					<ee:transform doc:name="set billingAcountItem error" doc:id="3b9ad068-9b8e-4b5f-88c7-d8656c438c1d">
 						<ee:message>
 							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "BILLING_ACCOUNT_ITEM:INVALID_PARAMS",
+    "message": "CONNECTION_NUMBER, BILLING_ACCOUNT and (CUSTOMER_ID_TYPE - CUSTOMER_ID) combination cant be empty at the same time.",
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": "CONNECTION_NUMBER, BILLING_ACCOUNT and (CUSTOMER_ID_TYPE - CUSTOMER_ID) combination cant be empty at the same time."
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-billingAccountItem-zsmart-request" doc:id="88c66aa6-66d9-4db0-adb9-0032ec31f6af" >
+		<ee:transform doc:name="set Zsmart Request" doc:id="28414c4c-3d05-448f-b7d0-a54ea1cba9f7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn = "everywhere"
 ---
 {
@@ -58,30 +101,29 @@ output application/json skipNullOn = "everywhere"
 	uriParameters: {
 	}
 }]]></ee:set-payload>
-						</ee:message>
-						<ee:variables>
-							<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="billingAccount" ><![CDATA[%dw 2.0
 output application/json
 ---
 vars.billingParams.'BILLING_ACCOUNT']]></ee:set-variable>
-						</ee:variables>
-					</ee:transform>
-					<flow-ref
-						doc:name="System Generic (Zsmart Billing Account Item)"
-						doc:id="4e658f16-7bd0-41fd-8d9d-894205b749d8"
-						name="generic-zsmart-sapi-clientSub_Flow" />
-					<ee:transform doc:name="set billing account item response"
-						doc:id="145f4541-6fd8-497a-9250-8ac46ad94ff9">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
-output application/json
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart Billing Account Item)" doc:id="c37df95d-531b-4640-8f81-243a1a47adc8" name="generic-zsmart-sapi-clientSub_Flow" />
+		<ee:transform doc:name="set billing account item response" doc:id="d5828f7f-044d-4525-b398-4b0211b2b4db" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var zsmartResponse = payload.result.result
 ---
 {
 	"codeResponse": "200",
 	"messageResponse": "OK",
-	"accounts": [{
+	"accounts": [
+		{
+		"transactionID": zsmartResponse.transactionID,
 		"accountNumber": vars.billingAccount,
-		"items": [(payload.result.result.billAcctItemDto update {
+		"items": [(zsmartResponse.billAcctItemDto update {
 			case pb at .preBalance -> {
 				"value": if ( !isEmpty(pb) and isInteger(pb) ) pb
               else
@@ -159,17 +201,16 @@ output application/json
 		}) mapObject (v, k) -> {
 			(if ( k as String == "acctItemFeeDtoList" ) "lineItems" else k): v
 		}]
-	}]
+	}
+	]
 }]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</when>
-				<when
-					expression="#[(attributes.queryParams.'CUSTOMER_ID_TYPE' != null and attributes.queryParams.'CUSTOMER_ID_TYPE' != &quot;&quot;) and (attributes.queryParams.'CUSTOMER_ID' != null and attributes.queryParams.'CUSTOMER_ID' != &quot;&quot;)]">
-					<ee:transform doc:name="set dynamicQuery request"
-						doc:id="5dbd7ff9-bc99-4665-8fc4-d6ddcb482afa">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-billingAccountItem-request-by-customer" doc:id="be4bd14e-9576-4822-93e4-25c0284302e3" >
+		<ee:transform doc:name="set dynamicQuery request" doc:id="6232bda6-4716-452d-8261-981c7162c5c8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -198,16 +239,34 @@ output application/json
 	uriParameters: {
 	}
 }]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-					<flow-ref
-						doc:name="System Generic (MDM_CUENTA_FACTURACION)"
-						doc:id="a65cdf89-ec8b-4594-b1dd-4477b4067bae"
-						name="generic-sapi-clientSub_Flow" target="mdmCuentaFact" />
-					<ee:transform doc:name="set Zsmart Request"
-						doc:id="f9c0143b-55f3-4097-bda4-e1297bd4a0a8">
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (MDM_CUENTA_FACTURACION)" doc:id="b8a166b2-520b-4bc0-9874-5626806d2c1d" name="generic-sapi-clientSub_Flow" target="mdmCuentaFact" />
+		<ee:transform doc:name="set billing loop variables" doc:id="df3c6164-43d0-4f43-b4ed-ede26984fafe">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="billingAccounts"><![CDATA[%dw 2.0
+output application/json
+---
+vars.mdmCuentaFact.result.*"Cuenta_Facturacion"]]></ee:set-variable>
+				<ee:set-variable variableName="billingAccountItemAcc" ><![CDATA[[]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<foreach doc:name="For Each Billing Account" doc:id="91cd73fa-041b-43f5-96be-57994bbd0d24" collection="#[vars.billingAccounts]">
+			<try doc:name="Try" doc:id="3e95f26d-2813-4b1e-9115-4f91f71450dd" >
+				<logger level="INFO" doc:name="billing loop value" doc:id="c4fa928c-dfd5-41dd-a72e-142939039ca0" message='#["billing account processing: " ++ payload default ""]' />
+				<ee:transform doc:name="set billingAccount" doc:id="ce344606-35ca-4c47-af94-d4105147334d">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+				<ee:transform doc:name="set Zsmart Request" doc:id="cf4823de-2be9-4ebb-adeb-7abdb0ca8c2d">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
 output application/json skipNullOn = "everywhere"
 ---
 {
@@ -220,154 +279,164 @@ output application/json skipNullOn = "everywhere"
     headers: vars.billingHeaders default {},
     queryParameters: {
     	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
-    	"accountNumber": vars.mdmCuentaFact.result[0]."Cuenta_Facturacion",
-    	"billNumber": vars.billingParams.'INVOICE_NUMBER',
-    	"channelCode": vars.billingParams.'ORIGIN'
+		"accountNumber": vars.billingAccount,
+		"billNumber": vars.billingParams.'INVOICE_NUMBER',
+		"channelCode": vars.billingParams.'ORIGIN'
     },
     uriParameters: {}
 }]]></ee:set-payload>
-						</ee:message>
-						<ee:variables>
-							<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
-output application/json
----
-vars.mdmCuentaFact.result[0]."Cuenta_Facturacion"]]></ee:set-variable>
-						</ee:variables>
-					</ee:transform>
-					<flow-ref
-						doc:name="System Generic (Zsmart Billing Account Item)"
-						doc:id="032f2105-a0b6-4905-8f67-c681730026f7"
-						name="generic-zsmart-sapi-clientSub_Flow" />
-					<ee:transform doc:name="set billing account item response"
-						doc:id="25d9428d-69d3-47f0-817d-dad93e55b42d">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	"codeResponse": "200",
-	"messageResponse": "OK",
-	"accounts": [{
-		"accountNumber": vars.billingAccount,
-		"items": [(payload.result.result.billAcctItemDto update {
-			case pb at .preBalance -> {
-				"value": if ( !isEmpty(pb) and isInteger(pb) ) pb
+				</ee:message>
+				<ee:variables />
+			</ee:transform>
+				<flow-ref doc:name="System Generic (Zsmart Billing History)" doc:id="6a785bdb-7f0b-4f0d-85b2-ee4f6a179042" name="generic-zsmart-sapi-clientSub_Flow" />
+				<ee:transform doc:name="set billingAccountItemAcc value" doc:id="dab0ec59-2cbf-4686-acce-22a30a7bb57e">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="billingAccountItemAcc"><![CDATA[%dw 2.0
+output application/java
+var zsmartResponse = {
+	"status": "success",
+	"transactionID": payload.result.result.transactionID,
+	"accountNumber": vars.billingAccount,
+	"items": [(payload.result.result.billAcctItemDto update {
+		case pb at .preBalance -> {
+			"value": if ( !isEmpty(pb) and isInteger(pb) ) pb
               else
                 "0",
-				"formatted": if ( !isEmpty(pb) and isInteger(pb) ) pb as Number as String {
-					format: "\$#,##0.00"
-				}
+			"formatted": if ( !isEmpty(pb) and isInteger(pb) ) pb as Number as String {
+				format: "\$#,##0.00"
+			}
               else
                 "0" as Number as String {
-					format: "\$#,##0.00"
-				}
+				format: "\$#,##0.00"
 			}
+		}
           case due at .due -> {
-				"value": if ( !isEmpty(due) and isInteger(due) ) due
+			"value": if ( !isEmpty(due) and isInteger(due) ) due
               else
                 "0",
-				"formatted": if ( !isEmpty(due) and isInteger(due) ) due as Number as String {
-					format: "\$#,##0.00"
-				}
+			"formatted": if ( !isEmpty(due) and isInteger(due) ) due as Number as String {
+				format: "\$#,##0.00"
+			}
               else
                 "0" as Number as String {
-					format: "\$#,##0.00"
-				}
+				format: "\$#,##0.00"
 			}
+		}
           case ac at .adjustCharge -> {
-				"value": if ( !isEmpty(ac) and isInteger(ac) ) ac
+			"value": if ( !isEmpty(ac) and isInteger(ac) ) ac
               else
                 "0",
-				"formatted": if ( !isEmpty(ac) and isInteger(ac) ) ac as Number as String {
-					format: "\$#,##0.00"
-				}
+			"formatted": if ( !isEmpty(ac) and isInteger(ac) ) ac as Number as String {
+				format: "\$#,##0.00"
+			}
               else
                 "0" as Number as String {
-					format: "\$#,##0.00"
-				}
+				format: "\$#,##0.00"
 			}
+		}
           case dc at .disputeCharge -> {
-				"value": if ( !isEmpty(dc) and isInteger(dc) ) dc
+			"value": if ( !isEmpty(dc) and isInteger(dc) ) dc
               else
                 "0",
-				"formatted": if ( !isEmpty(dc) and isInteger(dc) ) dc as Number as String {
-					format: "\$#,##0.00"
-				}
+			"formatted": if ( !isEmpty(dc) and isInteger(dc) ) dc as Number as String {
+				format: "\$#,##0.00"
+			}
               else
                 "0" as Number as String {
-					format: "\$#,##0.00"
-				}
+				format: "\$#,##0.00"
 			}
+		}
           case rc at .recvCharge -> {
-				"value": if ( !isEmpty(rc) and isInteger(rc) ) rc
+			"value": if ( !isEmpty(rc) and isInteger(rc) ) rc
               else
                 "0",
-				"formatted": if ( !isEmpty(rc) and isInteger(rc) ) rc as Number as String {
-					format: "\$#,##0.00"
-				}
+			"formatted": if ( !isEmpty(rc) and isInteger(rc) ) rc as Number as String {
+				format: "\$#,##0.00"
+			}
               else
                 "0" as Number as String {
-					format: "\$#,##0.00"
-				}
+				format: "\$#,##0.00"
 			}
+		}
           case li at .acctItemFeeDtoList -> li map ((item, index) -> item update {
-				case chrg at .charge -> {
-					"value": if ( !isEmpty(chrg) and isInteger(chrg) ) chrg
+			case chrg at .charge -> {
+				"value": if ( !isEmpty(chrg) and isInteger(chrg) ) chrg
                   else
                     "0",
-					"formatted": if ( !isEmpty(chrg) and isInteger(chrg) ) chrg as Number as String {
-						format: "\$#,##0.00"
-					}
+				"formatted": if ( !isEmpty(chrg) and isInteger(chrg) ) chrg as Number as String {
+					format: "\$#,##0.00"
+				}
                   else
                     "0" as Number as String {
-						format: "\$#,##0.00"
-					}
+					format: "\$#,##0.00"
 				}
-			})
-		}) mapObject (v, k) -> {
-			(if ( k as String == "acctItemFeeDtoList" ) "lineItems" else k): v
-		}]
+			}
+		})
+	}) mapObject (v, k) -> {
+		(if ( k as String == "acctItemFeeDtoList" ) "lineItems" else k): v
 	}]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</when>
-				<otherwise>
-					<raise-error doc:name="BILLING_ACCOUNT_ITEM:INVALID_PARAMS"
-						doc:id="bed226cc-d633-4c4e-8281-328993c38dd6"
-						type="BILLING_ACCOUNT_ITEM:INVALID_PARAMS"
-						description="There was an error trying to retrieve BillingAccountItem information" />
-				</otherwise>
-			</choice>
-			<error-handler>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c5ee9b96-e078-4134-a1e3-1738569178f9" type="BILLING_ACCOUNT_ITEM:INVALID_PARAMS">
-					<ee:transform doc:name="set error" doc:id="3b9ad068-9b8e-4b5f-88c7-d8656c438c1d">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
+}
+---
+vars.billingAccountItemAcc + zsmartResponse]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+				<error-handler >
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="9fb93d5d-d266-4380-96bd-7fa318bf1504" >
+						<ee:transform doc:name="set billingAccountItemAcc value" doc:id="2240910b-fa64-4d52-8747-7d7d878c86dc" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="billingAccountItemAcc" ><![CDATA[%dw 2.0
+output application/java
+var zsmartResponse = {
+	"status": "failed",
+	"accountNumber": vars.billingAccount,
+	"billingError": error.description
+}
+---
+vars.billingAccountItemAcc + zsmartResponse]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</foreach>
+		<ee:transform doc:name="set billing account item response" doc:id="04d8c7d2-2d5f-4217-a083-12a7cd339ac6" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+var totalCount = sizeOf(vars.billingAccountItemAcc) default 0
+var successCount = sizeOf(vars.billingAccountItemAcc filter ($.status == "success")) default 0
+var failedCount = sizeOf(vars.billingAccountItemAcc filter ($.status == "failed")) default 0
+var successAccounts = vars.billingAccountItemAcc filter ($.status == "success") default []
+var failedAccounts = vars.billingAccountItemAcc filter ($.status == "failed") default []
 ---
 {
-    "status": "400",
-    "code": "BILLING_ACCOUNT_ITEM:INVALID_PARAMS",
-    "message": "At least 'BILLING_ACCOUNT' or both 'CUSTOMER_ID_TYPE' and 'CUSTOMER_ID' must be provided.",
-    "messageServer": error.description,
-    "cause": [
-        {
-            "origin": "customer-papi-services-v2",
-            "message": "At least 'BILLING_ACCOUNT' or both 'CUSTOMER_ID_TYPE' and 'CUSTOMER_ID' must be provided."
-        }
-    ]
+	"codeResponse": if ( failedCount == 0 ) "200" 
+          else if ( failedCount < totalCount ) "207" 
+          else "500",
+	"messageResponse": if ( failedCount == 0 ) "OK" 
+          else if ( failedCount < totalCount ) "PARTIAL_SUCCESS" 
+          else "FAILED",
+	"accounts": successAccounts map $ - "status",
+	"failedAccounts": failedAccounts,
+	"summary": {
+		"totalAccounts": totalCount,
+		"processedAccounts": successCount,
+		"failedAccounts": failedCount
+	}
 }]]></ee:set-payload>
-						</ee:message>
-						<ee:variables>
-							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
-output application/java
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+var totalCount = sizeOf(vars.billingAccountItemAcc) default 0
+var failedCount = sizeOf(vars.billingAccountItemAcc filter ($.status == "failed")) default 0
 ---
-400]]></ee:set-variable>
-						</ee:variables>
-					</ee:transform>
-				</on-error-continue>
-			</error-handler>
-		</try>
+if ( failedCount == 0 ) 200 
+          else if ( failedCount < totalCount ) 207 
+          else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
 	</sub-flow>
 </mule>
