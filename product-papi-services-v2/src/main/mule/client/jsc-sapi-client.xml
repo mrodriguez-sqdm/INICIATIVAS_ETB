@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-rechargeLine-client" doc:id="caf2367a-b4f1-415f-8c46-0370f28bc4ed" >
+		<try doc:name="Try" doc:id="e73086d5-e465-4c37-a49e-0a087642c777" >
+			<http:request doc:name="Recharge Line Balance" doc:id="2766b898-ffcd-4b22-aa4c-0d039c1d6d9b" config-ref="HTTP_Request_configuration_jsc" method="POST" path="${jsc-sapi.recharge.path}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id')
+}]]]></http:headers>
+			</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="006d57c5-4a54-4de3-a21d-561d86643ae5" >
+					<set-variable value="#[p('jsc-sapi.recharge.errorMessage')]" doc:name="Set Error Message" doc:id="479527a4-2ace-4ad7-8946-76e6b157cccf" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-subscription-client-by-msisdn" doc:id="get-subscription-by-msisdn-001" >
+		<try doc:name="Try" doc:id="try-get-subscription">
+			<http:request method="GET" doc:name="Get subscription" doc:id="http-get-subscription" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.subscription.path}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	("processName": vars.processname) if (vars.processname != null),
+	("logs": vars.logs) if (vars.logs != null)
+}]]]></http:headers>
+				<http:query-params><![CDATA[#[output application/java
+---
+{
+	"msisdn" : vars.connectionNumber
+}]]]></http:query-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate">
+					<set-variable value="#[p('jsc-sapi.subscription.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-endOrder-client" doc:id="patch-end-order-001" >
+		<try doc:name="Try" doc:id="try-patch-end-order">
+			<http:request method="PATCH" doc:name="End order" doc:id="http-patch-end-order" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.order.endOrder.path}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	("processName": vars.processname) if (vars.processname != null),
+	("logs": vars.logs) if (vars.logs != null)
+}]]]></http:headers>
+				<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"id" : vars.orderObject.id
+}]]]></http:uri-params>
+				<http:query-params><![CDATA[#[output application/java
+---
+{
+	"action" : p('jsc-sapi.order.endOrder.action')
+}]]]></http:query-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate">
+					<set-variable value="#[p('jsc-sapi.order.endOrder.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+<sub-flow name="post-order-client" doc:id="7cf697ed-64e3-49d6-a2b9-7ed61aca61ec" >
+		<try doc:name="Try" doc:id="d58bf714-e07f-4421-ad0f-a69e14763704" >
+			<http:request method="POST" doc:name="Post order" doc:id="41e1b8a1-3906-4c61-baee-5a37848f0887" config-ref="HTTP_Request_configuration_jsc" path="${jsc-sapi.order.path}" target="orderObject">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('jsc-sapi.client_secret'),
+	
+	"client_id" : p('jsc-sapi.client_id'),
+	"correlationId" : correlationId,
+	("systemId" : vars.systemId) if (vars.systemId != null),
+	"processName": vars.processname,
+	"logs": vars.logs
+}]]]></http:headers>
+		</http:request>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="295e166d-1094-4838-8ed1-ec002861fe42" >
+					<set-variable value="#[p('jsc-sapi.order.errorMessage')]" doc:name="Set Error Message" doc:id="0e614b02-08b7-4aa0-ae5d-30404a677e93" variableName="errorMessageOutput" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	
+</sub-flow>
+</mule>
