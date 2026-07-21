@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="product-consultation-orchestratorSub_Flow" doc:id="a1b2c3d4-prod-consult-0001">
+		<set-variable value="#[attributes.queryParams]" doc:name="parameters" doc:id="b2c3d4e5-prod-consult-0002" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="headers" doc:id="c3d4e5f6-prod-consult-0003" variableName="headers" />
+		<choice doc:name="Route by productType" doc:id="d4e5f6a7-prod-consult-0004">
+			<when expression="#[upper(trim(vars.parameters.productType default &quot;&quot;)) == &quot;SVAS&quot;]">
+				<set-variable value="#[(vars.parameters.connectionNumber default vars.parameters.product default &quot;&quot;) as String]" doc:name="connectionNumber" doc:id="e5f6a7b8-prod-consult-0005" variableName="connectionNumber" />
+				<choice doc:name="MSISDN present" doc:id="f6a7b8c9-prod-consult-0006">
+					<when expression="#[not isEmpty(trim(vars.connectionNumber default &quot;&quot;))]">
+						<flow-ref doc:name="JSC subscription by msisdn" doc:id="a7b8c9d0-prod-consult-0007" name="get-subscription-client-by-msisdn" />
+						<choice doc:name="Subscription found" doc:id="b8c9d0e1-prod-consult-0008">
+							<when expression="#[!isEmpty(payload.content default []) and payload.content[0].id != null]">
+								<set-variable value="#[payload]" doc:name="subscriptionResponse" doc:id="c9d0e1f2-prod-consult-0009" variableName="subscriptionResponse" />
+								<set-variable value="#[payload.content[0].id]" doc:name="subscriptionId" doc:id="d0e1f2a3-prod-consult-0010" variableName="subscriptionId" />
+								<set-variable value="#[trim((vars.parameters.cdrDetailType default '') as String)]" doc:name="cdrDetailType" variableName="cdrDetailType" />
+								<choice doc:name="Validate cdrDetailType">
+									<when expression="#[isEmpty(vars.cdrDetailType)]">
+										<set-variable value="#[400]" doc:name="httpStatus 400" variableName="httpStatus" />
+										<ee:transform doc:name="Missing cdrDetailType">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "VALIDATION_ERROR",
+  message: { message: "cdrDetailType is mandatory" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									</when>
+									<otherwise>
+										<flow-ref doc:name="JSC consumption details" doc:id="e1f2a3b4-prod-consult-0011" name="product-consultation-get-consumptionSub_Flow" />
+										<set-variable value="#[payload]" doc:name="consumptionResponse" doc:id="f2a3b4c5-prod-consult-0012" variableName="consumptionResponse" />
+										<ee:transform doc:name="Grouping numbers from consumption" doc:id="a3b4c5d6-prod-consult-0013">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.consumptionResponse]]></ee:set-payload>
+											</ee:message>
+											<ee:variables>
+												<ee:set-variable variableName="groupingNumbers"><![CDATA[%dw 2.0
+output application/java
+var c = vars.consumptionResponse
+var fromDetails = flatten((c.details default []) map ((d) -> [d.Num_Agrupacion, d.num_agrupacion] filter ($ != null and $ != "")))
+var fromRoot = [c.Num_Agrupacion, c.num_agrupacion] filter ($ != null and $ != "")
+var merged = (fromDetails ++ fromRoot) filter ($ != null and $ != "")
+---
+merged distinctBy ($ as String) map ((n) -> n as Number)]]></ee:set-variable>
+											</ee:variables>
+										</ee:transform>
+										<choice doc:name="Need commercial catalog for grouping" doc:id="b4c5d6e7-prod-consult-0014">
+											<when expression="#[sizeOf(vars.groupingNumbers default []) == 0]">
+												<flow-ref doc:name="Mongo commercial catalog" doc:id="c5d6e7f8-prod-consult-0015" name="get-commercial-catalog-product-consultationSub_Flow" />
+												<ee:transform doc:name="Grouping numbers from catalog" doc:id="d6e7f8a9-prod-consult-0016">
+													<ee:message>
+														<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+													</ee:message>
+													<ee:variables>
+														<ee:set-variable variableName="groupingNumbers"><![CDATA[%dw 2.0
+output application/java
+var cc = payload
+var nums = if (cc is Array)
+  flatten(cc map ((row) -> row.Num_Agrupacion default row.num_agrupacion))
+else if (cc.Num_Agrupacion != null)
+  if (cc.Num_Agrupacion is Array) cc.Num_Agrupacion else [cc.Num_Agrupacion]
+else []
+---
+(nums filter ($ != null)) distinctBy ($ as String) map ($ as Number)]]></ee:set-variable>
+													</ee:variables>
+												</ee:transform>
+											</when>
+										</choice>
+										<choice doc:name="Call mongo offers" doc:id="e7f8a9b0-prod-consult-0017">
+											<when expression="#[sizeOf(vars.groupingNumbers default []) > 0]">
+												<ee:transform doc:name="Body for mongo POST" doc:id="f8a9b0c1-prod-consult-0018">
+													<ee:message>
+														<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.groupingNumbers]]></ee:set-payload>
+													</ee:message>
+												</ee:transform>
+												<flow-ref doc:name="Mongo product offer by grouping" doc:id="a9b0c1d2-prod-consult-0019" name="post-product-offer-by-groupingSub_Flow" />
+												<set-variable value="#[payload]" doc:name="offersResponse" doc:id="b0c1d2e3-prod-consult-0020" variableName="offersResponse" />
+											</when>
+											<otherwise>
+												<set-variable value="#[null]" doc:name="offersResponse null" doc:id="c1d2e3f4-prod-consult-0021" variableName="offersResponse" />
+											</otherwise>
+										</choice>
+										<ee:transform doc:name="Success response SVAS" doc:id="d2e3f4a5-prod-consult-0022">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  responseCode: "200",
+  response: {
+    SVAS: {
+      origin: vars.parameters.origin,
+      ip: vars.parameters.ip,
+      category: vars.parameters.category,
+      product: vars.parameters.product,
+      cdrDetailType: vars.cdrDetailType,
+      subscription: vars.subscriptionResponse,
+      consumption: vars.consumptionResponse,
+      offers: vars.offersResponse,
+      groupingNumbersUsed: vars.groupingNumbers
+    }
+  }
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									</otherwise>
+								</choice>
+							</when>
+							<otherwise>
+								<set-variable value="#[404]" doc:name="httpStatus 404" doc:id="e3f4a5b6-prod-consult-0023" variableName="httpStatus" />
+								<ee:transform doc:name="Subscription not found" doc:id="f4a5b6c7-prod-consult-0024">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 404,
+  code: "NOT_FOUND",
+  message: { message: "No subscription found for the given MSISDN" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</otherwise>
+						</choice>
+					</when>
+					<otherwise>
+						<set-variable value="#[400]" doc:name="httpStatus 400" doc:id="a5b6c7d8-prod-consult-0025" variableName="httpStatus" />
+						<ee:transform doc:name="Missing MSISDN" doc:id="b6c7d8e9-prod-consult-0026">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "VALIDATION_ERROR",
+  message: { message: "For productType SVAS, connectionNumber or product (MSISDN) is required" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<set-variable value="#[400]" doc:name="httpStatus 400" doc:id="c7d8e9f0-prod-consult-0027" variableName="httpStatus" />
+				<ee:transform doc:name="Unsupported productType" doc:id="d8e9f0a1-prod-consult-0028">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "UNSUPPORTED_PRODUCT_TYPE",
+  message: { message: "productType not implemented. Supported: SVAS" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
