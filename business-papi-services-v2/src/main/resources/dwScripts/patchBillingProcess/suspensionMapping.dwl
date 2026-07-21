@@ -30,7 +30,7 @@ output application/json  skipNullOn = "everywhere"
 		"comments": transaction.comments
 	},
 	// services Mapping
-	("billProdInstList": {
+	("billProdInst": {
 		"operate": operation,
 		"serviceNumber": service.serviceNumber,
 		"socialLevel": service.socialLevel,
