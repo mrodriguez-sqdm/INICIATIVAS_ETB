@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-generate-invoice-PDF-orchestratorSub_Flow" doc:id="845eab2f-6dee-4ac8-80f5-1d6cc77e60b4" >
+		<choice doc:name="Choice" doc:id="d01aa050-0070-4be6-afb6-de10ebc31ff7" >
+			<when expression="vars.httpStatusCode == 201 or vars.httpStatusCode == 200">
+				<ee:transform doc:name="set generate-invoice-PDF params" doc:id="2fe2ef0d-e93e-4edc-92ed-abb213feaebd">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="queryHeaders"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				<ee:set-variable variableName="RequestInvoicePDF"><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<ee:transform doc:name="set Zsmart Request" doc:id="d407fa6a-fc95-4686-84a1-4b7e8955a047">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "GET",
+    path: p('zsmart-sapi.resources.querySuscriberProfile.path'),
+    body: vars.RequestInvoicePDF,
+    headers: vars.queryHeaders default {},
+    queryParameters: {
+    	"serviceNumber": vars.queryParams.serviceNumber,
+    	"areaCode": vars.queryParams.areaCode
+    },
+    uriParameters: {}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables />
+		</ee:transform>
+				<flow-ref doc:name="System Generic (Zsmart generate-invoice-PDF)" doc:id="ac67a6c3-c7db-471c-ad8f-2922dc07800b" name="generic-zsmart-sapi-clientSub_Flow" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="RECARGA FALLIDA" doc:id="b49270c3-b1ba-479b-89bc-6f61a9a7b4b5" message='#[%dw 2.0&#10;output text/plain&#10;---&#10;"Recarga Fallida, No es posible notificar la recarga a Zsmart: " ++&#10;(write(payload, "application/json")) ++&#10;" | Status: " ++&#10;((attributes.statusCode default "N/A") as String)]' />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
