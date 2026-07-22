@@ -21,7 +21,8 @@
         "SUSPENSION_FRAUD",
         "VOLUNTARY_CANCELLATION",
         "STRATUM_CHANGE",
-        "SVA"
+        "SVA",
+        "ADD_CHARGE"
       ],
       "description": "Discriminador del proceso de negocio. Determina que rama del oneOf aplica."
     }
@@ -3520,6 +3521,180 @@
         "offers"
       ],
       "additionalProperties": false
+    },
+    "AddCharge": {
+      "type": "object",
+      "description": "ADD_CHARGE — Agrega un cargo ad-hoc a la cuenta del subscriptor (ZSmart serviceEventId=804, Charge additional fee). Cubre cargos ad-hoc genericos y Retoma de Equipos (usar itemTypeCode=EQUIP_CHANGE_FEE con basicCharge positivo). No modifica estado del servicio, oferta ni datos del subscriptor -- solo header + chargeList.",
+      "properties": {
+        "processCode": {
+          "type": "string",
+          "enum": [
+            "ADD_CHARGE"
+          ]
+        },
+        "transaction": {
+          "type": "object",
+          "description": "-> header",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Unique transaction ID (string in this process, unlike other branches). -> header.transactionId"
+            },
+            "timestamp": {
+              "type": "string",
+              "minLength": 19,
+              "maxLength": 19,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+              "description": "Operation timestamp YYYY-MM-DD HH:MM:SS. -> header.createDate"
+            },
+            "orderItemId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 22,
+              "description": "CRM order item ID. -> header.orderItemId"
+            },
+            "serviceNumber": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30,
+              "description": "CRM subscriber instance ID for this order. -> header.serviceNumber"
+            },
+            "prodInstId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "CRM subscriber instance ID for this order. -> header.prodIntsId"
+            },
+            "salesChannel": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                4,
+                5,
+                7,
+                106
+              ],
+              "description": "Channel ID. -> header.salesChannel"
+            },
+            "salesDepartment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10,
+              "description": "DANE department code of sales agent. -> header.salesDepartment"
+            },
+            "salesCity": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10,
+              "description": "DANE city code of sales agent. -> header.salesCity"
+            },
+            "custId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "ZSmart customer ID. -> header.custId"
+            },
+            "acctId": {
+              "type": "integer",
+              "maximum": 999999999999999,
+              "description": "ZSmart account ID. -> header.acctId"
+            },
+            "po": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "Purchase order number. -> header.po"
+            },
+            "billType": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "1=Monthly invoice (default), 2=Sales invoice. -> header.billType"
+            },
+            "comments": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "Order comments. -> header.comments"
+            }
+          },
+          "required": [
+            "id",
+            "timestamp",
+            "orderItemId"
+          ],
+          "additionalProperties": false
+        },
+        "charges": {
+          "type": "array",
+          "minItems": 1,
+          "description": "-> chargeList (charge.prodInstId resuelto por business-papi desde services[].prodInstId)",
+          "items": {
+            "type": "object",
+            "properties": {
+              "billingNbr": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 30,
+                "description": "Service number with prefix (e.g. 601-5551234). -> charge.billingNbr"
+              },
+              "basicCharge": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 30,
+                "description": "Charge amount in PESO. Must be positive. -> charge.basicCharge"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "1",
+                  "7"
+                ],
+                "description": "1=One-off charge/Installment, 7=Advance payment. -> charge.chargeType"
+              },
+              "acctId": {
+                "type": "integer",
+                "maximum": 999999999999999,
+                "description": "Account ID. Optional, resolved by business-papi if not sent. -> charge.acctId"
+              },
+              "acctItemTypeCode": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 30,
+                "description": "Account item type code configured in ZSmart. -> charge.acctItemTypeCode"
+              },
+              "currencyId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4,
+                "description": "Currency. 1=PESO (default). -> charge.currencyId"
+              },
+              "paidFlag": {
+                "type": "string",
+                "enum": [
+                  "Y",
+                  "N"
+                ],
+                "description": "Y=paid in CRM, N=collect in ZSmart. -> charge.paidFlag"
+              }
+            },
+            "required": [
+              "basicCharge",
+              "type",
+              "acctItemTypeCode",
+              "currencyId",
+              "paidFlag"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "processCode",
+        "transaction"
+      ],
+      "additionalProperties": false
     }
   },
   "if": {
@@ -3685,6 +3860,18 @@
                               },
                               "then": {
                                 "$ref": "#/definitions/Sva"
+                              },
+                              "else": {
+                                "if": {
+                                  "properties": {
+                                    "processCode": {
+                                      "const": "ADD_CHARGE"
+                                    }
+                                  }
+                                },
+                                "then": {
+                                  "$ref": "#/definitions/AddCharge"
+                                }
                               }
                             }
                           }

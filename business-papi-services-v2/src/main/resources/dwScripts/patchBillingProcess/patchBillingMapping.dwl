@@ -5,6 +5,7 @@ output application/java
 (vars.processCode) match {
 	case "PLAN_CHANGE" -> readUrl('classpath://dwScripts/patchBillingProcess/planChangeMapping.dwl', 'text/plain')
 	case "PLAN_CHANGE_BUNDLE" -> readUrl('classpath://dwScripts/patchBillingProcess/planChangeMapping.dwl', 'text/plain')
+	case "ADD_CHARGE" -> readUrl('classpath://dwScripts/patchBillingProcess/addChargeMapping.dwl', 'text/plain')
 	case "SVA" -> readUrl('classpath://dwScripts/patchBillingProcess/svaMapping.dwl', 'text/plain')
 	case "SUSPENSION" -> readUrl('classpath://dwScripts/patchBillingProcess/suspensionMapping.dwl', 'text/plain')
 	case "RESTORATION" -> readUrl('classpath://dwScripts/patchBillingProcess/restorationMapping.dwl', 'text/plain')
