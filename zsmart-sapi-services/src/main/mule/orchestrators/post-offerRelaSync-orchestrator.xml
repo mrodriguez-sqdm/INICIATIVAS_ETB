@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="offerRelaSync-zsmart-orchestrator" doc:id="8315182d-4c3e-4b74-a509-9c98472e90c7" >
+		<try doc:name="Try" doc:id="3bd2cb18-8d7e-484e-b72b-060824f1086c" >
+			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="72ce3fa4-ec99-4a2d-a687-a620fd56ac60" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /offerRelaSync"]' />
+			<ee:transform doc:name="Transform Message" doc:id="0fb6e708-83b1-416b-9028-bb84559bc1f2" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+    access_token: p('secure::zsmart.offerRelaSyncToken'),
+    method: "offerRelaSynchronization",
+    version: "1.0",
+    content: payload
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="billing-zsmart-client" doc:id="e65660b3-b65b-4e25-8d84-e6c4557a0f4c" name="billing-zsmart-client" />
+			<choice doc:name="Choice" doc:id="55a5849b-f87b-45ff-a00c-c21d5710beda" >
+				<when expression='#[(payload.res_code != "00000" or payload.result.responseCode != "0000")]' >
+					<ee:transform doc:name="Transform Message" doc:id="50d980a0-5ff5-40b5-a7a8-eb04b5badfd4" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="zsmartError" ><![CDATA[%dw 2.0
+output application/json
+var resCode = payload.res_code
+var resultResCode = payload.result.responseCode
+var resMessage = payload.res_message
+var resultResMessage = payload.result.responseMessage
+---
+if(resCode != "00000" and resultResCode != "0000")
+    resMessage ++ " - " ++ resultResMessage
+else if( resCode != "00000")
+    resMessage
+else if(resultResCode != "0000")  
+    resultResMessage
+else "Unexpected Error Processing Zsmart User Profile"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<choice doc:name="Choice" doc:id="074bb0bc-c39f-494c-9620-618c866b012e" >
+						<when expression="payload.result?" >
+							<raise-error doc:name="ZSMART:BUSINESS_ERROR" doc:id="d0c34c6d-2c87-4373-a81c-ca2c56bd9cb4" type="ZSMART:BUSINESS_ERROR" description="#[vars.zsmartError]" />
+						</when>
+						<otherwise >
+							<raise-error doc:name="ZSMART:SYSTEM_ERROR" doc:id="363623e1-dbf3-4901-97b9-e7234a59d756" type="ZSMART:SYSTEM_ERROR" description="#[vars.zsmartError]" />
+						</otherwise>
+					</choice>
+				</when>
+				<otherwise >
+					<ee:transform doc:name="set response" doc:id="5ef7cfd1-2e34-4d90-b53c-1ee94abe1d1b" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "200",
+  "message": "Success",
+  "result": payload
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</otherwise>
+			</choice>
+			<logger level="INFO" doc:name="Log Orchestration End" doc:id="4ec4a75a-d536-4739-91c8-375d11d990b6" message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /offerRelaSync"]' />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="15761911-9249-438a-a1db-327da8755542" type="ZSMART:BUSINESS_ERROR" >
+					<ee:transform doc:name="set business error" doc:id="4694bb28-4a5b-4b6a-8458-2734452bc7f1" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "ZSMART:BUSINESS_ERROR",
+    "message": error.description,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "zsmart-sapi-services",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="2b4e3a2c-be10-4d7c-869a-3854928b2230" type="ZSMART:SYSTEM_ERROR" >
+					<ee:transform doc:name="set system error" doc:id="2135e4f6-e4e2-424d-8fd6-51898e955853" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "500",
+    "code": "ZSMART:SYSTEM_ERROR",
+    "message": error.description,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "zsmart-sapi-services",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
