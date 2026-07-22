@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="get-subscription-by-msisdn-orchestratorSub_Flow">
+		<try doc:name="Try">
+			<flow-ref doc:name="Get subscription from JSC" name="get-subscription-client-by-msisdn" />
+			<choice doc:name="Subscription found">
+				<when expression="#[(sizeOf(payload.content default []) &gt; 0) or (payload.id != null)]">
+					<ee:transform doc:name="Map JSC to OUT (English keys only)">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var p = payload
+var sub = if (sizeOf(p.content default []) > 0) p.content[0] else p
+var pp = sub.priceplan default {}
+var bal = if (sub.balance is Object) (sub.balance.amount default sub.balance) else sub.balance
+---
+{
+  code: 200,
+  idSubscription: sub.id,
+  planName: pp.pricePlanName default pp.name default "",
+  status: sub.status,
+  billingType: sub.billingType,
+  balance: bal,
+  externalId: sub.externalID,
+  subscriberId: (sub.subscriber default {}).id default ""
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<otherwise>
+					<ee:transform doc:name="Not found">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 404,
+	"code": "NOT_FOUND",
+	"message": {
+		"message": "Subscription not found for the given MSISDN."
+	},
+	"messageServer": "",
+	"cause": [{
+		"origin": app.name,
+		"message": "org.mule.extension.http.api.request.validator.NotFoundException"
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue">
+					<ee:transform doc:name="Error output">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "SUBSCRIPTION_QUERY",
+	"message": {
+	  "message": (vars.errorMessageOutput default "") ++ (if (!isEmpty(error.muleMessage.typedValue.message.message default "")) " JSC: " ++ error.muleMessage.typedValue.message.message else "")
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
