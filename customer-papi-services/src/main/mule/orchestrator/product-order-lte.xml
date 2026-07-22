@@ -655,6 +655,30 @@ payload ++ {
 			</otherwise>
 		</choice>
 	</sub-flow>
+	<sub-flow name="product-order-get-customer-lteSub_Flow" doc:id="94e2655b-5326-4f11-ae83-d0b4ca611b97" >
+		<ee:transform doc:name="Transform Message" doc:id="7d3aa8a7-4c50-4d21-a2a2-716f267a4569" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  query: {
+    find: "MDM_CLIENTE",
+    filter: {
+      Tipo_Documento: vars.reqIn.requestCustomer.documentType,
+      Numero_Identificacion: vars.reqIn.requestCustomer.documentNumber
+    },
+    projection: {
+      "_id": 0,
+      Correo_Electronico: 1,
+      Nombres: 1
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="5fec432a-9a16-4572-a346-8bc6187cbc9e" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+	</sub-flow>
 	<sub-flow name="post-set-order-phase(InventarioExitoso)-Sub_Flow" doc:id="f8928b35-4a09-47df-a11c-5f5cd3ad8956" >
 		<ee:transform doc:name="Transform Message" doc:id="5b230d04-3e23-4023-9cc4-35ca0d6f8c50" >
 			<ee:message >
@@ -678,6 +702,7 @@ output application/json
 			</ee:message>
 		</ee:transform>
 		<flow-ref doc:name="post-order-phases-sapi-client-sub-flow" doc:id="ba88f2ba-9fff-4136-a7b2-4fceb38d4996" name="post-order-phases-sapi-client-sub-flow" />
+		<flow-ref doc:name="product-order-get-customer-lteSub_Flow" doc:id="01424cc4-970b-48c8-a28e-15258fafe555" name="product-order-get-customer-lteSub_Flow" target="responseGetCustomer"/>
 		<ee:transform doc:name="Transform Message" doc:id="81622a88-6d3e-4b72-b59a-4a3d8486a595" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
@@ -714,11 +739,12 @@ fun colombiaDateTime() =
         MSISDN: resources.msisdn default "",
         IMSI: resources.imsi default "",
         Numero_Documento: reqIn.requestCustomer.documentNumber default "",
+        Tipo_Documento: reqIn.requestCustomer.documentType default "",
         Numero_Orden: orderId,
         ParametrosResponsys: [
           {
             Parametro: "EMAIL_ADDRESS_",
-            Valor: reqIn.email default ""
+            Valor: vars.responseGetCustomer.result[0].Correo_Electronico default ""
           },
           {
             Parametro: "MOBILE_NUMBER_",
@@ -726,7 +752,7 @@ fun colombiaDateTime() =
           },
           {
             Parametro: "NOMBRE",
-            Valor: reqIn.fullName default ""
+            Valor: vars.responseGetCustomer.result[0].Nombres default ""
           },
           {
             Parametro: "ICCID",
@@ -738,7 +764,7 @@ fun colombiaDateTime() =
           },
           {
             Parametro: "CEDULA",
-            Valor: reqIn.documentNumber default ""
+            Valor: reqIn.requestCustomer.documentNumber default "",
           },
           {
             Parametro: "URL_MANUAL_EQUIPO",
@@ -750,7 +776,6 @@ fun colombiaDateTime() =
           }
         ],
         Reenvio: [],
-        Tipo_Documento: reqIn.documentType default "",
         Tramite: reqIn.processType default ""
       }
     ]
