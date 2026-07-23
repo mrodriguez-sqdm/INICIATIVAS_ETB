@@ -205,15 +205,53 @@ payload.result]]></ee:set-variable>
 	</sub-flow>
 	<sub-flow name="save-message-audit" doc:id="7ce1facc-b7f1-49a9-97a0-b9a8cacd8c59" >
 		<async doc:name="Async" doc:id="e4d543b2-4f97-4e1a-b7e0-f40e0568862b" >
-			<ee:transform doc:name="set mongo sapi comm message request" doc:id="b178da0a-0360-4d6c-a2db-84c98d192200" >
-				<ee:message >
-					<ee:set-payload ><![CDATA[%dw 2.0
+			<ee:transform doc:name="set mongo sapi comm message request" doc:id="b178da0a-0360-4d6c-a2db-84c98d192200">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
 output application/json
+var initialRequest = vars.initialPayload
+var response = payload
+var campaign = vars.relatedCampaign
 ---
-vars.initialPayload ++ {notificationResult:payload.result}]]></ee:set-payload>
+{
+	"notificationId": response.result.notificationId,
+	"provider": response.result.provider,
+	"state": "completed",
+	"priority": initialRequest.priority,
+	"messageChannel": initialRequest.messageChannel,
+	"messageType": initialRequest.messageType,
+	"messageContent": initialRequest.messageContent default "NO CONTENT",
+	"redirectionLink": "NO LINK",
+	"templateSubject": campaign.description default "NO SUBJECT",
+	"templateId": initialRequest.template.id,
+	"templateName": campaign.campaignName default initialRequest.template.id,
+	"templateVariables": initialRequest.templateVariables map $,
+	"sender": {
+		"documentNumber": initialRequest.sender.documentNumber default "N/A",
+		"documentType": initialRequest.sender.documentType default "N/A",
+		"name": initialRequest.sender.name default "N/A",
+		"phoneNumber": initialRequest.sender.phoneNumber  default "N/A",
+		"email": initialRequest.sender.email default "N/A"
+	},
+	"receiver": {
+		"documentNumber": initialRequest.receiver.documentNumber default "N/A",
+		"documentType": initialRequest.receiver.documentType default "N/A",
+		"name": initialRequest.receiver.name default "N/A",
+		"phoneNumber": initialRequest.receiver.phoneNumber default "N/A",
+		"email": initialRequest.receiver.email default "N/A"
+	},
+	"concept": (initialRequest.messageType default "NOTIFICATION") ++ " - " ++ (initialRequest.messageChannel default "UNKNOWN"),
+	"creationDate": now() as DateTime as String {
+		format: "YYYY-MM-dd'T'HH:mm:ss"
+	},
+	"providerCreationDate": response.result.notificationSendingDate,
+	"updatedDate": now() as DateTime as String {
+		format: "YYYY-MM-dd'T'HH:mm:ss"
+	}
+}]]></ee:set-payload>
 				</ee:message>
 			</ee:transform>
-			<flow-ref doc:name="post-message-audit-mongo-db-sapi-clientSub_Flow" doc:id="b305c451-7bf0-47cc-9b3d-a61fc001d680" name="post-message-audit-mongo-db-sapi-clientSub_Flow"/>
+			<flow-ref doc:name="post-message-audit-mongo-db-sapi-clientSub_Flow" doc:id="b305c451-7bf0-47cc-9b3d-a61fc001d680" name="post-message-audit-mongo-db-sapi-clientSub_Flow" />
 		</async>
 	</sub-flow>
 </mule>
