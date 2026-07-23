@@ -1,0 +1,402 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow
+		name="post-billing-product-synchronization-orchestratorSub_Flow">
+
+		<set-variable
+			value='#[(now() as String {format: "YYYYMMddHHmmss"})]'
+			doc:name="Generate TransactionId"
+			doc:id="f472da81-c9b1-4e4e-980b-c8699c63851d"
+			variableName="transactionId" />
+		<choice doc:name="Validar attributeSynchronization">
+			<when
+				expression="#[vars.inputPayload.attributeSynchronization? and !isEmpty(vars.inputPayload.attributeSynchronization)]">
+
+				<try doc:name="Procesar Attribute Synchronization">
+
+					<ee:transform doc:name="Transform Message"
+						doc:id="13895ae9-d057-4f93-99e5-3a6e02a4d4f6">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var attribute = (vars.inputPayload.attributeSynchronization default [])[0] default {
+}
+---
+{
+	transactionId: vars.transactionId,
+	createDate: vars.inputPayload.createDate,
+	message: {
+		billAttrObj: {
+			id: attribute.billAttrObj.id,
+			attrCode: attribute.billAttrObj.attrCode,
+			attrName: attribute.billAttrObj.attrName,
+			defaultValue: attribute.billAttrObj.defaultValue,
+			inputType: attribute.billAttrObj.inputType,
+			comments: attribute.billAttrObj.comments,
+			operate: attribute.billAttrObj.operate
+		},
+		billAttrValueList: (attribute.billAttrValueList default []) map (attributeValue) -> {
+			id: attributeValue.id,
+			attrCode: attributeValue.attrCode,
+			value: attributeValue.value,
+			operate: attributeValue.operate
+		}
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="zsmartRequest"><![CDATA[%dw 2.0
+output application/json
+var requestHeaders = attributes.headers
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.attribute-sync.path'),
+	method: p('zsmart-sapi.attribute-sync.post.method'),
+	headers: {
+		"client_secret": p('zsmart-sapi.security.client_secret'),
+		"client_id": p('zsmart-sapi.security.client_id'),
+		"name": requestHeaders.name,
+		"X-CORRELATION-ID": requestHeaders."X-CORRELATION-ID",
+		"source": requestHeaders.source,
+		"systemId": requestHeaders.systemId
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="zsmart-sapi-clientSub_Flow"
+						doc:id="2736bff5-9557-4542-9179-496887f13818"
+						name="zsmart-sapi-clientSub_Flow" />
+					<set-variable
+						variableName="attributeSynchronizationResult"
+						value="#[{&#10;	responseCode: payload.result.result.responseCode,&#10;	responseMessage: payload.result.result.responseMessage&#10;}]"
+						doc:name="Resultado Attribute Exitoso" />
+					<error-handler>
+						<on-error-continue type="ANY"
+							logException="true" doc:name="Continuar Error Attribute">
+
+							<set-variable
+								variableName="attributeSynchronizationResult"
+								value="#[{&#10;	responseCode: '9999',&#10;	responseMessage: error.description default error.detailedDescription default 'Error processing attributeSynchronization'&#10;}]"
+								doc:name="Resultado Attribute Error" />
+
+						</on-error-continue>
+					</error-handler>
+
+				</try>
+
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Attribute No Recibido"
+					doc:id="ca01eae3-2cb2-4a2c-b4e8-ff641eeb1204"
+					message="AttributeSynchronization was not received or is empty" />
+			</otherwise>
+		</choice>
+
+		<choice doc:name="Validar productSynchronization">
+			<when
+				expression="#[vars.inputPayload.productSynchronization? and !isEmpty(vars.inputPayload.productSynchronization)]">
+
+				<try doc:name="Procesar Product Synchronization">
+
+					<ee:transform doc:name="Transform Message"
+						doc:id="d1d68877-918d-47f9-849e-d105a06ab0d7">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	transactionId: vars.transactionId,
+	createDate: vars.inputPayload.createDate,
+	message: {
+		prodList: (vars.inputPayload.productSynchronization default []) map (product) -> {
+			prodType: product.prodType,
+			id: product.id,
+			prodName: product.prodName,
+			prodCode: product.prodCode,
+			networkType: product.networkType,
+			comments: product.comments,
+			operate: product.operate,
+			(productAttrList: (product.productAttrList default []) map (attribute) -> {
+				id: attribute.id,
+				productCode: attribute.productCode,
+				attrCode: attribute.attrCode,
+				defaultValue: attribute.defaultValue,
+				operate: attribute.operate
+			}) if (product.productAttrList?)
+		}
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="zsmartRequest"><![CDATA[%dw 2.0
+output application/json
+var requestHeaders = attributes.headers
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.product-sync.path'),
+	method: p('zsmart-sapi.product-sync.post.method'),
+	headers: {
+		"client_secret": p('zsmart-sapi.security.client_secret'),
+		"client_id": p('zsmart-sapi.security.client_id'),
+		"name": requestHeaders.name,
+		"X-CORRELATION-ID": requestHeaders."X-CORRELATION-ID",
+		"source": requestHeaders.source,
+		"systemId": requestHeaders.systemId
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="zsmart-sapi-clientSub_Flow"
+						doc:id="7a347f28-7e7e-44ac-85e1-c704ec98ca54"
+						name="zsmart-sapi-clientSub_Flow" />
+					<set-variable
+						variableName="productSynchronizationResult"
+						value="#[{&#10;	responseCode: payload.result.result.responseCode,&#10;	responseMessage: payload.result.result.responseMessage&#10;}]"
+						doc:name="Resultado Product Exitoso" />
+					<error-handler>
+						<on-error-continue type="ANY"
+							logException="true" doc:name="Continuar Error Product">
+
+							<set-variable
+								variableName="productSynchronizationResult"
+								value="#[{&#10;	responseCode: '9999',&#10;	responseMessage: error.description default error.detailedDescription default 'Error processing productSynchronization'&#10;}]"
+								doc:name="Resultado Product Error" />
+
+						</on-error-continue>
+					</error-handler>
+
+				</try>
+
+			</when>
+
+			<otherwise>
+				<logger level="INFO" doc:name="Product No Recibido"
+					doc:id="41088c97-3365-4127-b5e5-a1f90587cf16"
+					message="ProductSynchronization was not received or is empty" />
+			</otherwise>
+		</choice>
+
+		<choice doc:name="Validar offerSynchronization">
+			<when
+				expression="#[vars.inputPayload.offerSynchronization? and !isEmpty(vars.inputPayload.offerSynchronization)]">
+
+				<try doc:name="Procesar Offer Synchronization">
+
+					<ee:transform doc:name="Transform Message"
+						doc:id="11713e00-06d3-40ad-9380-8793a5fd76d8">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var synchronization = (vars.inputPayload.offerSynchronization default [])[0] default {
+}
+---
+{
+	transactionId: vars.transactionId,
+	createDate: vars.inputPayload.createDate,
+	message: {
+		offerList: (synchronization.offerList default []) map (offer) -> {
+			id: offer.id,
+			offerType: offer.offerType,
+			offerName: offer.offerName,
+			offerCode: offer.offerCode,
+			effDate: offer.effDate,
+			expDate: offer.expDate,
+			effType: offer.effType,
+			saleListPrice: offer.saleListPrice,
+			rentListPrice: offer.rentListPrice,
+			bundleFlag: offer.bundleFlag,
+			prodCode: offer.prodCode,
+			effDurationPeriod: offer.effDuration,
+			effDurationUnit: offer.effDurationType,
+			comments: offer.comments,
+			operate: offer.operate,
+			(offerAttrList: (offer.offerAttrList default []) map (attribute) -> {
+				id: attribute.id,
+				offerCode: attribute.offerCode,
+				attrCode: attribute.attrCode,
+				defaultValue: attribute.defaultValue,
+				operate: attribute.operate
+			}) if (offer.offerAttrList?)
+		}
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="zsmartRequest"><![CDATA[%dw 2.0
+output application/json
+var requestHeaders = attributes.headers
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.offer-sync.path'),
+	method: p('zsmart-sapi.offer-sync.post.method'),
+	headers: {
+		"client_secret": p('zsmart-sapi.security.client_secret'),
+		"client_id": p('zsmart-sapi.security.client_id'),
+		"name": requestHeaders.name,
+		"X-CORRELATION-ID": requestHeaders."X-CORRELATION-ID",
+		"source": requestHeaders.source,
+		"systemId": requestHeaders.systemId
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="zsmart-sapi-clientSub_Flow"
+						doc:id="f8f847ef-1c33-4d84-ae50-657c4a4dce77"
+						name="zsmart-sapi-clientSub_Flow" />
+					<set-variable
+						variableName="offerSynchronizationResult"
+						value="#[{&#10;	responseCode: payload.result.result.responseCode,&#10;	responseMessage: payload.result.result.responseMessage&#10;}]"
+						doc:name="Resultado Offer Exitoso" />
+					<error-handler>
+						<on-error-continue type="ANY"
+							logException="true" doc:name="Continuar Error Offer">
+
+							<set-variable
+								variableName="offerSynchronizationResult"
+								value="#[{&#10;	responseCode: '9999',&#10;	responseMessage: error.description default error.detailedDescription default 'Error processing offerSynchronization'&#10;}]"
+								doc:name="Resultado Offer Error" />
+
+						</on-error-continue>
+					</error-handler>
+
+				</try>
+
+			</when>
+
+			<otherwise>
+				<logger level="INFO" doc:name="Offer No Recibido"
+					doc:id="a4b1b5c4-6265-42d3-baa9-a1d775f7421d"
+					message="OfferSynchronization was not received or is empty" />
+			</otherwise>
+		</choice>
+
+		<choice doc:name="Validar offerRelaSynchronization">
+			<when
+				expression="#[vars.inputPayload.offerRelaSynchronization? and !isEmpty(vars.inputPayload.offerRelaSynchronization)]">
+
+				<try doc:name="Procesar Offer Relation Synchronization">
+
+					<ee:transform doc:name="Transform Message"
+						doc:id="a057beee-0947-4394-9cbb-0684432aa936">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var synchronization = (vars.inputPayload.offerRelaSynchronization default [])[0] default {
+}
+---
+{
+	transactionId: vars.transactionId,
+	createDate: vars.inputPayload.createDate,
+	message: {
+		(bundleMemberList: synchronization.bundleMemberList map (bundle) -> {
+			bundleOfferCode: bundle.bundleOfferCode,
+			bundleOfferName: bundle.bundleOfferName,
+			memMainOfferCode: bundle.memMainOfferCode,
+			memMainOfferName: bundle.memMainOfferName,
+			operate: bundle.operate
+		}) if (synchronization.bundleMemberList?),
+		(mainOfferMemberList: synchronization.mainOfferMemberList map (offer) -> {
+			mainOfferCode: offer.mainOfferCode,
+			mainOfferName: offer.mainOfferName,
+			memAddOfferCode: offer.memAddOfferCode,
+			memAddOfferName: offer.memAddOfferName,
+			operate: offer.operate
+		}) if (synchronization.mainOfferMemberList?)
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="zsmartRequest"><![CDATA[%dw 2.0
+output application/json
+var requestHeaders = attributes.headers
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.offer-rela-sync.path'),
+	method: p('zsmart-sapi.offer-rela-sync.post.method'),
+	headers: {
+		"client_secret": p('zsmart-sapi.security.client_secret'),
+		"client_id": p('zsmart-sapi.security.client_id'),
+		"name": requestHeaders.name,
+		"X-CORRELATION-ID": requestHeaders."X-CORRELATION-ID",
+		"source": requestHeaders.source,
+		"systemId": requestHeaders.systemId
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="zsmart-sapi-clientSub_Flow"
+						doc:id="27f19a51-fa21-4e70-b968-0cdb592f32a1"
+						name="zsmart-sapi-clientSub_Flow" />
+					<set-variable
+						variableName="offerRelaSynchronizationResult"
+						value="#[{&#10;	responseCode: payload.result.result.responseCode,&#10;	responseMessage: payload.result.result.responseMessage&#10;}]"
+						doc:name="Resultado Offer Relation Exitoso" />
+					<error-handler>
+						<on-error-continue type="ANY"
+							logException="true" doc:name="Continuar Error Offer Relation">
+
+							<set-variable
+								variableName="offerRelaSynchronizationResult"
+								value="#[{&#10;	responseCode: '9999',&#10;	responseMessage: error.description default error.detailedDescription default 'Error processing offerRelaSynchronization'&#10;}]"
+								doc:name="Resultado Offer Relation Error" />
+
+						</on-error-continue>
+					</error-handler>
+
+				</try>
+
+			</when>
+
+			<otherwise>
+				<logger level="INFO" doc:name="Offer Relation No Recibido"
+					doc:id="90b5e886-20e4-402a-8f25-d3e996aabc55"
+					message="OfferRelaSynchronization was not received or is empty" />
+			</otherwise>
+		</choice>
+
+		<set-payload
+			value="#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;	transactionId: vars.transactionId,&#10;	results: {&#10;	} ++ (if ( vars.attributeSynchronizationResult? ) {&#10;		attributeSynchronization: vars.attributeSynchronizationResult&#10;	}&#10;            else&#10;                {&#10;	}) ++ (if ( vars.productSynchronizationResult? ) {&#10;		productSynchronization: vars.productSynchronizationResult&#10;	}&#10;            else&#10;                {&#10;	}) ++ (if ( vars.offerSynchronizationResult? ) {&#10;		offerSynchronization: vars.offerSynchronizationResult&#10;	}&#10;            else&#10;                {&#10;	}) ++ (if ( vars.offerRelaSynchronizationResult? ) {&#10;		offerRelaSynchronization: vars.offerRelaSynchronizationResult&#10;	}&#10;            else&#10;                {&#10;	})&#10;}]"
+			doc:name="Construir respuesta consolidada" />
+
+	</sub-flow>
+</mule>
