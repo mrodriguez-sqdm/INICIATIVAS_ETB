@@ -128,7 +128,6 @@ output application/json  skipNullOn = "everywhere"
 		("contactDtoList": account.contacts map ((acctContact) -> {
 			"operate": acctContact.operate default operation,
 			"contactType": acctContact.contactType,
-			"operate": operation,
 			"contactId": acctContact.contactId,
 			"firstName": acctContact.firstName,
 			"lastName": acctContact.lastName,
