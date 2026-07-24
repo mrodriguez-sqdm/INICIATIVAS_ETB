@@ -71,7 +71,57 @@ securitySchemes:
           body:
             application/json:
               type: !include datatypes/response/internalServerError.raml
-  /subscription:
+  /billingProductSynchronization:
+    post:
+      is:
+        - tibcoHeaders
+      securedBy: [etb_oauth_2_0]
+      displayName: Sincronizar Catálogo Comercial en Facturación
+      description: |
+        Synchronizes the commercial catalog from CRM to ZSmart Billing in a single call.
+        The request body accepts up to four independent synchronization arrays; at least one must be present:
+          - **attributeSynchronization**: create or delete product/offer attributes and their allowed values (ZSmart V1.7 §7.1).
+          - **productSynchronization**: create, modify, expire or delete products (ZSmart V1.7 §7.2).
+          - **offerSynchronization**: create, modify or delete offers — main, additional, goods, bundle (ZSmart V1.7 §7.3).
+          - **offerRelaSynchronization**: create or delete bundle-member and main-offer/additional-offer relationships (ZSmart V1.7 §7.4).
+        The billing-papi orchestrates the ZSmart calls sequentially in dependency order for each array present.
+      body:
+        application/json:
+          type: !include datatypes/request/post-billingProductSynchronization.raml
+          example: !include examples/request/post-billingProductSynchronization.json
+      responses:
+        200:
+          description: Catalog synchronization executed successfully.
+          body:
+            application/json:
+              type: !include datatypes/response/post-billingProductSynchronization.raml
+              example: !include examples/response/post-billingProductSynchronization-200.json
+        400:
+          description: Request validation error — missing required fields or invalid values.
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+        401:
+          description: OAuth token invalid or expired.
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+        422:
+          description: ZSmart returned a business error (e.g. duplicate offer code, invalid attribute).
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+        503:
+          description: ZSmart unavailable — circuit breaker open.
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+        504:
+          description: ZSmart response timeout exceeded 30 seconds.
+          body:
+            application/json:
+              type: !include datatypes/response/error.raml
+    /subscription:
     /{msisdn}:
       uriParameters:
         msisdn:
