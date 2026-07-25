@@ -12,29 +12,22 @@ var currency = "1"
 output application/json  skipNullOn = "everywhere"
 ---
 {
-	// Header Mapping
-	"header": {
-		"transactionId": transaction.id,
-		"createDate": transaction.timestamp,
-		"orderItemId": transaction.orderItemId,
-		"serviceEventId": serviceEventId,
-		"custId": transaction.custId,
-		"acctId": transaction.acctId,
-		"serviceNumber": serviceNumber,
-        "prodInstId": transaction.prodInstId,
-		"salesChannel": transaction.salesChannel,
-		"salesDepartment": transaction.salesDepartment,
-		"salesCity": transaction.salesCity,
-		"po": transaction.po,
-		"billType": transaction.billType,
-		"comments": transaction.comments
-	},
-	// Service Charges Mapping
+	"transactionId": transaction.id,
+	"createDate": transaction.timestamp,
+	"orderItemId": transaction.orderItemId,
+	"custId": transaction.custId,
+	"acctId": transaction.acctId,
+	"serviceNumber": serviceNumber,
+	"prodInstId": transaction.prodInstId,
+	"salesChannel": transaction.salesChannel,
+	"salesDepartment": transaction.salesDepartment,
+	"salesCity": transaction.salesCity,
+	"po": transaction.po,
+	"billType": transaction.billType,
+	"comments": transaction.comments,
 	("chargeList": charges default [] map (charge) -> {
 		"billingNbr": charge.billingNbr,
 		"basicCharge": charge.basicCharge,
-        "serviceNumber": transaction.serviceNumber,
-        "prodInstId": transaction.prodInstId,
 		"acctId": charge.acctId default transaction.acctId,
 		"chargeType": charge."type",
 		"perCharge": charge.perCharge,
@@ -42,7 +35,6 @@ output application/json  skipNullOn = "everywhere"
 		"installmentPlanId": charge.installmentPlanId,
 		"prodInstFlag": charge.prodInstFlag,
 		"origAcctItemTypeCode": charge.origAcctItemTypeCode,
-		"currencyId": currency,
-		"paidFlag": charge.paidFlag
+		"currencyId": currency
 	}) if (!isEmpty(flatten(charges default [])))
 }
