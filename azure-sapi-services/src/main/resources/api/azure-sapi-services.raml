@@ -1,0 +1,265 @@
+#%RAML 1.0
+title: azure-sapi-services
+baseUri: azure-sapi-services-dev.us-e2.cloudhub.io/azure
+description: The following API will be in charge of the comunications towards azure exposed services
+mediaType: 
+ - application/json
+ - image/png
+protocols:
+  - HTTP
+traits:
+  security_client_id: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/security-clientid/1.0.2/security-clientid.raml
+  request_headers: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.6/tibcorequestheaders.raml
+
+/v1:
+  /bills:
+    /duplicate:
+      post:
+        is: [security_client_id, request_headers]
+        displayName: Insert new bill duplicate
+        description: Insert new bill duplicate to Azure Storage
+        body:
+          multipart/form-data:      
+            properties:
+              file:
+                description: "File to be uploaded"
+                required: true
+                type: file
+                fileTypes: ['application/pdf']
+              container:
+                type: string
+                required: true
+                minLength: 1
+              filename:
+                type: string
+                required: true
+                minLength: 1
+        responses:
+          201:
+            body:
+              type: !include datatypes/response/post-billsDuplicate.raml
+  /workItems:
+    /{requestApp}:
+      /{id}:
+        uriParameters:
+          id:
+            type: number
+            example: 131489
+          requestApp:
+            type: string
+            example: "REMEDY"
+        get:
+          is: [security_client_id, request_headers]
+          displayName: Get INI associated to PBI
+          description: Get INI associated to PBI
+          responses:
+            200:
+              body:
+                application/json:
+                  example: !include /examples/response/workItem.json
+        patch:
+          is: [security_client_id, request_headers]
+          displayName: Update document INI
+          description: Update document INI
+          body:
+            application/json:
+              type: !include /datatypes/request/create-update-workItem.raml
+              example: !include /examples/request/create-update-workItem.json
+          responses:
+            201:
+              body:
+                application/json:
+                  example: !include /examples/response/workItem.json
+      post:
+        is: [security_client_id, request_headers]
+        displayName: Create Work Item 
+        description: Create Work Item
+        body:
+          application/json:
+            type: !include /datatypes/request/create-update-workItem.raml
+            example: !include /examples/request/create-update-workItem.json
+        responses:
+          201:
+            body:
+              application/json:
+                example: !include /examples/response/workItem.json
+  /accountState:
+    post:
+      is: [security_client_id, request_headers]
+      displayName: Insert new account state
+      description: Insert new account state to Azure Storage
+      body:
+        multipart/form-data:      
+          properties:
+            file:
+              description: "File to be uploaded"
+              required: true
+              type: file
+              fileTypes: ['application/pdf']
+            container:
+              type: string
+              required: true
+              minLength: 1
+            filename:
+              type: string
+              required: true
+              minLength: 1
+      responses:
+        201:
+          body:
+            type: !include datatypes/response/post-billsDuplicate.raml
+  /keyVault:
+    /{key}:
+      uriParameters:
+        key:
+          type: string
+          example: "secret, catpcha"
+      get:
+        is: [security_client_id, request_headers]
+        displayName: Get Secret from Azure Key Vault 
+        responses:
+          201:
+            body:
+              application/json:
+                example: { "status": "Ok", "secret" : "59024f3b17705f9b9e0fea169f850d2a"}
+                
+  /agreements:
+    post:
+      is: [security_client_id, request_headers]
+      displayName: Insert new document
+      description: Insert new document to Azure Storage
+      body:
+        multipart/form-data:      
+          properties:
+            file:
+              description: "File to be uploaded"
+              required: true
+              type: file
+              fileTypes: ['application/pdf']
+            container:
+              type: string
+              required: true
+              minLength: 1
+            filename:
+              type: string
+              required: true
+              minLength: 1
+      responses:
+        201:
+          body:
+            example: {}
+    get:
+      is: [security_client_id, request_headers]
+      displayName: Get documents
+      description: Get documents from Azure storage
+      queryParameters:
+        container:
+          type: string
+        fileName:
+          type: string
+      responses:
+        200:
+          body:
+            example: {}
+  /pqr:
+    /attachments:
+      /{documentNumber}:
+        /{pqrId}:
+          post:
+            is: [security_client_id, request_headers]
+            displayName: Insert new pqr attachments
+            description: Insert new pqr attachments to Azure Storage
+            body:
+              multipart/form-data:
+                properties:
+                  # Puedes enviar varios archivos bajo la misma llave o llaves distintas
+                  files:
+                    type: file
+                    required: true
+                    description: "Uno o más archivos binarios"
+                  # Metadatos adicionales como partes de texto
+                  attachmentId:
+                    type: string
+                    description: "ID único para seguimiento (Tracing) del proceso"
+                    required: true
+                    example: "ATTACHMENT_999"
+                  correlationId:
+                    type: string
+                    description: "ID unico de correlacion"
+                    required: true
+                    example: "wert8t-44544r-454r4-tgd45"
+            responses:
+              201:
+                body:
+                  application/json:
+                    type: !include datatypes/response/post-pqr-attachments.raml
+  /payments:
+    /events:
+      post:
+        is: [security_client_id, request_headers]
+        displayName: Queue Payment Transaction Event
+        description: Receives payment transaction event information and publishes it into a queue for asynchronous processing.
+        body:
+          application/json:
+            type: !include /datatypes/request/post-payment-events.raml
+            example: !include /examples/request/post-payment-events.json
+        responses:
+          202:
+            body:
+              application/json:
+                type: !include /datatypes/response/post-payment-events.raml
+                example: !include /examples/response/post-payment-events.json                           
+/v1/esim/QRCode:
+    get:
+      is: [security_client_id, request_headers] 
+      displayName: Get PDF as PNG QR Code
+      description: Convierte un documento PDF desde Azure Storage a imagen PNG
+      queryParameters:
+        DocumentName:
+          type: string
+          description: Nombre del documento PDF a convertir
+          example: "ETB_89571871150033681175.pdf"
+          required: true
+          pattern: ^.+\.pdf$
+      responses:
+        200:
+          description: Documento convertido exitosamente a PNG
+          body:
+            image/png:
+              description: Imagen PNG del documento convertido
+        400:
+          description: Error en la solicitud - DocumentName es requerido o inválido
+          body:
+            application/json:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "DocumentName es requerido y debe ser un archivo PDF"
+                code:
+                  type: string
+                  example: "BAD_REQUEST"
+        404:
+          description: Documento no encontrado en Azure Storage
+          body:
+            application/json:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Documento no encontrado"
+                code:
+                  type: string
+                  example: "NOT_FOUND"
+        500:
+          description: Error interno del servidor
+          body:
+            application/json:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Error interno del servidor"
+                code:
+                  type: string
+                  example: "INTERNAL_SERVER_ERROR"
