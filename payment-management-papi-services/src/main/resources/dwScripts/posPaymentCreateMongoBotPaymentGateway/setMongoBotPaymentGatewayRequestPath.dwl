@@ -7,16 +7,20 @@ fun fechaHoraColombia() =
   }
 
 var fechaColombia = fechaHoraColombia()
-
-fun getLinea() =
-    ((payload.referencias.detalle_referencias[0].atributos default [])
-        filter ($.atributo == "LINEA"))[0].valor default ""
+var requestPayload = vars.auditResponse default payload
 
 fun getTipo() =
-    ((requestPayload.referencias.detalle_referencias[0].atributos default [])
-        filter ($.atributo == "TIPO_PAGO"))[0].valor default ""
+  ((requestPayload.referencias.detalle_referencias[0].atributos default [])
+    filter ($.atributo == "TIPO_PAGO"))[0].valor default ""
 
-var requestPayload = vars.auditResponse default payload
+fun getLinea() =
+  ((requestPayload.referencias.detalle_referencias[0].atributos default [])
+    filter ($.atributo == "LINEA"))[0].valor default ""
+    
+fun getNumAgrupacion() =
+  ((requestPayload.referencias.detalle_referencias[0].atributos default [])
+    filter ($.atributo == "NUM_AGRUPACION_PLAN"))[0].valor default ""
+
 ---
 {
   query: {
@@ -51,21 +55,32 @@ var requestPayload = vars.auditResponse default payload
         ],
         Fecha_Actualizacion: fechaColombia,
         Fecha_Solicitud: fechaColombia,
+        Numeros: [getLinea()],
         Num_Identificacion: requestPayload.cliente.numero_documento default "",
+        Num_Agrupacion_Plan: getNumAgrupacion(),
         Tipo_Identificacion: requestPayload.cliente.tipo_documento default "",
-        Referencia_Venta: requestPayload.referencias.referencia default "",
+        Referencia_Venta: requestPayload.id_transaccion default "",
         Estado: requestPayload.estado_transaccion default "CREATED",
-        Facturas: (requestPayload.referencias.detalle_referencias default []) map (factura) -> {
-		  Numero_Cuenta_Facturacion: factura.Numero_Cuenta_Facturacion default "",
-		  Numero_Factura: factura.numero_factura default factura.referencia default "",
-		  Valor: (factura.valor_pagar default 0) as Number
-		},
-		Tipo: getTipo(),
+
+        (
+          Facturas:
+            (requestPayload.referencias.detalle_referencias default [])
+              map (factura) -> {
+                Numero_Cuenta_Facturacion:
+                  factura.Numero_Cuenta_Facturacion default "",
+                Numero_Factura:
+                  factura.numero_factura default factura.referencia default "",
+                Valor:
+                  (factura.valor_pagar default 0) as Number
+              }
+        ) if (upper(getTipo()) == "PAGO FACTURA"),
+
+        Tipo: getTipo(),
         Valor: requestPayload.referencias.valor_pagar default "",
         Fuente: requestPayload.atributos_pasarela.pasarela default "",
         Origen: requestPayload.atributos_pasarela.tipo_pasarela default "",
-        Estado_OCS: requestPayload.estado_transaccion default "CREATED",
-        Referencia_Transaccion: requestPayload.id_transaccion default ""
+        Estado_OCS: null,
+        Referencia_Transaccion: null
       }
     ]
   }
