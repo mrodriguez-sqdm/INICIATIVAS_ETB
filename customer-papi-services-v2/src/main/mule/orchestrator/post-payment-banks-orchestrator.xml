@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-payment-banks-orchestratorSub_Flow" doc:id="f052bf81-1351-476c-9109-44a06a8a5fb2" >
+		<ee:transform doc:name="set payment params" doc:id="8533911b-d77f-40ae-a5aa-7f5ef6808827" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="queryHeaders" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set mongo db Request" doc:id="338a0e92-81de-4f94-a55e-4f40589978b9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var refs = vars.initialPayload.paymentParamList default []
+var firstDetailRef = refs[0]
+var fechaHora = (now() >> "America/Bogota") as String {
+	format: "yyyyMMddHHmmss"
+}
+var referenceCode = if ( sizeOf(refs) > 1 ) "MDM_PAGO_" ++ vars.initialPayload.accountNumber ++ "_" ++ fechaHora
+else
+  "MDM_PAGO_" ++ firstDetailRef.invoiceNumber ++ "_" ++ fechaHora
+fun fechaHoraColombia() =
+  (now() >> "America/Bogota") as String {
+	format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+}
+var fechaColombia = fechaHoraColombia()
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: p('mongo-db-sapi.resources.postPaymentAudit.path'),
+	body: {
+		id_transaccion: vars.initialPayload.transactionId,
+		CUS: "",
+		atributos_pasarela: {
+			pasarela: "",
+			tipo_pasarela: ""
+		},
+		metodo_pago: vars.initialPayload.paymentMethodCode default "",
+		referencias: {
+			referencia: referenceCode,
+			descripcion: vars.initialPayload.origin ++ "_" ++ vars.initialPayload.channelCode,
+			moneda: vars.initialPayload.currencyCode default "",
+			valor_pagar: vars.initialPayload.payAmount,
+			impuestos: {
+				tipo: "",
+				valor: "0"
+			},
+			detalle_referencias: refs map (r) -> {
+				referencia: "referencia_" ++ r.invoiceNumber,
+				numero_factura: r.invoiceNumber,
+				numero_cuenta_facturacion: vars.initialPayload.accountNumber,
+				descripcion: "",
+				moneda: vars.initialPayload.currencyCode default "",
+				valor_pagar: (r.settleAmount default 0) as String,
+				impuestos: (r.taxes default []) map (t) -> {
+					tipo: "",
+					valor: "0"
+				},
+				atributos: (r.attributes default []) map (a) -> {
+					atributo: a.attribute default "",
+					valor: a.value default ""
+				}
+			}
+		},
+		cliente: {
+			tipo_documento: "",
+			numero_documento: "",
+			nombre_completo: "",
+			correo: "",
+			telefono: ""
+		},
+		concepto: firstDetailRef.description default "Transaccion Bancaria - ZSmart",
+		entidad_bancaria: vars.initialPayload.bankCode default "ENTIDAD BANCARIA",
+		estado_transaccion: "CREATED",
+		fecha_registro: fechaColombia,
+		fecha_respuesta_pasarela: fechaColombia,
+		fecha_actualizacion: fechaColombia
+	},
+	headers: vars.queryHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="generic-mongo-db-sapi-clientSub_Flow" doc:id="6668abd6-7ec7-4c0c-8c61-6f48b4e094d1" name="generic-mongo-db-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="set Zsmart Request" doc:id="c9782a1b-1b49-494c-93b5-9c4ab21bacb1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var requestBody = vars.initialPayload - "username" - "password" - "origin"
+---
+{
+	basePath: p("zsmart-sapi.base-path"),
+	host: p("zsmart-sapi.host"),
+	port: p("zsmart-sapi.port"),
+	method: "POST",
+	path: p('zsmart-sapi.resources.postPayment.path'),
+	body: requestBody,
+	headers: vars.queryHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart payment)" doc:id="7ebe5f8a-49b1-47b6-8ea6-2ca06eb62267" name="generic-zsmart-sapi-clientSub_Flow" />
+		<ee:transform doc:name="set payment response" doc:id="63eaaafa-1073-4ab3-9cbf-f192592ea2b4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+var zsmartResponse = payload.result.result
+output application/json
+---
+{
+	codeResponse: "200",
+	messageResponse: "OK",
+	transactionId: zsmartResponse.transactionID,
+	txnId: zsmartResponse.txnID,
+	txnTypeId: zsmartResponse.txnTypeID,
+	amount: zsmartResponse.amount
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

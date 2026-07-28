@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-billingMagicCode-orchestratorSub_Flow" doc:id="f052bf81-1351-476c-9109-44a06a8a5fb2" >
+		<ee:transform doc:name="set magic code params" doc:id="8533911b-d77f-40ae-a5aa-7f5ef6808827" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="queryHeaders" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set Zsmart Request" doc:id="c9782a1b-1b49-494c-93b5-9c4ab21bacb1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "GET",
+    path: p('zsmart-sapi.resources.getMagicCode.path'),
+    body: {},
+    headers: vars.queryHeaders default {},
+    queryParameters: {
+    	"targetUserCode": vars.queryParams.targetUserCode,
+    	"targetUrl": vars.queryParams.targetUrl
+    },
+    uriParameters: {}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart Billing Magic Code)" doc:id="7ebe5f8a-49b1-47b6-8ea6-2ca06eb62267" name="generic-zsmart-sapi-clientSub_Flow" />
+		<ee:transform doc:name="set billing magic code response" doc:id="63eaaafa-1073-4ab3-9cbf-f192592ea2b4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+var zsmartResponse = payload.result.result
+var deepLinkUrl = p('zsmart-sapi.resources.getMagicCode.deepLinkHost') ++ vars.queryParams.targetUrl ++ p('zsmart-sapi.resources.getMagicCode.magicParam')
+output application/json  
+---
+{
+  codeResponse: "200",
+  messageResponse: "OK",
+  resultCode: zsmartResponse.resultCode,
+  resultMsg: zsmartResponse.resultMsg,
+  magicCode: zsmartResponse.magicCode,
+  deepLinkUrl: deepLinkUrl ++ zsmartResponse.magicCode
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
