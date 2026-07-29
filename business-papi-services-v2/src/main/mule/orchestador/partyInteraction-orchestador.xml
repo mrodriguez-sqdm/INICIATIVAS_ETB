@@ -1,0 +1,459 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="partyInteraction-create-orchestadorSub_Flow" doc:id="0ad57bf5-1bee-47da-b920-1ad9f2a883a3" >
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="667c2204-6491-4c9e-999e-6d493beaafa5" variableName="headers" />
+		<ee:transform doc:name="Transform Message" doc:id="4ee89ec5-dafb-4ab3-8995-c0136cb83822" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+fun removeNulls(value: Any): Any =
+    if (value is Object)
+        value 
+            filterObject ((v, k) -> v != null)
+            mapObject ((v, k) -> (k): removeNulls(v))
+    else if (value is Array)
+        value map (v) -> removeNulls(v)
+    else
+        value
+
+---
+removeNulls({
+    Actualizacion_Extractor: payload.extractorUpdate,
+    Asignacion: if (payload.assignment?) {
+        Asignaciones: (payload.assignment.assignments default []) map (a) -> {
+            Fecha: a.date,
+            Nivel: a.level,
+            Usuario: a.user
+        },
+        Usuario_Asignado: payload.assignment.assignedUser
+    } else null,
+    Cliente_Retencion: if (payload.retentionCustomer?) {
+        Ciudad: payload.retentionCustomer.city,
+        Departamento: payload.retentionCustomer.department,
+        Direccion: payload.retentionCustomer.address,
+        Direcciones: (payload.retentionCustomer.addresses default []) map (dir) -> {
+            Cobertura: dir.coverage,
+            Codigo_DANE: dir.daneCode,
+            Codigo_Departamento: dir.departmentCode,
+            Codigo_Direccion: dir.addressCode,
+            Codigo_Municipio: dir.municipalityCode,
+            Codigo_Pais: dir.countryCode,
+            Departamento: dir.department,
+            Direccion_Normalizada: dir.normalizedAddress,
+            Estado: dir.status,
+            Id_Direccion: dir.addressId,
+            Municipio: dir.municipality,
+            Nombre_Direccion: dir.addressName,
+            Seleccionada: dir.selected,
+            Tipo_Direccion: dir.addressType,
+            CoberturasDisponibles: dir.availableCoverages,
+            CodigoUso: dir.usageCode,
+            TipoDistancia: dir.distanceType
+        },
+        Email: payload.retentionCustomer.email,
+        Nombres: payload.retentionCustomer.names,
+        Numero_Documento: payload.retentionCustomer.documentNumber,
+        Telefono_Fijo: payload.retentionCustomer.landlinePhoneNumber,
+        Telefono_Movil: payload.retentionCustomer.mobilePhoneNumber,
+        Tipo_Documento: payload.retentionCustomer.documentType,
+        UEN: payload.retentionCustomer.uen,
+        SegmentoUEN: payload.retentionCustomer.segmentoUEN
+    } else null,
+    Estado_Retencion: if (payload.retentionStatus?) {
+        Codigo: payload.retentionStatus.code,
+        Descripcion: payload.retentionStatus.description,
+        Fecha_Actualizacion: payload.retentionStatus.updateDate,
+        Fecha_Creacion: payload.retentionStatus.creationDate,
+        Observaciones: payload.retentionStatus.observations,
+        Usuario: payload.retentionStatus.user,
+        Fecha_Cierre: payload.retentionStatus.closureDate
+    } else null,
+    Fecha_Creacion: payload.creationDate,
+    Fecha_Modificacion: payload.modificationDate,
+    Nivel: payload.level,
+    Numero_Retencion: payload.retentionNumber,
+    Retencion: if (payload.retention?) {
+        Caracteristicas_Retencion: (payload.retention.retentionCharacteristics default []) map (c) -> {
+            Llave: c.key,
+            Valor: c.value
+        },
+        Clasificaciones: payload.retention.classifications default [],
+        Motivo: payload.retention.reason,
+        Motivo_Descripcion: payload.retention.reasonDescription,
+        Pasos: (payload.retention.steps default []) map (p) -> {
+            Acciones: p.actions default [],
+            AccionesRetencion: (p.retentionActions default []) map (ra) -> {
+                Actualizacion_Extractor: ra.extractorUpdate,
+                Clase: ra.class,
+                Clasificacion: ra.classification,
+                DatosAccion: (ra.actionData default []) map (ad) -> {
+                    Codigo: ad.code,
+                    Descripcion: ad.description,
+                    Nombre: ad.name
+                },
+                Descripcion: ra.description,
+                Fecha_Creacion: ra.creationDate,
+                Fecha_Modificacion: ra.modificationDate,
+                Id_Accion: ra.actionId,
+                Niveles: ra.levels,
+                Nombre: ra.name,
+                Tipo: ra.'type',
+                Usuario_Creacion: ra.creationUser,
+                Usuario_Modificacion: ra.modificationUser
+            },
+            Descripcion: p.description,
+            Estado: if (p.status?) {
+                Codigo: p.status.code,
+                Descripcion: p.status.description,
+                Fecha_Accion: p.status.actionDate,
+                Fecha_Paso: p.status.stepDate,
+                Observaciones: p.status.observations,
+                Usuario: p.status.user,
+                Historico: (p.status.history default []) map (h) -> {
+                    Codigo: h.code,
+                    Descripcion: h.description,
+                    Fecha_Accion: h.actionDate,
+                    Fecha_Paso: h.stepDate,
+                    Observaciones: h.observations,
+                    Usuario: h.user
+                }
+            } else null,
+            ID_Paso: p.stepId,
+            Niveles: p.levels,
+            Nombre: p.name,
+            Secuencia: p.sequence,
+            Tipo: p.'type',
+            Usuario_Creacion: p.creationUser,
+            Usuario_Modificacion: p.modificationUser
+        },
+        Submotivo: payload.retention.subReason,
+        SubMotivo_Descripcion: payload.retention.subReasonDescription,
+        Tipificaciones: payload.retention.typifications
+    } else null,
+    Servicio_Retencion: if (payload.retentionService?) {
+        BarrioInstalacion: payload.retentionService.installationNeighborhood,
+        Calificacion_CHURN: payload.retentionService.churnQualification,
+        CiudadInstalacion: payload.retentionService.installationCity,
+        CodigoCiudad: payload.retentionService.cityCode,
+        CodigoDepartamento: payload.retentionService.departmentCode,
+        Cuenta_Facturacion: payload.retentionService.billingAccount,
+        DepartamentoInstalacion: payload.retentionService.installationDepartment,
+        Direccion_Instalacion: payload.retentionService.installationAddress,
+        Estado: payload.retentionService.status,
+        Estados: (payload.retentionService.statuses default []) map (s) -> {
+            Descripcion: s.description,
+            Fecha: s.date,
+            FechaReconexion: s.reconnectionDate,
+            Tipo: s.'type'
+        },
+        EstratoInstalacion: payload.retentionService.installationStratum,
+        Fecha_Inicio_Servicio: payload.retentionService.serviceStartDate,
+        Id_Cuenta_Servicio: payload.retentionService.serviceAccountId,
+        Integration_ID: payload.retentionService.integrationId,
+        LocalidadInstalacion: payload.retentionService.installationLocality,
+        Marcas: if (payload.retentionService.markers?) {
+            Antiguedad: payload.retentionService.markers.seniority,
+            Beneficio_Retencion: payload.retentionService.markers.retentionBenefit,
+            Beneficio_Vencimiento: payload.retentionService.markers.expirationBenefit,
+            Cantidad_Suspensiones_Temporales: payload.retentionService.markers.temporarySuspensionCount,
+            Cuenta_Control: payload.retentionService.markers.controlAccount,
+            Duo: payload.retentionService.markers.duo,
+            LTE: payload.retentionService.markers.lte,
+            Meses: payload.retentionService.markers.months,
+            Plan_Retencion: payload.retentionService.markers.retentionPlan,
+            Single: payload.retentionService.markers.single,
+            Sistema_Origen: payload.retentionService.markers.originSystem,
+            Trio: payload.retentionService.markers.trio,
+            Integration_Id: payload.retentionService.markers.integrationId,
+            MesesClausulaPermanencia: payload.retentionService.markers.monthsOfPermanenceClause,
+            Numero_Agrupacion: payload.retentionService.markers.groupingNumber,
+            Velocidad: payload.retentionService.markers.speed
+        } else null,
+        Numero_Conexion: payload.retentionService.connectionNumber,
+        PaisInstalacion: payload.retentionService.installationCountry,
+        Promociones: (payload.retentionService.promotions default []) map (p) -> {
+            '_id': p.id,
+            Adjuntos: p.attachments,
+            CodigoConvenio: p.agreementCode,
+            Descripcion: p.description,
+            Estado: p.status,
+            Fecha: p.date,
+            FechaFinal: p.endDate,
+            FechaInicial: p.startDate,
+            IdBeneficio: p.benefitId,
+            Nombre: p.name,
+            Codigo_Configuracion: p.configurationCode,
+            ID_Tipo_Promocion: p.promotionTypeId,
+            Numero_Agrupacion: p.groupingNumber
+        },
+        RutaBundle: payload.retentionService.bundleRoute,
+        Tarifa_Actual: payload.retentionService.currentRate,
+        Tecnologia: payload.retentionService.technology,
+        Tipo_Servicio: payload.retentionService.serviceType,
+        UEN: payload.retentionService.uen,
+        Convergencia: if (payload.retentionService.convergence?) {
+            EsConvergente: payload.retentionService.convergence.isConvergent,
+            TipoConvergencia: payload.retentionService.convergence.convergenceType
+        } else null,
+        Id_servicio: payload.retentionService.serviceId
+    } else null,
+    Usuario_Creacion: payload.creationUser,
+    Usuario_Modificacion: payload.modificationUser,
+    Numero_Orden: payload.orderNumber
+})
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="eb349ccd-cdc9-4b35-a2c9-3a43bc503ff0" name="create-retention-mongo-db-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message" doc:id="75cc947d-985a-4283-8f07-60b5fbe23e23" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    (status: "OK") if (payload.codigo? and payload.codigo == 200),
+    (code: payload.codigo as Number) if (payload.codigo?),
+    (message: {
+        (message: payload.mensaje) if (payload.mensaje?),
+        (retentionNumber: payload.numeroRetencion) if (payload.numeroRetencion?)
+    }) if (payload.mensaje? or payload.numeroRetencion?)
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="partyInteraction-update-orchestadorSub_Flow" doc:id="d49d950a-34ec-495b-b663-c83ff6d218b5" >
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="d3bc4239-b152-4dfb-94f0-8ef450793367" variableName="headers" />
+		<ee:transform doc:name="Transform Message" doc:id="bd499340-f03b-498c-9317-09dc200f8339" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+fun removeNulls(value: Any): Any =
+    if (value is Object)
+        value 
+            filterObject ((v, k) -> v != null)
+            mapObject ((v, k) -> (k): removeNulls(v))
+    else if (value is Array)
+        value map (v) -> removeNulls(v)
+    else
+        value
+
+---
+removeNulls({
+    Actualizacion_Extractor: payload.extractorUpdate,
+    Asignacion: if (payload.assignment?) {
+        Asignaciones: (payload.assignment.assignments default []) map (a) -> {
+            Fecha: a.date,
+            Nivel: a.level,
+            Usuario: a.user
+        },
+        Usuario_Asignado: payload.assignment.assignedUser
+    } else null,
+    Cliente_Retencion: if (payload.retentionCustomer?) {
+        Ciudad: payload.retentionCustomer.city,
+        Departamento: payload.retentionCustomer.department,
+        Direccion: payload.retentionCustomer.address,
+        Direcciones: (payload.retentionCustomer.addresses default []) map (dir) -> {
+            Cobertura: dir.coverage,
+            Codigo_DANE: dir.daneCode,
+            Codigo_Departamento: dir.departmentCode,
+            Codigo_Direccion: dir.addressCode,
+            Codigo_Municipio: dir.municipalityCode,
+            Codigo_Pais: dir.countryCode,
+            Departamento: dir.department,
+            Direccion_Normalizada: dir.normalizedAddress,
+            Estado: dir.status,
+            Id_Direccion: dir.addressId,
+            Municipio: dir.municipality,
+            Nombre_Direccion: dir.addressName,
+            Seleccionada: dir.selected,
+            Tipo_Direccion: dir.addressType,
+            CoberturasDisponibles: dir.availableCoverages,
+            CodigoUso: dir.usageCode,
+            TipoDistancia: dir.distanceType
+        },
+        Email: payload.retentionCustomer.email,
+        Nombres: payload.retentionCustomer.names,
+        Numero_Documento: payload.retentionCustomer.documentNumber,
+        Telefono_Fijo: payload.retentionCustomer.landlinePhoneNumber,
+        Telefono_Movil: payload.retentionCustomer.mobilePhoneNumber,
+        Tipo_Documento: payload.retentionCustomer.documentType,
+        UEN: payload.retentionCustomer.uen,
+        SegmentoUEN: payload.retentionCustomer.segmentoUEN
+    } else null,
+    Estado_Retencion: if (payload.retentionStatus?) {
+        Codigo: payload.retentionStatus.code,
+        Descripcion: payload.retentionStatus.description,
+        Fecha_Actualizacion: payload.retentionStatus.updateDate,
+        Fecha_Creacion: payload.retentionStatus.creationDate,
+        Observaciones: payload.retentionStatus.observations,
+        Usuario: payload.retentionStatus.user,
+        Fecha_Cierre: payload.retentionStatus.closureDate
+    } else null,
+    Fecha_Creacion: payload.creationDate,
+    Fecha_Modificacion: payload.modificationDate,
+    Nivel: payload.level,
+    Numero_Retencion: payload.retentionNumber,
+    Retencion: if (payload.retention?) {
+        Caracteristicas_Retencion: (payload.retention.retentionCharacteristics default []) map (c) -> {
+            Llave: c.key,
+            Valor: c.value
+        },
+        Clasificaciones: payload.retention.classifications default [],
+        Motivo: payload.retention.reason,
+        Motivo_Descripcion: payload.retention.reasonDescription,
+        Pasos: (payload.retention.steps default []) map (p) -> {
+            Acciones: p.actions default [],
+            AccionesRetencion: (p.retentionActions default []) map (ra) -> {
+                Actualizacion_Extractor: ra.extractorUpdate,
+                Clase: ra.class,
+                Clasificacion: ra.classification,
+                DatosAccion: (ra.actionData default []) map (ad) -> {
+                    Codigo: ad.code,
+                    Descripcion: ad.description,
+                    Nombre: ad.name
+                },
+                Descripcion: ra.description,
+                Fecha_Creacion: ra.creationDate,
+                Fecha_Modificacion: ra.modificationDate,
+                Id_Accion: ra.actionId,
+                Niveles: ra.levels,
+                Nombre: ra.name,
+                Tipo: ra.'type',
+                Usuario_Creacion: ra.creationUser,
+                Usuario_Modificacion: ra.modificationUser
+            },
+            Descripcion: p.description,
+            Estado: if (p.status?) {
+                Codigo: p.status.code,
+                Descripcion: p.status.description,
+                Fecha_Accion: p.status.actionDate,
+                Fecha_Paso: p.status.stepDate,
+                Observaciones: p.status.observations,
+                Usuario: p.status.user,
+                Historico: (p.status.history default []) map (h) -> {
+                    Codigo: h.code,
+                    Descripcion: h.description,
+                    Fecha_Accion: h.actionDate,
+                    Fecha_Paso: h.stepDate,
+                    Observaciones: h.observations,
+                    Usuario: h.user
+                }
+            } else null,
+            ID_Paso: p.stepId,
+            Niveles: p.levels,
+            Nombre: p.name,
+            Secuencia: p.sequence,
+            Tipo: p.'type',
+            Usuario_Creacion: p.creationUser,
+            Usuario_Modificacion: p.modificationUser
+        },
+        Submotivo: payload.retention.subReason,
+        SubMotivo_Descripcion: payload.retention.subReasonDescription,
+        Tipificaciones: payload.retention.typifications
+    } else null,
+    Servicio_Retencion: if (payload.retentionService?) {
+        BarrioInstalacion: payload.retentionService.installationNeighborhood,
+        Calificacion_CHURN: payload.retentionService.churnQualification,
+        CiudadInstalacion: payload.retentionService.installationCity,
+        CodigoCiudad: payload.retentionService.cityCode,
+        CodigoDepartamento: payload.retentionService.departmentCode,
+        Cuenta_Facturacion: payload.retentionService.billingAccount,
+        DepartamentoInstalacion: payload.retentionService.installationDepartment,
+        Direccion_Instalacion: payload.retentionService.installationAddress,
+        Estado: payload.retentionService.status,
+        Estados: (payload.retentionService.statuses default []) map (s) -> {
+            Descripcion: s.description,
+            Fecha: s.date,
+            FechaReconexion: s.reconnectionDate,
+            Tipo: s.'type'
+        },
+        EstratoInstalacion: payload.retentionService.installationStratum,
+        Fecha_Inicio_Servicio: payload.retentionService.serviceStartDate,
+        Id_Cuenta_Servicio: payload.retentionService.serviceAccountId,
+        Integration_ID: payload.retentionService.integrationId,
+        LocalidadInstalacion: payload.retentionService.installationLocality,
+        Marcas: if (payload.retentionService.markers?) {
+            Antiguedad: payload.retentionService.markers.seniority,
+            Beneficio_Retencion: payload.retentionService.markers.retentionBenefit,
+            Beneficio_Vencimiento: payload.retentionService.markers.expirationBenefit,
+            Cantidad_Suspensiones_Temporales: payload.retentionService.markers.temporarySuspensionCount,
+            Cuenta_Control: payload.retentionService.markers.controlAccount,
+            Duo: payload.retentionService.markers.duo,
+            LTE: payload.retentionService.markers.lte,
+            Meses: payload.retentionService.markers.months,
+            Plan_Retencion: payload.retentionService.markers.retentionPlan,
+            Single: payload.retentionService.markers.single,
+            Sistema_Origen: payload.retentionService.markers.originSystem,
+            Trio: payload.retentionService.markers.trio,
+            Integration_Id: payload.retentionService.markers.integrationId,
+            MesesClausulaPermanencia: payload.retentionService.markers.monthsOfPermanenceClause,
+            Numero_Agrupacion: payload.retentionService.markers.groupingNumber,
+            Velocidad: payload.retentionService.markers.speed
+        } else null,
+        Numero_Conexion: payload.retentionService.connectionNumber,
+        PaisInstalacion: payload.retentionService.installationCountry,
+        Promociones: (payload.retentionService.promotions default []) map (p) -> {
+            '_id': p.id,
+            Adjuntos: p.attachments,
+            CodigoConvenio: p.agreementCode,
+            Descripcion: p.description,
+            Estado: p.status,
+            Fecha: p.date,
+            FechaFinal: p.endDate,
+            FechaInicial: p.startDate,
+            IdBeneficio: p.benefitId,
+            Nombre: p.name,
+            Codigo_Configuracion: p.configurationCode,
+            ID_Tipo_Promocion: p.promotionTypeId,
+            Numero_Agrupacion: p.groupingNumber
+        },
+        RutaBundle: payload.retentionService.bundleRoute,
+        Tarifa_Actual: payload.retentionService.currentRate,
+        Tecnologia: payload.retentionService.technology,
+        Tipo_Servicio: payload.retentionService.serviceType,
+        UEN: payload.retentionService.uen,
+        Convergencia: if (payload.retentionService.convergence?) {
+            EsConvergente: payload.retentionService.convergence.isConvergent,
+            TipoConvergencia: payload.retentionService.convergence.convergenceType
+        } else null,
+        Id_servicio: payload.retentionService.serviceId
+    } else null,
+    Usuario_Creacion: payload.creationUser,
+    Usuario_Modificacion: payload.modificationUser,
+    Numero_Orden: payload.orderNumber
+})
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="f4862df0-5547-4a11-b717-38eea450c877" name="update-retention-mongo-db-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message" doc:id="dfbea0c0-0d1a-4edc-b023-06983daba2e3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: payload.codigo as Number,
+    code: "Ok",
+    message: {
+        message: payload.mensaje default ""
+    },
+    messageServer: payload.numeroRetencion default "",
+    cause: [
+        {
+            origin: "",
+            message: ""
+        }
+    ]
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
