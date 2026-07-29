@@ -1,12 +1,78 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
 	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
-	<sub-flow name="post-generate-invoice-PDF-orchestratorSub_Flow" doc:id="845eab2f-6dee-4ac8-80f5-1d6cc77e60b4" >
-		<choice doc:name="Choice" doc:id="d01aa050-0070-4be6-afb6-de10ebc31ff7" >
-			<when expression="vars.httpStatusCode == 201 or vars.httpStatusCode == 200">
+	<sub-flow
+		name="post-generate-invoice-PDF-orchestratorSub_Flow"
+		doc:id="845eab2f-6dee-4ac8-80f5-1d6cc77e60b4">
+		<choice doc:name="Choice"
+			doc:id="d01aa050-0070-4be6-afb6-de10ebc31ff7">
+			<when
+				expression="vars.httpStatusCode == 201 or vars.httpStatusCode == 200">
+				<ee:transform doc:name="Transform Message"
+					doc:id="6013f54f-db2c-4083-9a17-4354ea87541e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+		"find": "MDM_SERVICIO_ACTIVO",
+		"filter": {
+			"Tecnologia": "LTE",
+			"Estado": "Activo",
+			"Numero_Conexion": vars.inputPayload.msisdn
+		}
+	}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+Mule::p('mongo-db-sapi.path.dynamicQuery.base-path')]]></ee:set-variable>
+						<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="6daddd73-f811-4b64-82c7-e3f5798964ad"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="10f46f5f-fd76-412f-974f-4183ed4333ad">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var prod = payload.result[0]
+---
+{
+	"query": {
+		"find": "MDM_CLIENTE",
+		"filter": {
+			"Tipo_Documento": prod.Tipo_Documento,
+			"Numero_Identificacion": prod.Numero_Identificacion
+		}
+	}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+Mule::p('mongo-db-sapi.path.dynamicQuery.base-path')]]></ee:set-variable>
+						<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="85e38a10-adeb-4aab-981c-54d6e25a7743" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
 				<ee:transform doc:name="set generate-invoice-PDF params" doc:id="2fe2ef0d-e93e-4edc-92ed-abb213feaebd">
 			<ee:message />
 			<ee:variables>
@@ -22,9 +88,41 @@ output application/json
 	"systemId": attributes.headers.systemId
 }]]></ee:set-variable>
 				<ee:set-variable variableName="RequestInvoicePDF"><![CDATA[%dw 2.0
-output application/java
+output application/json
+var customer = (payload.result default [])[0] default {
+}
 ---
 {
+	invoiceType: id: vars.billingAccountObject.id,
+	transactionDesc: "Successful",
+	channelId: "",
+	msisdn: customer.Telefono_Movil default "",
+	accountCode: "",
+	balance: vars.inputPayload.amount,
+	operationStaff: customer.Usuario_Creador default "",
+	custName: customer.Nombre_Cliente default "",
+	custType: customer.Tipo_Cliente default "",
+	docType: customer.Tipo_Documento default "",
+	docNumber: customer.Numero_Identificacion default "",
+	departmentCode: "",
+	cityCode: "",
+	departmentName: customer.Departamento default "",
+	cityName: customer.Ciudad default "",
+	district: customer.Localidad default "",
+	address: customer.Direccion default "",
+	phoneNumber: customer.Telefono_Fijo default "",
+	email: customer.Correo_Electronico default "",
+	comments: "",
+	chargingList: [{
+		billingNbr: "",
+		basicCharge: "",
+		acctItemTypeCode: "",
+		taxList: [{
+			taxType: "",
+			taxRate: "",
+			taxAmount: ""
+		}]
+	}]
 }]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
