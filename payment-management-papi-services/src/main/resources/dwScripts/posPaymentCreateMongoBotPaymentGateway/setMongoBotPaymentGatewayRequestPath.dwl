@@ -57,6 +57,7 @@ fun getNumAgrupacion() =
         Fecha_Solicitud: fechaColombia,
         Numeros: [getLinea()],
         Num_Identificacion: requestPayload.cliente.numero_documento default "",
+        Linea: getLinea(),
         Num_Agrupacion_Plan: getNumAgrupacion(),
         Tipo_Identificacion: requestPayload.cliente.tipo_documento default "",
         Referencia_Venta: requestPayload.id_transaccion default "",
