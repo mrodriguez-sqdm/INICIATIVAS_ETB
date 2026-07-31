@@ -1,30 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
 	xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
 http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
-	<sub-flow name="post-notifications-orchestrator" doc:id="5d30e250-0a57-48b7-92c2-16d50c89f411" >
-		<ee:transform doc:name="set initial variables" doc:id="1f7f5a29-30e3-424c-b52b-f2e9b8ddd8ff" >
-			<ee:message >
+	<sub-flow name="post-notifications-orchestrator"
+		doc:id="5d30e250-0a57-48b7-92c2-16d50c89f411">
+		<ee:transform doc:name="set initial variables"
+			doc:id="1f7f5a29-30e3-424c-b52b-f2e9b8ddd8ff">
+			<ee:message>
 			</ee:message>
-			<ee:variables >
-				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
 output application/json
 ---
 payload]]></ee:set-variable>
-				<ee:set-variable variableName="channel" ><![CDATA[%dw 2.0
+				<ee:set-variable variableName="channel"><![CDATA[%dw 2.0
 output application/json
 ---
 payload.channel]]></ee:set-variable>
-				<ee:set-variable variableName="campaign" ><![CDATA[%dw 2.0
+				<ee:set-variable variableName="campaign"><![CDATA[%dw 2.0
 output application/json
 ---
 payload.campaignName]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<ee:transform doc:name="Prepare auth body" doc:id="2a39b440-d340-4ec2-b8d4-ae0aa78cb0f5">
+		<ee:transform doc:name="Prepare auth body"
+			doc:id="2a39b440-d340-4ec2-b8d4-ae0aa78cb0f5">
 			<ee:message />
 			<ee:variables>
 				<ee:set-variable variableName="authBody"><![CDATA[%dw 2.0
@@ -37,36 +43,39 @@ output application/x-www-form-urlencoded
 }]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="Authenticate_responsys" doc:id="41eadf14-746f-4449-b301-6f86bc727a6f" name="Authenticate_responsys" target="authResponse"/>
-		<ee:transform doc:name="set notification details" doc:id="4519934f-5436-47d9-8570-9be7ac22891d" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-fun buildRecipient(recipient, channel) = {
-    customerId: recipient.customerId,
-    (emailAddress: recipient.emailAddress) if (channel == "EMAIL"),
-    (mobileNumber: recipient.mobileNumber) if (channel == "SMS"),
-    listName: {
-        folderName:  recipient.listFolderName,
-        objectName:  recipient.listObjectName
-    }
-}
-
-fun buildOptionalData(optionalData) =
-    optionalData map {
-        name:  $.name,
-        value: $.value as String
-    }
+		<flow-ref doc:name="Authenticate_responsys"
+			doc:id="41eadf14-746f-4449-b301-6f86bc727a6f"
+			name="Authenticate_responsys" target="authResponse" />
+		<ee:transform doc:name="set notification details"
+			doc:id="4519934f-5436-47d9-8570-9be7ac22891d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json  skipNullOn = "everywhere"
 ---
 {
-    recipientData: payload.recipients map (recipient) -> {
-        recipient:    buildRecipient(recipient, payload.channel),
-        optionalData: buildOptionalData(recipient.optionalData default [])
-    }
+	"recipientData": payload.recipients map ((recipient, index) -> {
+		"recipient": {
+			"customerId": recipient.customerId,
+			"mobileNumber": recipient.mobileNumber,
+			"emailAddress": recipient.emailAddress,
+			"emailMD5Hash": recipient.emailMD5Hash,
+			"emailSHA256Hash": recipient.emailSHA256Hash,
+			"recipientId": recipient.recipientId,
+			"emailFormat": recipient.emailFormat,
+			"listName": {
+				"folderName": recipient.listFolderName,
+				"objectName": recipient.listObjectName
+			}
+		},
+		"optionalData": recipient.optionalData map {
+			name: $.name,
+			value: $.value
+		}
+	})
 }]]></ee:set-payload>
 			</ee:message>
-			<ee:variables >
-				<ee:set-variable variableName="responsysUrl" ><![CDATA[%dw 2.0
+			<ee:variables>
+				<ee:set-variable variableName="responsysUrl"><![CDATA[%dw 2.0
 output application/json
 ---
 vars.authResponse.endPoint 
@@ -76,10 +85,13 @@ vars.authResponse.endPoint
   ++ (if (vars.channel == 'EMAIL') 'email' else 'sms')]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="responsys-campaign-notification" doc:id="817c48dc-8f34-483c-9644-2879c325c221" name="responsys-campaign-notification"/>
-		<ee:transform doc:name="set response" doc:id="4d03360b-9a65-4d40-9fca-53a37f0e07d2" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<flow-ref doc:name="responsys-campaign-notification"
+			doc:id="817c48dc-8f34-483c-9644-2879c325c221"
+			name="responsys-campaign-notification" />
+		<ee:transform doc:name="set response"
+			doc:id="4d03360b-9a65-4d40-9fca-53a37f0e07d2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
