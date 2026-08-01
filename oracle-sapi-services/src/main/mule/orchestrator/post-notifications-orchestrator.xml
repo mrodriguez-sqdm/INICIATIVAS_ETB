@@ -10,8 +10,8 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
 	<sub-flow name="post-notifications-orchestrator"
 		doc:id="5d30e250-0a57-48b7-92c2-16d50c89f411">
-		<ee:transform doc:name="set initial variables"
-			doc:id="1f7f5a29-30e3-424c-b52b-f2e9b8ddd8ff">
+		<try doc:name="Try" doc:id="36884150-099e-480c-9ee7-05907c1a4e18" >
+			<ee:transform doc:name="set initial variables" doc:id="1f7f5a29-30e3-424c-b52b-f2e9b8ddd8ff">
 			<ee:message>
 			</ee:message>
 			<ee:variables>
@@ -29,8 +29,7 @@ output application/json
 payload.campaignName]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<ee:transform doc:name="Prepare auth body"
-			doc:id="2a39b440-d340-4ec2-b8d4-ae0aa78cb0f5">
+			<ee:transform doc:name="Prepare auth body" doc:id="2a39b440-d340-4ec2-b8d4-ae0aa78cb0f5">
 			<ee:message />
 			<ee:variables>
 				<ee:set-variable variableName="authBody"><![CDATA[%dw 2.0
@@ -43,11 +42,8 @@ output application/x-www-form-urlencoded
 }]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="Authenticate_responsys"
-			doc:id="41eadf14-746f-4449-b301-6f86bc727a6f"
-			name="Authenticate_responsys" target="authResponse" />
-		<ee:transform doc:name="set notification details"
-			doc:id="4519934f-5436-47d9-8570-9be7ac22891d">
+			<flow-ref doc:name="Authenticate_responsys" doc:id="41eadf14-746f-4449-b301-6f86bc727a6f" name="Authenticate_responsys" target="authResponse" />
+			<ee:transform doc:name="set notification details" doc:id="4519934f-5436-47d9-8570-9be7ac22891d">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json  skipNullOn = "everywhere"
@@ -61,7 +57,7 @@ output application/json  skipNullOn = "everywhere"
 			"emailMD5Hash": recipient.emailMD5Hash,
 			"emailSHA256Hash": recipient.emailSHA256Hash,
 			"recipientId": recipient.recipientId,
-			"emailFormat": recipient.emailFormat,
+			"emailFormat": recipient.emailFormat default "HTML_FORMAT",
 			"listName": {
 				"folderName": recipient.listFolderName,
 				"objectName": recipient.listObjectName
@@ -85,11 +81,25 @@ vars.authResponse.endPoint
   ++ (if (vars.channel == 'EMAIL') 'email' else 'sms')]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="responsys-campaign-notification"
-			doc:id="817c48dc-8f34-483c-9644-2879c325c221"
-			name="responsys-campaign-notification" />
-		<ee:transform doc:name="set response"
-			doc:id="4d03360b-9a65-4d40-9fca-53a37f0e07d2">
+			<flow-ref doc:name="responsys-campaign-notification" doc:id="817c48dc-8f34-483c-9644-2879c325c221" name="responsys-campaign-notification" />
+			<choice doc:name="Choice" doc:id="43dfeb7c-604d-4e60-b6b2-9744dad8c004">
+			<when expression='#[payload[0].success == "false"]'>
+				<ee:transform doc:name="set error message" doc:id="904207c1-c161-43d3-ab34-5e90f2367289">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="responsysError"><![CDATA[%dw 2.0
+output application/json
+var recipientID = payload[0].recipientId as String default "UNKNOWN"
+var recipientMessage = payload[0].errorMessage default "INTERNAL ERROR"
+---
+"Recipient ID: " ++ recipientID ++ " cause: " ++ recipientMessage]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<raise-error doc:name="RESPONSYS:NOTIFICATION_ERROR" doc:id="f3fcb5d8-9338-4e68-a34d-44bfe8a81f46" type="RESPONSYS:NOTIFICATION_ERROR" description="#[vars.responsysError]" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="set response" doc:id="4d03360b-9a65-4d40-9fca-53a37f0e07d2">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -101,5 +111,58 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+			</otherwise>
+		</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="8056fbf6-f86b-42cd-b730-cb5929708c32" type="RESPONSYS:NOTIFICATION_ERROR">
+					<ee:transform doc:name="Set REPONSYS ERROR" doc:id="8f09857c-400c-4485-b2b1-31437e29460d" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if ( error.description contains "NO_RECIPIENT_FOUND" ) {
+	"status": "404",
+	"code": "RESPONSYS:NO_RECIPIENT_FOUND",
+	"message": error.description,
+	"messageServer": error.description,
+	"cause": [{
+		"origin": "oracle-sapi-services",
+		"message": error.description
+	}]
+}
+else if ( error.description contains "INVALID_MOBILE_NUMBER_FORMAT" ) {
+	"status": "400",
+	"code": "RESPONSYS:INVALID_MOBILE_NUMBER_FORMAT",
+	"message": error.description,
+	"messageServer": error.description,
+	"cause": [{
+		"origin": "oracle-sapi-services",
+		"message": error.description
+	}]
+}
+else
+{
+	"status": "500",
+	"code": "RESPONSYS:NOTIFICATION_ERROR",
+	"message": error.description,
+	"messageServer": error.description,
+	"cause": [{
+		"origin": "oracle-sapi-services",
+		"message": error.description
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if ( error.description contains "NO_RECIPIENT_FOUND" ) 404
+else if ( error.description contains "INVALID_MOBILE_NUMBER_FORMAT" ) 400
+else 500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
 	</sub-flow>
 </mule>
