@@ -9,7 +9,7 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="get-billingDispute-orchestratorSub_Flow"
 		doc:id="3c655650-7cfd-46fa-bff2-99c43ce27a62">
 		<try doc:name="Try" doc:id="9230f925-15aa-4fa0-b90d-7615b92a5a6c">
-			<ee:transform doc:name="set billing params" doc:id="e8b7fa5d-a51e-40b5-8d60-354ddf910788">
+			<ee:transform doc:name="set billing variables" doc:id="9ab8facd-1ccc-4960-9394-47c884572f7f">
 				<ee:message />
 				<ee:variables>
 					<ee:set-variable variableName="billingParams"><![CDATA[%dw 2.0
@@ -20,8 +20,8 @@ attributes.queryParams]]></ee:set-variable>
 output application/json
 ---
 {
-	"client_secret": p('mongo-db-sapi.security.client-secret'),
-	"client_id": p('mongo-db-sapi.security.client-id'),
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
 	"name": attributes.headers.name,
 	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
 	"source": attributes.headers.source,
@@ -29,103 +29,20 @@ output application/json
 }]]></ee:set-variable>
 				</ee:variables>
 			</ee:transform>
-			<choice doc:name="Choice"
-				doc:id="a82f0867-17f6-463a-9beb-b96f8839eef0">
-				<when
-					expression="#[(attributes.queryParams.'CUSTOMER_ID_TYPE' != null and attributes.queryParams.'CUSTOMER_ID_TYPE' != &quot;&quot;) and (attributes.queryParams.'CUSTOMER_ID' != null and attributes.queryParams.'CUSTOMER_ID' != &quot;&quot;)]">
-					<ee:transform doc:name="set request"
-						doc:id="5dbd7ff9-bc99-4665-8fc4-d6ddcb482afa">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-	"tipoDocumento": vars.billingParams.'CUSTOMER_ID_TYPE',
-	"numeroIdentificacion": vars.billingParams.'CUSTOMER_ID'
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-					<flow-ref
-						doc:name="System (get-v1-billingAccounts)"
-						doc:id="a65cdf89-ec8b-4594-b1dd-4477b4067bae"
-						name="get-billingAccounts-mongo-sapi-services-clientSub_Flow" target="billingAccounts" />
-					<ee:transform doc:name="set Zsmart Request"
-						doc:id="f9c0143b-55f3-4097-bda4-e1297bd4a0a8">
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json skipNullOn = "everywhere"
----
-{
-    basePath: p("zsmart-sapi.base-path"),
-    host: p("zsmart-sapi.host"),
-    port: p("zsmart-sapi.port"),
-    method: "GET",
-    path: p('zsmart-sapi.resources.queryDispute.path'),
-    body: {},
-    headers: vars.billingHeaders default {},
-    queryParameters: {
-    	"accountNumber": vars.billingAccounts.result[0]."Cuenta_Facturacion",
-    	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
-    	"channelCode": vars.billingParams.'ORIGIN',
-    	"queryClosedFlag": vars.billingParams.'QUERY_CLOSED_FLAG',
-        "beginDate": vars.billingParams.'START_DATE',
-        "endDate": vars.billingParams.'END_DATE'
-    },
-    uriParameters: {}
-}]]></ee:set-payload>
-						</ee:message>
-						<ee:variables>
-							<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
-output application/json
----
-vars.mdmCuentaFact.result[0]."Cuenta_Facturacion"]]></ee:set-variable>
-						</ee:variables>
-					</ee:transform>
-					<flow-ref
-						doc:name="System Generic (Zsmart Billing Dispute)"
-						doc:id="032f2105-a0b6-4905-8f67-c681730026f7"
-						name="generic-zsmart-sapi-clientSub_Flow" />
-					<ee:transform doc:name="set billing account item response"
-						doc:id="25d9428d-69d3-47f0-817d-dad93e55b42d">
-						<ee:message>
-							<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-    res_code: payload.res_code,
-    res_message: payload.res_message,
-    result: {
-        disputeExDtoList: (payload.result.disputeExDtoList default []) map (dispute) -> {
-            amount: dispute.amount,
-            createdDate: dispute.createdDate,
-            disputeID: dispute.disputeID,
-            disputeItemExDtoList: (dispute.disputeItemExDtoList default []) map (item) -> {
-                glID: item.glID,
-                refInvoiceNumber: item.refInvoiceNumber,
-                amount: item.amount,
-                glTypeID: item.glTypeID,
-                glTypeName: item.glTypeName
-            },
-            remarks: dispute.remarks,
-            status: dispute.status
-        },
-        resultCode: payload.result.resultCode,
-        resultMsg: payload.result.resultMsg
-    }
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
+			<choice doc:name="Choice Billing Params" doc:id="141d5f80-a964-41dd-a6e9-6d4e5ab86357">
+				<when expression="#[!isEmpty(trim(vars.billingParams.'CONNECTION_NUMBER')) or !isEmpty(trim(vars.billingParams.'BILLING_ACCOUNT'))]">
+					<flow-ref doc:name="get-billingDispute-zsmart-request" doc:id="9b4c99ef-b0ed-407c-a886-c0d6b07d7ae7" name="get-billingDispute-zsmart-request" />
+				</when>
+				<when expression="#[!isEmpty(trim(vars.billingParams.'CUSTOMER_ID_TYPE')) and !isEmpty(trim(vars.billingParams.'CUSTOMER_ID'))]">
+					<flow-ref doc:name="get-billingDispute-by-customer" doc:id="dc54bcef-d2aa-46b4-9b1f-f2043938fed4" name="get-billingDispute-by-customer" />
 				</when>
 				<otherwise>
-					<raise-error doc:name="BILLING_DISPUTE:INVALID_PARAMS"
-						doc:id="bed226cc-d633-4c4e-8281-328993c38dd6"
-						type="BILLING_DISPUTE:INVALID_PARAMS"
-						description="There was an error trying to retrieve BillingDispute information" />
+					<raise-error doc:name="BILLING_DISPUTE:INVALID_PARAMS" doc:id="f576f1be-6981-4766-b644-4ae885d3a54b" type="BILLING_DISPUTE:INVALID_PARAMS" description="There was an error trying to retrieve BillingDispute information" />
 				</otherwise>
 			</choice>
 			<error-handler>
 				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c5ee9b96-e078-4134-a1e3-1738569178f9" type="BILLING_DISPUTE:INVALID_PARAMS">
-					<ee:transform doc:name="set error" doc:id="3b9ad068-9b8e-4b5f-88c7-d8656c438c1d">
+					<ee:transform doc:name="set billingDispute error" doc:id="3b9ad068-9b8e-4b5f-88c7-d8656c438c1d">
 						<ee:message>
 							<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -133,12 +50,12 @@ output application/json
 {
     "status": "400",
     "code": "BILLING_DISPUTE:INVALID_PARAMS",
-    "message": "Customer identification values must be provided.",
+    "message": "CONNECTION_NUMBER, BILLING_ACCOUNT and (CUSTOMER_ID_TYPE - CUSTOMER_ID) combination cant be empty at the same time.",
     "messageServer": error.description,
     "cause": [
         {
             "origin": "customer-papi-services-v2",
-            "message": "Customer identification values must be provided."
+            "message": "CONNECTION_NUMBER, BILLING_ACCOUNT and (CUSTOMER_ID_TYPE - CUSTOMER_ID) combination cant be empty at the same time.",
         }
     ]
 }]]></ee:set-payload>
@@ -153,5 +70,239 @@ output application/java
 				</on-error-continue>
 			</error-handler>
 		</try>
+	</sub-flow>
+	<sub-flow name="get-billingDispute-zsmart-request" doc:id="753e8c3a-9eca-4713-a6be-429672697ff4" >
+		<ee:transform doc:name="set Zsmart Request" doc:id="f9c0143b-55f3-4097-bda4-e1297bd4a0a8">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "GET",
+    path: p('zsmart-sapi.resources.queryDispute.path'),
+    body: {},
+    headers: vars.billingHeaders default {},
+    queryParameters: {
+    	"accountNumber": vars.billingParams.'BILLING_ACCOUNT',
+    	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
+    	"channelCode": vars.billingParams.'ORIGIN',
+    	"queryClosedFlag": vars.billingParams.'QUERY_CLOSED_FLAG',
+        "beginDate": vars.billingParams.'START_DATE',
+        "endDate": vars.billingParams.'END_DATE'
+    },
+    uriParameters: {}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+vars.billingParams.'BILLING_ACCOUNT']]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart Billing Dispute)" doc:id="032f2105-a0b6-4905-8f67-c681730026f7" name="generic-zsmart-sapi-clientSub_Flow" />
+		<ee:transform doc:name="set billing account item response" doc:id="25d9428d-69d3-47f0-817d-dad93e55b42d">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+var zsmartResponse = payload.result.result
+output application/json  skipNullOn="everywhere"
+---
+{
+  "codeResponse": "200",
+  "messageResponse": "OK",
+  "accounts": [
+    {
+      "accountNumber": vars.billingAccount,
+      "disputes": zsmartResponse.disputeExDtoList map (dispute, index) -> {
+        "disputeID": dispute.disputeID,
+        "amount": dispute.amount,
+        "remarks": dispute.remarks,
+        "createdDate": dispute.createdDate,
+        "status": dispute.status,
+        "disputeItems": dispute.disputeItemExDtoList map (disputeItem, indez) -> {
+          "glID": disputeItem.glID,
+          "refInvoiceNumber": disputeItem.refInvoiceNumber,
+          "amount": disputeItem.amount,
+          "glTypeID": disputeItem.glTypeID,
+          "glTypeName": disputeItem.glTypeName
+        }
+      }
+    }
+  ]
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-billingDispute-by-customer" doc:id="bf3a8e6a-385e-49d7-bb18-2451d0027f9d" >
+		<ee:transform doc:name="set mongo dynamicQuery request" doc:id="d9b9e425-084e-4dd3-a25f-e99af49b8cd5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: p('mongo-db-sapi.resources.dynamicQuery.base-path'),
+	body: {
+		"query": {
+			"aggregate": "MDM_CUENTA_FACTURACION",
+			"pipeline": [{
+				"\$match": {
+					"Tipo_Documento": vars.billingParams.'CUSTOMER_ID_TYPE',
+					"Numero_Identificacion": vars.billingParams.'CUSTOMER_ID'
+				}
+			}],
+			"cursor": {
+			}
+		}
+	},
+	headers: vars.billingHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (MDM_CUENTA_FACTURACION)" doc:id="6c817703-4211-480e-9d92-c3c26cfa2ca0" name="generic-sapi-clientSub_Flow" target="mdmCuentaFact" />
+		<ee:transform doc:name="set billing loop variables" doc:id="0ea5b071-ef12-4ddb-b08a-3b0e2a31fef8" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="billingAccounts" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.mdmCuentaFact.result.*"Cuenta_Facturacion"]]></ee:set-variable>
+				<ee:set-variable variableName="billingDisputeAcc" ><![CDATA[[]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<parallel-foreach doc:name="Parallel For Each Billing Account" doc:id="c39fd96f-2524-4725-ab4c-f9a3574e88a3" collection="vars.billingAccounts" maxConcurrency="10">
+			<try doc:name="Try" doc:id="59f96b39-2aad-4afc-bc76-5e8b92a80492" >
+				<logger level="INFO" doc:name="billing loop value" doc:id="e64af166-97f3-4615-9f9a-77009932eb27" message='#["billing account processing: " ++ payload default ""]' />
+				<ee:transform doc:name="set billingAccount" doc:id="c173d3ae-c913-4ec8-ac60-ae8dbe2779f3" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="billingAccount" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="set Zsmart Request" doc:id="cab96998-ab05-462d-81a0-1c7adfbdb82a" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "GET",
+    path: p('zsmart-sapi.resources.queryDispute.path'),
+    body: {},
+    headers: vars.billingHeaders default {},
+    queryParameters: {
+    	"accountNumber": vars.billingAccount,
+    	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
+    	"channelCode": vars.billingParams.'ORIGIN',
+    	"queryClosedFlag": vars.billingParams.'QUERY_CLOSED_FLAG',
+        "beginDate": vars.billingParams.'START_DATE',
+        "endDate": vars.billingParams.'END_DATE'
+    },
+    uriParameters: {}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+				<flow-ref doc:name="System Generic (Zsmart Billing History)" doc:id="7df2b73d-030b-414f-a6cc-b11d78631269" name="generic-zsmart-sapi-clientSub_Flow" />
+				<ee:transform doc:name="set billingDisputeAcc value" doc:id="dd5e011f-93a4-4021-aa16-d4b2319abff6" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="billingDisputeAcc" ><![CDATA[%dw 2.0
+output application/java
+var zsmartResponse = {
+	"status": "success",
+	"accountNumber": vars.billingAccount,
+	"disputes": payload.result.result.disputeExDtoList map (dispute, index) -> {
+		"disputeID": dispute.disputeID,
+		"amount": dispute.amount,
+		"remarks": dispute.remarks,
+		"createdDate": dispute.createdDate,
+		"status": dispute.status,
+		"disputeItems": dispute.disputeItemExDtoList map (disputeItem, indez) -> {
+			"glID": disputeItem.glID,
+			"refInvoiceNumber": disputeItem.refInvoiceNumber,
+			"amount": disputeItem.amount,
+			"glTypeID": disputeItem.glTypeID,
+			"glTypeName": disputeItem.glTypeName
+		}
+	}
+}
+---
+vars.billingDisputeAcc + zsmartResponse]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<error-handler >
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4d41a970-2f94-49b3-a492-3ccaee661b99" >
+						<ee:transform doc:name="set billingDisputeAcc value" doc:id="28b4bb8b-edd3-4d01-85d5-d791655d1b9a" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="billingDisputeAcc" ><![CDATA[%dw 2.0
+output application/java
+var zsmartResponse = {
+	"status": "failed",
+	"accountNumber": vars.billingAccount,
+	"billingError": error.description
+}
+---
+vars.billingDisputeAcc + zsmartResponse]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</parallel-foreach>
+		<ee:transform doc:name="set billingDispute response" doc:id="1ea9e25a-730a-4dae-8682-cfe62427983c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var totalCount = sizeOf(vars.billingDisputeAcc) default 0
+var successCount = sizeOf(vars.billingDisputeAcc filter ($.status == "success")) default 0
+var failedCount = sizeOf(vars.billingDisputeAcc filter ($.status == "failed")) default 0
+var successAccounts = vars.billingDisputeAcc filter ($.status == "success") default []
+var failedAccounts = vars.billingDisputeAcc filter ($.status == "failed") default []
+---
+{
+	"codeResponse": if ( failedCount == 0 ) "200" 
+          else if ( failedCount < totalCount ) "207" 
+          else "500",
+	"messageResponse": if ( failedCount == 0 ) "OK" 
+          else if ( failedCount < totalCount ) "PARTIAL_SUCCESS" 
+          else "FAILED",
+	"accounts": successAccounts map $ - "status",
+	"failedAccounts": failedAccounts,
+	"summary": {
+		"totalAccounts": totalCount,
+		"processedAccounts": successCount,
+		"failedAccounts": failedCount
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+var totalCount = sizeOf(vars.billingDisputeAcc) default 0
+var failedCount = sizeOf(vars.billingDisputeAcc filter ($.status == "failed")) default 0
+---
+if ( failedCount == 0 ) 200 
+          else if ( failedCount < totalCount ) 207
+          else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
 	</sub-flow>
 </mule>
