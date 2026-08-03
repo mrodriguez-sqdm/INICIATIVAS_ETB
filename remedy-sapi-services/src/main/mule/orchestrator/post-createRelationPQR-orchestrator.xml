@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-createRelationPQR-orchestratorSub_Flow" doc:id="c9dd08f0-07b5-42b3-a84d-91eac40259b1" >
+		<parse-template doc:name="Parse XML" doc:id="541db844-795f-4808-8a5e-3aa98a080dde" location="soap\schemas\templates\soap-createRelationPQR.xml"/>
+		<flow-ref doc:name="Go to Client" doc:id="aadd067d-5ca2-48d8-ba66-90ab5a5f2295" name="post-createRelationPQR-clientSub_Flow"/>
+		<ee:transform doc:name="Transform to JSON" doc:id="4a3ca2c9-0555-4e1c-9d6e-ba62fae53a70" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="eb807e66-6163-403e-b2d8-a050a5f104b4" >
+			<when expression='#[attributes.statusCode == 200]'>
+				<set-variable value="200" doc:name="HTTP Status" doc:id="8bc99f51-676f-4e79-98c6-1b7751827905" variableName="httpStatus"/>
+				<ee:transform doc:name="Set success message" doc:id="8ade9689-14ec-4711-93d7-d1603e7842a7" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Resultado: payload.Envelope.Body.CreateResponse.OUT_EdoRelacion,
+	Descripcion: payload.Envelope.Body.CreateResponse.OUT_Detalle_Rel
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="HTTP Status" doc:id="85ecba34-9bd4-47de-8ac7-772a9393bad6" variableName="httpStatus" />
+				<ee:transform doc:name="Set error message" doc:id="8b30c73b-b1ef-4edf-93f8-792297a7cb76" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Resultado: payload.Envelope.Body.Fault.faultcode,
+	Descripcion: payload.Envelope.Body.Fault.faultstring
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

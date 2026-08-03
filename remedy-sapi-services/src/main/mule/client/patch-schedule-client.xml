@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-schedule-clientSub_Flow" doc:id="83b7fd4c-16e0-4c63-8b54-78a88ef74ba0" >
+		<async doc:name="Async" doc:id="fa7af889-2519-4f3f-9d58-ce80fb2b2a9d">
+				<flow-ref doc:name="Call logger before" doc:id="4f88b32d-8b4e-4f3e-a8ed-c814be36ce7b" name="loggin-client-call" />
+			</async>
+		<try doc:name="Try" doc:id="edeac2fd-6e19-4fd8-9120-1d927a55a0a0" >
+			<logger level="INFO" doc:name="loggerBefore" doc:id="b8bd4b46-d65c-4623-bd6f-78bcc2a29329" message="Before: #[payload]"/>
+			<logger level="INFO" doc:name="LoggerAfter" doc:id="0b793b8c-6709-4c6b-b81f-7bd091c394b3" message="After: #[payload]"/>
+			<http:request method="POST" doc:name="Request to mdm ws schedule" doc:id="33343150-7fed-4932-b34e-de4c7b44f946" config-ref="mdm-ws-schedule" path="${mdm-ws-schedule.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : p('mdm-ws-schedule.headers.contentTypeAction')
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"server" : p('mdm-ws-schedule.queryParams.server'),
+	"webService" : p('mdm-ws-schedule.queryParams.webService')
+}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d7ac533f-fc4b-4fc5-be42-68a2bde4eef9" type="HTTP:INTERNAL_SERVER_ERROR" when="error.muleMessage.typedValue.Envelope.Body.Fault != null">
+					<ee:transform doc:name="Xml to Json" doc:id="51a95e09-132d-4ed3-8ff6-b19bf32f8c3f" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+error.muleMessage.typedValue]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="c5a3d6b4-4b8b-4e30-8164-2a1e8cbe0f97">
+				<flow-ref doc:name="Call logger after" doc:id="de844f3a-3c70-4c70-8fbb-e85dfcbe5b1b" name="loggin-client-call" />
+			</async>
+	</sub-flow>
+	<sub-flow name="put-updateSchedule-client" doc:id="4afb131d-bdcf-4979-9e78-6ab10f41df97" >
+		<async doc:name="Async" doc:id="6edf94fb-179d-4065-b476-c4f1a79a4b20">
+			<flow-ref doc:name="Call logger before" doc:id="e0200f15-fdc4-4620-a507-22ec015c0d6f" name="loggin-client-call" />
+		</async>
+		<http:request method="POST" doc:name="Request" doc:id="a44e15a1-3fa9-436f-96c5-ca6c52e43581" path="${eta-inbound.basePath}" config-ref="HTTP_Request_ETA_config"/>
+		<async doc:name="Async" doc:id="afcfce73-7583-426d-a596-cdfb08730f72" >
+			<flow-ref doc:name="Call logger after" doc:id="3c057e4f-9182-41ea-bb67-c4c33f51d3c0" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	
+</mule>

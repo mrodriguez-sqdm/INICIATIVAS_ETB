@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateScheduleStatus-orchestratorSub_Flow" doc:id="19917b1a-4e23-4402-8f02-5169bead83fb" >
+		<ee:transform doc:name="Transform close_orders" doc:id="8874682e-fa75-4cd5-853f-f496faa1e8ee" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns urn urn:ETB_IntegracionTOA_WS_MDM
+ns xsd http://www.w3.org/2001/XMLSchema
+ns xsi http://www.w3.org/2001/XMLSchema-instance
+output application/xml  
+---
+
+  soapenv#Envelope @("xmlns:urn": urn): {
+    soapenv#Header: {
+      'urn:AuthenticationInfo': {
+        'urn:userName': p('mdm-remedy.credentials.user'),
+        'urn:password': p('mdm-remedy.credentials.password')
+      }
+    },
+    soapenv#Body: {
+      Create_CloseOrder @(xmlns: urn, 'xmlns:SOAP-ENV': soapenv, 'xmlns:xsd': xsd, 'xmlns:xsi': xsi): {
+        Close_ApptNumber: attributes.uriParams.order_id,
+        Close_StatusReasonTOA: payload.statusReasonTOA,
+        Close_Resolution: payload.resolution,
+        Close_ResolutionCode: payload.resolutionCode,
+        Close_Status: payload.status,
+        Close_GroupID: payload.groupID,
+        ACCION: payload.action
+      }
+    }
+  }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to MDM-services" doc:id="e127b7a0-9c82-4421-993f-a29137e92945" name="patch-updateScheduleStatus-serviceSub_Flow" />
+		<choice doc:name="Evaluate_Response" doc:id="6ace8743-3dc1-4e30-82fb-577700efa5c2" >
+			<when expression='#[payload.Envelope.Body.Create_CloseOrderResponse.CloseR_ResultadoTransaccion == "ERROR"]' >
+				<set-variable value="500" doc:name="httpStatus" doc:id="ed410f22-d13f-47e7-a411-e60d505dbbcd" variableName="httpStatus" />
+				<ee:transform doc:name="transform_For_ERROR" doc:id="b07250d0-53c5-4f10-bb64-2dd5bc260d01" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"CloseR_ResultadoTransaccion": "ERROR",
+	"CloseR_MensajeError": payload.Envelope.Body.Create_CloseOrderResponse.CloseR_MensajeError
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression='#[payload.Envelope.Body.Create_CloseOrderResponse.CloseR_ResultadoTransaccion == "Fallido"]' >
+				<set-variable value="500" doc:name="httpStatus" doc:id="50e44af5-6929-4568-be6b-e0d4c96f8653" variableName="httpStatus" />
+				<ee:transform doc:name="transform_For_ERROR" doc:id="0c0df370-5ca2-4621-a47a-8828d913d933" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"CloseR_ResultadoTransaccion": "ERROR",
+	"CloseR_MensajeError": payload.Envelope.Body.Create_CloseOrderResponse.CloseR_MensajeError
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="200" doc:name="httpStatus" doc:id="e2716a5d-afb2-44f0-9a46-3b047601eb3d" variableName="httpStatus" />
+				<ee:transform doc:name="transform_For_SUCCES" doc:id="6136ab24-67f7-4b09-bece-d000f398632e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"CloseR_ResultadoTransaccion": "EXITOSO",
+	"CloseR_MensajeError": "EXITOSO"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

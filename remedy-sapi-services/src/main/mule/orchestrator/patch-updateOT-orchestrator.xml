@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateOT-orchestrator" doc:id="c98b87f9-e73e-44a1-91b4-21b2c17a7a8e" >
+		<parse-template doc:name="Parse to XML" doc:id="d51c8688-0270-42b3-b2e9-44ef0fd1b6cc" location="soap\schemas\templates\soap-mdm-updateOT.xml"/>
+		<flow-ref doc:name="Go to Client" doc:id="2b4d0dfc-02f3-4ed7-a641-a8c72461caef" name="patch-updateOT-client"/>
+		<ee:transform doc:name="Response" doc:id="80a1a0a5-be7d-4a1f-956a-71442c1e316e" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "resultado": payload.Envelope.Body.Set_OperationResponse.Aknowledge,
+    "descripcion": payload.Envelope.Body.Set_OperationResponse.Error
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Response succesful?" doc:id="2020ef1e-1eed-4b1d-bcc2-3749a8b0c29c" >
+			<when expression="#[vars.response.resultado == 'OK - Exitoso']">
+				<ee:transform doc:name="Response" doc:id="62b45eb0-907c-4292-84d0-aa9bb349c4c9">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"UpdateOTOUT":
+	{
+		"Resultado": "OK - Exitoso",
+		"Descripcion": "EXITOSO"
+	}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[200]" doc:name="httpStatus = 200" doc:id="95a5cd1d-5d6c-412f-95b2-12cf7c5d898b" variableName="httpStatus"/>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Response Error Message" doc:id="53eca9c4-20cb-4b63-a4a2-a9b98d552c58">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var fault = payload.Envelope.Body.Fault
+---
+if(fault != null){
+    "code": "ERROR",
+    "fault": fault.faultstring
+}else{
+    "code": "ERROR",
+    "fault": payload.Envelope.Body.Set_OperationResponse.Error
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+				<set-variable value="#[500]" doc:name="httpStatus = 500" doc:id="b142d7d0-dbaf-4685-af16-4182b3b6ba55" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

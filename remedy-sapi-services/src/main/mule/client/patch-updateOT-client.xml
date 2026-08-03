@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateOT-client" doc:id="3addc5bc-07ea-40a3-8c88-3173dbc17ce3" >
+		<async doc:name="Async" doc:id="e81c3596-07a7-4e4e-b1c3-c7f6c3d1be51" >
+			<flow-ref doc:name="Call logger before" doc:id="faeece8d-6188-4d5b-99cd-ebf0045f07be" name="loggin-client-call"/>
+		</async>
+		<try doc:name="Try" doc:id="226a2fdd-02ae-4601-adab-09d8d416934a" >
+			<http:request method="POST" doc:name="Call Web Service" doc:id="64a2d38b-9499-42b8-8550-a430de966ac1" config-ref="mdm-ws-order" path="${mdm-ws-order.path}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : p('mdm-ws-order.content-type')
+}]]]></http:headers>
+				<http:query-params><![CDATA[#[output application/java
+---
+{
+	server : p('mdm-ws-order.server'),
+	webService : p('mdm-ws-order-webService')
+}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="Copy_of_On Error Continue" doc:id="a97ddb1e-1868-48ce-94da-c2b27ffd0334" type="HTTP:INTERNAL_SERVER_ERROR" when="error.muleMessage.typedValue.Envelope.Body.Fault != null" >
+					<ee:transform doc:name="Xml to Json" doc:id="97167b40-5921-4259-967a-9684b4922a63" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+error.muleMessage.typedValue]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="dfa74930-010f-41fa-bf4b-4e6498892eda" >
+			<flow-ref doc:name="Call logger after" doc:id="812934a5-84fe-40f3-ac4f-3801daf69fe7" name="loggin-client-call"/>
+		</async>
+	</sub-flow>
+	<sub-flow name="patch-updateOT-clientSub_Flow" doc:id="77fc1a91-3a60-47f5-867f-47daffa8744e" >
+		<ee:transform doc:name="WS Call Mock" doc:id="399e7c41-2266-4e78-a9f9-38055781149e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "ns0:UpdateOTOutput": {
+    "-xmlns:ns0": "http://etb.com.co/services/remedy/message/UpdateOtOp",
+    "ns1:WSResponseHeader2": {
+      "-xmlns:ns1": "http://www.etb.com.co/LTE/commons/WSResponseHeader2/v1.0",
+      "ns1:System": {
+        "ns1:name": "Tibco",
+        "ns1:correlationID": "MDM-PQR-24530685",
+        "ns1:processingServer": "Tibco MDM"
+      },
+      "ns1:Service": {
+        "ns1:status": "PASS",
+        "ns1:responseDate": "2021-10-01T00:07:54.626-05:00"
+      }
+    },
+    "ns1:UpdateOTOUT": {
+      "-xmlns:ns1": "http://etb.com.co/services/remedy/message/UpdateOTMsg",
+      "-xmlns:ns0": "http://www.etb.com.co/NPlat/framework/BusAnyMessage/v1.0",
+      "-xmlns:jms1": "http://www.tibco.com/namespaces/tnt/plugins/jms",
+      "ns1:Resultado": "ERROR",
+      "ns1:Descripcion": {
+        "-xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+        "-xsi:nil": "true",
+        "-self-closing": "true"
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

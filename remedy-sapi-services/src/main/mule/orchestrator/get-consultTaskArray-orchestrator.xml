@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-consultTaskArray-orchestratorSub_Flow" doc:id="b5f8a410-e1fd-45a0-b9a0-d57274cb57cf" >
+		<parse-template doc:name="Parse Template to XML" doc:id="0f018a03-4079-4834-8beb-9106384dbec4" location="soap/schemas/templates/soap-consultTaskArray-request.xml"/>
+		<flow-ref doc:name="Go to Request" doc:id="d57d9363-c8d9-43e9-94b4-cf27dd41d4c1" name="get-consultTaskArray-serviceSub_Flow"/>
+		<ee:transform doc:name="Transform Message to JSON" doc:id="eca0c6d7-83d0-4ecf-9c21-b8a5adc319bd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Filter ConsultaResponse" doc:id="d6a6f015-474a-442b-87e7-8fab9952079d" >
+			<when expression="#[payload.Envelope.Body.ConsultaResponse !=null]">
+				<set-variable value="200" doc:name="Set HttpStatus 200" doc:id="39d37208-1b25-444d-ba80-dcdeed29e913" variableName="httpStatus"/>
+				<set-variable value="#[payload.Envelope.Body.ConsultaResponse.*getListOperation]" doc:name="task variable" doc:id="45d8e8d7-bc3d-4380-b25b-4282929da284" variableName="task"/>
+				<ee:transform doc:name="Response 200 Mapping" doc:id="74383cce-7df3-4b6f-83f5-4cc3b1ac8036" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "consultTaskArrayOut": {
+   "status": "Exitoso",
+   "tasks": vars.task map (obj, ind) -> {
+    taskId : obj.TaskID,
+    nombreTask : obj.NombreTask,
+    estadoSf: obj.Estado_SF,
+    estadoRmd: obj.Estado_RMD,
+    idTareasSf: obj.ID_Tarea_SF
+}
+ }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="Set httpStatus 500" doc:id="77d5dd4f-fd5a-4072-86d2-a7156bf58cb6" variableName="httpStatus"/>
+				<ee:transform doc:name="Response 500 Mapping" doc:id="24521205-3ab1-4cee-aec3-7d522e450005" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{"messageServer": {
+    "Envelope": {
+      "Header": null,
+      "Body": {
+        "createReqResponse": {
+          "status": "Fallido",
+          "errorDetail": "ERROR (302): La entrada no existe en la base de datos.; For qualification:'10000006' = 'INC00000471226'"
+        }
+      }
+    }
+  }
+  }
+  ]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<raise-error doc:name="Raise error" doc:id="e2fb0d00-eb9c-4b42-b59d-66ac5c4d1d6f" type="SOAP:UNEXPECTED_ERROR" description="Unexpected_Error"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

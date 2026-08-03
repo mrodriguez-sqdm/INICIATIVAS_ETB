@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-createRequestNote-orchestratorSub_Flow" doc:id="38fd46f8-461b-4b64-9c73-b89a7b44a723" >
+		<ee:transform doc:name="payload to Remedy" doc:id="a45521f1-ddb7-45cc-aa66-e815d1e4c63b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns urn urn:ETB_WebServicesCreateNotesWOI
+
+---
+soapenv#Envelope: {
+	soapenv#Header:{
+		urn#AuthenticationInfo:{
+			urn#userName:p('mdm-remedy.credentials.user'),
+			urn#password:p('mdm-remedy.credentials.password')
+		}
+	},
+	soapenv#Body:{
+		urn#Creat_Note_WOI:{
+     		urn#Status: payload.status,
+     		urn#Description: payload.description,
+     		urn#Detail_Description: payload.detailDescription,
+     		urn#Submit_Date: payload.submitDate,
+     		urn#Work_Order_ID: payload.workOrderId,
+     		urn#Work_Log_type: payload.workLogType,
+     		urn#View_Access: payload.viewAccess,
+     		urn#Secure_Work_Log: payload.secureWorkLog
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go To Remedy apps" doc:id="3339383f-5d6d-4bb8-873a-f1ac6d748218" name="post-createRequestNote-serviceSub_Flow"/>
+		<ee:transform doc:name="response to json" doc:id="74d0b90a-f5ea-4cad-9648-32577be99ea4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="f6f4cdf3-b58d-4433-96df-c81ec070d85e" >
+			<when expression="#[payload.Envelope.Body.Creat_Note_WOIResponse.Work_Log_ID != null]" doc:id="29c9dfe6-adc1-4338-b093-fdd534197001">
+				<set-variable value="201" doc:name="Set Variable" doc:id="0a0d2f86-96bd-4666-a770-8764e8d184fa" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform Message" doc:id="1274d8ec-9c4c-4016-9090-e3e3d1bc5e46" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "createRequestNoteOut": {
+   "status": "EXITOSO",
+   "workLogId": payload.Envelope.Body.Creat_Note_WOIResponse.Work_Log_ID
+ }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="500" doc:name="Set Variable" doc:id="04edce99-9c1f-49d4-9bf8-cd22dd63ea44" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform Message" doc:id="9cfa1650-b328-46ad-a531-db46f36d2cce" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "createRequestNoteOut": {
+   "status": "ERROR",
+   "description": "ERROR (408): El tipo de datos de selección requiere una especificación de límite.; Field ID - WOI:WorkInfo &lt;7>"
+ }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<raise-error doc:name="Raise error" doc:id="780fb029-2789-43e6-aad0-d03a75229650" type="SOAP:UNEXPECTED_ERROR" description="WorkOrderId Not Found"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

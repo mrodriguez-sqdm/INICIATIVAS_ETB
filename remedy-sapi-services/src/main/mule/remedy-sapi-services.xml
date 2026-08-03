@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    
+    <flow name="remedy-sapi-services-main">
+        <http:listener path="/remedy/*" config-ref="remedy-sapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Go to initial Log" doc:id="26f912d7-ee59-48be-96d2-6f59cb0ca0ee" name="processAndSystem-logginSub_Flow" />
+        <apikit:router config-ref="remedy-sapi-services-config" />
+        <error-handler ref="common-error-handler-v2" />
+    </flow>
+    <flow name="remedy-sapi-services-console">
+        <http:listener path="/console/*" config-ref="remedy-sapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="remedy-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="57044d54-349d-460c-8072-21e9c2b8e46a" type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message" doc:id="3b602952-3f13-4283-9fba-556554db49f6">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="patch:\v1\incident\(incidence_id)\vias:application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="patch-updateVias-handler" doc:id="765623d1-6891-49d8-8dca-bd0bea89beb9" name="patch-updateVias-handler" />
+    </flow>
+    <flow name="patch:\v1\incident\orders:application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="patch-updateOT-handler" doc:id="2836bdf8-f86e-410b-8e9f-3fda519adb00" name="patch-updateOT-handler" />
+    </flow>
+    <flow name="patch:\v1\incident\(incidence_id)\schedule\(schedule_id):application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="patch-mdm-schedule-handlerSub_Flow" doc:id="a522b2bb-55ce-418d-84d8-0d93c9b66373" name="patch-mdm-schedule-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\billing_accounts:application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="post-billing_account-handlerSub_Flow" doc:id="49f3dac9-9c83-49d1-a808-cc0b998a8172" name="post-billing_account-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\relation_pqr:application\xml:remedy-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="0466039d-24b5-435f-b64a-5b35536c9cea" name="post-createRelationPQR-handlerSub_Flow" />
+    </flow>
+    <flow name="delete:\v1\incident\(incidence_id)\schedule\agenda\(agenda_id):remedy-sapi-services-config">
+        <flow-ref doc:name="Flow Reference" doc:id="210261f4-4a58-4e5b-bb7f-ffb72d9a89ca" name="delete-cancelSchedule-handler" />
+    </flow>
+    <flow name="post:\v1\incident\enterprise:application\xml:remedy-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="7c4f9f7e-3d13-4648-ad0c-6fd1e3049035" name="post-create-incident-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\incident\(incidence_id):application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="patch-updateIncidentStatus-hanlderSub_Flow" doc:id="d25bcc0d-43b4-4c90-b96e-3fed4281c2a8" name="patch-updateIncidentStatus-hanlderSub_Flow" />
+    </flow>
+    <flow name="post:\v1\enterprise\request:application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="b88bab24-74d4-49a6-87d3-b0567b279465" name="post-createEnterpriseRequest-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\incident\(incidence_id)\tasks:remedy-sapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="00be3525-1ea8-4beb-b5b4-9f03b41be99a" name="get-consultTaskArray-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\incident\note:application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="post-createIncidentNote-handlerSub_Flow" doc:id="da0ec76d-a231-45eb-a131-d1d54046c30d" name="post-createIncidentNote-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\incident\(incidence_id)\tasks:application\json:remedy-sapi-services-config" doc:id="08b5c8a7-bb84-4e6f-b62b-9206e093ab2a">
+        <flow-ref doc:name="Go to Handler" doc:id="8b804509-7383-4221-84a0-401705217e05" name="post-createNewTask-handlerSub_Flow" />
+    </flow>
+    <flow name="put:\v1\entries\(entryId)\(formName):application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="put-entries-handlerSub_Flow" doc:id="0863d5bf-9859-462f-8e39-51dac7393cc9" name="put-entries-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\entries\(entryId)\(formName):remedy-sapi-services-config">
+        <flow-ref doc:name="get-entries-handlerSub_Flow" doc:id="03bee2ad-bd13-4bf3-8755-14451aa75a87" name="get-entries-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\request\note:application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="Go To Handler" doc:id="fd8d1fb9-3787-4743-8881-4104c52b8d31" name="post-createRequestNote-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\schedule:application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="Go To Handler" doc:id="6fc4875d-695f-476d-9994-b2a23304a4c2" name="post-createSchedule-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\assign_technician:application\json:remedy-sapi-services-config" doc:id="881794ff-1d86-4b29-82c2-23d45757dd7c">
+        <flow-ref doc:name="Go to Handler" doc:id="4b83a565-4f7c-40b3-acaf-15aeebbb41f2" name="post-assign_technician-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\incident:application\json:remedy-sapi-services-config" doc:id="314d5767-4ce3-4807-8b8b-f34386d8a7db">
+        <flow-ref doc:name="Go to Handler" doc:id="fffcf7c8-86ba-4214-97b5-e2f353fa761c" name="post-createIncident-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\orders\(order_id):application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="3a54e3e6-2e0f-43e3-ad88-a7fa0b4348c4" name="patch-updateScheduleStatus-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\billing_accounts:application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="patch-billingAccount-handlerSub_Flow" doc:id="cc3acb64-a939-4a75-a302-72e79b4feb57" name="patch-billingAccount-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\support\customers:remedy-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="0c44e430-a1f8-4719-96c7-2445a9afe20e" name="get-customer-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\support\contacts:application\json:remedy-sapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="b2facf30-0758-4b54-81bc-2f2a984d81a9" name="post-contact-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\orders\schedule:application\json:remedy-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="e3ba8fe0-56bd-4d2a-9b88-c7b6b868c90e" name="patch-schedule-handlerSub_Flow"/>
+    </flow>
+</mule>
