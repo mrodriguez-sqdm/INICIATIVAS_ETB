@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <flow name="orquestador-sapi-services-main">
+        <http:listener config-ref="orquestador-sapi-services-httpListenerConfig" path="${http.path}">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Get systemId" doc:id="77625d17-c625-4434-950c-b0a44e6a91a4" name="processAndSystem-logginSub_Flow" />
+        <apikit:router config-ref="orquestador-sapi-services-config" />
+        <error-handler ref="common-error-handler-v2" />
+    </flow>
+    <flow name="orquestador-sapi-services-console">
+        <http:listener config-ref="orquestador-sapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="orquestador-sapi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="get:\v1\order\(orderNumber):orquestador-sapi-services-config">
+        <flow-ref doc:name="get-orderOFSC-handlerSub_Flow" doc:id="344a65e4-c5e4-44f3-a92c-b829ef466059" name="get-orderOFSC-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\v1\order\(orderNumber)\properties:application\json:orquestador-sapi-services-config" doc:id="23e79e88-1e63-48ed-b43e-78808566d530">
+        <flow-ref doc:name="Go to Handler" doc:id="dc225774-64d1-40e8-9d94-d338b7238326" name="patch-updateProperties-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\order\activate:application\json:orquestador-sapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="2afb9356-a96c-4fcd-bdc5-928bd132140d" name="post-orderActive-handlerSub_Flow"/>
+    </flow>
+	<flow name="post:\v1\obtenerDisponibilidadAgendas:application\json:orquestador-sapi-services-config" doc:id="88ba29d6-617e-40cd-b3cb-3739fd8d7b0d" >
+		<flow-ref doc:name="Flow Reference" doc:id="398c52b4-81e2-462b-96db-48288d097302" name="post-ObtenerDisponibilidadAgendas-orchestratorSub_Flow"/>
+	</flow>
+</mule>
