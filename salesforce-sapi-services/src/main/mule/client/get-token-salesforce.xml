@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="get-salesforce-token-clientSub_Flow" doc:id="1f576565-58b1-45c9-a216-41718de0b14a" >
+		<ee:transform doc:name="Set form" doc:id="6cf48542-0fa9-4ced-8c49-78454f171736">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output multipart/form-data
+---
+{
+    parts: {
+        username: {
+            headers : {"Content-Type": "text/plain"},
+            content: p('salesforce.rest-token.username')
+        },
+        password: {
+        	headers : {"Content-Type": "text/plain"},
+            content: p('salesforce.rest-token.password')
+        },
+        grant_type: {
+        	headers : {"Content-Type": "text/plain"},
+            content: p('salesforce.rest-token.grant_type')
+        },
+        client_id: {
+        	headers : {"Content-Type": "text/plain"},
+            content: p('salesforce.rest-token.client_id')
+        },
+        client_secret: {
+        	headers : {"Content-Type": "text/plain"},
+            content: p('salesforce.rest-token.client_secret')
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="Token Request" doc:id="457c4ea1-a78f-43d2-b07f-7d2a4a5d0b3a" config-ref="HTTP_Request_configuration_token_salesforce_sf" path="#[p('salesforce.rest-token.path')]" />
+	</sub-flow>
+	<sub-flow name="get-token-salesforceSub_Flow" doc:id="c474c961-dc95-4274-ac26-0615105184ec" >
+		<set-variable value='#["key"]' doc:name="Set sfdcToken" doc:id="ea1820cd-dac5-4b22-b8df-2c1a548f0c4d" variableName="sfdcToken"/>
+		<ee:cache doc:name="Cache" doc:id="1ab93243-90aa-4831-8c01-906a13c2028d" cachingStrategy-ref="Caching_Strategy_sf">
+			<http:request method="POST" doc:name="get token hcm" doc:id="20147db1-83c2-432d-90ee-f9e4a0f92fc6" config-ref="HTTP_Request_configuration_token_salesforce_sf" path="${salesforce.hcm.url}">
+		</http:request>
+			<logger level="INFO" doc:name="Logger" doc:id="050d992d-6b6e-4d7d-b8c5-cc320d01572e" message="#[payload]"/>
+		
+</ee:cache>
+		<ee:transform doc:name="set sfdcToken" doc:id="7863a836-4159-4704-be32-c2e6cbcdce18">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="sfdcToken"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	token: payload.'token_type' ++ " " ++ payload.'access_token',
+	instanceUrl: payload.'instance_url'
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

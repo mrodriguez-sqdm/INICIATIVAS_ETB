@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-provisioning-orchestratorSub_Flow" doc:id="4fcd29d6-acfe-442e-81f8-854af786f3e8" >
+		<choice doc:name="Choice" doc:id="5e954955-83c4-488a-b2fe-56cf725da10e">
+			<when expression="#[isEmpty(payload.productos) or payload.productos == null]">
+				<flow-ref doc:name="nullProducts" doc:id="f9fdbfa9-f35d-4db8-a558-2b711da6c77e" name="nullProducts" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="WithProducts" doc:id="c863f27c-e944-4c29-9347-09cdfeb35510" name="WithProducts" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="nullProducts" doc:id="e67734d2-ed35-45cf-9011-f98bc5a71948" >
+		<set-variable value="#[payload.ordenOM]" doc:name="OrdenOM" doc:id="6ca50e16-4004-4b5d-b0f4-6c6c06a7537a" variableName="ordenOM" />
+		<flow-ref doc:name="Get Order" doc:id="101dc132-bffb-4c54-9b2a-3f97ecb4a755" name="obtain-order" target="responseOrderById" />
+		<set-variable value="#[vars.responseOrderById.resultados[0].correlationId]" doc:name="correlationId" doc:id="17548d4c-4f69-42df-97d8-caaed469566a" variableName="correlationId" />
+		<ee:transform doc:name="Set body request to salesforce" doc:id="b416b68c-4170-49b3-ad7e-ce6e850c15f3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+import util::GlobalFunctions as global
+var productos = (vars.responseOrderById.resultados[0].items filter ($.idOrigen) == payload.identificador) 
+					map 
+					{
+						idItem: $.idItem,
+						idOrigen: $.idOrigen,
+						idRaiz: $.idRaiz,
+						id: $.productos.id,
+						nombre: $.productos.nombre,
+						codigo: $.productos.codigo,
+						clase: $.productos.clase,
+						catalogo: $.productos.catalogo,
+						parametros: $.productos.parametros,
+						subProductos: $.productos.subProductos,
+						opciones: $.productos.opciones
+					}
+---
+{
+    orderOM: payload.ordenOM,
+	items: productos map (value, index) -> {
+        (provisioningDate: global::formatDate(payload.fechaProcesamiento) default null) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("CierreAprovisionamiento") or upper(payload.proceso) == upper("ActualizarFechaAgenda")),
+      	(statusProvisioning: payload.estadoSolicitud) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento")),
+      	(statusGestor: payload.estadoGestor) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento")),
+        (faseGestor: payload.faseSolicitud) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento")),
+        (groupAssigment: payload.grupoAsignacion) if (upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+        (engineer: payload.responsable) if (upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+        (fechaAsignacionResponsable: now() >> "America/Bogota") if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento") or upper(payload.proceso) == upper("ActualizarGrupoPropietario")),
+        (comments: payload.respuestaGestor) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento")),
+        (causalFinalizacionSolicitud: payload.causalFinalizacionSolicitud) if (upper(payload.proceso) == upper("CierreAprovisionamiento")),
+        (idItem: value.idItem) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("CierreAprovisionamiento") or upper(payload.proceso) == upper("ActualizarFechaAgenda")),
+        (parentId: value.idRaiz) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("CierreAprovisionamiento") or upper(payload.proceso) == upper("ActualizarFechaAgenda")),
+        (agendamiento: {
+            agendaDate: global::formatDate(payload.agendamiento.fechaAgenda) default null,
+            agendaStrip: payload.agendamiento.franjaAgenda,
+            agendaStatus: payload.agendamiento.estadoAgenda,
+        }) if (upper(payload.proceso) == upper("ActualizarFechaAgenda"))
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="7fde20c2-50af-43a3-850c-a284c5c2d67e" name="provisioning-clientSub_Flow" />
+		<logger level="INFO" doc:name="Logger" doc:id="69bb9093-8e7a-462c-a13b-615c507b0a73" message="#[payload]" />
+	</sub-flow>
+	<sub-flow name="WithProducts" doc:id="adb2b380-c502-4608-a69a-8ee4506033df" >
+		<set-variable value="#[payload.ordenOM]" doc:name="OrdenOM" doc:id="002a3262-2b59-45f7-b2a1-5ab5e88348cd" variableName="ordenOM" />
+		<flow-ref doc:name="Get Order" doc:id="0bf92512-c5b6-4c7f-a26b-df28c1733bc1" name="obtain-order" target="responseOrderById" />
+		<set-variable value="#[vars.responseOrderById.resultados[0].correlationId]" doc:name="correlationId" doc:id="b0c2d7ec-9e94-4a16-ba15-d840d86509f5" variableName="correlationId" />
+		<ee:transform doc:name="Set body request to salesforce" doc:id="a4c56c9f-9c81-4cd6-b1e7-0b4a9f5fdd77">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import util::GlobalFunctions as global
+---
+{
+    orderOM: payload.ordenOM,
+	items: payload.productos map (value, index) -> {
+        (idItem: value.idItem) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("CierreAprovisionamiento") or upper(payload.proceso) == upper("actualizarFechaAgenda")),
+        (parentId: value.idRaiz) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("CierreAprovisionamiento") or upper(payload.proceso) == upper("actualizarFechaAgenda")),
+        (engineer: payload.responsable)  if (upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+        (faseGestor: payload.faseSolicitud) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento")),
+        (groupAssigment: payload.grupoAsignacion)  if (upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("actualizarEstadoSolicitud")),
+        (fechaAsignacionResponsable: now() >> "America/Bogota") if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento") or upper(payload.proceso) == upper("ActualizarGrupoPropietario")),
+        (statusProvisioning: payload.estadoSolicitud) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento")),
+        (statusGestor: payload.estadoGestor) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento")),
+        (comments: payload.respuestaGestor) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("CierreAprovisionamiento")),
+        (causalFinalizacionSolicitud: payload.causalFinalizacionSolicitud) if (upper(payload.proceso) == upper("CierreAprovisionamiento")),
+        (provisioningDate: global::formatDate(payload.fechaProcesamiento) default null) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("CierreAprovisionamiento") or upper(payload.proceso) == upper("actualizarFechaAgenda")),
+        (agendamiento: {
+            agendaDate: global::formatDate(payload.agendamiento.fechaAgenda) default null,
+            agendaStrip: payload.agendamiento.franjaAgenda,
+            agendaStatus: payload.agendamiento.estadoAgenda,
+        }) if (upper(payload.proceso) == upper("actualizarFechaAgenda")),
+        listaConfiguraciones: value.parametros map (val, ind) ->{
+            parametros: {
+                (atributo: val.nombre) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("CierreAprovisionamiento")),
+                (valor: val.valor) if (upper(payload.proceso) == upper("actualizarEstadoSolicitud") or upper(payload.proceso) == upper("actualizarGrupoPropietario") or upper(payload.proceso) == upper("CierreAprovisionamiento"))
+            }
+        }
+
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="0dc7fbdc-9d42-4721-a7e6-6ad8bdca8b12" name="provisioning-clientSub_Flow" />
+		<logger level="INFO" doc:name="Logger" doc:id="996a2a0a-5134-465d-b79f-e3c19219b93d" message="#[payload]" />
+	</sub-flow>
+</mule>

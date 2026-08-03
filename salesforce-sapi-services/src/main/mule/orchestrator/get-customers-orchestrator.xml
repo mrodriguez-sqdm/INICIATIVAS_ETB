@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-customers-orchestratorSub_Flow" doc:id="80694862-95f6-46b4-acfd-13a9b1b085a7" >
+		<flow-ref doc:name="Get Token" doc:id="1dcb3340-c80c-4575-8b31-c321cb5a2297" name="get-salesforce-token-clientSub_Flow" target="token_response" />
+		<ee:transform doc:name="Homologation" doc:id="7ea19bbe-41ec-4b5a-b564-03b2acc30490" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
+output application/java
+var tipoDoc = vars.queryParams.tipoDocumento
+var properties = "CC-Cédula de ciudadanía,CE-Cédula de extranjería,TI-Tarjeta de identidad"
+var documents = (properties splitBy  ","
+    map {
+        clave: ($ splitBy  "-")[0],
+        valor: ($ splitBy  "-")[1],
+    })
+---
+(vars.queryParams - "tipoDocumento") ++
+{
+    tipoDocumento: (documents filter upper($.clave) == upper(tipoDoc))[0].valor default tipoDoc
+} ]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="66b5eee9-0ecd-4cb9-b028-0992231908fd" name="get-customers-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="690a5f87-257a-431f-bf43-3839fd48d41f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="post-cases-orchestratorSub_Flow" doc:id="50678d3e-7621-4cff-b54a-047460a7acc1" >
+		<flow-ref doc:name="Get Token" doc:id="35e05d38-7de3-4cc7-aeaf-c1a82821ae98" name="get-salesforce-token-clientSub_Flow" target="token_response" />
+		<ee:transform doc:name="Set request body" doc:id="c2f12a2c-a3d1-4b8e-82a2-437df59a954a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var sources = p("salesforce.servicioWhatsApp.postCases.sources") default ""
+var originSource = flatten(((sources splitBy " || ") map ($ splitBy " | ")) filter ((item, index) -> item[0] == attributes.headers.source))[1] default ""
+---
+{
+	"compositeRequest" : [
+		{
+			"method" : "POST",
+			"url" : "/services/data/v58.0/sobjects/Case",
+			"referenceId" : "refCaseSet",
+			"body" : {
+				"Fechaderadicacion__c":payload.Fechaderadicacion__c,
+				"TipoCaso__c":payload.TipoCaso__c,
+				"AccountId":payload.AccountId,
+				"ContactId":payload.ContactId,
+				"Subject":payload.Subject,
+				"Description":payload.Description,
+				"IDServicio__c":payload.IDServicio__c,
+				"Direccion_Instalacion__c":payload.Direccion_Instalacion__c,
+				"Proceso__c":payload.Proceso__c,
+				"Agrupacion__c":payload.Agrupacion__c,
+				"Tipologia__c":payload.Tipologia__c,
+				"Origin":originSource,
+				"Status":payload.Status,
+				"Nivel_1__c":payload.Nivel_1__c,
+				"Nivel_2__c":payload.Nivel_2__c,
+				"Nivel_3__c":payload.Nivel_3__c,
+				"Causal__c":payload.Causal__c,
+				"FechaInicioAfectacion__c":payload.FechaInicioAfectacion__c,
+				"FechaTipificacion__c":now(),
+				"RecordType": {
+					"Name": payload.RecordType.Name
+				}
+			}
+		},
+		{
+			"method" : "GET",
+			"url" : "/services/data/v58.0/query?q=SELECT Id,CaseNumber FROM Case WHERE Id='@{refCaseSet.id}'",
+			"referenceId" : "refCaseGet"
+		}
+	]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="58986e22-718e-4c58-9d35-369a951ca5a8" name="post-cases-clientSub_Flow"/>
+		<ee:transform doc:name="Set response" doc:id="777601c3-2ec8-4bbf-8ade-ce2c26443e9c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var refSetResp = ((payload.compositeResponse filter $.referenceId == "refCaseSet") default [])[0]
+var refGetResp = ((payload.compositeResponse filter $.referenceId == "refCaseGet") default [])[0]
+---
+if((typeOf(refSetResp.body) as String) == "Array" and refSetResp.body[0].errorCode != null) {
+  "status": refSetResp.httpStatusCode default 409,
+  "code": refSetResp.body[0].errorCode  default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": refSetResp.body[0].message  default "",
+  "cause": [{
+            "origin": "salesforce-sapi-services",
+            "message": refSetResp.body[0].message default ""
+        }]
+}
+else if((typeOf(refSetResp.body) as String) == "Array" and refGetResp.body[0].errorCode != null) {
+  "status": refGetResp.httpStatusCode default 409,
+  "code": refGetResp.body[0].errorCode  default "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": refGetResp.body[0].message  default "",
+  "cause": [{
+            "origin": "salesforce-sapi-services",
+            "message": refGetResp.body[0].message default ""
+        }]
+}
+else payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+var refSetResp = (payload.compositeResponse filter $.referenceId == "refCaseSet")[0]
+var refGetResp = (payload.compositeResponse filter $.referenceId == "refCaseGet")[0]
+--- 
+if((typeOf(refSetResp.body) as String) == "Array" and refSetResp.body[0].errorCode != null) refSetResp.httpStatusCode default 409
+else if((typeOf(refGetResp.body) as String) == "Array" and refGetResp.body[0].errorCode != null) refGetResp.httpStatusCode default 409
+else 201]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

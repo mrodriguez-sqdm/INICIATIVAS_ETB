@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="post-contacts-orchestratorSub_Flow" doc:id="50678d3e-7621-4cff-b54a-047460a7acc1" >
+		<flow-ref doc:name="Get Token" doc:id="35e05d38-7de3-4cc7-aeaf-c1a82821ae98" name="get-salesforce-token-clientSub_Flow" target="token_response" />
+		<ee:transform doc:name="Set request body" doc:id="b6baad75-0de4-49f2-9f53-322a985041c7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var tipoDocumentoHomologado =
+  payload.TipoDocumento match {
+    case "CC" -> "Cédula de ciudadanía"
+    case "CE" -> "Cédula de extranjería"
+    case "TI" -> "Tarjeta de identidad"
+    case "PT" -> "Pasaporte"
+    else -> null
+  }
+
+---
+{
+  "AccountId": payload.IdCuenta,
+  "Tipodedocumento__c": tipoDocumentoHomologado,
+  "NumerodeIdentificacion__c": payload.NumeroDocumento,
+  "FirstName": payload.Nombres,
+  "LastName": trim(trim(payload.PrimerApellido default "") ++ " " ++ trim(payload.SegundoApellido default "")),
+  "Phone": payload.Telefono,
+  "MobilePhone": payload.Celular,
+  "Email": payload.Correo,
+  "Cargo__c": payload.Cargo,
+  "Autoriza_Tratamiento_de_Datos_Personales__c": payload.HabeasData,
+  "RecordType": {
+    "Name": "Contacto Clave Comercial"
+  },
+  "Identificador_Contacto_Mongo__c": payload.IntegrationIdCuenta
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="58986e22-718e-4c58-9d35-369a951ca5a8" name="post-contacts-clientSub_Flow"/>
+	</sub-flow>
+</mule>

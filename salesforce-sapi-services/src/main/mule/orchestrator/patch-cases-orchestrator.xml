@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="patch-cases-orchestratorSub_Flow" doc:id="50678d3e-7621-4cff-b54a-047460a7acc1" >
+		<flow-ref doc:name="Get Token" doc:id="35e05d38-7de3-4cc7-aeaf-c1a82821ae98" name="get-salesforce-token-clientSub_Flow" target="token_response" />
+		<ee:transform doc:name="Set request body" doc:id="c7e0cf3f-610b-4dc2-9634-50c0bc030640" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false
+---
+{
+    "soapenv:Envelope" @(
+        "xmlns:soapenv":"http://schemas.xmlsoap.org/soap/envelope/",
+        "xmlns:int":"http://soap.sforce.com/schemas/class/IntegracionRemedy_ws"
+        ): {
+        "soapenv:Header": {
+            "int:SessionHeader": {
+                "int:sessionId": vars.token_response.access_token
+            }
+        },
+        "soapenv:Body": {
+            "int:WSActualizarObjeto": {
+                "int:mensajeEntrada": {
+                    "int:Id": payload.Id,
+                    "int:lstObjetosHijosRelacionados": {
+                        "int:ObjetosHijosRelacionados": payload.Notas map {
+                            "int:Id": "",
+                            "int:lstParametros": {
+                                "int:Keys": {
+                                    "int:Campo": "CommentTittle",
+                                    "int:Valor": $.TituloNota
+                                },
+                                "int:Keys": {
+                                    "int:Campo": "CommentBody",
+                                    "int:Valor": $.DescripcionNota
+                                }
+                            },
+                            "int:NombreRelacion": "CaseComments"
+                        }
+                    },
+                    "int:NombreObjeto": "Case"
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to client" doc:id="58986e22-718e-4c58-9d35-369a951ca5a8" name="patch-cases-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="80dbeebe-173c-4317-b34e-f4f020266f25" >
+			<when expression='#[upper(payload.Envelope.Body.WSActualizarObjetoResponse.result.resultado) != "EXITOSO"]' >
+				<ee:transform doc:name="Error" doc:id="cc816a97-ec6c-478f-af76-1bdd39ee1439" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 409,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": ""
+  },
+  "messageServer": payload.Envelope.Body.WSActualizarObjetoResponse.result.msgError.mensajeError,
+  "cause": [{
+            "origin": "salesforce-sapi-services",
+            "message": payload.Envelope.Body.WSActualizarObjetoResponse.result.msgError.mensajeError default ""
+        }]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set response" doc:id="ee995e65-bff7-41dc-b1fa-d1f8a3185cd6">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+---
+payload]]></ee:set-payload>
+			</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[200]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

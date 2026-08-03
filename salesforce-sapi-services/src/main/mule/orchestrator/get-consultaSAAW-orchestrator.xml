@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-consultaSAAW-orchestratorSub_Flow" doc:id="dcb0054b-0ea2-4b41-b354-d30320506f9a" >
+		<flow-ref doc:name="Get Token" doc:id="c00e78b9-c976-4ead-895d-4052ad15832e" name="get-salesforce-token-clientSub_Flow" target="token_response"/>
+		<ee:transform doc:name="Transform to text/xml" doc:id="944a72f6-6475-4005-b2bd-a426402b3662" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output text/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns ser http://soap.sforce.com/schemas/class/ServiciosSAAW
+---
+{
+soapenv#Envelope:{
+    soapenv#Header:{
+        ser#AllowFieldTruncationHeader:{
+            ser#allowFieldTruncation:true
+        },
+        ser#SessionHeader:{
+            ser#sessionId:vars.token_response.access_token default ""
+        }
+    },
+    soapenv#Body:{
+        ser#consulta_saaw:{
+            ser#numeroCaso:attributes.uriParams.'case-number'
+        }
+    }
+ }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call to Servicios SAAW" doc:id="5b134765-36ed-4a33-81a2-3f0b79dd0d6b" name="serviciosSAAW-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="c048c718-d2a2-432e-bc81-8391565cc32e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"saawQueryResponse": {
+	  "result": {
+	    "contractAccount": payload.Envelope.Body.consulta_saawResponse.result.cuentaContrato, 
+	    "error": payload.Envelope.Body.consulta_saawResponse.result.error, 
+	    "claimStatus": payload.Envelope.Body.consulta_saawResponse.result.estadoDelReclamo, 
+	    "claimDate": payload.Envelope.Body.consulta_saawResponse.result.fechaReclamo , 
+	    "customerIdentification": payload.Envelope.Body.consulta_saawResponse.result.identificacionCliente , 
+	    "customerName": payload.Envelope.Body.consulta_saawResponse.result.nombreDelCliente, 
+	    "claimantName": payload.Envelope.Body.consulta_saawResponse.result.nombreDelReclamante, 
+	    "cunNumber": payload.Envelope.Body.consulta_saawResponse.result.numeroCun, 
+	    "customerSegment": payload.Envelope.Body.consulta_saawResponse.result.segmentoDelCliente, 
+	    "claimValue": payload.Envelope.Body.consulta_saawResponse.result.valorDelReclamado
+	      }
+	    }
+	  
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+</mule>
