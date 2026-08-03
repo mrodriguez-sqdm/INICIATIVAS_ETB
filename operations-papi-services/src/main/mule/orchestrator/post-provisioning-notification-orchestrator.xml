@@ -1,0 +1,391 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-provisioning-notification-orchestrator" doc:id="c0aacf63-802a-46d2-a9c7-033dc30a5baa" >
+		<flow-ref doc:name="Consultar Orden" doc:id="7918a0fd-0661-4209-bc30-70f1317f09e0" name="obtain-order" target="orden" />
+		<ee:transform doc:name="validateBody" doc:id="137f7a1f-89fa-4646-9225-0f5af4696d3f">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="flagSalesforce"><![CDATA[%dw 2.0
+output application/json
+var respAprovOrigen = vars.orden.resultados[0].items.RESPUESTA_APROVISIONAMIENTO_A_ORIGEN
+---
+respAprovOrigen == null
+or
+(sizeOf(respAprovOrigen filter (value, index) -> (value == 1)) <  sizeOf(vars.orden.resultados[0].items))
+
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Consultar Respuestas Aprovisionamiento" doc:id="76dfedd4-1146-4a9a-a64a-be4eb6a6e6fe" name="getProvisioningResponse" target="provisioningResponse" />
+		<set-variable value="#[vars.provisioningResponse.resultados[0].respuestaAprovisionamiento.correlationId]" doc:name="correlationId" doc:id="6caa2818-ebdb-4b40-84b5-80ac109a8e9e" variableName="correlationId" />
+		<choice doc:name="Choice" doc:id="fae059fe-28b3-482e-8706-c9661ea13228" >
+			<when expression="#[vars.flagSalesforce == true and vars.provisioningResponse.resultado == 'Positivo' and vars.orden.resultado == 'Positivo']">
+				<ee:transform doc:name="Create provisioning response from GESTOR" doc:id="e1104403-a169-4749-b08d-05191c073ec8">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+import util::GlobalFunctions as global
+var rtaAprov = vars.provisioningResponse.resultados[0]
+var orden = vars.orden.resultados[0]
+var items = orden.items filter ((item, index) -> (item.RESPUESTA_APROVISIONAMIENTO_A_ORIGEN != 1 and item.RESPUESTA_APROVISIONAMIENTO_RECIBIDA == 1) )
+fun deconstruct(data, parent) = data map ((item, index) ->
+if (!isEmpty(item.subProductos))
+([ producto : {
+        "idItem": item.idItem,
+        "idOrigen": rtaAprov.identificador,
+        "parentId": item.idRaiz,
+        "engineer": rtaAprov.responsable,
+        "groupAssigment": rtaAprov.grupoAsignacion,
+        "statusProvisioning": rtaAprov.estadoSolicitud,
+        "comments": rtaAprov.respuestaGestor,
+        "statusGestor": rtaAprov.estadoGestor, 
+        "causalDecline": if (item.parametros != null and rtaAprov.estadoSolicitud != null ) (if (  (sizeOf(item.parametros filter ($.nombre == "CausalFinalizacionApv"))  > 0 ) and rtaAprov.estadoSolicitud == "NO EXITOSO" ) (item.parametros filter ($.nombre == "CausalFinalizacionApv"))[0].valor else null) else null,
+        "provisioningDate": rtaAprov.fechaProcesamiento,
+        "idServicioGestor": item.idServicio,
+        "idService": (orden.items filter ($.idItem == item.idItem)).idServicio[0],
+        "orderOM": rtaAprov.ordenOM,
+        "cantidad": item.cantidad,
+        "billingStartDate": rtaAprov.fechaInicioFacturacion,
+        "billingCreationDate": rtaAprov.fechaInicioFacturacion,
+        "agendamiento": item.agendamiento,
+        "parametros": item.parametros,
+    } ] ++ deconstruct(item.subProductos, item.idItem))
+else { producto : {
+        "idItem": item.idItem,
+        "idOrigen": rtaAprov.identificador,
+        "parentId": item.idRaiz,
+        "engineer": rtaAprov.responsable,
+        "groupAssigment": rtaAprov.grupoAsignacion,
+        "statusProvisioning": rtaAprov.estadoSolicitud,
+        "comments": rtaAprov.respuestaGestor,
+        "statusGestor": rtaAprov.estadoGestor, 
+        "causalDecline": if (item.parametros != null and rtaAprov.estadoSolicitud != null ) (if (  (sizeOf(item.parametros filter ($.nombre == "CausalFinalizacionApv"))  > 0 ) and rtaAprov.estadoSolicitud == "NO EXITOSO" ) (item.parametros filter ($.nombre == "CausalFinalizacionApv"))[0].valor else null) else null,
+        "provisioningDate": rtaAprov.fechaProcesamiento,
+        "idServicioGestor": item.idServicio,
+        "idService": (orden.items filter ($.idItem == item.idItem)).idServicio[0],
+        "orderOM": rtaAprov.ordenOM,
+        "cantidad": item.cantidad,
+        "billingStartDate": rtaAprov.fechaInicioFacturacion,
+        "billingCreationDate": rtaAprov.fechaInicioFacturacion,
+        "agendamiento": item.agendamiento,
+        "parametros": item.parametros,
+    } })
+var productosDeconstructed = (vars.provisioningResponse.resultados map $) map (item, index) -> deconstruct(item.productos, item.productos)..producto
+var productosUnited = flatten(productosDeconstructed)
+---
+{
+    "orderOM": orden.ordenOM,
+    "items": productosUnited map {
+        "idItem": $.idItem,
+        "idOrigen": $.idOrigen,
+        "parentId": $.parentId,
+        "engineer": $.engineer,
+        "groupAssigment": $.groupAssigment,
+        "statusProvisioning": $.statusProvisioning,
+        "comments": $.comments,
+        "statusGestor": $.statusGestor,
+        "causalDecline": $.causalDecline default "",
+        "provisioningDate": global::formatDate($.provisioningDate) default null,
+        "idServicioGestor": $.idServicioGestor,
+        "serviceId": $.idService,
+        "orderOM": $.orderOM,
+        "agendamiento": {
+            "agendaDate": global::formatDate($.agendamiento.fechaAgenda) default null,
+            "agendaStrip": $.agendamiento.franjaAgenda,
+            "agendastatus": $.agendamiento.estadoAgenda,
+        },
+        "listaConfiguraciones":
+        {
+            "quantity": $.cantidad as String,
+            "parametros": if(!isEmpty($.parametros)) $.parametros map (obj,index) ->
+                {
+                    "atributo": obj.codigo,
+                    "valor": obj.valor,
+                }
+                else []
+        },
+        "listadeParametros": rtaAprov.parametros map ((item, index) ->
+        {
+            "codigo": item.codigo,
+            "nombre": item.nombre,
+            "valor": item.valor
+        })
+        
+      }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[payload]" doc:name="provResponse" doc:id="57acda4f-de4e-4e84-9bd3-77e503d6e385" variableName="provResponse"/>
+				<flow-ref doc:name="Send body to Salesforce" doc:id="f8f20e48-0d45-448c-8d0b-c80298d1046a" name="post-responseProvisioning" target="resp_salesforce" />
+				<flow-ref doc:name="evaluateResponse" doc:id="aecdd35e-6936-4823-8d2b-a35f0764412c" name="evaluateResponseProvisioning" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error Msg" doc:id="956e8277-5a8b-4033-95a0-b7e9e49082d5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var sentOrigen = sizeOf(vars.orden.resultados[0].items.RESPUESTA_APROVISIONAMIENTO_A_ORIGEN) ==  sizeOf(vars.orden.resultados[0].items.RESPUESTA_APROVISIONAMIENTO_A_ORIGEN filter $ == 1)
+var msgError = if (vars.provisioningResponse.resultado != 'Positivo')"No se encontro una respuesta de gestor con ese ordenOM"
+				else if (vars.orden.resultado != "Positivo") "No se encontro una orden en OR_ORDEN con ese ordenOm."
+				else if (sentOrigen == true) "Todos los items ya fueron enviados a origen."
+				else "Los items recibidos no cumplen con los requerimientos."
+---
+{
+	"ordenOM": vars.ordenOm,
+	"agrupador": vars.orden.resultados[0].agrupador,
+	"resultado": "Negativo",
+	"fecha": now(),
+	"descripcion": msgError
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Set Items Status" doc:id="2c4c4a85-1399-4238-b0e1-ff37583eed44" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="codigoEstado" ><![CDATA[%dw 2.0
+output application/java
+---
+"ITM41"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado" ><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.descripcion]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Items Status" doc:id="05548fdb-70b9-4945-9030-25647de378d2" name="updateItemsStatus" target="updateItemsStatus"/>
+				<ee:transform doc:name="Set Opciones Status" doc:id="2e615924-899d-4148-8850-14bff7b35f8a" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="codigoEstado" ><![CDATA[%dw 2.0
+output application/java
+---
+"OPC01"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado" ><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.descripcion]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Opciones Status" doc:id="a189fd66-b5a1-48a5-91eb-047592556d7a" name="updateOpcionesStatus" target="updateOpcionesStatus"/>
+				<async doc:name="Async SF State" doc:id="d59aa71b-bce9-4249-be45-8ed18bc086c0">
+					<ee:transform doc:name="Set Item Status SF ITM21" doc:id="55757ff7-b974-41ed-a51e-c3dbb919a0fc">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="context"><![CDATA[%dw 2.0
+output application/json
+---
+"Contexto Integrador OM: ITM21 " ++ payload.descripcion]]></ee:set-variable>
+							<ee:set-variable variableName="state"><![CDATA["ERROR- RESPUESTA_BACK_EN_PROCESO"]]></ee:set-variable>
+							<ee:set-variable variableName="idOrigen"><![CDATA[%dw 2.0
+output application/json
+---
+vars.orden.resultados[0].items.idOrigen[0]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name='Update provisioningStatus in SF to "ERROR- RESPUESTA_BACK_EN_PROCESO"' doc:id="b1fc9b76-b697-402d-8f13-3c9fd0185512" name="updateProvisioningOrderState" target="resultUpdateSF" />
+				</async>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="58732387-eb2e-4334-8c67-9e8930207e48" message="#[payload]"/>
+	</sub-flow>
+	<sub-flow name="evaluateResponseProvisioning" doc:id="95d80d3d-5e37-4208-99d0-18b8278b4027" >
+		<choice doc:name="Choice" doc:id="b4dab9ca-e553-4208-b6b3-84ab5c30de9d" >
+			<when expression='#[vars.resp_salesforce== "ERROR"]' >
+				<ee:transform doc:name="orderState" doc:id="2f416be8-d224-4d24-b5b5-58aff4420fdc">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import util::GlobalFunctions as global
+import * from dw::util::Values
+var idToMark = payload.items.idItem
+var itemsMarked = global::updateItemsState(vars.orden.resultados[0],idToMark,"ITM41","ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO")
+var orderWithItemsMarked = vars.orden.resultados[0] update "items" with itemsMarked
+---
+global::updateOrderState(orderWithItemsMarked,"OR0021","ERROR")]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+				<flow-ref doc:name="Update orden" doc:id="99ee5ab5-f5b2-4385-94b3-d85807f62074" name="putOrder" target="resp_update" />
+				<ee:transform doc:name="Set Items Status" doc:id="136fb3fc-598d-445e-8f68-662c3c0bc3cc">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM41"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Items Status" doc:id="50b9d46e-cf5e-4b37-9f15-1b415aa4f0ea" name="updateItemsStatus" />
+				<async doc:name="Async SF State" doc:id="28a0813c-db1c-4b9d-91cd-e608f7034bae">
+					<ee:transform doc:name="Set Item Status SF ITM41" doc:id="86a177ef-23d9-4dc8-b553-8d607895ed2c">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="context"><![CDATA[%dw 2.0
+output application/json
+---
+"Contexto Integrador OM: ITM41 ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+							<ee:set-variable variableName="state" ><![CDATA["ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+							<ee:set-variable variableName="idOrigen" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.orden.resultados[0].items.idOrigen[0]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name='Update provisioningStatus in SF to "RROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"' doc:id="c44efe04-514b-46e1-b4ba-0f40a4121e75" name="updateProvisioningOrderState" target="resultUpdateSF" />
+				</async>
+				<ee:transform doc:name="Set Opciones Status" doc:id="9ab93d9b-e73f-4131-92b7-f010aac72447">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OPC01"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Opciones Status" doc:id="0c106156-3739-4192-8f9a-c628d10dbae3" name="updateOpcionesStatus" />
+				<ee:transform doc:name="Error response Salesforce" doc:id="a90c9b53-437a-4458-8b1f-86f657faf7e3" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+"ordenOM": vars.orden.resultados[0].ordenOM,
+"agrupador": vars.orden.resultados[0].agrupador,
+"resultado": "Negativo",
+"fecha": now(),
+"descripcion": ""
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="b408cdf5-b7a1-44db-b608-81288024999e" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set RESPUESTA_ENVIADA_A_ORIGEN" doc:id="37b3b988-f842-4aaa-a230-e7daa1f30016" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::util::Values
+import util::GlobalFunctions as global
+var items_actualizados = vars.orden.resultados[0].items map ( (item, index) ->
+        if(item.RESPUESTA_APROVISIONAMIENTO_RECIBIDA == 1)
+            (if(item.RESPUESTA_APROVISIONAMIENTO_A_ORIGEN != null)
+                item update "RESPUESTA_APROVISIONAMIENTO_A_ORIGEN" with 1
+            else item ++ "RESPUESTA_APROVISIONAMIENTO_A_ORIGEN": 1)
+        else item)
+var itemsToBeUpdated =  (items_actualizados filter $.RESPUESTA_APROVISIONAMIENTO_A_ORIGEN == 1).idItem
+var auxOrder = vars.orden.resultados[0] update "items" with items_actualizados
+var itemsWithState = global::updateItemsState(auxOrder,itemsToBeUpdated,"ITM40","RESPUESTA_ORIGEN_PROCESO")
+var orderUpdated = vars.orden.resultados[0] update "items" with itemsWithState
+output application/json
+---
+global::updateOrderState( orderUpdated,"OR0020","EN_PROCESO")]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+				<ee:transform doc:name="Update fechaInicioFacturacion" doc:id="8237153e-adbc-4582-a184-fb9e40db0ed5">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+var items = payload.items  map ((item, index) -> 
+    if(vars.provResponse.items.idItem contains item.idOrigen)
+        if(item.fechaInicioFacturacion != null)
+            item update "fechaInicioFacturacion" with vars.provisioningResponse.resultados[0].fechaInicioFacturacion
+        else
+            item ++ "fechaInicioFacturacion": vars.provisioningResponse.resultados[0].fechaInicioFacturacion
+    else
+        item
+)
+---
+payload update "items" with items]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Update orden" doc:id="94302cf7-7ab3-425a-bf2b-5753c29816d5" name="putOrder" target="resp_update" />
+				<ee:transform doc:name="Set Items Status" doc:id="62755833-bb19-41ae-8024-ade5e6579b63">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM50"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Items Status" doc:id="3cead37b-b0b6-490c-86af-cb409830b615" name="updateItemsStatus" />
+				<ee:transform doc:name="Set Opciones Status" doc:id="214ef350-ef3d-4528-8547-b092141ed338">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OPC10"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Opciones Status" doc:id="41840679-1b74-4e38-b8ff-7607d9c57e9a" name="updateOpcionesStatus" />
+				<ee:transform doc:name="Set positive response" doc:id="106ddad8-47f7-4cda-adba-16a4992e323c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+"ordenOM": vars.ordenOM default vars.resp_salesforce.ordenOM,
+"agrupador": vars.orden.resultados[0].agrupador default vars.resp_salesforce.agrupador,
+"resultado": "Positivo" default vars.resp_salesforce.resultado,
+"fecha": now(),
+"descripcion": "" default vars.resp_salesforce.descripcion
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="c2744d2b-e6e5-42c3-966b-aeb062438a75" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

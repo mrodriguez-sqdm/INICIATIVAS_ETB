@@ -1,0 +1,824 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<sub-flow name="post-viability-notification-orchestratorFlow" doc:id="6c3e5c8c-5b5a-4f1f-898a-03db5882f4f6" >
+		<flow-ref doc:name="Consultar Orden" doc:id="fb43cca0-e98b-4229-b07e-1b20517d7065" name="obtain-order" target="orden"/>
+		<choice doc:name="Choice" doc:id="716d554b-5609-4be9-bea0-d530fb1340d8" >
+			<when expression="#[vars.idViabilidad != null]">
+				<flow-ref doc:name="Consultar Respuestas Viabilidad" doc:id="14fac8d5-caf2-400a-a200-b5bd2de47fed" name="getViabilityResponseIdVia-Order" target="viabilityResponse" />
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Consultar Respuestas Viabilidad" doc:id="955f3c05-1080-4edf-beff-4bd555c95f93" name="obtain-viability-response" target="viabilityResponse" />
+			</otherwise>
+		</choice>
+		<set-variable value="#[vars.viabilityResponse.resultados[0].respuestaViabilidad.correlationId]" doc:name="correlationId" doc:id="4fa0b5b6-b8ba-437a-9627-c80c754abce6" variableName="correlationId" />
+		<choice doc:name="Choice" doc:id="1db3e1c8-9e2f-4565-8a2d-4c20fa3a538d" >
+			<when expression="#[p('viability-version') == &quot;old&quot;]">
+				<ee:transform doc:name="validateBody-old" doc:id="941cdec6-dcbf-4382-a9fb-4aa928e6ba08" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="flagSalesforce" ><![CDATA[%dw 2.0
+output application/json
+---
+//(sizeOf(vars.orden.resultados[0].items.RESPUESTA_RECIBIDA  
+//    		filter (value, index) -> (value == 1)) == sizeOf(vars.orden.resultados[0].items) )
+//and 
+( vars.orden.resultados[0].items != null or !isEmpty(vars.orden.resultados[0].items))
+//and
+//(sizeOf(vars.orden.resultados[0].items.RESPUESTA_ENVIADA_A_ORIGEN filter (value, index) -> (value == 1)) == 0 
+//	or sizeOf(vars.orden.resultados[0].items.RESPUESTA_ENVIADA_A_ORIGEN filter (value, index) -> (value == 1)) == null
+//)
+]]></ee:set-variable>
+						<ee:set-variable variableName="flagOrigen" ><![CDATA[%dw 2.0
+output application/json
+---
+(sizeOf(vars.orden.resultados[0].items.RESPUESTA_ENVIADA_A_ORIGEN filter (value, index) -> (value == 1)) == 0 
+	or sizeOf(vars.orden.resultados[0].items.RESPUESTA_ENVIADA_A_ORIGEN filter (value, index) -> (value == 1)) == null
+)]]></ee:set-variable>
+						<ee:set-variable variableName="flagRecibida" ><![CDATA[%dw 2.0
+output application/json
+---
+(sizeOf(vars.orden.resultados[0].items.RESPUESTA_RECIBIDA  
+    		filter (value, index) -> (value == 1)) == sizeOf(vars.orden.resultados[0].items) )]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="validateBody" doc:id="ddfdc7a2-42e4-4274-adb8-ed3357417143">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="flagSalesforce"><![CDATA[%dw 2.0
+output application/json
+var respAprovOrigen = vars.orden.resultados[0].items.RESPUESTA_ENVIADA_A_ORIGEN
+---
+respAprovOrigen == null
+or
+(sizeOf(respAprovOrigen filter (value, index) -> (value == 1)) <  sizeOf(vars.orden.resultados[0].items))
+
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+		<choice doc:name="Choice" doc:id="1ced83c0-2589-4fac-8755-9e53e564c7a9" >
+			<when expression="#[vars.flagSalesforce == true and vars.viabilityResponse.resultado == 'Positivo' and vars.orden.resultado == 'Positivo']">
+				<ee:transform doc:name="Deconstruct Viability Response Products" doc:id="347ec6f5-402d-4ee3-aa57-cb4ceb1ffe31">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="viabilityResponseProducts" ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+import mergeWith from dw::core::Objects
+
+fun deconstruct(data, parent) = data map ((item, index) ->
+	if (!isEmpty(item.subProductos))
+	   	([ producto : {
+               "catalogo": item.catalogo,
+               "clase": item.clase,
+               "nombre": item.nombre,
+               "id": item.id,
+               "idItem": item.idItem,
+               "idRaiz": item.idRaiz,
+               "codigoAccion": item.codigoAccion,
+               "idDireccion": item.idDireccion,
+               "idCuentaServicio": item.idCuentaServicio,
+               "departamento": item.departamento,
+               "municipio": item.municipio,
+               "direccion": item.direccion,
+               "opciones": item.opciones,
+               "cantidad": item.cantidad
+           } ] ++ deconstruct(item.subProductos, item.idItem))
+    else { producto : {
+               "catalogo": item.catalogo,
+               "clase": item.clase,
+               "nombre": item.nombre,
+               "id": item.id,
+               "idItem": item.idItem,
+               "idRaiz": item.idRaiz,
+               "codigoAccion": item.codigoAccion,
+               "idDireccion": item.idDireccion,
+               "idCuentaServicio": item.idCuentaServicio,
+               "departamento": item.departamento,
+               "municipio": item.municipio,
+               "direccion": item.direccion,
+               "opciones": item.opciones,
+               "cantidad": item.cantidad
+           } })
+
+var productsDeconstructed = vars.viabilityResponse.resultados map (item, index) ->
+if(flatten(item..productos) != null) 
+    (deconstruct(flatten(item..productos), 0)..producto)
+else null
+
+var productsUnited = flatten(productsDeconstructed)
+
+---
+productsUnited]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="idItems with no products" doc:id="af94fbbd-f0f0-477a-a47e-940db0c48762">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="orderIdItems"><![CDATA[%dw 2.0
+output application/json 
+---
+(vars.orden.resultados[0].items filter ($.idOrigen == vars.viabilityResponse.resultados[0].idViabilidad and isEmpty($.productos))).idItem]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+				<choice doc:name="exists products in viability response?" doc:id="cb9b1878-8581-4368-b049-0eebfb7ad3d2">
+					<when expression="#[!isEmpty(vars.viabilityResponseProducts.idItem)]">
+						<choice doc:name="exists products that are in order" doc:id="f8fb2190-a324-4786-85f4-8eacfe34074a">
+							<when expression="#[!isEmpty(vars.viabilityResponseProducts.idItem filter ((vars.orden.resultados[0].items.idItem contains $)))]" >
+								<ee:transform doc:name="Update items in order (that are in viability response)" doc:id="6ee987f2-72c9-4726-99e8-0f0837e0ab53">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="orderUpdated"><![CDATA[%dw 2.0
+output application/json
+import mergeWith from dw::core::Objects
+
+var idItemsResponse = vars.viabilityResponseProducts.idItem
+var idItemsOrder = vars.orden.resultados[0].items.idItem
+var idItemsMatched = (idItemsResponse map ((itemResponse, index) -> 
+    ("item": itemResponse) if (idItemsOrder contains itemResponse)
+)).item
+
+fun selectItemFromResponse(idItemInOrder) = (vars.viabilityResponseProducts filter ((itemResponse, index) -> itemResponse.idItem == idItemInOrder))[0]
+
+fun selectItemFromOrder(idItemInOrder) = (vars.orden.resultados[0].items filter ((itemOrder, index) -> itemOrder.idItem == idItemInOrder))[0]
+
+fun mapItem(idItemInOrder) = 
+selectItemFromOrder(idItemInOrder) mergeWith {
+    "productos": (selectItemFromOrder(idItemInOrder).productos mergeWith
+    {
+         "id": selectItemFromResponse(idItemInOrder).id,
+         "nombre": selectItemFromResponse(idItemInOrder).nombre,
+         "codigo": selectItemFromResponse(idItemInOrder).codigo,
+         "clase": selectItemFromResponse(idItemInOrder).clase,
+         "catalogo": selectItemFromResponse(idItemInOrder).catalogo,
+         "opciones": selectItemFromResponse(idItemInOrder).opciones
+    }),
+    "idItem": selectItemFromResponse(idItemInOrder).idItem,
+    "idRaiz": selectItemFromResponse(idItemInOrder).idRaiz,
+    "codigoAccion": selectItemFromResponse(idItemInOrder).codigoAccion,
+    "idDireccion": selectItemFromResponse(idItemInOrder).idDireccion,
+    "idCuentaServicio": selectItemFromResponse(idItemInOrder).idCuentaServicio,
+    "cantidad": selectItemFromResponse(idItemInOrder).cantidad,
+}
+---
+"items": vars.orden.resultados[0].items map ((item, index) -> 
+    if (idItemsMatched contains item.idItem) mapItem(item.idItem) else item
+)]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+								<flow-ref doc:name="Update Order" doc:id="81ac3b77-72db-4ca2-b429-43aa1f4a0272" name="updateOrderOMWIthProducts" target="resp_update" />
+								<flow-ref doc:name="Get Last Order Updated" doc:id="164b6d1d-74bd-42d7-9385-8573604f12f9" name="obtain-order" target="orden" />
+							</when>
+						</choice>
+						<choice doc:name="exists products that are not in order" doc:id="8c8e7019-6704-4c4a-b189-f66efed4aa43">
+					<when expression="#[!isEmpty(vars.viabilityResponseProducts.idItem filter (!(vars.orden.resultados[0].items.idItem contains $)))]">
+								<ee:transform doc:name="Insert viability products (that are not in the order)" doc:id="a79e3367-4801-4aca-a581-97660721630f">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="orderUpdated"><![CDATA[%dw 2.0
+import * from dw::util::Values
+var itemsInOrder = vars.orden.resultados[0].items.idItem
+output application/json  skipNullOn='everywhere'
+
+fun mapNewItems() = flatten(vars.viabilityResponseProducts map ((item, index) -> if (!(itemsInOrder contains (item.idItem)))
+    {
+      "productos": {
+        "catalogo": item.catalogo,
+        "clase": item.clase,
+        "nombre": item.nombre,
+        "id": item.id,
+        "codigo": item.codigo,
+        "opciones": item.opciones
+      },
+      "idItem": item.idItem,
+      "idRaiz": item.idRaiz,
+      "codigoAccion": item.codigoAccion,
+      "idDireccion": item.idDireccion,
+      "idCuentaServicio": item.idCuentaServicio,
+      "cantidad": item.cantidad
+    }
+  else
+    null)) 
+---
+vars.orden.resultados[0] update "items" with (vars.orden.resultados[0].items ++ mapNewItems())
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+						<flow-ref doc:name="Update Order with new products from viability response" doc:id="aa428453-3caf-423f-b528-10eb8ec6511b" name="updateOrderOMWIthProducts" target="resp_flow" />
+						<flow-ref doc:name="Get Last Order Updated" doc:id="d5d8e566-afde-49d2-86ff-2829b459c447" name="obtain-order" target="orden" />
+					</when>
+				</choice>
+					</when>
+				</choice>
+				<choice doc:name="Is it demo ready?" doc:id="35da6280-ec36-49b3-8b80-438cc8ad2b59">
+					<when expression="#[vars.idViabilidad != null]">
+						<ee:transform doc:name="Capture padres with demo props" doc:id="74452e9b-7a63-4da6-a8d8-8c3f52861e54" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="demoPropPadres" ><![CDATA[%dw 2.0
+output application/json
+fun esPadre(obj) = (obj.idRaiz == obj.idItem or isBlank(obj.idRaiz))
+fun demoProperties(obj) = (obj.propiedades filter ($.codigo == "Demo"))[0].valor == "true"
+
+---
+vars.orden.resultados[0].items filter (esPadre($) and demoProperties($))]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<choice doc:name="Choice" doc:id="1c6da4b8-b018-4b48-b76a-47fea94915f7">
+							<when expression="#[!isEmpty(vars.demoPropPadres)]">
+								<ee:transform doc:name="Insert demo properties into order" doc:id="65b5f487-77b3-4ca8-8152-97c3cb9bce7b">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="orderUpdated"><![CDATA[%dw 2.0
+output application/json
+import update from dw::util::Values
+fun newParam(str) = {
+    "codigo": str,
+    "tipo": "comercial",
+    "codigoAccion": "Add",
+    "valor": (vars.demoPropPadres[0].propiedades filter ($.codigo == str))[0].valor,
+    "nombre": str
+}
+fun addParams(obj) = if (isEmpty(obj.productos.parametros)) 
+        obj update "productos" with (obj.productos ++ {"parametros": [newParam("Demo"), newParam("DuracionMesesDemo"), newParam("DuracionDiasDemo"), newParam("JustificacionDemo")]}) 
+    else 
+        obj update "productos" with (obj.productos update "parametros" with obj.productos.parametros << newParam("Demo") << newParam("DuracionMesesDemo") << newParam("DuracionDiasDemo") << newParam("JustificacionDemo"))
+---
+"items": vars.orden.resultados[0].items map (o, i) -> 
+	if (isEmpty(o.propiedades filter ($.codigo == "Demo"))) addParams(o) else o]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+								<flow-ref doc:name="Update Order" doc:id="20df16ef-7e3a-47e3-9edc-42037e78117b" name="updateOrderOMWIthProducts" target="resp_flow" />
+								<flow-ref doc:name="Get Last Order Updated" doc:id="e0b2cb7a-87ea-4cca-a039-e216239d3b52" name="obtain-order" target="orden" />
+							</when>
+						</choice>
+					</when>
+				</choice>
+				<ee:transform doc:name="create respuesta viabilidad" doc:id="3ba867d6-d1af-46a2-a330-f3a9882cc871">
+			<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+fun deconstruct(data,idViabilidad = null) = data map ((item, index) ->
+  if (!isEmpty(item.subProductos))
+      ([ producto : mappearProducto(item, idViabilidad) ] ++ deconstruct(item.subProductos, idViabilidad))
+    else { producto : mappearProducto(item, idViabilidad) })
+fun mappearProducto(item, idViabilidad) = {
+               "Operacion": item.codigoAccion,
+               "QuoteLineItemId": item.idItem,
+               "productCode": item.codigo,
+               "parentId": item.idRaiz,
+               "idOrigen": idViabilidad,
+               "ServiceAccId": item.idCuentaServicio,
+               "idContacto": do {
+                var itemOrder = (vars.orden.resultados[0].items filter ($.idItem == item.idItem))[0]
+                ---
+                if (itemOrder.idRaiz != null and
+                        itemOrder.contactosItem[0].id == null) //Agregado por GO
+                    ((vars.orden.resultados[0].items filter ($.idItem == item.idRaiz))[0]).contactosItem[0].id
+                else
+                    itemOrder.contactosItem[0].id
+               },
+               "billingAccId": do {
+                var itemOrder = (vars.orden.resultados[0].items filter ($.idItem == item.idItem))[0]
+                ---
+                if (itemOrder.idRaiz != null and
+                        itemOrder.idCuentaFacturacion == null) //Agregado por GO
+                    ((vars.orden.resultados[0].items filter ($.idItem == item.idRaiz))[0]).idCuentaFacturacion
+                else
+                    itemOrder.idCuentaFacturacion
+               },
+               "listaConfiguraciones": item.opciones map {
+                            "Quantity": $.cantidadParametros,
+                            "parametros": $.parametros map {
+                                "atributo": $.codigo,
+                                "valor": if ($.valor == "") null else $.valor
+                            }
+                        }
+           }
+
+var listaProductos = if (vars.viabilityResponse.resultados.productos != null) 
+        flatten(vars.viabilityResponse.resultados map (item) ->
+        	if (item.productos != null) 
+        		deconstruct(item.productos, item.idViabilidad)..producto
+         else null )
+        else null
+var listaPaquetes = flatten( if (vars.viabilityResponse.resultados.paquetes != null) 
+            vars.viabilityResponse.resultados map (item) -> 
+            (item.paquetes map (itemPaq) -> {
+                idPaquete: itemPaq.idPaquete,
+                listadeProduct: flatten(deconstruct(itemPaq.productos, item.idViabilidad)..producto)
+                }) else null)
+---
+{
+    "orderOM": vars.ordenOM,
+    "opportunityId": vars.orden.resultados[0].agrupador,
+    "masterQuoteNumber": vars.orden.resultados[0].subAgrupador,
+    "tipoSolicitud": vars.orden.resultados[0].tipoSolicitud,
+    "listadeParametros": flatten(vars.viabilityResponse.resultados map (item, index) -> item.parametros map  
+        {
+                "codigo": $.codigo,
+                "nombre": $.nombre,
+                "valor": $.valor,
+                "idOrigen": item.idViabilidad
+            }),
+    (listadeProduct: listaProductos) if (listaProductos != null),
+    (listadePaquetes: listaPaquetes.idPaquete distinctBy ($) map (o,i) -> {
+        "idPaquete": o,
+        "listadeProduct": flatten((listaPaquetes filter $.idPaquete == o).listadeProduct)
+    }) if (listaPaquetes != null),
+    "listaViabilidad": vars.viabilityResponse.resultados map ((item, index) -> {
+        "viabilidad": item.idViabilidad,
+        "estadoGestor": item.subEstado,
+        "estadoViabilidad": item.estado,
+        "faseGestor": item.fase,
+        "fechaFinalEstado": item.fecha,
+        "ingeniero": item.responsable,
+        "correoIngeniero": item.correoIngeniero,
+        "aliado": item.aliado,
+        "tipoAliado": item.tipoAliado,
+        "causal": item.causal,
+        "grupoAsignacion": item.grupo,
+        "archivos": item.urlsRecursos map {
+            "nombre": $.key,
+            "idViabilidad": item.idViabilidad,
+            "URL": $.value 
+        },
+        "respuestadeviabilidad": item.resultado,
+        "respuestaGestor": item.comentarios,
+        "tipodeViabilidad": item.tipo
+      })
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		</ee:transform>
+				<ee:transform doc:name="Filter Items with errors" doc:id="3fc818da-6a58-4f1a-b895-c2a2177423d7">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="itemsWithError" ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+
+var itemsToBeUpdated = vars.viabilityResponseProducts.idItem
+---
+("itemsWithError": itemsToBeUpdated map ((idItem, index) -> 
+    ("item": idItem) if ((vars.orden.resultados[0].items filter $.idItem == idItem).estadoItem.nombreEstado[0] contains "ERROR").item
+)).itemsWithError]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="If there are items with errors" doc:id="697a1490-cf11-4ed5-9859-79d45ac99dbc">
+					<when expression="#[!isEmpty(vars.itemsWithError)]">
+						<ee:transform doc:name="Map Response Body" doc:id="b77069ae-2cad-4c29-b610-e07e06f70ca3">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/xml encoding= "UTF-8"
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns tier http://schemas.datacontract.org/2004/07/Tier.Common
+ns ws http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts
+---
+soapenv#Envelope @("xmlns:tem": "http://tempuri.org/", 
+        "xmlns:tier": "http://schemas.datacontract.org/2004/07/Tier.Common", 
+        "xmlns:ws":   "http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts"
+        ): {
+            soapenv#Header: "",
+            soapenv#Body: {
+                tem#RespuestaTransaccion: {
+                    tem#WSRequestHeader: {
+                        tier#property: {
+                            tier#"Scheme_Services.Property": {
+                                tier#name: "?",
+                                tier#value: "?"
+                            }
+                        },
+                        tier#system: {
+                            tier#correlationId: vars.viabilityResponse.resultados[0].respuestaViabilidad.correlationId,
+                            tier#name: "?",
+                            tier#processingServer: "?"
+                        }
+                    },
+                    tem#WSRequestBody: {
+                        ws#Descripcion: "Los siguientes items presentan errores: " ++  (vars.itemsWithError joinBy(", ")),
+                        ws#Fecha: now(),
+                        ws#NumeroSolicitud: vars.viabilityResponse.resultados[0].respuestaViabilidad.idViabilidad,
+                        ws#OrdenOM: vars.viabilityResponse.resultados[0].respuestaViabilidad.ordenOM,
+                        ws#Productos: vars.viabilityResponse.resultados[0].respuestaViabilidad.productos,
+                        ws#Resultado: false,
+                        ws#TipoSolicitud: vars.orden.resultados[0].tipoSolicitud,
+                        ws#TipoSolicitud: "CERRAR"
+                    }
+                }
+            }
+        }]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<async doc:name="Async" doc:id="b2146775-e29e-4282-b979-d86d86e02b93" >
+							<async doc:name="Async" doc:id="21b8f935-3068-46dc-860b-dace7f566054">
+								<flow-ref doc:name="Call logger before" doc:id="34a70acd-86b0-4c9c-974a-0f2d20ee5454" name="loggin-client-call" />
+							</async>
+							<http:request method="POST" doc:name="Request to Gestor WS (RespuestaTransaccion)" doc:id="27191e07-f8f9-4bb2-9586-56591904c9b5" config-ref="gestor" path="${gestor.path}">
+							<http:headers><![CDATA[#[output application/java
+---
+{
+	"SOAPAction" : p('gestor.respuestaTransaccion.SOAPAction'),
+	"Content-Type" : p('gestor.Content-Type')
+}]]]></http:headers>
+						</http:request>
+							<async doc:name="Async" doc:id="7caf0772-59e2-4b86-9ca8-4d480b0d3629" >
+								<flow-ref doc:name="Call logger after" doc:id="71a78d92-35e2-4419-8b05-a474b6fc2da2" name="loggin-client-call" />
+							</async>
+						</async>
+						<ee:transform doc:name="msgError" doc:id="8a7a4736-5148-42c3-9fb6-d73993de785b">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"msgError": "Alguno de los items presenta un error"
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Process Error" doc:id="91f7f8e8-8568-4cec-a3e3-e357b06f2da9" name="processError-notification"/>
+					</when>
+					<otherwise >
+						<flow-ref doc:name="Send body to Salesforce" doc:id="37b9b293-0ba8-4c60-a093-46c5e2430839" target="resp_salesforce" name="post-responseViability" />
+						<flow-ref doc:name="evaluateResponse" doc:id="6fa9d169-3031-4f59-89ca-5fe92835cb06" name="evaluateResponse" />
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Process Error" doc:id="273dc775-7c55-46ad-aab2-53f25bc86883" name="processError-notification"/>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger Output" doc:id="36394e04-c3a3-4f5f-ad3a-78e49cd95a7a" message="#[payload]"/>
+	</sub-flow>
+	<sub-flow name="processError-notification" doc:id="ddf33149-9fd6-4175-8030-79e6263a4a60" >
+		<ee:transform doc:name="Set Items Status" doc:id="ebf46bbe-4fd7-494f-bce4-826ca7c91fd8">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM41"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+payload.msgError]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<flow-ref doc:name="Update Items Status" doc:id="ca1ed6c5-ffab-4273-9328-7122a073904d" name="updateItemsStatus" />
+		<ee:transform doc:name="Set Opciones Status" doc:id="9e64dca4-b4ad-42fa-99ac-77b461ce2d7b">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OPC01"]]></ee:set-variable>
+				<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+				<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+payload.msgError]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Update Opciones Status" doc:id="3b5240d4-50ad-4e30-9789-2ab3b2818151" name="updateOpcionesStatus" />
+		<choice doc:name="Choice" doc:id="432e54f9-e170-44d1-a7b7-7d265565ddb5">
+					<when expression="#[p('viability-version') == &quot;old&quot;]">
+						<ee:transform doc:name="Error Msg-old" doc:id="b6819ad9-804c-449a-9213-25db3ef38769">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var msgError = if (vars.viabilityResponse.resultado != 'Positivo')"No se encontro una respuesta de gestor con ese ordenOM"
+				else if (vars.orden.resultado != "Positivo") "No se encontro una orden en OR_ORDEN con ese ordenOm."
+				else if (vars.flagOrigen == false) "Los campos ya fueron enviados previamente a origen."
+				else if (vars.flagRecibida == false) "Hay campos que no estan marcados con respuesta recibida."  
+				else "Alguno de los items presenta un error"
+---
+{
+	"ordenOM": vars.ordenOm,
+	"agrupador": vars.orden.resultados[0].agrupador,
+	"resultado": "Negativo",
+	"fecha": now(),
+	"descripcion": msgError
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Error Msg" doc:id="0a37b164-dbf9-4d0a-a937-db534b55db8d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var sentOrigen = sizeOf(vars.orden.resultados[0].items.RESPUESTA_ENVIADA_A_ORIGEN) ==  sizeOf(vars.orden.resultados[0].items.RESPUESTA_ENVIADA_A_ORIGEN filter $ == 1)
+var msgError = if (vars.viabilityResponse.resultado != 'Positivo')"No se encontro una respuesta de gestor con ese ordenOM"
+				else if (vars.orden.resultado != "Positivo") "No se encontro una orden en OR_ORDEN con ese ordenOm."
+				else if (sentOrigen == true) "Todos los items ya fueron enviados a origen."
+				else "Los items recibidos no cumplen con los requerimientos."
+---
+{
+	"ordenOM": vars.ordenOm,
+	"agrupador": vars.orden.resultados[0].agrupador,
+	"resultado": "Negativo",
+	"fecha": now(),
+	"descripcion": msgError
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					</otherwise>
+				</choice>
+		<async doc:name="_Async State to SF" doc:id="6482338d-0115-447a-9d72-bb3ade9ee1bd">
+			<set-variable value="#[payload.descripcion]" doc:name="errorMsg" doc:id="9ddc5050-30a8-42ec-83cb-94f7e2d45067" variableName="errorMsg"/>
+			<foreach doc:name="For Each idItems" doc:id="74db93f7-1859-46db-9b1d-bf49dcbca0ac" collection="#[vars.viabilityResponse.resultados[0].productos.idItem]">
+				<ee:transform doc:name="Set Item Status to SF ITM21" doc:id="26c44429-e689-41bc-80b4-1ebdd619f246">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="context"><![CDATA["Contexto Integrador OM: ITM21 " ++ vars.errorMsg]]></ee:set-variable>
+						<ee:set-variable variableName="state"><![CDATA["ERROR- RESPUESTA_BACK_EN_PROCESO"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<set-variable value="#[payload]" doc:name="idItem" doc:id="d0c30fe2-7dc6-4bbf-ba56-08d66d9c1005" variableName="idItem" />
+				<flow-ref doc:name="Update Item Status in SF" doc:id="781d1652-26ab-423f-9a8c-0cf136ca0680" name="updateViabilityItemState" />
+			</foreach>
+		</async>
+	</sub-flow>
+	<sub-flow name="evaluateResponse" doc:id="52de8a25-1f54-4adb-852d-8b2eb779d40b">
+		<choice doc:name="Choice" doc:id="ca3c0cbf-6e04-4fec-a17a-a7ac30f6a346">
+			<when expression='#[vars.resp_salesforce== "ERROR"]'>
+				<ee:transform doc:name="orderState" doc:id="22ea7332-5e86-4c61-ada7-ede67c1e0b82">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import util::GlobalFunctions as global
+import * from dw::util::Values
+//var idToMark = payload.listadeProduct.QuoteLineItemId
+//var itemsMarked = global::updateItemsState(vars.orden.resultados[0],idToMark,"ITM41","ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO")
+//var orderWithItemsMarked = vars.orden.resultados[0] update "items" with itemsMarked
+---
+global::updateOrderState(vars.orden.resultados[0],"OR0021","ERROR")]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+				<flow-ref doc:name="Update orden" doc:id="05274eab-e303-4940-b62c-a6f375dcffac" name="putOrder" target="resp_update" />
+				<ee:transform doc:name="Set Items Status" doc:id="dfadf642-9b6b-4a15-8a04-d241651e88d5">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="codigoEstado" ><![CDATA[%dw 2.0
+output application/java
+---
+"ITM41"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado" ><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones" ><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Items Status" doc:id="8da57cd7-0205-4d3a-86c2-5e87756d21ee" name="updateItemsStatus"/>
+				<async doc:name="Async State to SF" doc:id="154b7101-b44a-4dee-8dfc-092a0d57d4c0" >
+					<foreach doc:name="For Each idItems" doc:id="210a3c90-e0ba-48ba-9038-15aec98ca089" collection="#[vars.viabilityResponseProducts.idItem]">
+					<ee:transform doc:name="Set Item Status to SF ITM41" doc:id="9a5f27ed-93ca-496c-a7ec-68c66074a29a">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="context"><![CDATA["Contexto Integrador OM: ITM41 ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+								<ee:set-variable variableName="state" ><![CDATA["ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					<set-variable value="#[payload]" doc:name="idItem" doc:id="b921d3a5-c2e0-460f-8766-5cf4393d75c8" variableName="idItem" />
+					<flow-ref doc:name="Update Item Status in SF" doc:id="b823a567-0e8c-48b2-869b-ebcc32024ed9" name="updateViabilityItemState" />
+				</foreach>
+				</async>
+				<ee:transform doc:name="Set Opciones Status" doc:id="43004a99-0e8a-47d4-9d76-a8b2021c37bf">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OPC01"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Opciones Status" doc:id="19c4b171-0686-400b-8598-d5135773532a" name="updateOpcionesStatus"/>
+				<ee:transform doc:name="Error response Salesforce" doc:id="563430cc-ad55-4c79-a819-67e6f02fa37a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+"ordenOM": vars.orden.resultados[0].ordenOM,
+"agrupador": vars.orden.resultados[0].agrupador,
+"resultado": "Negativo",
+"fecha": now(),
+"descripcion": ""
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="de8dcd78-ab93-46bb-9e71-c6074e073a6d" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set RESPUESTA_ENVIADA_A_ORIGEN" doc:id="84bf7d86-8a43-40dc-b437-61e45b8bbde9">
+			<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::util::Values
+import util::GlobalFunctions as global
+var idItemsToUpdate = if (!isEmpty(vars.orderIdItems)) (vars.viabilityResponseProducts.idItem default []) ++ vars.orderIdItems else vars.viabilityResponseProducts.idItem
+var items_actualizados = vars.orden.resultados[0].items map ( (item, index) ->
+        if(idItemsToUpdate contains (item.idItem))
+            (if(item.RESPUESTA_ENVIADA_A_ORIGEN != null)
+                item update "RESPUESTA_ENVIADA_A_ORIGEN" with 1
+            else item ++ "RESPUESTA_ENVIADA_A_ORIGEN": 1)
+        else item)
+//var itemsToBeUpdated =  (items_actualizados filter $.RESPUESTA_ENVIADA_A_ORIGEN == 1).idItem
+//var orderUpdated = vars.orden.resultados[0] update "items" with items_actualizados
+//var itemsWithState = global::updateItemsState(auxOrder,itemsToBeUpdated,"ITM40","RESPUESTA_ORIGEN_PROCESO")
+//var orderUpdated = vars.orden.resultados[0] update "items" with itemsWithState
+output application/json
+---
+//global::updateOrderState( orderUpdated,"OR0020","EN_PROCESO
+vars.orden.resultados[0] update "items" with items_actualizados]]></ee:set-payload>
+			</ee:message>
+					<ee:variables>
+					</ee:variables>
+		</ee:transform>
+				<ee:transform doc:name="orderState to OR0030" doc:id="88045b9e-c107-4d22-9d2e-3d423715596a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import util::GlobalFunctions as global
+import * from dw::util::Values
+import every from dw::core::Arrays
+var everyItemDone = sizeOf(payload.items.RESPUESTA_ENVIADA_A_ORIGEN) == sizeOf(payload.items) and (payload.items.RESPUESTA_ENVIADA_A_ORIGEN every ($ == 1))
+---
+if (!everyItemDone) payload else
+global::updateOrderState(payload,"OR0030","COMPLETADA_VIABILIDAD")]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+				<flow-ref doc:name="Update orden" doc:id="dc649965-9ec4-4117-85bf-a05843d9dd17" name="putOrder" target="resp_update" />
+				<ee:transform doc:name="Set Items Status to ITM90" doc:id="c29ddc05-17f0-4979-953a-b63ffc419e87">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM90"
+//"ITM50"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"COMPLETADA_BACK"
+//"RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"COMPLETADA_BACK"
+//"RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Items Status" doc:id="94935c07-ed12-4862-84e5-399ecdc5df43" name="updateItemsStatus" />
+				<ee:transform doc:name="Set Opciones Status to OPC30" doc:id="38720120-b107-4a38-b36b-ed30e1f74a6a">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OPC30"
+//"OPC10"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"COMPLETADA_BACK"
+//"RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"COMPLETADA_BACK"
+//"RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update Opciones Status" doc:id="7e101570-0915-423c-8f1d-1c1a2926fe2a" name="updateOpcionesStatus" />
+				<ee:transform doc:name="Set positive response" doc:id="b61f4b43-d723-46c6-9e21-e51d8f70dc9f">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+"ordenOM": vars.ordenOM default vars.resp_salesforce.ordenOM,
+"agrupador": vars.orden.resultados[0].agrupador default vars.resp_salesforce.agrupador,
+"resultado": "Positivo" default vars.resp_salesforce.resultado,
+"fecha": now(),
+"descripcion": "" default vars.resp_salesforce.descripcion
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="90fecf35-99cd-4733-b552-e3cbb268ca71" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="updateItemsStatus" doc:id="bba4c7e7-0edb-4b9e-a099-d3a1212ca1a0" >
+		<set-payload value='#[{&#10;	"numeroOrden": vars.orden.resultados[0].ordenOM&#10;}]' doc:name="Set ordenOM" doc:id="513b7bfe-fe67-425b-aec7-b0533c86e714" />
+		<flow-ref doc:name="Get Order" doc:id="0220ca69-e76a-45e6-9db4-7e6501841e5e" name="obtain-order" target="lastOrderUpdated"/>
+		<ee:transform doc:name="Update Status" doc:id="1b10e6e2-740c-4293-87e1-944d32f79456" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::util::Values
+
+var items = vars.lastOrderUpdated.resultados[0].items
+var itemsToUpdate = vars.provResponse.items.idItem default if (!isEmpty(vars.orderIdItems)) (vars.viabilityResponseProducts.idItem default []) ++ vars.orderIdItems else vars.viabilityResponseProducts.idItem default []
+---
+"items": (items map ((item, index) -> 
+    if(itemsToUpdate contains item.idItem)
+	    (if(item.estadoItem == null) (item ++ { "estadoItem": {
+	                        "fecha": now(),
+	                        "codigoEstado": vars.codigoEstado,
+	                        "nombreEstado": vars.nombreEstado,
+	                        "observaciones": vars.observaciones
+	                        }})
+	    else (item update "estadoItem" with {fecha: now(),
+	                                        codigoEstado: vars.codigoEstado,
+	                                        nombreEstado: vars.nombreEstado,
+	                                        observaciones: vars.observaciones}))
+    else item
+))]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Update Order" doc:id="d7386972-17cb-4bc7-a900-4bde3ceee682" name="putOrder"/>
+	</sub-flow>
+	<sub-flow name="updateOpcionesStatus" doc:id="00ca1737-02c6-4876-b5d1-d32353943cda" >
+		<set-payload value='#[{&#10;	"numeroOrden": vars.orden.resultados[0].ordenOM&#10;}]' doc:name="Set ordenOM" doc:id="6ca2c837-af62-433c-ad3e-5c36bfc9ac72" />
+		<flow-ref doc:name="Get Order" doc:id="c40219db-238b-4efa-8be4-c14cc1fbb141" name="obtain-order" target="lastOrderUpdated" />
+		<ee:transform doc:name="Update Status" doc:id="2793af5b-e864-415c-86a8-bd3a67d37a22" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::util::Values
+var idItemsToUpdate = vars.provResponse.items.idItem default if (!isEmpty(vars.orderIdItems)) (vars.viabilityResponseProducts.idItem default []) ++ vars.orderIdItems else vars.viabilityResponseProducts.idItem default []
+var newState = {
+    "estadoOpcion": {
+      "fecha ": now(),
+      "codigoEstado": vars.codigoEstado,
+      "nombreEstado": vars.nombreEstado,
+      "observaciones": vars.observaciones
+    }
+  }
+output application/json  skipNullOn="everywhere"
+---
+vars.lastOrderUpdated.resultados[0] update "items" with ($ map (o, i) -> 
+    if (idItemsToUpdate contains (o.idItem))
+        ((o update ["productos", "opciones"] with ($ map (op, ind) -> 
+        (if(op.estadoOpcion == null)
+            op ++ newState
+        else
+        (op update "estadoOpcion" with newState.estadoOpcion)))))
+    else
+        o)]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Update Order" doc:id="1d025d73-e200-409e-a92c-ba039c0cdf40" name="putOrder" />
+	</sub-flow>
+	<sub-flow name="updateOrderOMWIthProducts" doc:id="1eabcb40-2d3d-4a21-9b41-677ceb170dae" >
+		<set-payload value="#[vars.orderUpdated]" doc:name="Set Payload" doc:id="180a4d27-2715-460c-ad1a-2e652770f1c4" />
+		<flow-ref doc:name="Update Order" doc:id="043c45d9-4b1c-4295-8f47-cfc98489bf57" name="putOrder" target="resp_update" />
+	</sub-flow>
+</mule>
+

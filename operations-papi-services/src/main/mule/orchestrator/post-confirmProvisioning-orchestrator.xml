@@ -1,0 +1,498 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<sub-flow name="get-orderNumber" doc:id="87c08a23-0554-4317-b5f2-68d4598d8920">
+		<flow-ref doc:name="validation-origin-orderSub_Flow" doc:id="ed422500-3019-4d9b-8dc2-95cab0ac4197" name="validation-origin-orderSub_Flow" target="validationOriginOrder" />
+		<flow-ref doc:name="getOrderByOrderNumber" doc:id="0454d923-a0b5-4dcf-bb69-9dd65f33771f" name="getOrderByOrderNumber" />
+		<logger level="INFO" doc:name="Logger" doc:id="041247b2-e568-4e85-8c18-8f0bdaf1e69e" message="#[payload]" />
+		<set-variable value="#[vars.orderData[0].Tramite.Tipo_Tramite]" doc:name="tipoTramite" doc:id="990e0ec5-416c-40ba-ac62-f9fac23dea67" variableName="tipoTramite" />
+		<choice doc:name="Choice" doc:id="6fee3cd8-4c76-469d-bc46-7e72d83e255f" >
+			<when expression='#[vars.tipoTramite == "PRCHM" or vars.tipoTramite == "VTAM" or vars.tipoTramite == "ASEGM"]'>
+				<flow-ref doc:name="Validate states to retry" doc:id="0ee00191-8154-42eb-acfb-e082170d98b7" name="states-to-retry" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="set error Response" doc:id="20f19970-6fb6-40bc-968a-b077eddc452e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": "El tramite no soporta la accion enviada"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="states-to-retry" doc:id="2475c6e0-e7ba-40d8-9957-f3f2119eafde">
+		<set-variable value="#[vars.orderData[0].Estado_Orden_Comercial.Codigo]" doc:name="Set ordenComercialCode" doc:id="e6d5ec3c-60f2-4a36-9d12-00ae28cf1498" variableName="ordenComercialCode" />
+		<choice doc:name="Characteristic to retry?" doc:id="01193061-4045-4866-aff5-0c8ed0fec2e0" >
+			<when expression="#[isEmpty(vars.orderData[0].Caracteristica_Orden filter ($.Caracteristica == 'ESTADO_PROCESAR_ORDEN'))]" >
+				<choice doc:name="O90?" doc:id="a7d828bf-8598-41ea-af8c-cff8f0d07c78" >
+					<when expression='#[vars.ordenComercialCode == "O90" and (&#10;    (&#10;        (vars.orderData[0].Orden_Activacion.Servicios &#10;        filter ($.Estado_Servicio.Codigo == "50" and $.Nombre == "ACCESO DE RED")&#10;        ).Nombre[0] == "ACCESO DE RED"&#10;    ) &#10;    or &#10;    (&#10;        ((vars.orderData[0].Orden_Activacion.Servicios&#10;		filter ($.Nombre == "ACCESO DE RED")&#10;		).Servicios_Hijos[0] &#10;		filter ($.Estado_Servicio.Codigo == "50" and $.Nombre == "ONT/DSL")).Nombre[0] == "ONT/DSL"&#10;    )&#10;)]' >
+						<flow-ref doc:name="go to normal flow" doc:id="d9aaa343-29af-4434-bef6-62da6be7b820" name="orquestador-subFlow" />
+					</when>
+					<otherwise >
+						<ee:transform doc:name="set error Response" doc:id="3f181a78-3bc8-421a-909e-6b4432568e74" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": "The order state is invalid"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<choice doc:name="statusCode?" doc:id="f16970a6-0af2-44b4-b803-ba3cbcd1157e" >
+					<when expression='#[vars.ordenComercialCode == "O90"]' >
+						<flow-ref doc:name="Go to retry flow" doc:id="74768aae-b1bc-4c9a-8ab3-9584966c6059" name="retry-flow" />
+					</when>
+					<when expression='#[vars.ordenComercialCode == "O160"]' >
+						<ee:transform doc:name="set final response" doc:id="0c68cac9-8cde-4a11-bca6-81164110c5b8" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": vars.orderData[0].Estado_Orden_Comercial.Codigo,
+  "orderNumber": vars.orderNumber,
+  "description": vars.orderData[0].Estado_Orden_Comercial.Descripcion
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables />
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="set error Response" doc:id="416ba2ff-0f20-4d82-a205-da644fbe3cda" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": "The order state is invalid"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="retry-flow" doc:id="8c17cb4d-f3a6-4bd9-8b32-7ea01a467787" >
+		<ee:transform doc:name="wait 10 seconds" doc:id="147e81c8-63db-4f54-bc9b-30ab4375d80a">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+import wait from dw::Runtime
+---
+"" wait 10000]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+		<try doc:name="Try" doc:id="d16177a2-69fe-4b9c-be21-ba6c05384e16">
+									<until-successful maxRetries="#[p('retryConfig-mayorista.maxRetry')]" doc:name="Until Successful" doc:id="8f71f5c8-ba73-4bae-9967-d74f13f0cfee" millisBetweenRetries="#[p('retryConfig-mayorista.timeMs')]">
+									<flow-ref doc:name="getOrderByOrderNumber" doc:id="1059d738-4b9d-430e-9fc1-d9fbafeaeaea" name="getOrderByOrderNumber" />
+									<validation:is-true doc:name="Is true" doc:id="bc4cd8b5-5330-4467-91b7-9e19dc143b65" expression='#[vars.orderData[0].Estado_Orden_Comercial.Codigo != "O90"]' message='#["Not changed"]' />
+								</until-successful>
+									<error-handler>
+										<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d5870e3a-d4bd-473d-8aa3-794713f67b73">
+											<ee:transform doc:name="Set error" doc:id="798c1ee0-389b-4779-b568-f6e429028106">
+												<ee:message>
+													<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+error.description]]></ee:set-payload>
+												</ee:message>
+											</ee:transform>
+										</on-error-continue>
+									</error-handler>
+								</try>
+		<async doc:name="Async" doc:id="5b3d2366-94ef-43d9-a4af-71f9a480f334">
+											<ee:transform doc:name="orderStatus Remove characteristic" doc:id="6a37277e-870a-414a-a90a-2b7aed1286a0">
+											<ee:message />
+											<ee:variables>
+												<ee:set-variable variableName="orderStatus"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "updateStateCharateristic": "remove",
+    "characteristics": vars.orderData[0].Caracteristica_Orden
+}]]></ee:set-variable>
+											</ee:variables>
+										</ee:transform>
+											<flow-ref doc:name="Go to update order" doc:id="dc38ce26-9178-4546-93fc-51e3f48dba30" name="patchOrderByOrderNumber" target="patchOrderResponse"/>
+										</async>
+		<choice doc:name="Choice" doc:id="ffd6edaa-e2cf-42f5-bd2a-21a670128f59">
+									<when expression='#[payload == "Not changed"]'>
+				<flow-ref doc:name="go to orquestador subFlow" doc:id="8bb85dea-899a-4f3f-90bd-865b9b0dc20e" name="orquestador-subFlow" />
+									</when>
+									<otherwise>
+										<flow-ref doc:name="evaluate-status" doc:id="455581a8-db48-4fa7-8a7f-3d0476763dc7" name="evaluate-status" />
+									</otherwise>
+								</choice>
+	</sub-flow>
+	<sub-flow name="evaluate-status" doc:id="8d1c8e96-0c4f-409b-9d90-e86030f44107" >
+		<choice doc:name="Choice" doc:id="591e705d-e0cb-4b26-a47f-23e77e1ed56b">
+				<when expression='#[vars.orderData[0].Estado_Orden_Comercial.Codigo == "O95"]'>
+				<ee:transform doc:name="set final response" doc:id="c3a602ff-83de-439e-b5bd-5d0eaefe6a95" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": vars.orderData[0].Estado_Orden_Comercial.Codigo,
+  "orderNumber": vars.orderNumber,
+  "description": vars.orderData[0].Estado_Orden_Comercial.Excepcion
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+				</when>
+				<when expression='#[vars.orderData[0].Estado_Orden_Comercial.Codigo == "O160"]'>
+				<ee:transform doc:name="set final response" doc:id="749aa38e-6b63-4e29-a59d-6469fba65dbd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": vars.orderData[0].Estado_Orden_Comercial.Codigo,
+  "orderNumber": vars.orderNumber,
+  "description": vars.orderData[0].Estado_Orden_Comercial.Descripcion
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+				<async doc:name="Async" doc:id="a6af447d-805e-4cef-9a95-bf1174795425" >
+					<flow-ref doc:name="Go to salesforce subFlow" doc:id="d551e588-1d21-4bbf-a27a-e000018cc8b8" name="salesforceSub_Flow" />
+				</async>
+				</when>
+			<otherwise >
+				<ee:transform doc:name="set error Response" doc:id="bcb7c820-9b6d-4d43-9995-29df87d73842" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": "The order state is invalid"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+			</choice>
+	</sub-flow>
+	<sub-flow name="orquestador-subFlow" doc:id="73542e15-9cf4-48c7-8864-19cb05938e90" >
+		<ee:transform doc:name="set orchestador request" doc:id="cea5a2ca-8c59-4ea4-8dd4-5d7b0ad099cc" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="orquestatorRequest" ><![CDATA[%dw 2.0
+output application/xml
+ns tem http://tempuri.org/
+ns orq http://www.etb.com.co/orquestador
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+---
+{            
+  tem#"ProcesarOrden": {
+	tem#"solicitudOrden": {
+		orq#"Encabezado": {
+			orq#"Propiedades": {
+				orq#"Propiedad": {
+					orq#"Nombre": "",
+					orq#"Valor": ""
+				}
+			},
+			orq#"Sistema": {
+				orq#"IdCorrelacion": vars.orderNumber,
+				orq#"Nombre": "Mulesoft",
+				orq#"Servidor": "Mulesoft"
+			}
+		},
+		orq#"DatosSolicitud": {
+			orq#"EstadoOrden": vars.orderData[0].'Estado_Orden_Comercial'.Codigo,
+			orq#"NumeroOrden": vars.orderNumber,
+			orq#"Tramite": vars.orderData[0].Tramite.'Tipo_Tramite',
+			orq#"UsuarioEvento": ""
+		}
+	}
+  }
+}
+]]></ee:set-variable>
+				<ee:set-variable variableName="orquestadorOperation" ><![CDATA[%dw 2.0
+output application/java
+---
+p('orquestador.operation.procesarOrden')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+<flow-ref doc:name="Process Order" doc:id="06a27f79-3b4d-4cf9-82ec-eac4de0bc175" name="post-provisioning-order-client" />
+		<choice doc:name="Choice" doc:id="71fc9844-89b2-4f72-a7ea-aa33a4a94217" >
+			<when expression='#[payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Estado == "OK"]'>
+				<async doc:name="Async" doc:id="c3552c2f-71c5-4862-b30c-aee3bbd1a1c0">
+					<flow-ref doc:name="Go to salesforce subFlow" doc:id="cd5f3e19-4595-4c66-b35f-d9e3588a3680" name="salesforceSub_Flow" />
+		</async>
+				<logger level="INFO" doc:name="Logger" doc:id="439fd540-f843-443e-8717-bc1ab03021ca" message="#[payload]" />
+				<ee:transform doc:name="set final response" doc:id="eba1712c-1d79-46db-b471-59e05cbfb66b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": payload.ProcesarOrdenResponse.Resultado.Estado.Codigo default "",
+  "orderNumber": vars.orderNumber,
+  "description": payload.ProcesarOrdenResponse.Resultado.Estado.Descripcion default ""
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set response FAIL" doc:id="bd3622b9-38bb-49d9-9836-287b3575ac6c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.DetalleEstado
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="salesforceSub_Flow" doc:id="fce76953-e539-4c94-8e9a-4508ed0d8531" >
+		<flow-ref doc:name="salesforce-auth" doc:id="8175096a-6f7e-4716-8a3e-c14b66b9e503" name="salesforce-auth" />
+		<set-variable value="#[vars.orderData[0].Servicio_Tramite.Id_Cuenta_Servicio]" doc:name="set id service account" doc:id="0aded8fb-0c12-46ee-8182-4d0790bafdb2" variableName="idServiceAccount" />
+		<flow-ref doc:name="get service by ID" doc:id="99c6e9b0-a243-4293-92ef-159e0d0cc203" name="get-serviceByIdServiceAccount" target="obtainedServiceById" />
+		<ee:transform doc:name="IdAsset" doc:id="6babff2a-6e5f-4333-82da-e88ed5aa92e4">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="idAsset"><![CDATA[%dw 2.0
+output application/json
+---
+(vars.obtainedServiceById.Caracteristica_Servicio[0] 
+    filter (upper($.Caracteristica) == upper("IDASSETSF"))).Valor[0] default null]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try Salesforce update/insert" doc:id="2f9c52d1-a8ad-48ef-9123-114e80d4f6f0">
+			<choice doc:name="Choice" doc:id="e59542bf-7fdb-45d2-b31c-53a92c04a8c0" >
+				<when expression='#[vars.tipoTramite == "PRCHM"]'>
+					<ee:transform doc:name="Mapping Update Speed" doc:id="ec19b21a-49cc-4d98-8527-bea241ddf1bb" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="requestSalesforce" ><![CDATA[%dw 2.0
+output application/json
+var atributos = ((vars.orderData[0].Servicio_Tramite.Bundle.Primarios 
+					filter $.Subtipo_Servicio == "FTTH INTERNET")[0].Secundarios 
+					filter $.Subtipo_Servicio == "FTTH INTERNET")[0].Atributos
+---
+{
+	Id: vars.idAsset,
+	parametros: [
+		{
+			codigo: "VelocidaddeSubida__c",
+			valor: (atributos filter "VelocidadSubida" == $.Nombre)[0].Valor
+		},
+		{
+			codigo: "VelocidaddeBajada__c",
+			valor: (atributos filter "VelocidadBajada" == $.Nombre)[0].Valor
+		}
+	]
+
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="updateAsset" doc:id="dc36f0f7-876e-4860-9e6e-6f15f1ae351b" name="salesforce-updateAsset" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Mapping insert Asset" doc:id="56a7d45a-650d-4a8f-b0af-024b97bb0d94" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="requestSalesforce" ><![CDATA[%dw 2.0
+output application/json
+---
+{        
+	"attributes" : {"type" : "Asset"},
+    "Name": vars.orderData[0].Servicio_Tramite.Id_Cuenta_Servicio, 
+    "Account": {
+        "External_Id__c": (vars.orderData[0].Caracteristica_Orden filter ($.Caracteristica == "MAYORISTA")).Valor[0]
+    },
+    "Status": "Active", 
+    "Departamento__c": vars.orderData[0].Cliente_Tramite.Direcciones[0].Departamento, 
+    "Ciudad__c": vars.orderData[0].Cliente_Tramite.Direcciones[0].Municipio,  
+    "Direccion_Instalacion__c": vars.orderData[0].Cliente_Tramite.Direcciones[0].Direccion_Normalizada,
+    "VelocidaddeBajada__c": (vars.orderData[0].Servicio_Tramite.Bundle.Primarios[0].Secundarios[0].Atributos filter ($.Nombre == "VelocidadBajada")).Valor[0], 
+    "VelocidaddeSubida__c": (vars.orderData[0].Servicio_Tramite.Bundle.Primarios[0].Secundarios[0].Atributos filter ($.Nombre == "VelocidadSubida")).Valor[0], 
+    "NumerodeAgrupacion__c": vars.orderData[0].Servicio_Tramite.Bundle.Numero_Agrupacion,
+    "NumerodePuerto__c": ((vars.orderData[0].Orden_Activacion.Servicios filter ($.Clase_Servicio == "Access Service Class")).Atributos[0] filter ($.Nombre == "objectName")).Valor[0] default "",
+    "vlocity_cmt__JSONAttribute__c": "{\"ATT_Nemonico\":\"" ++ vars.orderData[0].Servicio_Tramite.Id_Cuenta_Servicio ++ "\",\"ATT_Numero_Agrupacion\":" ++ vars.orderData[0].Servicio_Tramite.Bundle.Numero_Agrupacion ++ ",\"ATT_Operador\":\"TIGO\"}",
+    "fecha": (now() >> "America/Bogota") as String {format: p('dateSalesForce')},
+}
+]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="salesforce-insertAsset" doc:id="bc98f3b6-cfde-4ba5-b3e7-27e2c5cb1bb9" name="salesforce-insertAsset" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue SF" doc:id="761468c8-acd6-41d0-b35d-00b10bcaf35f">
+					<ee:transform doc:name="Set status SF by exception" doc:id="236a306f-cd84-47a7-b6e7-a25a69a4151b">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="statusSalesforce"><![CDATA[%dw 2.0
+output application/json
+var errorNamespace = upper(error.errorType.namespace default "")
+var errorIdentifier = upper(error.errorType.identifier default "")
+---
+if (
+	(errorNamespace == "HTTP" and (errorIdentifier == "TIMEOUT" or errorIdentifier == "CONNECTIVITY"))
+	or (errorNamespace == "MULE" and errorIdentifier == "RETRY_EXHAUSTED")
+) "SIN_RESPUESTA_SF"
+else "ERROR_SF"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Define status salesforce" doc:id="4eaadf96-f36a-46ff-bec6-f11dcfc5a7df">
+			<when expression="#[isEmpty(vars.statusSalesforce)]">
+				<ee:transform doc:name="Set status by response" doc:id="5359ea78-a807-4c97-95b4-301ef891e6ab">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="statusSalesforce"><![CDATA[%dw 2.0
+output application/json
+---
+if (vars.responseSalesforce.success default false) "EXITOSO" else "ERROR_SF"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+		</choice>
+		<flow-ref doc:name="update order" doc:id="bf63c704-5bed-4189-a9e9-1cd98b3e034c" name="update-order" target="patchOrderResponse" />
+		<choice doc:name="Choice" doc:id="e1a52464-188d-4253-8e1b-0020ff3533b2" >
+			<when expression='#[vars.tipoTramite == "VTAM" and vars.statusSalesforce == "EXITOSO"]'>
+				<flow-ref doc:name="update service" doc:id="34189e43-adf1-413b-87bc-5e7f4354b523" name="update-service" target="updatedServiceResult" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="update-service" doc:id="90397d0a-a957-48cf-9032-733061853fd0" >
+		<ee:transform doc:name="update service characteristic" doc:id="35cd1486-6a0c-4d48-9357-d8c8c1565b92">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="serviceUpdate"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	characteristics: vars.obtainedServiceById[0].Caracteristica_Servicio,
+	newCharacteristic: p('interaction-params.characteristics.salesforceAsset'),
+	newValue: vars.responseSalesforce.id,
+	action: "add"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="update service by id" doc:id="64a843cb-12e3-4000-97bb-dc3a88ee5a6d" name="patch-serviceByIdServiceAccount" target="patchService"/>
+	</sub-flow>
+	<sub-flow name="update-order" doc:id="dae89696-2ee9-44c4-be78-edc42fb249ee">
+		<flow-ref doc:name="getOrderByOrderNumber" doc:id="b2eca46e-5d86-4e97-b031-e33914f75445" name="getOrderByOrderNumber" />
+		<ee:transform doc:name="update order request" doc:id="d56fc5c5-c97c-4e0e-b7fe-2a05b4a4a7a7">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="orderStatus"><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "updateStateCharateristic": "add",
+  "updateComponent": "salesforce",
+  "characteristics": vars.orderData[0].Caracteristica_Orden <<
+    {
+        "Caracteristica": p('interaction-params.characteristics.salesforceResponse'),
+        "Valor": vars.statusSalesforce
+    }
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to update order" doc:id="c0a6f13c-0e28-4efb-903b-f682c738133a" name="patchOrderByOrderNumber" target="patchOrderResponse"/>
+	</sub-flow>
+</mule>

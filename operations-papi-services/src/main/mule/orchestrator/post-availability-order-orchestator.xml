@@ -1,0 +1,502 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="availability-evaluate-idempotency-varsSub_Flow" doc:id="d1e2f3a4-b5c6-4789-d012-3456789abcde">
+		<ee:transform doc:name="Evaluate availability idempotency vars" doc:id="d4e5f6a7-b8c9-0123-def0-234567890123">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="availabilityOrderRecord"><![CDATA[%dw 2.0
+import * from modules::AvailabilityIdempotency
+output application/java
+---
+normalizeOrderRecord(vars.availabilityOrderRecordSource)]]></ee:set-variable>
+				<ee:set-variable variableName="shouldSimulateAvailabilitySuccess"><![CDATA[%dw 2.0
+import * from modules::AvailabilityIdempotency
+output application/java
+---
+shouldSimulateAvailability(vars.availabilityOrderRecord)]]></ee:set-variable>
+				<ee:set-variable variableName="orderCommercialStatusCode"><![CDATA[%dw 2.0
+import * from modules::AvailabilityIdempotency
+output application/java
+---
+commercialStatusCode(vars.availabilityOrderRecord)]]></ee:set-variable>
+				<ee:set-variable variableName="orderCommercialStatusDescription"><![CDATA[%dw 2.0
+import * from modules::AvailabilityIdempotency
+output application/java
+---
+commercialStatusDescription(vars.availabilityOrderRecord)]]></ee:set-variable>
+				<ee:set-variable variableName="availabilityServiceAccountId"><![CDATA[%dw 2.0
+import * from modules::AvailabilityIdempotency
+output application/java
+---
+serviceAccountId(vars.availabilityOrderRecord)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="availability-order-idempotency-checkSub_Flow" doc:id="a1b2c3d4-e5f6-7890-abcd-ef1234567890" >
+		<set-variable value="#[vars.orderNumber]" doc:name="Set orderNumberValidation" doc:id="b2c3d4e5-f6a7-8901-bcde-f12345678901" variableName="orderNumberValidation" />
+		<flow-ref doc:name="Get current order status" doc:id="c3d4e5f6-a7b8-9012-cdef-123456789012" name="get-order-status-by-order-numberSub_Flow" target="availabilityOrderStatus" />
+		<set-variable value="#[vars.availabilityOrderStatus]" doc:name="Set availabilityOrderRecordSource" doc:id="e1f2a3b4-c5d6-4789-e012-3456789abcde" variableName="availabilityOrderRecordSource" />
+		<flow-ref doc:name="Evaluate availability idempotency vars" doc:id="f2a3b4c5-d6e7-4890-f123-456789abcdef" name="availability-evaluate-idempotency-varsSub_Flow" />
+		<logger level="INFO" doc:name="Logger" doc:id="e5f6a7b8-c9d0-1234-ef01-345678901234" message='#[if ((vars.shouldSimulateAvailabilitySuccess default false) as Boolean) "Availability idempotency active for order " ++ (vars.orderNumber default "") ++ " with status " ++ (vars.orderCommercialStatusCode default "") ++ ". Skipping reprocessing." else "Availability will proceed for order " ++ (vars.orderNumber default "") ++ " with status " ++ (vars.orderCommercialStatusCode default "")]' />
+	</sub-flow>
+	<sub-flow name="post-availability-order-orchestrator" doc:id="fd99afe2-689c-4637-bc73-20ca062f1e03" >
+		<flow-ref doc:name="validation-origin-orderSub_Flow" doc:id="06eb85bd-7abf-4208-8e01-75db29898cc4" name="validation-origin-orderSub_Flow" target="validationOriginOrder" />
+		<flow-ref doc:name="availability-order-idempotency-checkSub_Flow" doc:id="f6a7b8c9-d0e1-2345-f012-456789012345" name="availability-order-idempotency-checkSub_Flow" />
+		<choice doc:name="Avoid duplicated availability processing" doc:id="58aa5475-0f84-4ad4-8f95-fa52d6746029">
+			<when expression="#[(vars.shouldSimulateAvailabilitySuccess default false) as Boolean]">
+				<ee:transform doc:name="Simulate success response" doc:id="bd1cd78b-e8f5-4ac7-9f7c-d633286b56ec">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from modules::AvailabilityIdempotency
+output application/json
+---
+simulateSuccessResponse(normalizeOrderRecord(vars.availabilityOrderRecordSource), vars.orderNumber)]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+201]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="set productId and consecutive type" doc:id="b62117fb-f9f1-4275-a24a-c10cd181a39e" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="consecutiveType" ><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-sapi-services.orderExample.consecutiveType')]]></ee:set-variable>
+						<ee:set-variable variableName="productId" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.productId]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="salesforce-auth" doc:id="e7f4aa05-3ff2-4886-855c-a382e2859bf2" name="salesforce-auth" />
+				<flow-ref doc:name="salesforce-getProduct" doc:id="0b4fd059-d9be-48f9-8802-95aca7679211" name="salesforce-getProduct" />		
+				<choice doc:name="Choice" doc:id="3fd955d8-770b-495d-aa3c-1659cd901cdb">
+					<when expression="#[vars.salesforceResponse.records == [] or vars.salesforceResponse.records[0] == null]">
+						<ee:transform doc:name="Set response fail salesforce" doc:id="a6b3456e-2e00-49cb-ba18-0b0f8882c755">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": "Error trying to retrieve information by productId"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<flow-ref doc:name="mongo-get-order" doc:id="bf69aa38-1edf-4ad8-8d1c-4f0529c4a262" name="mongo-get-order" />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="mongo-get-order" doc:id="c4c58a66-bb91-4000-95b6-c8366e063ea4" >
+		<flow-ref doc:name="getOrderByOrderNumber" doc:id="da65eeb3-dcee-4173-a471-4a759111121b" name="getOrderByOrderNumber" />
+		<set-variable value="#[vars.orderData]" doc:name="Set availabilityOrderRecordSource from orderData" doc:id="a1b2c3d4-e5f6-7890-abcd-111111111111" variableName="availabilityOrderRecordSource" />
+		<flow-ref doc:name="Evaluate availability idempotency from orderData" doc:id="f1a2b3c4-d5e6-4789-a012-3456789abcde" name="availability-evaluate-idempotency-varsSub_Flow" />
+		<choice doc:name="Skip consecutive generation when order already processed" doc:id="a9b8c7d6-e5f4-4321-ba98-76543210fedc">
+			<when expression="#[(vars.shouldSimulateAvailabilitySuccess default false) as Boolean]">
+				<logger level="INFO" doc:name="Logger" doc:id="b8c7d6e5-f4a3-4210-ba98-76543210fedb" message='#[ "Availability idempotency fallback in mongo-get-order for order " ++ (vars.orderNumber default "") ++ ". Reusing serviceAccountId " ++ (vars.availabilityServiceAccountId default "") ]' />
+				<ee:transform doc:name="Simulate success response from orderData" doc:id="c7d6e5f4-a3b2-4310-ba98-76543210fedc">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from modules::AvailabilityIdempotency
+output application/json
+---
+simulateSuccessResponse(normalizeOrderRecord(vars.availabilityOrderRecordSource), vars.orderNumber)]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+201]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<set-variable value="#[vars.orderData[0].Tramite.Tipo_Tramite]" doc:name="Set transactType" doc:id="34c56807-b6d0-4edd-80c2-b38ae7efe7fd" variableName="transactType" />
+				<flow-ref doc:name="getOrderExample" doc:id="09701c18-15af-4b5b-9906-a269246b6620" name="getOrderExample" />
+				<flow-ref doc:name="mongo-update-order" doc:id="56960583-a117-4c59-a1c3-10ee7963a05e" name="mongo-update-order" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="mongo-update-order" doc:id="84e87086-38d5-4949-a0ff-0d323948136f" >
+		<ee:transform doc:name="update order request" doc:id="bf142826-af39-4204-8395-8b36d7e0a06e">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="orderUpdated"><![CDATA[%dw 2.0
+output application/json
+var atributos = payload
+var primarios= read(vars.salesforceResponse.records[0].vlocity_cmt__ParentProductId__r.vlocity_cmt__AttributeDefaultValues__c, "application/json")
+var secundarios= read(vars.salesforceResponse.records[1].vlocity_cmt__ChildProductId__r.vlocity_cmt__AttributeDefaultValues__c, "application/json")
+var order = vars.orderData
+---
+(order map(item,idx) -> {
+	"Fecha_Creacion": item."Fecha_Creacion",
+	"Fecha_Modificacion": item."Fecha_Modificacion",
+	"Usuario_Modificacion": item."Usuario_Modificacion",
+	"Usuario_Creacion": item."Usuario_Creacion",
+	"Actualizacion_Extractor": item."Actualizacion_Extractor",
+	"Numero_Orden": item."Numero_Orden",
+	"Canal": item."Canal",
+	"Fase": item."Fase",
+	"Estado_Orden_Comercial": item."Estado_Orden_Comercial",
+	"Tramite": item."Tramite",
+	"Tipo_Servicio": item."Tipo_Servicio",
+	"CUN": item."CUN",
+	"Cliente_Anterior": item."Cliente_Anterior",
+	"Cliente_Tramite": item."Cliente_Tramite",
+	"Servicio_Anterior": item."Servicio_Anterior",
+	"Servicio_Tramite": {
+		"Fecha_Creacion": vars.timePetition,
+		"Fecha_Modificacion": null,
+		"Usuario_Modificacion": null,
+		"Usuario_Creacion": null,
+		"Actualizacion_Extractor": null,
+		"Id_Cuenta_Servicio": vars.serviceAccountId.consecutive default item."Servicio_Tramite"."Id_Cuenta_Servicio",
+		"Bundle": {
+			"Fecha_Creacion": vars.timePetition,
+			"Fecha_Modificacion": null,
+			"Usuario_Modificacion": null,
+			"Usuario_Creacion": "yonaest1",
+			"Actualizacion_Extractor": null,
+			"Codigo_Configuracion": null,
+			"Numero_Agrupacion": primarios.'ATT_SF_Numero_Agrupacion' as Number default 556299, // Salesforce
+			"Tipo_Producto": "BUNDLE",
+			"Tipo_Servicio": "FTTH",
+			"Subtipo_Servicio": null,
+			"Subtipo_Producto": null,
+			"Secuencia": 0,
+			"Dependencia": 0,
+			"Id_Clase_Servicio": 0,
+			"Clasificacion": "SERVICIO",
+			"Disponibilidad": false,
+			"Agendamiento": false,
+			"Aprovisionamiento": false,
+			"Facturacion": false,
+			"Accion": null,
+			"Id_Item": null,
+			"Id_Item_Padre": null,
+			"Id_Tipo_Producto": 0,
+			"Id_Tipo_Servicio": 2,
+			"Id_Subtipo_Servicio": 0,
+			"Id_Subtipo_Producto": 0,
+			"id_opcional_auxiliar": null,
+			"Id_Servicio": null,
+			"tipo_adicional": null,
+			"Parametros_Producto": null,
+			"seleccionado": false,
+			"deshabilitado": false,
+			"Nombre": vars.salesforceResponse.records[0].vlocity_cmt__ParentProductName__c default "SINGLE INTERNET MAYORISTAS_TEST", // Salesforce
+			"Icono": null,
+			"Display": null,
+			"Estado": "Activo",
+			"Cantidad_Minima": 1,
+			"Cantidad_Maxima": 1,
+			"Precio_Oferta": [{
+				"Canal_Venta": null,
+				"Precio_Sin_Iva": primarios.'ATT_SF_Precio_Sin_Iva' default 0.099, // Salesforce
+				"Precio_Con_Iva": primarios.'ATT_SF_Precio_Con_Iva' default 0.099, // Salesforce
+				"Iva": primarios.'ATT_SF_IVA' default 0.0 // Salesforce
+			}],
+			"Tipo_Bundle": "SINGLE",
+			"Parametros_bundle": [],
+			"Primarios": [{
+				"Fecha_Creacion": vars.timePetition, //validar
+				"Fecha_Modificacion": null,
+				"Usuario_Modificacion": null,
+				"Usuario_Creacion": "yonaest1",
+				"Actualizacion_Extractor": null,
+				"Codigo_Configuracion": primarios.'ATT_SF_Codigo_Configuracion' default "122229_TEST", // Salesforce
+				"Numero_Agrupacion": primarios.'ATT_SF_Numero_Agrupacion' default 556299, // Salesforce
+				"Tipo_Producto": "Primario",
+				"Tipo_Servicio": "FTTH",
+				"Subtipo_Servicio": "FTTH INTERNET",
+				"Subtipo_Producto": null,
+				"Secuencia": 10,
+				"Dependencia": 10,
+				"Clasificacion": null,
+				"Nombre": vars.salesforceResponse.records[1].vlocity_cmt__ChildProductId__r.Name default "INTERNET_TEST", // Salesforce
+				"Icono": null,
+				"Display": null,
+				"Estado": "Activo",
+				"Cantidad_Minima": 0,
+				"Cantidad_Maxima": 0,
+				"Precio_Oferta": null,
+				"Caracteristicas_Producto_Oferta": null,
+				"Agrupa_filtros_oferta": null,
+				"Valor_Especificacion_Tecnica_Oferta": null,
+				"Id_Clase_Servicio":  primarios.'ATT_SF_Id_Clase_Servicio' as Number default 110099, // Salesforce
+				"Disponibilidad": primarios.'ATT_SF_Disponibilidad_Gpon_Mayorista' as Boolean default true, // Salesforce
+				"Agendamiento": primarios.'ATT_SF_Agendamiento' as Boolean default true, // Salesforce
+				"Aprovisionamiento": primarios.'ATT_SF_Aprovisionamiento' as Boolean default true, // Salesforce
+				"Facturacion": primarios.'ATT_SF_Facturacion_Secundario' as Boolean default false, // Salesforce
+				"Accion": null,
+				"Id_Item": "1",
+				"Id_Item_Padre": null,
+				"Id_Tipo_Producto": 1,
+				"Id_Tipo_Servicio": 2,
+				"Id_Subtipo_Servicio": 22,
+				"Id_Subtipo_Producto": 0,
+				"Id_Servicio": null,
+				"id_opcional_auxiliar": null,
+				"Atributos": [],
+				"tipo_adicional": null,
+				"Parametros_Producto": null,
+				"seleccionado": false,
+				"deshabilitado": false,
+				"Secundarios": [{
+					"Fecha_Creacion": vars.timePetition, //validar
+					"Fecha_Modificacion": null,
+					"Usuario_Modificacion": null,
+					"Usuario_Creacion": "yonaest1",
+					"Actualizacion_Extractor": null,
+					"Codigo_Configuracion": secundarios.'ATT_SF_Codigo_Configuracion_Secundario' default "22222210543_TEST", // Salesforce
+					"Numero_Agrupacion": 5562,
+					"Tipo_Producto": "SECUNDARIO",
+					"Tipo_Servicio": "FTTH",
+					"Subtipo_Servicio": "FTTH INTERNET",
+					"Subtipo_Producto": null,
+					"Secuencia": 40,
+					"Dependencia": 10,
+					"Clasificacion": null,
+					"Nombre": secundarios.'ATT_SF_Nombre_2' default "PLAN 150M/150M_TEST", // Salesforce
+					"Icono": null,
+					"Display": null,
+					"Estado": "Activo",
+					"Cantidad_Minima": 1,
+					"Cantidad_Maxima": 1,
+					"Precio_Oferta": null,
+					"Caracteristicas_Producto_Oferta": null,
+					"Agrupa_filtros_oferta": null,
+					"Valor_Especificacion_Tecnica_Oferta": null,
+					"Id_Clase_Servicio": secundarios.'ATT_SF_Id_Clase_Servicio_Secundario' as Number default 210199, // Salesforce
+					"Disponibilidad": secundarios.'ATT_SF_Disponibilidad_Secundario' as Boolean default true, // Salesforce
+					"Agendamiento": secundarios.'ATT_SF_Agendamiento_Secundario' as Boolean default false, // Salesforce
+					"Aprovisionamiento": secundarios.'ATT_SF_Aprovisionamiento_Secundario' as Boolean default true, // Salesforce
+					"Facturacion": secundarios.'ATT_SF_Facturacion_Secundario' as Boolean default true, // Salesforce
+					"Accion": null,
+					"Id_Item": "2",
+					"Id_Item_Padre": null,
+					"Id_Tipo_Producto": 2,
+					"Id_Tipo_Servicio": 2,
+					"Id_Subtipo_Servicio": 22,
+					"Id_Subtipo_Producto": 2210,
+					"Id_Servicio": null,
+					"id_opcional_auxiliar": null,
+					"Atributos": [{
+						"Nombre": "CAPACIDAD DE CARGA",
+						"Valor": atributos.speed,
+						"Tipo": "Disponibilidad"
+					}, 
+                            {
+						"Nombre": "VelocidadBajada",
+						"Valor": atributos.downloadSpeed,
+						"Tipo": "Disponibilidad"
+					}, 
+                            {
+						"Nombre": "VelocidadSubida",
+						"Valor": atributos.uploadSpeed,
+						"Tipo": "Disponibilidad"
+					}],
+					"tipo_adicional": null,
+					"Parametros_Producto": null,
+					"seleccionado": false,
+					"deshabilitado": false
+				}],
+				"Adicionales": [],
+				"Gold": null,
+				"Numero": ""
+			}]
+		},
+		"Bundle_Clausula_Permanencia": null,
+		"Opcionales": null,
+		"Promociones": null,
+		"Cliente": null,
+		"Estado": null,
+		"Id_Orden_Tramite": null,
+		"Id_Cuenta_Facturacion": "0",
+		"Sistema_Origen": null,
+		"Id_Direccion_Instalacion": 0,
+		"Fecha_Activacion": null,
+		"Clausula_Permanencia": null,
+		"Numero_Conexion_Anterior": 0,
+		"Id_SalesForce": 0,
+		"Integration_Id": null,
+		"Adjuntos": [],
+		"Proyecto": null,
+		"Riesgo_Churn": null,
+		"Is_Pago_Recurrente": false,
+		"Promociones_Condicionadas": []
+	},
+	"Orden_Servicio": item."Orden_Servicio" default null,
+	"Agendamiento": item."Agendamiento",
+	"Cuenta_Facturacion_Anterior": item."Cuenta_Facturacion_Anterior",
+	"Cuenta_Facturacion_Tramite": item."Cuenta_Facturacion_Tramite",
+	"Orden_Requiere_Disponibilidad": item."Orden_Requiere_Disponibilidad",
+	"Orden_Requiere_Agendamiento": item."Orden_Requiere_Agendamiento",
+	"Precio_Total_Orden": item."Precio_Total_Orden",
+	"Adjuntos_Cliente": item."Adjuntos_Cliente",
+	"Adjuntos_Servicio": item."Adjuntos_Servicio",
+	"Caracteristica_Orden": [
+        {
+            "Caracteristica":  item.Caracteristica_Orden.Caracteristica[0],
+            "Valor": item.Caracteristica_Orden.Valor[0]
+        },
+        {
+            "Caracteristica":  item.Caracteristica_Orden.Caracteristica[1],
+            "Valor": item.Caracteristica_Orden.Valor[1]
+        },
+        {
+            "Caracteristica":  "ServiType",
+            "Valor": atributos.serviceType
+        }
+    ],
+	"Otros": item."Otros",
+	"Presencial": item."Presencial",
+	"OfertaSugerida": item."OfertaSugerida",
+	"Reserva": item."Reserva"
+})[0]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="putAvailabilityOrder" doc:id="e00e1896-44ab-4b03-97e0-c6eaf8146b19" name="putAvailabilityOrder" />
+		<choice doc:name="Choice" doc:id="ede05c49-3017-4b30-a78b-08cb3f30da73" >
+			<when expression="#[vars.httpStatus == 500]">
+				<ee:transform doc:name="set error Response" doc:id="cf881bae-9fd1-46e4-a3d0-4695562ef3f8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": payload.response.result.description
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="orquestadorService-process-order" doc:id="c5bfaf69-ddbb-477f-9f43-631976fc9b7c" name="orquestadorService-process-order" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="orquestadorService-process-order" doc:id="78425eb2-0a40-4431-a885-b1a1751d426a" >
+		<ee:transform doc:name="set orchestator request" doc:id="931c9b1a-cd17-4ede-8b6c-4cac9e7fee06">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="orquestatorRequest"><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://tempuri.org/
+ns ns01 http://www.etb.com.co/orquestador
+---
+{
+	ns0#ProcesarOrden: {
+		ns0#solicitudOrden: {
+			ns01#Encabezado: {
+				ns01#Propiedades: {
+					ns01#Propiedad: {
+						ns01#Nombre: "",
+						ns01#Valor: ""
+					}
+				},
+				ns01#Sistema: {
+					ns01#IdCorrelacion: vars.orderNumber,
+					ns01#Nombre: "MULESOFT",
+					ns01#Servidor: "MULESOFT"
+				}
+			},
+			ns01#DatosSolicitud: {
+				ns01#EstadoOrden: vars.orderData[0].'Estado_Orden_Comercial'.Codigo,
+				ns01#NumeroOrden: vars.orderNumber,
+				ns01#Tramite: vars.orderData[0].Tramite.'Tipo_Tramite',
+				ns01#UsuarioEvento: ""
+			}
+		}
+	}
+}]]></ee:set-variable>
+				<ee:set-variable variableName="orquestadorOperation" ><![CDATA[%dw 2.0
+output application/java
+---
+p('orquestador.operation.procesarOrden')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="post-availability-order-client" doc:id="51411150-b7b1-409a-8b96-b9255c1815a7" name="post-availability-order-client" />
+		<ee:transform doc:name="set response" doc:id="676ef0d5-1375-44b7-b32b-93c954e004dd">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var status = payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Estado
+---
+if(status == "OK") 
+{
+  "status": payload.ProcesarOrdenResponse.Resultado.Estado.Codigo default payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Codigo,
+  "description": payload.ProcesarOrdenResponse.Resultado.Estado.Descripcion default payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.DetalleEstado,
+  "orderNumber":vars.orderNumber,
+  "serviceAccountId": vars.orderData[0].Servicio_Tramite.Id_Cuenta_Servicio default vars.serviceAccountId.consecutive
+} 
+else 
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": payload.ProcesarOrdenResponse.Resultado.Estado.Descripcion default payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.DetalleEstado
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/json
+var status = payload.ProcesarOrdenResponse.Resultado.Encabezado.Servicio.Estado
+---
+if(status == "OK") 201 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

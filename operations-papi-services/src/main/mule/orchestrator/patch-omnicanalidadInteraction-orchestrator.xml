@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-omnicanalidadInteraction-orchestratorSub_Flow" doc:id="2333baa5-ad9d-4161-b040-fe87b852c92c" >
+		<ee:transform doc:name="Request update" doc:id="ed384b6b-0e8d-434b-be84-0f6fd20bca21" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Procesado: true
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Update interaction" doc:id="763f5c1f-31bc-4ab9-b99b-11755ad6429b" name="patch-omnicanalidadInteraction-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="c313781f-4ec8-444b-94fa-383a08c3491d">
+			<when expression='#[payload.modified == 1]'>
+				<ee:transform doc:name="Request Insert log" doc:id="80f419b6-f44b-49a9-8158-2e35681272f1">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	FechaHoraRegistro: now() >> "America/Bogota",
+	Id_Iteracion: vars.idIteracion,
+	Numero_Whatsapp: vars.numeroWhatsapp,
+	Procesado: true
+} ]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Insert log interaction" doc:id="3a569368-9698-4482-9272-1d1096398738" name="post-interactionLogs-clientSub_Flow" />
+				<ee:transform doc:name="Set response" doc:id="a36ac6f2-071a-46f4-bded-2879a7fed355">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if(payload."_id" != null)
+{
+	codigo: "OK",
+	descripcion: "Interacción '" ++ vars.idIteracion ++ "' actualizada correctamente."
+}
+else
+{
+	"codigo": "ERROR",
+	"descripcion": "No se registró el log de la interacción: " ++ vars.idIteracion
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set response error" doc:id="b3fb8b5f-dc39-4912-9a51-12fe6938280d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.matched == 1 and payload.modified == 0)
+{
+	codigo: "OK",
+	descripcion: "Interacción '" ++ vars.idIteracion ++ "' ya fue actualizada anteriormente"
+} 
+else
+{
+	"codigo": "ERROR",
+	"descripcion": "No se actualizó la interacción: " ++ vars.idIteracion
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

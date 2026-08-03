@@ -1,0 +1,1696 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-order-orchestratorSub_Flow" doc:id="bfbd30b0-c169-4efe-afaf-39db8ddf941c" >
+		<logger level="INFO" doc:name="Logger" doc:id="2f6c4e29-ee8e-4912-a5af-36b19c7e736c" message="#[payload]" />
+		<flow-ref doc:name="getParameters" doc:id="7c5e5464-3124-4a88-a26c-10845d0fb593" name="getParameters" target="responseParams" />
+		<flow-ref doc:name="Get Order" doc:id="3fb31510-8121-4d6e-899c-37e9b3cc38d3" name="obtain-order" target="responseOrderById" />
+		<set-variable value="#[vars.responseOrderById.resultados[0].correlationId]" doc:name="correlationId" doc:id="fbd07727-98c3-498a-921c-65f6de8071c0" variableName="correlationId"/>
+		<ee:transform doc:name="Set Order Status" doc:id="ea6a4aab-205a-4990-bba8-a0bf7cc69c9d">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OR0010"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"CREADA"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"CREADA"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<flow-ref doc:name='Update Order to CREADA' doc:id="82eccc47-058f-46c4-be25-c0b2825a6e77" name="updateStatus-order" target="updateOrderInProcess" />
+		<set-variable value="#[[]]" doc:name="arrayOfParams" doc:id="671b0b9d-81ae-40f5-8fff-039acbcbe9b4" variableName="arrayOfParams"/>
+		<foreach doc:name="For Each Parameters" doc:id="7310eb21-f5be-4c10-b035-82feafb07fda" collection="#[vars.responseParams.resultados]">
+			<ee:transform doc:name="Map Array of params" doc:id="85821169-aa1d-4816-a967-6d56a65a31ef" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="arrayOfParams" ><![CDATA[%dw 2.0
+output application/json
+var keys = payload.Valores map ($.Codigo)
+var values = payload.Valores map ($.ValorBase)
+---
+vars.arrayOfParams << {(keys map '$':upper(values[$$]))}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		</foreach>
+		<ee:transform doc:name="Identify request" doc:id="35349e4c-bc0e-469f-9233-e04a76db1219" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var tipoSolicitud = vars.responseOrderById.resultados[0].tipoSolicitud default ""
+var tipoTramite = vars.responseOrderById.resultados[0].tipoTramite default ""
+var nroCoincidencias = vars.arrayOfParams filter (value, index) -> (value.TIPO_SOLICITUD == upper(tipoSolicitud) and value.TIPO_TRAMITE == upper(tipoTramite))
+---
+ if ( sizeOf(nroCoincidencias) > 0 )
+ {
+    "tipoSolicitud": tipoSolicitud,
+    "tipoTramite": tipoTramite
+ }else null]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="37699c65-c7be-4f6b-955a-d334ed0f7e8b" >
+			<when expression='#[contains(upper(payload.tipoSolicitud),"APROVISIONAMIENTO")]'>
+				<flow-ref doc:name="Gestor Aprovisionamiento" doc:id="ac398ee1-dd05-4c0f-831d-7131ddd805dc" name="Gestor-Aprovisionamiento"/>
+			</when>
+			<when expression='#[contains(upper(payload.tipoSolicitud),"VIABILIDAD")]'>
+				<flow-ref doc:name="Gestor Viabilidad" doc:id="5acb897f-cb94-44f9-bf56-06e9f219a310" name="Gestor-Viabilidad" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Process Order Error" doc:id="863dfd36-c72d-48f5-8f09-18f0a29a716b" name="processOrderError" />
+				<ee:transform doc:name="Error Msg" doc:id="543624e3-4b2c-4067-a616-c57d80218315" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (vars.responseOrderById.resultado == 'Negativo')
+{
+	ordenOM: vars.ordenOM,
+	agrupador: vars.responseOrderById.resultados.agrupador[0] default "" ,
+	resultado: "Negativo",
+	fecha: now(),
+	descripcion: "ordenOM inválido"
+}
+else
+{
+	ordenOM: vars.ordenOM,
+	agrupador: vars.responseOrderById.resultados.agrupador[0] default "" ,
+	resultado: "Negativo",
+	fecha: now(),
+	descripcion: "No coincide con las viabilidades existentes en OR_PARAMETRO."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger Output" doc:id="367ce835-0444-47cc-a575-8ffc135a37a8" message="#[payload]" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="Gestor-Aprovisionamiento" doc:id="019a2cb7-a9e4-4251-b7be-8fdedbc3f19e" >
+		<logger level="INFO" doc:name="Logger" doc:id="8a88f14a-cf9f-46d8-831b-b0a7b3e14eeb" message="#[payload]"/>
+		<ee:transform doc:name="mapProduct" doc:id="4ac88794-dd31-48f3-9d15-433e0a7ad8f2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import util::GlobalFunctions as global
+var deniedParameters = [p("denidParams.facturable"), p("denidParams.RequiereAprovisionamiento")]
+var hijos = vars.responseOrderById.resultados[0].items filter ($.idRaiz != null and $.idRaiz != $.idItem)
+var padres = vars.responseOrderById.resultados[0].items filter ($.idRaiz == null or $.idRaiz == $.idItem )
+fun buscarHijos(obj) = hijos filter (o, i) -> (o.idRaiz == obj.idItem)
+fun asignarHijos(padre) = 
+if (isEmpty(buscarHijos(padre))) 
+{
+
+    "ws1:Cantidad": padre.cantidad,
+    "ws1:Catalago": padre.productos.catalogo,
+    "ws1:Clase": padre.productos.clase,
+    "ws1:Codigo": padre.productos.codigo,
+    "ws1:CodigoAccion": padre.accion,
+    "ws1:Departamento": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].departamento,
+    "ws1:Direccion": do {
+		var direccionNormalizada = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].direccionNormalizada
+		var direccion = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].direccion
+		---
+		if (direccionNormalizada != null and direccionNormalizada != "REQUERIDO")
+			direccionNormalizada
+		else
+			direccion
+    },
+    "ws1:IdCuentaServicio": padre.idCuentaServicio,
+    "ws1:IdItem": padre.idItem, 
+    "ws1:IdProducto": padre.productos.id,
+    "ws1:IdRaiz": padre.idRaiz,
+    "ws1:Municipio": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].municipio,
+    "ws1:Nombre": padre.productos.nombre,
+    "ws1:Parametros": {( (padre.productos.parametros filter !(deniedParameters contains $.codigo)) 
+    	map(o, i) -> {
+        "ws1:Parametro": {
+            "ws1:Codigo" : o.codigo,
+            "ws1:CodigoAccion" : o.codigoAccion,
+            "ws1:Nombre" : global::unCamelize(o.nombre),
+            "ws1:Valor" : o.valor,
+            "ws1:ValorAnterior" : o.valorAnterior
+                }
+            } )},
+    "ws1:SubProductos": null 
+}
+else
+{
+    "ws1:Cantidad": padre.cantidad,
+    "ws1:Catalago": padre.productos.catalogo,
+    "ws1:Clase": padre.productos.clase,
+    "ws1:Codigo": padre.productos.codigo,
+    "ws1:CodigoAccion": padre.accion,
+	"ws1:Departamento": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].departamento,
+    "ws1:Direccion": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].direccionNormalizada,
+    "ws1:IdCuentaServicio": padre.idCuentaServicio,
+    "ws1:IdItem": padre.idItem, 
+    "ws1:IdProducto": padre.productos.id,
+    "ws1:IdRaiz": padre.idRaiz,
+    "ws1:Municipio": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].municipio,
+    "ws1:Nombre": padre.productos.nombre,
+    "ws1:Parametros": {( (padre.productos.parametros  filter !(deniedParameters contains $.codigo)) 
+    	map(o, i) -> {
+        "ws1:Parametro": {
+            "ws1:Codigo" : o.codigo,
+            "ws1:CodigoAccion" : o.codigoAccion,
+            "ws1:Nombre" : global::unCamelize(o.nombre),
+            "ws1:Valor" : o.valor,
+            "ws1:ValorAnterior" : o.valorAnterior
+                }
+            } )},
+    "ws1:SubProductos":  {
+        "ws1:Producto" :buscarHijos(padre) map asignarHijos($)
+        }
+    }
+---
+"solicitudes": padres map (o, i) -> { 
+    "crearSolicitud":{
+        "idItem": o.idItem,
+        "idServicio": o.idServicio,
+        "idServicioSecundario": o.idServicioSecundario,
+        "idOrigen": o.idOrigen,
+        "idRaiz": o.idRaiz,
+        "codigoProducto": o.productos.codigo,
+        "productos": asignarHijos(o),
+        "contactosItem": o.contactosItem,
+        "idDireccion": o.idDireccion,
+        "comentarios": o.comentarios,
+        "propiedades": o.propiedades,
+        "nombreCuentaServicio": o.nombreCuentaServicio,
+        "idCuentaServicio": o.idCuentaServicio,
+        "cantidad": o.cantidad,
+        "idCuentaFacturacion": o.idCuentaFacturacion,
+        "idAgenda": o.idAgenda,
+        "idActivo": o.idActivo,
+        "accion": o.accion,
+        "tiempoAns": o.tiempoAns,
+        "tipoInstalacion": vars.responseOrderById.resultados[0].detalleSubTipoTramite,
+        "viabilidadRelacionada": o.viabilidadRelacionada,
+        "ciudadInstalacion": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].municipio default "" ++ " " ++ (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].departamento default "",
+        "direccionPrincipal": do {
+	    	var direccionNormalizada = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].direccionNormalizada
+	    	var direccion = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].direccion
+	    	---
+	    	if (direccionNormalizada != null and direccionNormalizada != "REQUERIDO")
+	    		direccionNormalizada
+	    	else
+	    		direccion
+	    },
+        "es_direccion_estandar": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].direccionEstandar,
+        "codigo_municipio": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].codigoMunicipio,
+        "sucursalInstalacion": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].nombreDireccion,
+        "cantidades_tipo_rotacion_numerica": (o.productos.parametros default [] filter ($.codigo == p('params.cantidades_tipo_rotacion_numerica'))),
+        "aplica_rotacion_numerica": global::getpParam(o.productos.parametros default [], p('params.aplica_rotacion_numerica') ),
+        "es_aplica_cobertura": global::getpParam(o.productos.parametros default [], p('params.es_aplica_cobertura') ),
+        "UrlsRecursosSalesforce": (o.propiedades filter ($.caracteristica == p('params.UrlsRecursosSalesforce'))),
+        "aliadoColaborador": o.aliadoColaborador,
+        "estado": o.estado,
+        "nombreProducto": o.productos.nombre,
+        "contrato": {
+            "fechaInicio": o.contrato.fechaInicio,
+            "fechaFin": o.contrato.fechaFin,
+            "numeroContrato": o.contrato.numero,
+            "renovacionAutomatica": o.contrato.renovacionAutomatica
+        },
+        "anchoBanda": (o.productos.parametros default [] filter ($.codigo == p('params.AnchoBanda') or $.codigo == p('params.AnchoBanda1') or $.codigo == p('params.AnchoBandaHaciaNAP')))[0].valor,
+        "disponibilidadServicio": global::getpParam(o.productos.parametros default [], p('params.DisponibilidadServicio') ),
+        "medioUltimaMilla": global::getpParam(o.productos.parametros default [], p('params.MedioUltimaMilla') ),
+        "nemonico": global::getpParam(o.productos.parametros default [], p('params.Nemonico') ),
+        "numeroConexion": global::getpParam(o.productos.parametros default [], p('params.Numeroconexion') ),
+        "plan": global::getpParam(o.productos.parametros default [], p('params.Plan') ),
+        "proveedorUltimaMilla": global::getpParam(o.productos.parametros default [], p('params.ProveedorUltimaMilla') ),
+        "cantidadRotacionNumerica": global::getpParam(o.productos.parametros default [], p('params.cantidad_rotacion_numerica') ),
+        "estadoRetencion": global::getpParam(o.productos.parametros default [], p('params.estado_retencion') ),
+        "idOrdenRetencion": global::getpParam(o.productos.parametros default [], p('params.id_orden_retencion') ),
+        "datosAdicionales": o.productos.parametros,
+        "solicitudesRelacionadas": o.solicitudesRelacionadas
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Set Order Status" doc:id="ed94c7d6-6645-4ce2-b25e-8652f3292103">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OR0020"]]></ee:set-variable>
+				<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"EN_PROCESO"]]></ee:set-variable>
+				<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"EN_PROCESO"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name='Update Order Status to EN_PROCESO' doc:id="b3fe09a0-b976-4613-b028-81d3edd3c95b" name="updateStatus-order" target="updateStatusResponse" />
+		<set-variable value="#[[]]" doc:name="ERORRES" doc:id="47269513-7526-406a-8541-13038bdaccc2" variableName="errores" />
+		<choice doc:name="Choice" doc:id="a1cf3075-c946-45a1-a7ef-cc05bb6ad316" >
+			<when expression="#[not isEmpty(payload.solicitudes)]" >
+				<foreach doc:name="For Each Items" doc:id="6ba99bb7-25ae-4c2b-9be4-302efaedf8a2" collection="#[payload.solicitudes]" >
+					<set-variable value="#[payload.crearSolicitud.idItem]" doc:name="Set IdItem" doc:id="c78225e2-01a0-4577-9474-86b9e02ba7c4" variableName="idItem" />
+					<ee:transform doc:name="parameter validations" doc:id="c39bd27c-35a4-4211-9206-0e1c776470f5">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="parameterValidation" ><![CDATA[%dw 2.0
+output application/json
+var itemPadre = (vars.responseOrderById.resultados[0].items filter ($.idItem == vars.idItem))[0]
+var parameterValidation =  (itemPadre.productos.parametros filter ( $.codigo == p("denidParams.RequiereAprovisionamiento") and
+									    							upper($.valor) == "TRUE") )
+---
+sizeOf(parameterValidation) >= 1
+]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<choice doc:name="Choice" doc:id="9992a558-4c73-48b6-afbb-2f6e0a5e6066">
+					<when expression="#[vars.parameterValidation == true]">
+							<ee:transform doc:name="Set Item Status" doc:id="e38246d6-386b-4e1b-8dfd-9fd57e724fa9">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM00"]]></ee:set-variable>
+							<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"INICIO-ENVIO_BACK"]]></ee:set-variable>
+							<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"INICIO-ENVIO_BACK"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+							<flow-ref doc:name='Update Item Status to "INICIO-ENVIO_BACK"' doc:id="ce2477d6-195c-4b20-b97e-5ca33a411ff4" name="updateStatus-item" target="updateStatus-itemResult" />
+							<ee:transform doc:name="Set variable numeracion and solicitudesRelacionadas" doc:id="f85b2a06-8d8a-4e77-ba07-e704835d847b">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="numeraciones"><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+---
+(payload.crearSolicitud.productos."ws1:SubProductos"."ws1:Producto" 
+map ( o , i ) -> 
+        {
+            "ws1:numeracionAccionLinea": (o."ws1:Parametros".*"ws1:Parametro" filter $."ws1:Codigo" == p('params.NumeracionAccionLinea'))[0]."ws1:Valor" ,
+            "ws1:estadoPortacionLinea": (o."ws1:Parametros".*"ws1:Parametro" filter $."ws1:Codigo" == p('params.EstadoPortacionLinea'))[0]."ws1:Valor" ,
+            "ws1:linea": (o."ws1:Parametros".*"ws1:Parametro" filter $."ws1:Codigo" == p('params.Linea'))[0]."ws1:Valor" ,
+            "ws1:observacionLinea": (o."ws1:Parametros".*"ws1:Parametro" filter $."ws1:Codigo" == p('params.ObservacionLinea'))[0]."ws1:Valor" ,
+            "ws1:tipoLinea": (o."ws1:Parametros".*"ws1:Parametro" filter $."ws1:Codigo" == p('params.TipoLinea'))[0]."ws1:Valor" ,
+        }
+)]]></ee:set-variable>
+							<ee:set-variable variableName="solicitudesRelacionadas"><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false, skipNullOn="everywhere"
+ns ws http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts
+ns ws1 http://schemas.datacontract.org/2004/07/WS.Gestor.DataContracts
+---
+ws1#SolicitudesRelacionadas: if (isEmpty(payload.crearSolicitud.solicitudesRelacionadas)) "vacio" else 
+	payload.crearSolicitud.solicitudesRelacionadas filter (() -> 
+        not isEmpty($.propiedades filter ((item, index) -> item.codigo == p('params.SERVICIO') ))) map ((item, index) -> {
+            ws1#descripcion: item.comentarios.comentario,
+            ws1#es_principal: do{
+                var propsConEsPrincipal = item.propiedades filter ((item, index) -> item.codigo == p('params.esPrincipal'))
+                ---
+				if(not isEmpty(propsConEsPrincipal)) propsConEsPrincipal[0].valor else null
+            },
+            ws1#numero_solicitud: item.idOrigen,
+            ws1#producto: item.productos.nombre,
+            ws1#tipo_solicitud: do{
+                var propsConTipoSolicitud = item.propiedades filter ((item, index) -> item.codigo == p('params.tipoSolicitud'))
+                ---
+                if(not isEmpty(propsConTipoSolicitud)) propsConTipoSolicitud[0].valor else null
+            }
+        })]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+							<ee:transform doc:name="Mapping XML Gestor" doc:id="cba42599-c6d6-4ee5-a117-91e27de0eb81">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/xml encoding= "UTF-8"
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns tier http://schemas.datacontract.org/2004/07/Tier.Common
+ns ws http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts
+ns ws1 http://schemas.datacontract.org/2004/07/WS.Gestor.DataContracts
+ns sys http://schemas.datacontract.org/2004/07/System.Collections.Generic
+ns arr http://schemas.microsoft.com/2003/10/Serialization/Arrays
+var urlRecursos = vars.responseOrderById.resultados[0].urlsRecursos 
+        map {
+                "codigo": $.codigo,
+                "valor": $.valor
+            }
+var UrlsRecursosSalesforce = payload.crearSolicitud.UrlsRecursosSalesforce map 
+            {
+                "codigo": $.codigo,
+                "valor": $.valor
+            }
+var validation1 = if (urlRecursos == [] or urlRecursos == null  ) [] else urlRecursos
+var validation2 = if (payload.crearSolicitud.productos == null or UrlsRecursosSalesforce == null or UrlsRecursosSalesforce == []   ) [] else UrlsRecursosSalesforce
+var idContactosItem = flatten((vars.responseOrderById.resultados[0].items filter ($.idItem == vars.idItem)).contactosItem).id
+var contactosMatched = vars.responseOrderById.resultados[0].cliente.contactos filter ((idContactosItem contains($.idContacto)) or upper($.tipoContacto) == "ASESOR COMERCIAL")
+---
+soapenv#Envelope @("xmlns:tem": "http://tempuri.org/",
+        "xmlns:tier": "http://schemas.datacontract.org/2004/07/Tier.Common",
+        "xmlns:ws": "http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts",
+        "xmlns:ws1": "http://schemas.datacontract.org/2004/07/WS.Gestor.DataContracts",
+        "xmlns:sys": "http://schemas.datacontract.org/2004/07/System.Collections.Generic",
+        "xmlns:arr": "http://schemas.microsoft.com/2003/10/Serialization/Arrays"
+        ): {
+            soapenv#Header: null,
+            soapenv#Body: {
+                    tem#CrearSolicitud: {
+                            tem#WSRequestHeader: {
+                                    tier#property: {
+                                            tier#"Scheme_Services.Property": {
+                                                    tier#name: null,
+                                                    tier#value: null
+                                                }
+                                        },
+                                    tier#system: {
+                                            tier#correlationId: vars.responseOrderById.resultados[0].correlationId,
+                                            tier#name: null,
+                                            tier#processingServer: null
+                                        }
+                                },
+                            tem#WSRequestBody: {
+                                    (ws#AsesorComercial: if (vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial != null) vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial else null) 
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial != null 
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial != ""),
+                                    ws#CiudadInstalacion: payload.crearSolicitud.ciudadInstalacion default "",
+                                    ws#ClienteValor: vars.responseOrderById.resultados[0].cliente.valor default "",
+                                    ws#CodigoProducto: payload.crearSolicitud.codigoProducto default "",
+                                    ws#Comentarios: payload.crearSolicitud.comentarios.comentario,
+                                    ws#Contactos: {
+                                            ws1#Contacto: contactosMatched map {
+                                                    ws1#Apellidos: trim(($.primerApellido default "") ++ ($.segundoApellido default "")),
+                                                    ws1#CorreoElectronico: $.email default "",
+                                                    ws1#Nombres: $.nombres default "",
+                                                    ws1#Telefono: $.telefonoFijo default "",
+                                                    ws1#TelefonoMovil: $.telefonoMovil default "",
+                                                    ws1#Tipo: $.tipoContacto default ""
+                                                }
+                                        },
+                                    ws#CuentaCliente: trim((vars.responseOrderById.resultados[0].cliente.nombres default "") ++ " " ++ (vars.responseOrderById.resultados[0].cliente.primerApellido default "") ++ " " ++
+                                                    (vars.responseOrderById.resultados[0].cliente.segundoApellido default "")),
+                                    ws#DatosAprovisionamiento: {
+                                            ws1#Comentarios: payload.crearSolicitud.comentarios.comentario,
+                                            "ws1:DatosAdicionalesAprovisionamiento": {
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Número de Orden",
+                                                            sys#value: payload.crearSolicitud.idOrigen
+                                                        })if (payload.crearSolicitud.idOrigen != null and payload.crearSolicitud.idOrigen != ""),                                           	
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Origen de la campaña",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.campana default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.campana != null and vars.responseOrderById.resultados[0].datosAdicionales.campana != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Canal externo",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.canalExterno default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.canalExterno != null and vars.responseOrderById.resultados[0].datosAdicionales.canalExterno != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Fecha de Cierre",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.fechaCierre default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.fechaCierre != null and vars.responseOrderById.resultados[0].datosAdicionales.fechaCierre != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Duración Servicio en Dias",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.duracionDias default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != null and vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Duración Servicio en Meses",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != null and vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Linea de negocio principal",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.lineaNegocioPrincipal default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.lineaNegocioPrincipal != null and vars.responseOrderById.resultados[0].datosAdicionales.lineaNegocioPrincipal != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Valor Total Aliado",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.valorTotalAliado default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.valorTotalAliado != null and vars.responseOrderById.resultados[0].datosAdicionales.valorTotalAliado != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Valor Total ETB",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.valorTotalETB default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.valorTotalETB != null and vars.responseOrderById.resultados[0].datosAdicionales.valorTotalETB != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "Oportunidad",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.oportunidad default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.oportunidad != null and vars.responseOrderById.resultados[0].datosAdicionales.oportunidad != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "CodigoOportunidad",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.CodigoOportunidad default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.CodigoOportunidad != null and vars.responseOrderById.resultados[0].datosAdicionales.CodigoOportunidad != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "target comercial",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.targetComercial default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.targetComercial != null and vars.responseOrderById.resultados[0].datosAdicionales.targetComercial != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "EjecutivoExperiencia",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia != null and vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "AsesorComercial",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial != null and vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial != ""),
+                                                    (sys#KeyValuePairOfstringstring: {
+                                                            sys#key: "NumeroCaso",
+                                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso default ''
+                                                        })if (vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso != null and vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso != ""),
+                                                    (payload.crearSolicitud.propiedades map ((item, index) ->
+                                                        sys#KeyValuePairOfstringstring: {
+                                                            (sys#key: item.codigo) if(item.codigo != null),
+                                                            (sys#value: item.valor) if (item.valor != null)
+                                                        }
+                           					        ))  
+                                                },
+                                            ws1#EmpresaFacturacion: null,
+                                            (ws1#FechaAgenda: (vars.responseOrderById.resultados[0].agendas filter $.idAgenda == payload.crearSolicitud.idAgenda)[0].fechaAgenda) if ((vars.responseOrderById.resultados[0].agendas filter $.idAgenda == payload.crearSolicitud.idAgenda)[0].fechaAgenda != null),
+                                            (ws1#FechaFinContrato: payload.crearSolicitud.contrato.fechaFin) if (payload.crearSolicitud.contrato.fechaFin != null),
+                                            (ws1#FechaInicioContrato: payload.crearSolicitud.contrato.fechaInicio) if (payload.crearSolicitud.contrato.fechaInicio != null),
+                                            (do{
+                                            	var fechaReconexion = (vars.responseOrderById.resultados[0].propiedades filter $.codigo == "DatosAprovisionamiento.FechaReconexion")[0].valor
+                                            	---
+                                            	(ws1#FechaReconexion: fechaReconexion) if (!isBlank(fechaReconexion))
+                                            }),
+                                            (do{
+                                            	var fechaRetiro = (vars.responseOrderById.resultados[0].propiedades filter $.codigo == "DatosAprovisionamiento.FechaRetiro")[0].valor
+                                            	---
+                                            	(ws1#FechaRetiro: fechaRetiro) if (!isBlank(fechaRetiro))
+                                            }),
+                                            (do{
+                                            	var fechaSuspension = (vars.responseOrderById.resultados[0].propiedades filter $.codigo == "DatosAprovisionamiento.FechaSuspension")[0].valor
+                                            	---
+                                            	(ws1#FechaSuspension: fechaSuspension) if (!isBlank(fechaSuspension))
+                                            }),
+                                            (ws1#FechaSuspension: payload.crearSolicitud.contrato.fechaInicio) if (payload.crearSolicitud.contrato.fechaInicio != null),
+                                            ws1#IdAprovisionamiento: payload.crearSolicitud.idOrigen default "",
+                                            ws1#NumeroContrato: (payload.crearSolicitud.contrato.numeroContrato) as Number default 0,
+                                            ws1#OpcionViabilidad: vars.responseOrderById.resultados[0].subAgrupador,
+                                            ws1#RenovacionAutomatica: if (payload.crearSolicitud.renovacionAutomatica != null) true else false,
+                                            ws1#Servicio: {
+                                                    ws1#AliadoColaborador: payload.crearSolicitud.aliadoColaborador default "",
+                                                    (ws1#AnchoBanda: payload.crearSolicitud.anchoBanda) if payload.crearSolicitud.anchoBanda != null,
+                                                    ws1#Ciudad: payload.crearSolicitud.ciudadInstalacion default "",
+                                                    ws1#CuentaCliente: trim((vars.responseOrderById.resultados[0].cliente.nombres default "") ++ " " ++ (vars.responseOrderById.resultados[0].cliente.primerApellido default "") ++ " " ++
+                                                                    (vars.responseOrderById.resultados[0].cliente.segundoApellido default "")),
+                                                    ws1#CuentaFacturacion: vars.responseOrderById.resultados[0].cuentasFacturacion.cuentaFacturacion[0] default "",
+                                                    ws1#DatosAdicionalesServicio: {
+                                                            sys#KeyValuePairOfstringstring: {
+                                                                    sys#key: null,
+                                                                    sys#value: null
+                                                                }
+                                                        },
+                                                    (ws1#DisponibilidadServicio: payload.crearSolicitud.disponibilidadServicio) if payload.crearSolicitud.disponibilidadServicio != null,
+                                                    ws1#EsquemaAtencion: vars.responseOrderById.resultados[0].cliente.esquemaAtencion default "",
+                                                    ws1#Estado: if(vars.responseOrderById.resultados[0].tipoTramite == "Venta" and payload.crearSolicitud.estado == null) "Activo" else payload.crearSolicitud.estado default "",
+                                                    ws1#ExternalServiceID: payload.crearSolicitud.idServicio default "",
+                                                    (ws1#IdServicio: payload.crearSolicitud.idServicioSecundario default "") if upper(vars.responseOrderById.resultados[0].tipoTramite) != "VENTA",
+                                                    (ws1#MedioUltimaMilla: payload.crearSolicitud.medioUltimaMilla) if payload.crearSolicitud.medioUltimaMilla != null,
+                                                    ws1#NIT: vars.responseOrderById.resultados[0].cliente.numeroDocumento default "",
+                                                    (ws1#Nemonico: payload.crearSolicitud.nemonico) if payload.crearSolicitud.nemonico != null,
+                                                    ws1#NombreProducto: payload.crearSolicitud.nombreProducto default "",
+                                                    (ws1#Numeroconexion: payload.crearSolicitud.numeroConexion) if payload.crearSolicitud.numeroConexion != null,
+                                                    (ws1#Plan: payload.crearSolicitud.plan) if payload.crearSolicitud.plan != null,
+                                                    (ws1#ProveedorUltimaMilla: payload.crearSolicitud.proveedorUltimaMilla) if payload.crearSolicitud.proveedorUltimaMilla != null,
+                                                    ws1#Segmento: vars.responseOrderById.resultados[0].cliente.segmento default "",
+                                                    ws1#ServicioETB: payload.crearSolicitud.idServicio default "",
+                                                    ws1#Sucursal: payload.crearSolicitud.direccionPrincipal default "",
+                                                    ws1#servicio_asociado: null,
+                                                },
+                                            (do{
+                                            	var tipoSuspensionReconexion = (vars.responseOrderById.resultados[0].propiedades filter $.codigo == "DatosAprovisionamiento.TipoSuspensionReconexion")[0].valor
+                                            	---
+                                            	(ws1#TipoSuspensionReconexion: tipoSuspensionReconexion) if (!isBlank(tipoSuspensionReconexion))
+                                            }),
+                                            ws1#ViabilidadOrigen: payload.crearSolicitud.viabilidadRelacionada default "",
+                                            (ws1#cantidad_rotacion_numerica: payload.crearSolicitud.cantidadRotacionNumerica) if payload.crearSolicitud.cantidadRotacionNumerica != null,
+                                            ws1#codigo_municipio: vars.responseOrderById.resultados[0].direcciones.codigoMunicipio[0] default "",
+                                            ws1#es_direccion_estandar: (vars.responseOrderById.resultados[0].direcciones.direccionEstandar[0]) default false,
+                                            (ws1#estado_retencion: payload.crearSolicitud.estadoRetencion) if payload.crearSolicitud.estadoRetencion != null,
+                                            (ws1#id_orden_retencion: payload.crearSolicitud.idOrdenRetencion) if payload.crearSolicitud.idOrdenRetencion != null,
+                                            (ws1#lineas_rotacion_numerica: {
+                                                    (ws1#Numeracion: { ws1#accion_linea: vars.numeraciones[0]."ws1:numeracionAccionLinea" }) if (vars.numeraciones[0]."ws1:numeracionAccionLinea" != null),
+                                                    (ws1#estado_portacion_linea: vars.numeraciones[0]."ws1.ws1:estadoPortacionLinea") if (vars.numeraciones[0]."ws1.ws1:estadoPortacionLinea" != null),
+                                                    (ws1#linea: vars.numeraciones[0]."ws1:linea") if ( vars.numeraciones[0]."ws1:linea" != null ),
+                                                    (ws1#observacion_linea: vars.numeraciones[0]."ws1:observacionLinea") if (vars.numeraciones[0]."ws1:observacionLinea" != null),
+                                                    (ws1#tipo_linea: vars.numeraciones[0]."ws1:tipoLinea") if (vars.numeraciones[0]."ws1:tipoLinea" != null),
+                                                }) if !isEmpty(vars.numeraciones[0])
+                                        },
+                                    ws#DireccionPrincipal: payload.crearSolicitud.direccionPrincipal default "",
+                                    (ws#DuracionServicioDias: if (vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != null) vars.responseOrderById.resultados[0].datosAdicionales.duracionDias else null) 
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != null 
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != ""),
+                                    (ws#DuracionServicioMeses: if (vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != null) vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses else null) 
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != null 
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != ""),
+                                    (ws#EjecutivoExperiencia: if (vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia != null) vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia else null)
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia != null
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia != ""),
+                                    ws#Enfoque: vars.responseOrderById.resultados[0].cliente.enfoque default "",
+                                    ws#EsquemaAtencion: vars.responseOrderById.resultados[0].cliente.esquemaAtencion default "",
+                                    ws#IdViabilidad: null,
+                                    (ws#IndicadorAgrupacion: if (vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != null) vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad else null) 
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != null 
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != ""),
+                                    ws#Nit: vars.responseOrderById.resultados[0].cliente.numeroDocumento default "",
+                                    ws#NombreOperacionComercial: payload.crearSolicitud.idOrigen default "",
+                                    (ws#NombreOportunidad: if (vars.responseOrderById.resultados[0].datosAdicionales.oportunidad != null) vars.responseOrderById.resultados[0].datosAdicionales.oportunidad else null) 
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.oportunidad != null 
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.oportunidad != ""),
+                                    ws#NombreProducto: payload.crearSolicitud.nombreProducto default "",
+                                    (ws#NumeroCaso: if (vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso != null) vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso else null) 
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso != null
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso != ""),
+                                    (ws#NumeroOportunidad: if (vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != null) vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad else null) 
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != null 
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != ""),
+                                    ws#OrdenOM: vars.responseOrderById.resultados[0].ordenOM,
+                                    ws#OrigenTransaccion: "MuleSoft",
+                                    ws#Prioridad: null,
+                                    ws#Productos: {
+                                            ws1#Producto: payload.crearSolicitud.productos
+                                        },
+                                    ws#Segmentacion: null,
+                                    ws#Segmento: vars.responseOrderById.resultados[0].cliente.segmento default "",
+                                    (ws#ServiciosAdicionales: {
+                                            arr#string: (payload.crearSolicitud.datosAdicionales filter $.codigo == p('params.ServiciosAdicionales')).valor 
+                                        }) if((payload.crearSolicitud.datosAdicionales filter $.codigo == p('params.ServiciosAdicionales')).valor != null 
+                                        and payload.crearSolicitud.productos != null ),
+                                    ws#SucursalInstalcion: payload.crearSolicitud.sucursalInstalacion default "",
+                                    ws#TiempoAns: (payload.crearSolicitud.tiempoAns) as Number default 0,
+                                    ws#TipoInstalacion: payload.crearSolicitud.tipoInstalacion default "",
+                                    ws#TipoOperacionPlan: vars.responseOrderById.resultados[0].tipoTramite default "",
+                                    ws#TipoOportunidad: vars.responseOrderById.resultados[0].subTipoTramite default "",
+                                    ws#TipoSolicitud: vars.responseOrderById.resultados[0].tipoSolicitud default "",
+                                    ws#TipologiaVenta: vars.responseOrderById.resultados[0].subTipoSolicitud default "",
+                                    ws#UrlsRecursosSalesforce: {
+                                            ( (validation1 ++ validation2) map (o, i) -> {
+                                                                sys#KeyValuePairOfstringstring @((o.@)): {
+                                                                        sys#key: o.codigo,
+                                                                        sys#value: o.valor
+                                                                    }
+                                                            } ) 
+                                        },
+                                    ws#UsuarioCreacionSalesForce: vars.responseOrderById.resultados[0].usuario default "",
+                                    ws#ViabilidadRelacionada: payload.crearSolicitud.viabilidadRelacionada default "",
+                                    (ws1#aplica_rotacion_numerica: payload.crearSolicitud.aplica_rotacion_numerica) if payload.crearSolicitud.aplica_rotacion_numerica != null,
+                                    ws#cantidades_tipo_rotacion_numerica: {
+                                            sys#KeyValuePairOfstringstring: {
+                                                    sys#key: if (payload.crearSolicitud.productos != null)(payload.crearSolicitud.cantidades_tipo_rotacion_numerica[0].codigo default "") else "",
+                                                    sys#value: if (payload.crearSolicitud.productos != null)(payload.crearSolicitud.cantidades_tipo_rotacion_numerica[0].valor default "") else ""
+                                                }
+                                        },
+                                    ws#codigo_municipio: vars.responseOrderById.resultados[0].direcciones.codigoMunicipio[0] default "",
+                                    (ws#es_aplica_cobertura: if (payload.crearSolicitud.es_aplica_cobertura != null) true else null) if (payload.crearSolicitud.es_aplica_cobertura != null),
+                                    ws#es_direccion_estandar: (vars.responseOrderById.resultados[0].direcciones.direccionEstandar[0]) default false,
+                                    (ws#solicitudes_relacionadas: vars.solicitudesRelacionadas) if (vars.solicitudesRelacionadas.SolicitudesRelacionadas != "vacio")
+                                }
+                        }
+                }
+        }
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+							<choice doc:name="Choice" doc:id="377d34c3-17f2-4d83-815b-1b63a91fbf7c">
+								<when expression="#[!isEmpty(vars.responseOrderById.resultados[0].propiedades)]">
+									<ee:transform doc:name="Adding extra fields" doc:id="a64731b1-c45e-4621-a59d-4d08eb09eac5">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/xml encoding= "UTF-8"
+import * from dw::util::Values
+import * from dw::core::Arrays
+import mergeWith from dw::core::Objects
+
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns tier http://schemas.datacontract.org/2004/07/Tier.Common
+ns ws http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts
+ns ws1 http://schemas.datacontract.org/2004/07/WS.Gestor.DataContracts
+ns sys http://schemas.datacontract.org/2004/07/System.Collections.Generic
+ns arr http://schemas.microsoft.com/2003/10/Serialization/Arrays
+
+fun keepGoing(obj, route, valor) = do {
+    var newRoute = route -- [route[0]]
+    var currentRoute = route[0]
+    ---
+    if (isEmpty(route)) obj
+    else if (obj[currentRoute] == null) obj mergeWith buildBody(route, valor)
+    else if (typeOf(obj[currentRoute]) == Object) obj update currentRoute with keepGoing(obj[currentRoute], newRoute, valor)
+    else if (typeOf(obj[currentRoute]) == Array) obj
+    else obj update currentRoute with valor
+}
+
+fun buildBody(ruta, value) = do {
+    var currentRuta = ruta[0]
+    ---
+    if (sizeOf(ruta) > 1) { "$currentRuta": buildBody(slice(ruta, 1, sizeOf(ruta)), value)}
+    else {"$currentRuta": value}
+}
+
+fun updateProperties(obj, arr) =
+    if (sizeOf(arr) > 1)
+        do {
+            var primerUpdate = updateProperties(obj, arr - arr[0])
+            ---
+            keepGoing(primerUpdate,arr[0].codigo splitBy ".",arr[0].valor)
+        }
+    else keepGoing(obj,arr[0].codigo splitBy ".",arr[0].valor)
+
+var properties = vars.responseOrderById.resultados[0].propiedades
+var updatedXML = payload update ["Envelope","Body","CrearSolicitud","WSRequestBody"] with updateProperties(payload.Envelope.Body.CrearSolicitud.WSRequestBody, properties)
+---
+soapenv#Envelope @("xmlns:tem": "http://tempuri.org/",
+        "xmlns:tier": "http://schemas.datacontract.org/2004/07/Tier.Common",
+        "xmlns:ws": "http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts",
+        "xmlns:ws1": "http://schemas.datacontract.org/2004/07/WS.Gestor.DataContracts",
+        "xmlns:sys": "http://schemas.datacontract.org/2004/07/System.Collections.Generic",
+        "xmlns:arr": "http://schemas.microsoft.com/2003/10/Serialization/Arrays"
+        ): updatedXML.Envelope]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+								</when>
+							</choice>
+							<set-variable value="#[payload]" doc:name="xmlOrder" doc:id="debaa848-df82-4eaa-8a01-667f4b46e611" variableName="xmlOrder" />
+							<try doc:name="Try" doc:id="80ca3e19-ee95-4c1b-a16f-5f69512bba9c">
+						<async doc:name="Async" doc:id="03df261b-37a7-4cea-a44f-fce1b056e1f1">
+									<flow-ref doc:name="Call logger before" doc:id="1b0d7074-b0dd-4ce0-90fb-08a2e9c54ae8" name="loggin-client-call" />
+								</async>
+								<http:request method="POST" doc:name="Request to Gestor WS" doc:id="3f08952f-3136-41a2-8413-b416120b9bdd" config-ref="gestor" path="${gestor.path}">
+							<http:headers><![CDATA[#[output application/java
+---
+{
+	"SOAPAction" : p('gestor.crearSolicitud.SOAPAction'),
+	"Content-Type" : p('gestor.Content-Type')
+}]]]></http:headers>
+						</http:request>
+						<async doc:name="Async" doc:id="e6aff89f-cc93-4245-ac90-05e8c1fc8bd6" >
+									<flow-ref doc:name="Call logger after" doc:id="224d52dd-984a-4aff-9c2b-7b4ce8fed11d" name="loggin-client-call" />
+								</async>
+								<error-handler>
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e3bd12c1-da93-4cd8-becb-2d587df77692" type="HTTP:INTERNAL_SERVER_ERROR" when="#[error.muleMessage.typedValue.Envelope.Body.Fault.faultcode != null ]">
+								<ee:transform doc:name="Save Error" doc:id="47372e9a-20dd-4c64-bc97-9f9abc30c2f8">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="errores"><![CDATA[%dw 2.0
+output application/json
+---
+vars.errores << error.muleMessage.typedValue.Envelope.Body.Fault.detail.ExceptionDetail.Message]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</on-error-continue>
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4fd5e19e-83b5-460d-92ba-f3c678d85765" type="HTTP:CONNECTIVITY, HTTP:TIMEOUT">
+								<set-variable value="Gestor timeout" doc:name="gestorTimeout" doc:id="99f27f3c-c860-40ab-b4c2-bb35c02e57bc" variableName="gestorTimeout" />
+								<async doc:name="Async" doc:id="84082b04-72a9-4fd0-bfa7-df446abbe569">
+									<flow-ref doc:name="RetryManager" doc:id="bef96313-f04d-4b8e-90a8-3ff13676a7bb" name="RetryManager" />
+								</async>
+							</on-error-continue>
+						</error-handler>
+					</try>
+							<choice doc:name="Error?" doc:id="97b24a52-4d03-40cf-8f6e-941a0e98ff91">
+							<when expression='#[payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseHeader.service.status == "OK"]'>
+							<ee:transform doc:name="Set Item Status" doc:id="9f6cb5c2-13a5-4f9a-ad19-81eb6f4c2c41">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM10"]]></ee:set-variable>
+										<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OK-ENVIO_BACK"]]></ee:set-variable>
+										<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResultDesc]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							<flow-ref doc:name='Update Item Status to "OK-ENVIO-BACK"' doc:id="7dfa6cd9-f378-427c-a47f-12c750a5883f" name="updateStatus-item" />
+						</when>
+						<otherwise>
+							<ee:transform doc:name="Add Error" doc:id="2e91bea7-0ea2-472b-92a4-abbfe3b9f1b9">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="errores"><![CDATA[%dw 2.0 
+output application/json 
+var itemError = if (payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResultDesc != null) 
+					payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResultDesc else null
+var timeoutError = if (vars.gestorTimeout != null)  "Gestor timeout" else null
+
+--- 
+if (timeoutError != null) vars.errores << timeoutError
+else if (itemError != null) vars.errores << itemError
+else vars.errores
+
+]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+							<ee:transform doc:name="Set Item Status" doc:id="b76c047e-1854-491a-b8c3-bc892acfe673">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM01"]]></ee:set-variable>
+										<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-ENVIO_BACK"]]></ee:set-variable>
+										<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.gestorTimeout != null) vars.gestorTimeout else vars.errores[sizeOf(payload) - 1]]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							<choice doc:name="Choice" doc:id="8171697c-f223-465e-826b-e836245e686c">
+										<when expression="#[vars.gestorTimeout == null]">
+											<async doc:name="Async SF State" doc:id="0841d696-efd4-42ee-88a3-ea0763f54d7a">
+								<ee:transform doc:name="Set Item Status SF ITM01" doc:id="2718a5d2-2b56-4364-aa1d-ab991ecc667d">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="context"><![CDATA[%dw 2.0
+var observaciones = if (vars.gestorTimeout != null) vars.gestorTimeout else vars.errores[sizeOf(payload) - 1]
+output application/json
+---
+"Contexto Integrador OM: ITM01 " ++ observaciones]]></ee:set-variable>
+										<ee:set-variable variableName="idOrigen"><![CDATA[%dw 2.0
+output application/java
+---
+vars.responseOrderById.resultados[0].items.idOrigen[0]]]></ee:set-variable>
+										<ee:set-variable variableName="state"><![CDATA["ERROR-ENVIO_BACK"]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+								<flow-ref doc:name='Update provisioningStatus in SF to "ERROR-ENVIO-BACK"' doc:id="71c72a49-622f-44cf-bddc-450b5b1c515b" name="updateProvisioningOrderState" target="resultUpdateSF" />
+							</async>
+										</when>
+									</choice>
+									<flow-ref doc:name='Update Item Status to "ERROR-ENVIO-BACK"' doc:id="e10f7647-6542-4890-bbbc-29eb014cf681" name="updateStatus-item" />
+							</otherwise>
+						</choice>
+						</when>
+						<otherwise >
+							<ee:transform doc:name="Item State to ITM 40 RESPUESTA_ORIGEN_EN_PROCESO" doc:id="9f3f7198-ad6d-47e2-ba6a-3c6264a05c7b">
+								<ee:message />
+								<ee:variables>
+									<ee:set-variable variableName="codigoEstado"><![CDATA["ITM40"]]></ee:set-variable>
+									<ee:set-variable variableName="nombreEstado"><![CDATA["RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+									<ee:set-variable variableName="observaciones"><![CDATA["RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+							<flow-ref doc:name="Go to State Manager" doc:id="5042fe22-26c6-4b29-b038-adfcb1205217" name="updateStatus-item" />
+							<ee:transform doc:name="Map body to SF" doc:id="a549d156-1689-485d-807d-ed474fd49a3e">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+import util::GlobalFunctions as global
+output application/json
+var idItems = global::getParents(vars.responseOrderById.resultados[0].items,vars.idItem).idItem
+var items = vars.responseOrderById.resultados[0].items filter (idItems contains $.idItem)
+---
+{
+	orderOM: vars.ordenOM,
+	items: items map 
+	{
+		idItem: $.idItem,
+		idOrigen: $.idOrigen default "",
+		parentId: $.idRaiz default "",
+		statusProvisioning: "Aprovisionado",
+		provisioningDate: now()>> "America/Bogota",
+		orderOM: vars.ordenOM
+	}
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<flow-ref doc:name="Send Body to SF" doc:id="d30947aa-98da-4337-9a2e-923c1e152f40" name="sendBodySF"/>
+						</otherwise>
+				</choice>
+				</foreach>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Process Order Error" doc:id="835d19e7-e2dc-4f52-b93b-bdaf784d9d91" name="processOrderError"/>
+				<ee:transform doc:name="Error msg" doc:id="62a0373f-8350-4b8b-a56c-2b64df1c511d" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="errores" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.errores << "No hay items para procesar"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Output process Request" doc:id="818ff5e3-580a-47ba-9d6d-3f05acea49ac" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json 
+---
+{
+	ordenOM: vars.ordenOM,
+	agrupador: vars.responseOrderById.resultados.agrupador[0] default "" ,
+	resultado: if( vars.errores == [] or vars.errores == null) "Positivo" else "Negativo",
+	fecha: now(),
+	descripcion: if(vars.errores == [] or vars.errores == null) "" else vars.errores
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+if ( vars.errores == [] or vars.errores == null ) 201 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger Output" doc:id="a9e53981-a2bb-43ec-8058-9657b995a161" message="#[payload]"/>
+	</sub-flow>
+	<sub-flow name="Gestor-Viabilidad" doc:id="abc19c1c-7ab4-4289-8ff9-b72b5ff4962e">
+		<logger level="INFO" doc:name="Logger" doc:id="29f6a17f-aa21-47d1-8fd7-3913d89daaaf" message="#[payload]"/>
+		<ee:transform doc:name="mapProduct" doc:id="5f9d24ea-ea37-420f-9106-20f26de8002c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import util::GlobalFunctions as global
+var hijos = vars.responseOrderById.resultados[0].items filter ($.idRaiz != null and $.idRaiz != $.idItem)
+var padres = vars.responseOrderById.resultados[0].items filter ($.idRaiz == null or $.idRaiz == $.idItem )
+fun buscarHijos(obj) = hijos filter (o, i) -> (o.idRaiz == obj.idItem)
+fun asignarHijos(padre) = 
+if (isEmpty(buscarHijos(padre))) 
+{
+
+	"ws1:Cantidad": padre.cantidad,
+	"ws1:Catalago": padre.productos.catalogo,
+	"ws1:Clase": padre.productos.clase,
+	"ws1:Codigo": padre.productos.codigo,
+	"ws1:CodigoAccion": padre.accion,
+    "ws1:Departamento": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].departamento,
+    "ws1:Direccion": do {
+		var direccionNormalizada = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].direccionNormalizada
+		var direccion = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].direccion
+		---
+		if (direccionNormalizada != null and direccionNormalizada != "REQUERIDO")
+			direccionNormalizada
+		else
+			direccion
+    },
+    "ws1:IdCuentaServicio": padre.idCuentaServicio,
+	"ws1:IdItem": padre.idItem, 
+    "ws1:IdProducto": padre.productos.id,
+    "ws1:IdRaiz": padre.idRaiz,
+    "ws1:Municipio": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].municipio,
+    "ws1:Nombre": padre.productos.nombre,
+    "ws1:Parametros": {(padre.productos.parametros map(o, i) -> {
+	    "ws1:Parametro": {
+	        "ws1:Codigo" : o.codigo,
+	        "ws1:CodigoAccion" : o.codigoAccion,
+	        "ws1:Nombre" : global::unCamelize(o.nombre),
+	        "ws1:Valor" : o.valor,
+	        "ws1:ValorAnterior" : o.valorAnterior
+			    }
+			} )} ++ {(((padre.propiedades filter($.caracteristica == "AtributoAdicionalProducto")) map(o, i) -> {
+				"ws1:Parametro": {
+					"ws1:Codigo" : o.codigo,
+					"ws1:CodigoAccion" : if(!isBlank(o.codigo)) o.codigo else "add",
+					"ws1:Nombre" : global::unCamelize(o.codigo),
+					"ws1:Valor" : o.valor
+						} }) default [])},
+    "ws1:SubProductos": null
+}
+else
+{
+	"ws1:Cantidad": padre.cantidad,
+	"ws1:Catalago": padre.productos.catalogo,
+	"ws1:Clase": padre.productos.clase,
+	"ws1:Codigo": padre.productos.codigo,
+	"ws1:CodigoAccion": padre.accion,
+	"ws1:Departamento": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].departamento,
+    "ws1:Direccion": do {
+    	var direccionNormalizada = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].direccionNormalizada
+    	var direccion = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].direccion
+    	---
+    	if (direccionNormalizada != null and direccionNormalizada != "REQUERIDO")
+    		direccionNormalizada
+    	else
+    		direccion
+    },
+    "ws1:IdCuentaServicio": padre.idCuentaServicio,
+	"ws1:IdItem": padre.idItem, 
+    "ws1:IdProducto": padre.productos.id,
+    "ws1:IdRaiz": padre.idRaiz,
+    "ws1:Municipio": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == padre.idDireccion)[0].municipio,
+    "ws1:Nombre": padre.productos.nombre,
+	"ws1:Parametros": {(padre.productos.parametros map(o, i) -> {
+	    "ws1:Parametro": {
+	        "ws1:Codigo" : o.codigo,
+	        "ws1:CodigoAccion" : o.codigoAccion,
+	        "ws1:Nombre" : global::unCamelize(o.nombre),
+	        "ws1:Valor" : o.valor,
+	        "ws1:ValorAnterior" : o.valorAnterior
+			    }
+			} )} ++ {(((padre.propiedades filter($.caracteristica == "AtributoAdicionalProducto")) map(o, i) -> {
+				"ws1:Parametro": {
+					"ws1:Codigo" : o.codigo,
+					"ws1:CodigoAccion" : if(!isBlank(o.codigo)) o.codigo else "add",
+					"ws1:Nombre" : global::unCamelize(o.codigo),
+					"ws1:Valor" : o.valor
+						} }) default [])},
+    "ws1:SubProductos":  {
+    	"ws1:Producto" :buscarHijos(padre) map asignarHijos($)
+    	}
+}
+---
+"solicitudes": padres map (o, i) -> { 
+    "crearSolicitud":{
+        "idItem": o.idItem,
+        "idServicio": o.idCuentaServicio,
+        "idOrigen": o.idOrigen,
+        "idRaiz": o.idRaiz,
+        "productos": asignarHijos(o),
+        "contactosItem": o.contactosItem,
+        "idDireccion": o.idDireccion,
+        "comentarios": [o.comentarios],
+        "propiedades": o.propiedades,
+        "nombreCuentaServicio": o.nombreCuentaServicio,
+        "cantidad": o.cantidad,
+        "idCuentaFacturacion": o.idCuentaFacturacion,
+        "idAgenda": o.idAgenda,
+        "idActivo": o.idActivo,
+        "accion": o.accion,
+        "tiempoAns": o.tiempoAns,
+        "tipoInstalacion": vars.responseOrderById.resultados[0].detalleSubTipoTramite,
+        "viabilidadRelacionada": o.viabilidadRelacionada,
+        "ciudadInstalacion": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].municipio default "" ++ " " ++ (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].departamento default "",
+        "direccionPrincipal": do {
+	    	var direccionNormalizada = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].direccionNormalizada
+	    	var direccion = (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].direccion
+	    	---
+	    	if (direccionNormalizada != null and direccionNormalizada != "REQUERIDO")
+	    		direccionNormalizada
+	    	else
+	    		direccion
+	    },
+        "es_direccion_estandar": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].direccionEstandar,
+        "codigo_municipio": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].codigoMunicipio,
+        "sucursalInstalacion": (vars.responseOrderById.resultados[0].direcciones filter $.idDireccion == o.idDireccion)[0].nombreDireccion,
+        "cantidades_tipo_rotacion_numerica_key": (o.productos.parametros filter ($.codigo == p('params.cantidades_tipo_rotacion_numerica') ))[0].codigo,
+        "cantidades_tipo_rotacion_numerica_valor": global::getpParam(o.productos.parametros default [], p('params.cantidades_tipo_rotacion_numerica') ),
+        "aplica_rotacion_numerica": global::getpParam(o.productos.parametros default [], p('params.aplica_rotacion_numerica') ),
+        "es_aplica_cobertura": global::getpParam(o.productos.parametros default [], p('params.es_aplica_cobertura') ),
+        "UrlsRecursosSalesforce": (o.propiedades filter ($.caracteristica == p('params.UrlsRecursosSalesforce'))),
+        "DireccionVentasAsesor": global::getpParam(o.propiedades default [], p('params.DireccionVentasAsesor') ),
+        "datosAdicionales": o.productos.parametros,
+        "solicitudesRelacionadas": o.solicitudesRelacionadas
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Set Order Status" doc:id="99ede2dc-1a78-4f26-829a-149ef9b4ee85">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OR0020"]]></ee:set-variable>
+				<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"EN_PROCESO"]]></ee:set-variable>
+				<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"EN_PROCESO"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name='Update Order Status to EN_PROCESO' doc:id="ded0b4f6-158c-43dc-b8c4-76df4947b2cb" name="updateStatus-order" target="updateStatusResponse" />
+		<set-variable value="#[[]]" doc:name="ERORRES" doc:id="59373969-df9e-4212-afc1-55380578dd60" variableName="errores" />
+		<choice doc:name="Choice" doc:id="614d2ec8-36fa-4cac-8dfb-ad182abed324">
+			<when expression="#[not isEmpty(payload.solicitudes)]">
+				<foreach doc:name="For Each Items" doc:id="e7363ead-4174-484c-b5f5-f2574c091361" collection="#[payload.solicitudes]">
+					<set-variable value="#[payload.crearSolicitud.idItem]" doc:name="Set IdItem" doc:id="1417a218-73a2-4dbf-a3ad-6a6b5132f3ff" variableName="idItem" />
+					<ee:transform doc:name="Set Item Status" doc:id="bf4fc410-bbd9-45b6-a7b2-1563d40d841d">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM00"]]></ee:set-variable>
+							<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"INICIO-ENVIO_BACK"]]></ee:set-variable>
+							<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"INICIO-ENVIO_BACK"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name='Update Item Status to "INICIO-ENVIO_BACK"' doc:id="0951ff70-3bb5-4083-ae39-e8bd26e6868e" name="updateStatus-item" target="updateStatus-itemResult"/>
+					<ee:transform doc:name="solicitudes Relacionadas" doc:id="b23d7b69-111c-4d8f-8f21-f7fc420103a1">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="solicitudesRelacionadas"><![CDATA[%dw 2.0
+output application/xml writeDeclaration=false, skipNullOn="everywhere"
+ns ws http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts
+ns ws1 http://schemas.datacontract.org/2004/07/WS.Gestor.DataContracts
+---
+ws1#SolicitudesRelacionadas: if (isEmpty(payload.crearSolicitud.solicitudesRelacionadas)) "vacio" else 
+	payload.crearSolicitud.solicitudesRelacionadas filter (() -> 
+        not isEmpty($.propiedades filter ((item, index) -> item.codigo == p('params.SERVICIO') ))) map ((item, index) -> {
+            ws1#descripcion: item.comentarios.comentario,
+            ws1#es_principal: do{
+                var propsConEsPrincipal = item.propiedades filter ((item, index) -> item.codigo == p('params.esPrincipal'))
+                ---
+                if(not isEmpty(propsConEsPrincipal)) propsConEsPrincipal[0].valor else null
+            },
+            ws1#numero_solicitud: item.idOrigen,
+            ws1#producto: item.productos.nombre,
+            ws1#tipo_solicitud: do{
+                var propsConTipoSolicitud = item.propiedades filter ((item, index) -> item.codigo == p('params.tipoSolicitud'))
+                ---
+                if(not isEmpty(propsConTipoSolicitud)) propsConTipoSolicitud[0].valor else null
+            }
+        })]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<ee:transform doc:name="Mapping XML Gestor" doc:id="6551b5eb-df62-4230-9536-895b022e7459">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/xml encoding= "UTF-8"
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+ns tier http://schemas.datacontract.org/2004/07/Tier.Common
+ns ws http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts
+ns ws1 http://schemas.datacontract.org/2004/07/WS.Gestor.DataContracts
+ns sys http://schemas.datacontract.org/2004/07/System.Collections.Generic
+ns arr http://schemas.microsoft.com/2003/10/Serialization/Arrays
+var urlRecursos = vars.responseOrderById.resultados[0].urlsRecursos 
+            map {
+                "codigo": $.codigo,
+                "valor": $.valor
+            }
+var UrlsRecursosSalesforce = payload.crearSolicitud.UrlsRecursosSalesforce map 
+            {
+                "codigo": $.codigo,
+                "valor": $.valor
+            }
+var validation1 = if (urlRecursos == [] or urlRecursos == null  ) [] else urlRecursos
+var validation2 = if (payload.crearSolicitud.productos == null or UrlsRecursosSalesforce == null or UrlsRecursosSalesforce == []   ) [] else UrlsRecursosSalesforce
+var idContactosItem = flatten((vars.responseOrderById.resultados[0].items filter ($.idItem == vars.idItem)).contactosItem).id
+var contactosMatched = vars.responseOrderById.resultados[0].cliente.contactos filter ((idContactosItem contains($.idContacto)) or upper($.tipoContacto) == "ASESOR COMERCIAL")
+---
+soapenv#Envelope @("xmlns:tem": "http://tempuri.org/",
+        "xmlns:tier": "http://schemas.datacontract.org/2004/07/Tier.Common",
+        "xmlns:ws": "http://schemas.datacontract.org/2004/07/WS.Gestor.RequestContracts",
+        "xmlns:ws1": "http://schemas.datacontract.org/2004/07/WS.Gestor.DataContracts",
+        "xmlns:sys": "http://schemas.datacontract.org/2004/07/System.Collections.Generic",
+        "xmlns:arr": "http://schemas.microsoft.com/2003/10/Serialization/Arrays"
+        ): {
+            soapenv#Header: "",
+            soapenv#Body: {
+                    tem#CrearSolicitud: {
+                            tem#WSRequestHeader: {
+                                    tier#property: {
+                                            tier#"Scheme_Services.Property": {
+                                                    tier#name: null,
+                                                    tier#value: null
+                                                }
+                                        },
+                                    tier#system: {
+                                            tier#correlationId: vars.responseOrderById.resultados[0].correlationId,
+                                            tier#name: null,
+                                            tier#processingServer: null
+                                        }
+                                },
+                            tem#WSRequestBody: {
+                                    ws#DireccionVentasAsesor:  if (payload.crearSolicitud.productos != null ) (payload.crearSolicitud.DireccionVentasAsesor default "") else "",
+                                    ws#AsesorComercial: if(vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial != null and vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial != "") vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial else "",
+                                    ws#CiudadInstalacion: payload.crearSolicitud.ciudadInstalacion default "",
+                                    ws#ClienteValor: vars.responseOrderById.resultados[0].cliente.valor default "",
+                                    ws#CodigoProducto: do{
+                                      var productos = ((vars.responseOrderById.resultados[0].items filter $.idItem == payload.crearSolicitud.productos.'ws1:IdItem')[0]).productos
+                                      ---
+                                      if (!isEmpty(productos)) payload.crearSolicitud.productos."ws1:Codigo" default "" else vars.responseOrderById.resultados[0].datosAdicionales.lineaNegocioPrincipal
+                                    },
+                                    ws#Comentarios: ( (payload.crearSolicitud.comentarios.comentario default []) ++ (vars.responseOrderById.resultados[0].comentarios.comentario default [])  map ($) )joinBy (" / ") ,
+                                    ws#Contactos: {
+                                            ws1#Contacto: contactosMatched map {
+                                                    ws1#Apellidos: trim(($.primerApellido default "") ++ ($.segundoApellido default "")),
+                                                    ws1#CorreoElectronico: $.email default "",
+                                                    ws1#Nombres: $.nombres default "",
+                                                    ws1#Telefono: $.telefonoFijo default "",
+                                                    ws1#TelefonoMovil: $.telefonoMovil default "",
+                                                    ws1#Tipo: $.tipoContacto default ""
+                                                }
+                                        },
+                                    ws#CuentaCliente: trim((vars.responseOrderById.resultados[0].cliente.nombres default "") ++ " " ++ (vars.responseOrderById.resultados[0].cliente.primerApellido default "") ++ " " ++ (vars.responseOrderById.resultados[0].cliente.segundoApellido default "")),
+                                    ws#DatosViabilidad: {
+                                        ws1#DatosAdicionalesViabilidad: {
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Origen de la campania",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.campana
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.campana != null and vars.responseOrderById.resultados[0].datosAdicionales.campana != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Canal externo",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.canalExterno
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.canalExterno != null and vars.responseOrderById.resultados[0].datosAdicionales.canalExterno != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Fecha de cierre",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.fechaCierre
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.fechaCierre != null and vars.responseOrderById.resultados[0].datosAdicionales.fechaCierre != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Duración Servicio en Dias",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.duracionDias
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != null and vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Duración Servicio en Meses",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != null and vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Linea de negocio principal",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.lineaNegocioPrincipal
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.lineaNegocioPrincipal != null and vars.responseOrderById.resultados[0].datosAdicionales.lineaNegocioPrincipal != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Valor Total Aliado",
+                                            sys#value: vars..resultados[0].datosAdicionales.valorTotalAliado
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.valorTotalAliado != null and vars.responseOrderById.resultados[0].datosAdicionales.valorTotalAliado != ""),                    
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Valor Total ETB",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.valorTotalETB
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.valorTotalETB != null and vars.responseOrderById.resultados[0].datosAdicionales.valorTotalETB != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Oportunidad",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.oportunidad
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.oportunidad != null and vars.responseOrderById.resultados[0].datosAdicionales.oportunidad != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Codigo Oportunidad",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != null and vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "target comercial",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.targetComercial
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.targetComercial != null and vars.responseOrderById.resultados[0].datosAdicionales.targetComercial != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Ejecutivo de Experiencia",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia != null and vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Asesor Comercial",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial != null and vars.responseOrderById.resultados[0].datosAdicionales.asesorComercial != ""),
+                                        (sys#KeyValuePairOfstringstring: {
+                                            sys#key: "Numero de Caso",
+                                            sys#value: vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso
+                                            }) if (vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso != null and vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso != ""), 
+                                        (payload.crearSolicitud.propiedades map ((item, index) ->
+					                        sys#KeyValuePairOfstringstring: {
+					                            (sys#key: item.codigo) if(item.codigo != null),
+					                            (sys#value: item.valor) if (item.valor != null)
+					                        }
+					                    ))                    
+                                       }
+                                    },
+                                    ws#DireccionPrincipal: payload.crearSolicitud.direccionPrincipal default '',
+                                    (ws#DuracionServicioDias: if (vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != null) vars.responseOrderById.resultados[0].datosAdicionales.duracionDias else null) 
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != null 
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.duracionDias != ""),
+                                    (ws#DuracionServicioMeses: if (vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != null) vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses else null) 
+                                        if (vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != null 
+                                        and vars.responseOrderById.resultados[0].datosAdicionales.duracionMeses != ""),
+                                    ws#EjecutivoExperiencia: if(vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia != null and vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia != "") vars.responseOrderById.resultados[0].datosAdicionales.ejecutivoExperiencia else "",
+                                    ws#Enfoque: vars.responseOrderById.resultados[0].cliente.enfoque default '',
+                                    ws#EsquemaAtencion: vars.responseOrderById.resultados[0].cliente.esquemaAtencion default '',
+                                    ws#IdViabilidad: if (payload.crearSolicitud.productos != null ) (payload.crearSolicitud.idOrigen default "" ) else "",
+                                    ws#IndicadorAgrupacion: if(vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != null and vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != "") vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad else "",
+                                    ws#Nit: vars.responseOrderById.resultados[0].cliente.numeroDocumento default '',
+                                    ws#NombreOperacionComercial: vars.responseOrderById.resultados[0].subAgrupador default '',
+                                    ws#NombreOportunidad: if(vars.responseOrderById.resultados[0].datosAdicionales.oportunidad != null and vars.responseOrderById.resultados[0].datosAdicionales.oportunidad != "") vars.responseOrderById.resultados[0].datosAdicionales.oportunidad else "",
+                                    ws#NombreProducto: do{
+                                      var productos = ((vars.responseOrderById.resultados[0].items filter $.idItem == payload.crearSolicitud.productos.'ws1:IdItem')[0]).productos
+                                      ---
+                                      if (!isEmpty(productos)) payload.crearSolicitud.productos."ws1:Nombre" default "" else vars.responseOrderById.resultados[0].datosAdicionales.lineaNegocioPrincipal
+                                    },
+                                    ws#NumeroCaso: if(vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso != null and vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso != "") vars.responseOrderById.resultados[0].datosAdicionales.numeroCaso else "",
+                                    ws#NumeroOportunidad: if(vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != null and vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad != "") vars.responseOrderById.resultados[0].datosAdicionales.codigoOportunidad else "",
+                                    ws#OrdenOM: vars.responseOrderById.resultados[0].ordenOM,
+                                    ws#OrigenTransaccion: "MuleSoft",
+                                    ws#Prioridad: null,
+                                    (ws#Productos: {
+                                        ws1#Producto: payload.crearSolicitud.productos
+                                    }) if (vars.responseOrderById.resultados[0].items.productos != null),
+                                    ws#Segmentacion: vars.responseOrderById.resultados[0].cliente.segmento default '',
+                                    ws#Segmento: vars.responseOrderById.resultados[0].cliente.subSegmento default '',
+                                    (ws#ServiciosAdicionales: {
+                                        arr#string: (payload.crearSolicitud.datosAdicionales filter $.codigo == p('params.ServiciosAdicionales')).valor
+                                    }) if((payload.crearSolicitud.datosAdicionales filter $.codigo == p('params.ServiciosAdicionales')).valor != null and payload.crearSolicitud.productos != null ),
+                                    ws#SucursalInstalcion: payload.crearSolicitud.sucursalInstalacion default '',
+                                    ws#TiempoAns: (payload.crearSolicitud.tiempoAns ) as Number default 0,
+                                    ws#TipoInstalacion: payload.crearSolicitud.tipoInstalacion default '',
+                                    ws#TipoOperacionPlan: vars.responseOrderById.resultados[0].tipoTramite default '',
+                                    ws#TipoOportunidad: vars.responseOrderById.resultados[0].subTipoTramite default '',
+                                    ws#TipoSolicitud: vars.responseOrderById.resultados[0].tipoSolicitud default '',
+                                    ws#TipologiaVenta: vars.responseOrderById.resultados[0].subTipoSolicitud default '',
+                                    ws#UrlsRecursosSalesforce: {
+                                            ( (validation1 ++ validation2) map (o, i) -> {
+                                                                sys#KeyValuePairOfstringstring @((o.@)): {
+                                                                        sys#key: o.codigo,
+                                                                        sys#value: o.valor
+                                                                    }
+                                                            } ) 
+                                    },
+                                    ws#UsuarioCreacionSalesForce: vars.responseOrderById.resultados[0].usuario default '',
+                                    ws#ViabilidadRelacionada: if (payload.crearSolicitud.productos != null ) (payload.crearSolicitud.idOrigen default "" ) else "",
+                                    (ws#aplica_rotacion_numerica: if (payload.crearSolicitud.aplica_rotacion_numerica != null) true else null) if (payload.crearSolicitud.aplica_rotacion_numerica != null),
+                                    ws#cantidades_tipo_rotacion_numerica: {
+                                            sys#KeyValuePairOfstringstring: {
+                                                    sys#key: if (payload.crearSolicitud.productos != null)(payload.crearSolicitud.cantidades_tipo_rotacion_numerica[0].codigo default "") else "",
+                                                    sys#value: if (payload.crearSolicitud.productos != null)(payload.crearSolicitud.cantidades_tipo_rotacion_numerica[0].valor default "") else ""
+                                                }
+                                    },
+                                    ws#codigo_municipio: payload.crearSolicitud.codigo_municipio default '',
+                                    (ws#es_aplica_cobertura: if (payload.crearSolicitud.es_aplica_cobertura != null) true else null) if (payload.crearSolicitud.es_aplica_cobertura != null),
+                                    ws#es_direccion_estandar: payload.crearSolicitud.es_direccion_estandar default false,
+                                    (ws#solicitudes_relacionadas: vars.solicitudesRelacionadas) if (vars.solicitudesRelacionadas.SolicitudesRelacionadas != "vacio")
+                                }
+                        }
+                }
+        }
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="#[payload]" doc:name="xmlOrder" doc:id="27382c13-2fd7-4c32-9f19-83b63f4ccfe1" variableName="xmlOrder"/>
+					<try doc:name="Try" doc:id="6bc724d9-234f-4d4f-9e19-209bbe2baeb6">
+						<async doc:name="Async" doc:id="2234bcab-7568-4b80-9ea9-5c7442c51fe8">
+							<flow-ref doc:name="Call logger before" doc:id="e93caa79-a90c-45aa-8b64-b493e636797d" name="loggin-client-call" />
+						</async>
+						<http:request method="POST" doc:name="Request to Gestor WS" doc:id="f1c063af-75c4-474c-a869-12a81b2d65ca" config-ref="gestor" path="${gestor.path}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"SOAPAction" : p('gestor.crearSolicitud.SOAPAction'),
+	"Content-Type" : p('gestor.Content-Type')
+}]]]></http:headers>
+			</http:request>
+						<async doc:name="Async" doc:id="73e07aed-5864-438a-8a5d-e02dc5b33759" >
+							<flow-ref doc:name="Call logger after" doc:id="f2f6696a-1095-4728-a29b-921855945417" name="loggin-client-call" />
+						</async>
+						<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="1fe2972c-a372-4ad2-a18d-3863fbc5bc4b" type="HTTP:INTERNAL_SERVER_ERROR" when="#[error.muleMessage.typedValue.Envelope.Body.Fault.faultcode != null ]">
+						<ee:transform doc:name="Save Error" doc:id="8d9b9344-8881-4dde-9c15-8dc123b2f1e4">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="errores"><![CDATA[%dw 2.0
+output application/json
+---
+vars.errores << error.muleMessage.typedValue.Envelope.Body.Fault.detail.ExceptionDetail.Message]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</on-error-continue>
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="f1110b54-1088-46ac-b42d-26ce9b45eddf" type="HTTP:CONNECTIVITY, HTTP:TIMEOUT">
+								<set-variable value="Gestor timeout" doc:name="gestorTimeout" doc:id="d98b4ff0-89ed-4476-99cd-9e47f76828e6" variableName="gestorTimeout"/>
+								<async doc:name="Async" doc:id="34ded46a-b658-4452-9142-74e8ad528d5d">
+								<flow-ref doc:name="RetryManager" doc:id="8bad2349-abc2-4aee-b987-ea4d467670ba" name="RetryManager" />
+				</async>
+							</on-error-continue>
+				</error-handler>
+			</try>
+					<choice doc:name="Error?" doc:id="850cffec-f1b0-47cf-8273-7926fd13e287">
+							<when expression='#[payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseHeader.service.status == "OK"]'>
+							<ee:transform doc:name="Set Item Status" doc:id="54061efa-81de-42f7-86e3-b4b593bf0b64">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM10"]]></ee:set-variable>
+										<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OK-ENVIO_BACK"]]></ee:set-variable>
+										<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResultDesc]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							<flow-ref doc:name='Update Item Status to "OK-ENVIO-BACK"' doc:id="dfea2769-8362-4bb5-bae4-423fe4a3bbdc" name="updateStatus-item" />
+						</when>
+						<otherwise>
+							<ee:transform doc:name="Add Error" doc:id="3d98fe71-dec6-453b-b323-42b243679857">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="errores"><![CDATA[%dw 2.0 
+output application/json 
+var itemError = if (payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResultDesc != null) 
+					payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResultDesc else null
+var timeoutError = if (vars.gestorTimeout != null)  "Gestor timeout" else null
+
+--- 
+if (timeoutError != null) vars.errores << timeoutError
+else if (itemError != null) vars.errores << itemError
+else vars.errores
+
+]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							<ee:transform doc:name="Set Item Status" doc:id="58db9caa-b576-4a1b-9a10-7f90582068fb">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM01"]]></ee:set-variable>
+										<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR-ENVIO_BACK"]]></ee:set-variable>
+										<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+if (vars.gestorTimeout != null) vars.gestorTimeout else vars.errores[sizeOf(payload) - 1]]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							<choice doc:name="Choice" doc:id="794c334a-f54b-4f0c-b0b3-1d131eafe85f">
+								<when expression="#[vars.gestorTimeout == null]">
+									<async doc:name="Async SF State" doc:id="3428637a-c6ec-4e0a-90e7-1b10c0359e42">
+								<ee:transform doc:name="Set Item Status SF ITM01" doc:id="d520baeb-55bc-4c45-8a88-ea0559d4e524">
+								<ee:message>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="context"><![CDATA[%dw 2.0
+var observaciones = if (vars.gestorTimeout != null) vars.gestorTimeout else vars.errores[sizeOf(payload) - 1]
+output application/json
+---
+"Contexto Integrador OM: ITM01 " ++ observaciones]]></ee:set-variable>
+										<ee:set-variable variableName="state"><![CDATA["ERROR-ENVIO_BACK"]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+								<flow-ref doc:name='Update Viability Item Status in SF to "ERROR-ENVIO-BACK"' doc:id="6aa7b8dc-5132-41c6-ab73-a1308236df72" name="updateViabilityItemState" target="resultUpdateSF" />
+							</async>
+								</when>
+							</choice>
+							<flow-ref doc:name='Update Item Status to "ERROR-ENVIO-BACK"' doc:id="bd0a937f-0e88-4497-a796-cbb878e9ed1a" name="updateStatus-item" />
+							</otherwise>
+						</choice>
+		</foreach>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Process Order Error" doc:id="4a05496f-1455-4426-9607-27ddf54c4e69" name="processOrderError"/>
+				<ee:transform doc:name="Error msg" doc:id="ef3d2a43-c030-47c2-8a68-5de99444e5a6" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="errores" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.errores << "No hay items para procesar"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Output process Request" doc:id="d0dbfd71-997a-4098-8287-770d466ac354">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json 
+---
+{
+	ordenOM: vars.ordenOM,
+	agrupador: vars.responseOrderById.resultados.agrupador[0] default "" ,
+	resultado: if( vars.errores == [] or vars.errores == null) "Positivo" else "Negativo",
+	fecha: now(),
+	descripcion: if(vars.errores == [] or vars.errores == null) "" else vars.errores
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/json
+---
+if ( vars.errores == [] or vars.errores == null ) 201 else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger Output" doc:id="55a591a3-2e27-44a3-9059-c7daa3495c60" message="#[payload]"/>
+	</sub-flow>
+	<sub-flow name="RetryManager" doc:id="d60c6512-35bb-4773-b9ea-dec6e2db54ca">
+		<try doc:name="Try" doc:id="8d3461a3-e28e-4ae2-b34f-964f96d1c87e">
+			<until-successful maxRetries="#[p('retryManager.numberOfRetries')]" doc:name="Until Successful" doc:id="d7fa5bb8-4e22-4a91-a5e9-5ce4c64310a3" millisBetweenRetries="#[p('retryManager.timeBetween')]">
+				<async doc:name="Async" doc:id="6fb19013-67d8-4722-a377-04747313919d">
+					<set-payload value="Reintentando solicitud hacia Gestor..." doc:name="Reprocess Msg" doc:id="a466e6f2-8247-4913-9969-51e1f447f931" />
+					<flow-ref doc:name="Call logger before" doc:id="0d2c0006-4e40-400f-a09d-612ce5aaeecd" name="loggin-client-call" />
+				</async>
+				<set-payload value="#[vars.xmlOrder]" doc:name="XmlOrder" doc:id="e518464d-49fb-4df7-bdbd-26741317aae5" />
+				<async doc:name="Async" doc:id="fd5bd605-efa7-4869-af0f-f81fb6cd7699">
+					<flow-ref doc:name="Call logger before" doc:id="35119aec-fe57-4efa-8208-8f8fcbc6b8ac" name="loggin-client-call" />
+				</async>
+				<http:request method="POST" doc:name="Request to Gestor WS" doc:id="76cabdc7-8702-4ca5-bb94-2d7063287af9" config-ref="gestor" path="${gestor.path}">
+					<http:headers><![CDATA[#[output application/java
+---
+{
+	"SOAPAction" : p('gestor.crearSolicitud.SOAPAction'),
+	"Content-Type" : p('gestor.Content-Type')
+}]]]></http:headers>
+				</http:request>
+				<async doc:name="Async" doc:id="e4bc6b19-fdf5-4488-b7ff-1790bf5100af">
+					<flow-ref doc:name="Call logger after" doc:id="67b3b903-6379-4fda-b615-6c6714928458" name="loggin-client-call" />
+				</async>
+				<choice doc:name="Evaluating WS Response" doc:id="472afa80-af5b-471b-b9cb-8fdb3cc2febb">
+					<when expression='#[(payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResult == "0")&#10;and&#10;((payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResultDesc contains /La viabilidad: VIA-\d+ ya existe/)&#10;	or &#10;(payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResultDesc contains /El aprovisionamiento: \d+ ya existe/))]'>
+						<logger level="INFO" doc:name="Stopping Retry Strategy" doc:id="aadcc37a-0dfc-4bb6-a92e-8317c54bed2e" message="La viabilidad/aprovisionamiento, ya existen. Se procede a detener los reintentos."/>
+					</when>
+					<when expression='#[payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseHeader.service.status == "OK"]'>
+						<ee:transform doc:name="Set Item Status" doc:id="1147c8b4-7624-4560-88a8-f3478191c15b">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM10"]]></ee:set-variable>
+								<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OK-ENVIO_BACK"]]></ee:set-variable>
+								<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+payload.Envelope.Body.CrearSolicitudResponse.CrearSolicitudResult.WSResponseBody.OperationResultDesc]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name='Update Item Status to "OK-ENVIO-BACK"' doc:id="cb6edfb5-7e04-499f-9157-6aadca3e12a7" name="updateStatus-item" />
+					</when>
+					<otherwise>
+						<raise-error doc:name="Raise error" doc:id="5933c4cc-5cdc-4a47-8d0e-bd489034094a" type="ERROR:GO-REQUEST" description="Error in go request" />
+					</otherwise>
+				</choice>
+			</until-successful>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7ed92959-3941-4b5d-8e4b-4182e1c9a544">
+					<ee:transform doc:name="Set Item Status" doc:id="83754759-6dd5-4537-9118-46993b10f6bb">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ITM01"]]></ee:set-variable>
+							<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR- ENVIO_BACK"]]></ee:set-variable>
+							<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/json
+---
+"Se alcanzo el número máximo de reintentos (" ++ p('retryManager.numberOfRetries') ++ ") para establecer la conexión con Gestor."]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name='Update Item Status to "ERROR- ENVIO_BACK"' doc:id="8528e8c9-63cb-490e-ae8c-03f9d66fb108" name="updateStatus-item" />
+					<ee:transform doc:name="Setting Payload" doc:id="d2a5b1b7-c2cd-493f-ae6e-5c0b7db4e74b">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"Se alcanzo el número máximo de reintentos (" ++ p('retryManager.numberOfRetries') ++ ") para establecer la conexión con Gestor."]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<choice doc:name="Choice" doc:id="fecdd885-12b0-4be2-8f51-d203a8ba2380" >
+						<when expression='#[upper(vars.responseOrderById.resultados[0].tipoSolicitud) == "VIABILIDAD"]'>
+							<async doc:name="Async SF State Via" doc:id="fa7f6c73-4ba6-44bc-a46f-7b4c54e505bc" >
+								<ee:transform doc:name="Set Item Status SF ITM01" doc:id="5dd66d26-da82-4670-aac2-b35939204558" >
+									<ee:message />
+									<ee:variables >
+										<ee:set-variable variableName="context" ><![CDATA[%dw 2.0
+var observaciones = "Se alcanzo el número máximo de reintentos (" ++ p('retryManager.numberOfRetries') ++ ") para establecer la conexión con Gestor."
+output application/json
+---
+"Contexto Integrador OM: ITM01 " ++ observaciones]]></ee:set-variable>
+										<ee:set-variable variableName="state" ><![CDATA["ERROR-ENVIO_BACK"]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+								<flow-ref doc:name='Update Item Status in SF to "ERROR-ENVIO-BACK"' doc:id="859c26e4-4405-43dd-8643-539cecc1f86a" name="updateViabilityItemState" target="resultUpdateSF" />
+							</async>
+						</when>
+						<otherwise >
+							<async doc:name="Async SF State Aprov" doc:id="55c4964f-f915-41df-87d0-2ddf8377537c" >
+								<ee:transform doc:name="Set Item Status SF ITM01" doc:id="f3970259-a5b3-4d99-9bb4-1ba876690a9e" >
+									<ee:message />
+									<ee:variables >
+										<ee:set-variable variableName="context" ><![CDATA[%dw 2.0
+var observaciones = "Se alcanzo el número máximo de reintentos (" ++ p('retryManager.numberOfRetries') ++ ") para establecer la conexión con Gestor."
+output application/json
+---
+"Contexto Integrador OM: ITM01 " ++ observaciones]]></ee:set-variable>
+										<ee:set-variable variableName="idOrigen" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.responseOrderById.resultados[0].items.idOrigen[0]]]></ee:set-variable>
+										<ee:set-variable variableName="state" ><![CDATA["ERROR-ENVIO_BACK"]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+								<flow-ref doc:name='Update provisioningStatus in SF to "ERROR-ENVIO-BACK"' doc:id="ddb85d52-2812-4ad2-9055-1cdefa82fb89" name="updateProvisioningOrderState" target="resultUpdateSF" />
+							</async>
+						</otherwise>
+					</choice>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="processOrderError" doc:id="46afe95f-c4d0-407f-b8d1-2ff214fce022">
+		<ee:transform doc:name="Set Order Status" doc:id="80beca7c-0db8-4147-bc1c-e647ed96537d">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="codigoEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"OR0021"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR_VALIDACION"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones"><![CDATA[%dw 2.0
+output application/java
+---
+"ERROR_VALIDACION"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<flow-ref doc:name='Update Order Status to "ERROR"' doc:id="93067770-7f87-4409-aa10-01bab1535e46" name="updateStatus-order" />
+	</sub-flow>
+	<sub-flow name="updateStatus-item" doc:id="dadb8491-3cd0-4900-90fc-54f77e9b5254" >
+		<flow-ref doc:name="Get Order" doc:id="3d90425d-46f4-43d4-97a6-5b63741b694f" name="obtain-order" target="lastOrderUpdated" />
+		<ee:transform doc:name='Update Item Status' doc:id="7b12a258-4639-4586-9021-8381eefeb3bc">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::util::Values
+import util::GlobalFunctions as global
+output application/json
+var idToUpdate = global::getParents(vars.lastOrderUpdated.resultados[0].items,vars.idItem).idItem
+---
+vars.lastOrderUpdated.resultados[0] update "items" with 
+    ( $ map (o,i)-> if(idToUpdate contains(o.idItem))   
+                        (if (o.estadoItem != null )
+                            (o update "estadoItem" with {
+                                                            "fecha": now(),
+                                                            "codigoEstado": vars.codigoEstado,
+                                                            "nombreEstado": vars.nombreEstado,
+                                                            "observaciones":vars.observaciones
+                                                        })
+                        else  o ++  { "estadoItem": {
+                                        "fecha": now(),
+                                        "codigoEstado": vars.codigoEstado,
+                                        "nombreEstado": vars.nombreEstado,
+                                        "observaciones": vars.observaciones
+                                        }
+                                    }
+                        ) 
+					else o)
+
+
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+		<flow-ref doc:name="update in Mongo" doc:id="c4a91a61-39fe-4770-b072-181a4ece0f25" name="updateOrder" />
+	</sub-flow>
+	<sub-flow name="sendBodySF" doc:id="54cc6fff-92b0-4b6d-9e8d-5f4844f92a21" >
+		<flow-ref doc:name="Request to SF" doc:id="c44a6a96-d7df-4b3e-a075-679eefc967b3" name="post-responseProvisioning" target="resp_salesforce" />
+		<choice doc:name="Evaluate Response SF" doc:id="b23e7f4e-01ec-4812-91ac-b9924a4f8123" >
+			<when expression='#[vars.resp_salesforce== "ERROR"]' >
+				<ee:transform doc:name="Item State to ITM 41 ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO" doc:id="05c1d501-34bd-4d76-b60b-61bc64c6ee8d" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="codigoEstado" ><![CDATA["ITM41"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado" ><![CDATA["ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones" ><![CDATA["ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to State Manager" doc:id="c7fc3493-c391-4aa1-8640-88fc3c5329c1" name="updateStatus-item" />
+				<async doc:name="Async" doc:id="e5405d76-8b5c-4471-b082-a566c139c40a" >
+					<ee:transform doc:name="Set Item Status SF ITM41" doc:id="ece7ef69-00b2-4f8b-9df8-40d5d8839b0b" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="state" ><![CDATA["ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+							<ee:set-variable variableName="context" ><![CDATA["Contexto Integrador OM: ITM41 ERROR- ENVIO_RESPUESTA_ORIGEN_EN_PROCESO"]]></ee:set-variable>
+							<ee:set-variable variableName="idOrigen" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.responseOrderById.resultados[0].items.idOrigen[0]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="Update Provisioning state in SF" doc:id="f6c777cd-228d-45ca-9ecc-9ca023797076" name="updateProvisioningOrderState" />
+				</async>
+				<ee:transform doc:name="Add Error" doc:id="070ac83f-a2e9-4801-9a09-98d2aa3aba9e" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="errores" ><![CDATA[%dw 2.0 
+output application/json 
+--- 
+vars.errores << "Error en notificacion a SF"
+
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Item State to ITM50 RESPUESTA_ORIGEN_ENVIADA" doc:id="79f81f1b-5729-415a-b6f6-a6cf9547278f" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="codigoEstado" ><![CDATA["ITM50"]]></ee:set-variable>
+						<ee:set-variable variableName="nombreEstado" ><![CDATA["RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+						<ee:set-variable variableName="observaciones" ><![CDATA["RESPUESTA_ORIGEN_ENVIADA"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to State Manager" doc:id="e896d7fa-9285-45d9-8650-6afc4ef9ef4d" name="updateStatus-item" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="updateStatus-order" doc:id="3d0c4e41-8ecf-4e0a-876b-f9de46c690e8">
+		<ee:transform doc:name="Create Status" doc:id="aaeea2ba-694c-4484-abb7-05b2339752ba">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"estadoOrden": {
+	"fecha": now(),
+	"codigoEstado": vars.codigoEstado,
+	"nombreEstado": vars.nombreEstado,
+	"observaciones": vars.observaciones
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="update in Mongo" doc:id="0d5d0a55-cffc-41b4-8999-d1b9b89a223e" name="updateOrder" targetValue="#[vars.responseOrderById]" />
+	</sub-flow>
+</mule>

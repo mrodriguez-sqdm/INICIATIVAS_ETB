@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="getCoverage-initial_call_Sub_Flow" doc:id="c562cee9-3e7a-4333-93e8-aa2f0ff51291" >
+		<http:request method="GET" doc:name="Call to smallWorld-sapi" doc:id="08826e5d-3e00-460b-80ee-779ddd0deeaf" config-ref="HTTP_Request_configuration_smallworld" path="${smallworld-sapi.georeference.path}" target="response1">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : vars.correlationId,
+	"name" : vars.name,
+	"client_secret" : p('smallworld-sapi.client_secret'),
+	"client_id" : p('smallworld-sapi.client_id'),
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"address" : payload.getCoverageOpInput.getCoverageRequest.address,
+	"municipioCode" : payload.getCoverageOpInput.getCoverageRequest.municipioCode,
+	"departamentoCode" : payload.getCoverageOpInput.getCoverageRequest.departamentoCode
+}]]]></http:query-params>
+			<http:response-validator >
+				<http:success-status-code-validator values="200,500" />
+			</http:response-validator>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="getCoverage-common-sapiSub_Flow" doc:id="85f6e6c4-9296-4cc3-bd63-8817c129ac47" >
+		<http:request method="GET" doc:name="Call to common-sapi" doc:id="024ee73e-7e3b-4c4d-ad42-0440547f7d96" target="valorHomologacion" config-ref="HTTP_Request_configuration_common-sapi" path="${common-sapi.path.getCoverage}" targetValue="#[payload[0].'VALOR_HOMOLOGADO']">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : vars.correlationId,
+	"name" : vars.name,
+	"client_secret" : p('common-sapi.client_secret'),
+	"client_id" : p('common-sapi.client_id'),
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"id_nit" : vars.response1.outputMessage."WSGeorreferenciarCR-RS".TipoDistancia,
+	"id_catalog" : "CT017DIST"
+}]]]></http:uri-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="getCoverage-sisext-sapi-firstSub_Flow" doc:id="6f271a8c-f07f-40b5-8666-805f180deec5" >
+		<http:request method="GET" doc:name="Call to sisext-sapi" doc:id="a8a86e0d-1857-41ee-b677-fabc04b20ae5" config-ref="HTTP_Request_configuration_sisext" path="${sisext-sapi.coverageGIS.path}" target="response3">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : vars.correlationId,
+	"name" : vars.name,
+	"client_secret" : p('sisext-sapi.client_secret'),
+	"client_id" : p('sisext-sapi.client_id'),
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"Latitud" : vars.response1.outputMessage."WSGeorreferenciarCR-RS".Latitud as Number,
+	"Longitud" : vars.response1.outputMessage."WSGeorreferenciarCR-RS".Longitud as Number
+}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="getCoverage-sisext-sapi-secondSub_Flow" doc:id="7ea874f1-5a74-46d0-ac25-1b8b801af24a" >
+		<http:request method="GET" doc:name="Call to sisext-sapi" doc:id="8eb650e3-ef65-4549-a121-f5b2378b29d9" config-ref="HTTP_Request_configuration_sisext" path="${sisext-sapi.feasibility.path}">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"X-CORRELATION-ID" : vars.correlationId,
+	"name" : vars.name,
+	"client_secret" : p('sisext-sapi.client_secret'),
+	"client_id" : p('sisext-sapi.client_id'),
+	"source": attributes.headers.'source',
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"addressCode" : vars.response1.outputMessage."WSGeorreferenciarCR-RS".CodigoDireccion
+}]]]></http:query-params>
+			<http:response-validator >
+				<http:success-status-code-validator values="200,500" />
+			</http:response-validator>
+		</http:request>
+	</sub-flow>
+</mule>

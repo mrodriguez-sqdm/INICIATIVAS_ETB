@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-incident-orchestratorSub_Flow" doc:id="b4f2d33b-fd89-4a8e-a4c7-816b815286a7">
+		<flow-ref doc:name="validation-origin-orderSub_Flow" doc:id="df56d171-c093-4fd3-8206-ae8583f365bc" name="validation-origin-orderSub_Flow" target="validationOriginOrder" />
+		<flow-ref doc:name="getOrderByOrderNumber" doc:id="c4f390d6-81da-4f28-a129-cd67cc9bb3d5" name="getOrderByOrderNumber" />
+		<ee:transform doc:name="Transform orderData to JAVA" doc:id="eea420f5-a8b8-414a-9566-89b57ea480e7">
+			<ee:message>
+			</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="orderData"><![CDATA[%dw 2.0
+output application/java
+---
+vars.orderData[0]]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Get causal" doc:id="c56a9f2a-ca44-4661-9055-31239e1f7309" name="getCausal" />
+	</sub-flow>
+	<sub-flow name="getCausal" doc:id="05b895c2-b185-4641-a91b-359b15eb8e71">
+		<flow-ref doc:name="get-causales-client" doc:id="a2693ebc-58ad-4efd-a090-88d22792499d" name="get-causales-client" />
+		<ee:transform doc:name="Filter by idCausal" doc:id="c7de9dbe-0581-40d1-941d-2e1252acc60b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload filter ((item, index) -> item.Codigo == (vars.idCausal as Number))]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="6b6c549c-88bc-404f-8437-0c6129ea5092" >
+			<when expression="#[isEmpty(payload)]">
+				<ee:transform doc:name="Set response fail" doc:id="6ad3c1c3-4369-4dfb-b5ad-440d082b6d71" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": "There are no matching records"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set Motivo Nivel2" doc:id="890f160b-5434-43ef-a31d-66533a038062">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="nivel2"><![CDATA[%dw 2.0
+output application/java
+---
+payload.Motivo[0]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="Go-to-remedy" doc:id="53d30b6a-8c92-4f13-af0e-6c636fff948d" name="Go-to-remedy" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="Go-to-remedy" doc:id="e00c46d8-2fb8-4427-8b3e-2814143a20df">
+		<parse-template doc:name="Request xml" doc:id="bc2ffcb6-2f66-4b23-bbbe-45a16bd11080" location="soap\schemas\templates\postIncident-createOrder.xml" outputMimeType="text/plain" outputEncoding="UTF-8" />
+		<flow-ref doc:name="Go remedy web service" doc:id="65f4517e-2ce7-4c42-8f66-8f56aaf900e0" name="remedy-ws" />
+		<choice doc:name="Choice" doc:id="a0f26230-966a-418f-bcbc-aa73cb0a2974">
+			<when expression="#[payload.Envelope.Body.Fault != null]">
+				<ee:transform doc:name="Set response fail" doc:id="09ca26ed-6e71-4ed6-b117-009e6afe6b7b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": payload.Envelope.Body.Fault.Reason.Text default payload.Envelope.Body.Fault.faultstring
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Go to validate response" doc:id="8f7eff6a-5734-4b4d-ac84-796b6944d79e" name="Validate-response" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="Validate-response" doc:id="1cdc5700-6217-4642-8508-92a6397255a8" >
+		<choice doc:name="Choice" doc:id="04a4902d-6998-427a-98be-7c53f3889fd8">
+			<when expression='#[payload.Envelope.Body.CreateResponse.OUT_Aknowledge == "Exitoso"]'>
+				<ee:transform doc:name="Set response success" doc:id="2dea4131-197b-462f-be8e-42124b49247a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+
+{
+  "ticketNumber" : payload.Envelope.Body.CreateResponse.OUT_WorkOrderID,
+  "status" : payload.Envelope.Body.CreateResponse.OUT_EstadoWOI
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set response fail" doc:id="a65d2b87-9673-4949-9b09-86284d9c982a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": payload.Envelope.Body.CreateResponse.OUT_Error
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	</mule>

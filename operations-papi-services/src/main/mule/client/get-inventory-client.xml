@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-inventory-client" doc:id="9b6bfb92-0d13-49e7-92f7-730f82bf8c89" >
+		<logger level="INFO" doc:name="Logger" doc:id="b19a8ad3-80cd-471d-8c42-d27a33f1728d" message="GET inventory BEFORE #[payload]"/>
+		<try doc:name="Try" doc:id="6729598c-0eac-47e8-83db-9e4440b602b9" >
+<!-- [STUDIO:"Async"]			<async doc:name="Async" doc:id="df1ce704-1f94-4580-b052-15303689cf9b">
+					<flow-ref doc:name="Call logger before" doc:id="e3862d81-bb36-4ba1-95ba-12d473567b6e" name="loggin-client-call" />
+				</async> [STUDIO] -->
+			<wsc:consume operation="${inventory.operation}" doc:name="Consume" doc:id="7b9c5282-ca08-47f5-9f1d-c9a878e9e0b9" config-ref="Inventory_Web_Service_Consumer_Config" />
+<!-- [STUDIO:"Async"]			<async doc:name="Async" doc:id="b0c08fe4-e780-4b9f-9d3b-a975c4fd8d83" >
+				<flow-ref doc:name="Call logger after" doc:id="fd009727-6652-4ac3-8fff-d7e5622f5f04" name="loggin-client-call" />
+			</async> [STUDIO] -->
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="5258f934-a439-4830-ba9a-6519de3c99bf" type="ANY">
+					<ee:transform doc:name="Transform Message" doc:id="dd24a648-d6ea-42e5-a6c4-f343e895f32b">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": {
+    "message": error.detailedDescription
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<logger level="INFO" doc:name="Logger" doc:id="6235922e-4717-4403-aff2-a13fc10b5021" message="GET inventory AFTER #[payload]"/>
+	</sub-flow>
+</mule>
