@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-order-status-client" doc:id="e9aeb530-9c48-4453-994a-5e6814f92623" >
+		<try doc:name="Try" doc:id="faf3d747-fe9c-4a8d-a8f2-fcd44d9f3da7" >
+			<http:request method="GET" doc:name="Get order" doc:id="7ff6c6d9-3d02-4fb3-b477-cc6d6fe69fb1" config-ref="Operations_HTTP_Request_configuration" path="${operations-papi.path.orderByOrderNumber}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('operations-papi.client_secret'),
+	"client_id" : p('operations-papi.client_id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": correlationId,
+	"source": attributes.headers.source,
+	"systemId": vars.systemId,
+	"origin": attributes.headers.origin,
+	"Content-Type": "application/json"
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"orderNumber" : attributes.uriParams.'orderNumber' default vars.orderNumber
+}]]]></http:uri-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="cf74a04b-0a02-4509-84f3-58c4a9b6eaba" type="HTTP:NOT_FOUND">
+					<ee:transform doc:name="Transform Message" doc:id="a7a813ce-df32-4290-9776-121f4c671a89" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+error.errorMessage.payload]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

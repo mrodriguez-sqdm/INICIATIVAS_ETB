@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-customerContact-orchestratorSub_Flow" doc:id="42d83754-7965-4770-a989-1afdfda8537d" >
+		<flow-ref doc:name="Get customer information" doc:id="16fb8c60-a8aa-483a-88d9-151a3c6775cb" name="get-customerContact-client" target="responseMongo"/>
+		<choice doc:name="Choice" doc:id="63708933-6c21-474a-b61e-07a161dbdab5" >
+			<when expression="#[!isEmpty(vars.responseMongo[0].Comunicaciones_Cobranza)]">
+				<ee:transform doc:name="Transform Message" doc:id="20298ae4-10ae-4b92-b62e-2d1260d106ef">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="joinArray" ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+import * from dw::core::Arrays
+
+var capitalizedPayloadArr = vars.inputPayload.data map(item, ind) -> item mapObject ((value, key, index) -> {
+(capitalize("$key")) : value})
+var outputArr =  outerJoin (vars.responseMongo[0].Comunicaciones_Cobranza.Registro_Contacto, capitalizedPayloadArr, (a) -> a.Canal, (b) -> b.Canal)
+
+output application/json
+---
+(outputArr map ((item, index) -> if (item.l? and item.r?) item.r else if (item.l?) item.l else item.r)) ]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Update values in array" doc:id="f1a2f5a7-4d0c-44b5-82a2-a75a733a2fe7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+---
+{
+	Comunicaciones_Cobranza: vars.responseMongo[0].Comunicaciones_Cobranza 
+    update "Registro_Contacto" 
+     with (vars.joinArray) 
+    update "Fecha_Modificacion" 
+     with (now() >> "America/Bogota")
+    update "Horario" 
+     with (payload.horario)
+}]]></ee:set-payload>
+			</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="descriptionPQRconcat" ><![CDATA[%dw 2.0
+var channels = vars.joinArray reduce ((item, acc = "") -> acc ++ item.Canal ++ ": " ++ item.Valor  ++ ", ")
+output application/java
+---
+"En atención a su solicitud de actualización de los canales que autorizó para el envío de comunicaciones de acuerdo con lo dispuesto en la Ley 2300 de 2023, le informamos que se actualizó la información en el sistema con el canal(es) {{channels}} y horario {{horario}}." 
+replace "{{channels}}" with(channels) replace "{{horario}}" with (vars.inputPayload.horario)]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="Update customer contact information" doc:id="82452cd6-5cd7-4fdc-b602-71d2e2a9faa7" name="patch-customerContact-client" />
+				<ee:transform doc:name="Prepare output" doc:id="7c633686-7e3a-4b30-8715-cddeb099e671">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.matched == 1 and payload.modified == 1) {
+	codigo: 200
+}
+else
+{
+  "status": 500,
+  "code": "CONTACT_INFO",
+  "message": {
+    "message": "Unable to register contact information for that user"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (payload.matched == 1 and payload.modified == 1)
+200
+else 500]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="validate-objectStore" doc:id="17b41e3d-ef94-423d-a06e-493e3b2afebb" name="validate-objectStore"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Prepare output" doc:id="e993344b-73c7-44cd-9174-2c4e92d645c0" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "CONTACT_INFO",
+  "message": {
+    "message": "There is no contact information for that user"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<async doc:name="Async" doc:id="93fad276-3d91-4515-b452-94dec8436712" >
+			<ee:transform doc:name="Transform Message" doc:id="ceb6fae9-0ac0-4c30-84e2-f85d37cd7712" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    numero_solicitud_app: correlationId,
+    aplicacion: vars.inputHeaders.source,
+    ip: vars.inputPayload.ip,
+    navegador: vars.inputPayload.navegador,
+    nombre_equipo: vars.inputPayload.nombre_equipo,
+    usuario: vars.inputPayload.usuario
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call audits-mongo logger" doc:id="ea396ff2-da82-4212-9dda-710e0f585e4c" name="audits-mongo-log-before" />
+		</async>
+	</sub-flow>
+</mule>

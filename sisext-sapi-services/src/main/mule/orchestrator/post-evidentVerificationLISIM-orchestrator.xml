@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-evidentVerificationLISIM-orchestratorSub_Flow" doc:id="d5bcfa9c-4b7d-4dd1-95a5-ea052dab9dd3" >
+		<ee:transform doc:name="Set payload" doc:id="4e20d221-f32d-4e00-86b7-84e63ab59390" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+var estrato = (payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='ESTRATO')[0].value
+var sistemaOrigen = (payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='SISTEMA_ORIGEN')[0].value
+var codigoCiudad = (payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='CODIGO_CIUDAD')[0].value
+var codigoDepartamento = (payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='CODIGO_DEPARTAMENTO')[0].value
+var calcularScore = (payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='CALCULAR_SCORE')[0].value
+---
+soapenv#Envelope @('xmlns:tem':"http://tempuri.org/"):{
+   soapenv#Header: {},
+   soapenv#Body: {
+      tem#ValidarCuestionario: {
+         tem#objSolicitud: {
+            tem#Usuario: p('temDataServices.credentials.user'),
+            tem#Contrasena: p('temDataServices.credentials.password'),
+            tem#IdCuestionario: attributes.uriParams.'questionarie-id',
+            tem#Respuestas:
+                  {(payload.wsRequestConsultEvidentVerification.answers.answer  map ( answers ) -> {
+                    tem#Respuesta: {
+                        tem#DescripcionPregunta: answers.questionId,
+                        tem#DescripcionRespuesta: answers.answerId
+                    }  
+                  }
+                )} 
+            ,
+            tem#Modelo: if (sistemaOrigen==p('temDataServices.sistemaOrigen')) 1 else ((payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='MODELO')[0].value as Number) default -1,
+            tem#Departamento: (if (!isBlank(codigoDepartamento)) (codigoDepartamento as Number) else -1),
+            tem#Ciudad: if (!isBlank(codigoCiudad)) (codigoCiudad as Number) else -1,
+            tem#Asesor: (payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='USUARIO')[0].value default "",
+            tem#CanalVenta: (payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='CANAL')[0].value default "",
+            tem#Proveedor: (payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='PROVEEDOR')[0].value default "",
+            tem#Portal: if (sistemaOrigen==p('temDataServices.sistemaOrigen')) p('temDataServices.sistemaOrigen') else ((payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='PORTAL')[0].value default ""),
+            tem#NumeroContacto: (payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='NUMERO_CONTACTO')[0].value default "",
+            tem#Tipo: (if ((payload.wsRequestConsultEvidentVerification.header.properties filter (value, index) -> value.name=='MODELO')[0].value == '2') 5768 else -1),
+            tem#Estrato: if (estrato !=null and estrato != "" and ((estrato as Number) > 0 and (estrato as Number) < 7)) (('576' ++ estrato) as Number) else -1,
+            tem#CalcularScore: ((sistemaOrigen==p('temDataServices.sistemaOrigen')) or ((calcularScore=='TRUE') or (calcularScore=='1')))
+         }
+      }
+   }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Go to Client" doc:id="4d2ddf18-ee4d-464c-baf9-a5b45f675f29" name="post-evidentVerificationLISIM-clientSub_Flow"/>
+		<async doc:name="Async" doc:id="727a8d1c-7481-4e62-b35a-0e20cad34068" >
+			<flow-ref doc:name="Register log" doc:id="c541597b-c632-4981-bd9a-3257ddd2e33e" name="registerLog_evidentVerification"/>
+		</async>
+		<ee:transform doc:name="Set response" doc:id="32a11a40-72f8-43f0-8e13-b8377cfa932c">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    validateQuestionnaireResponse: {
+        validateQuestionnaireResult: {
+            validateQuestionnaire: payload.Envelope.Body.ValidarCuestionarioResponse.'ValidarCuestionarioResult'.ValidarCuestionario as Number,
+            processResult: payload.Envelope.Body.ValidarCuestionarioResponse.'ValidarCuestionarioResult'.ResultadoProceso default "",
+            validationResult: payload.Envelope.Body.ValidarCuestionarioResponse.'ValidarCuestionarioResult'.ResultadoValidacion default "",
+            score: payload.Envelope.Body.ValidarCuestionarioResponse.'ValidarCuestionarioResult'.Score default "",
+            offer: payload.Envelope.Body.ValidarCuestionarioResponse.'ValidarCuestionarioResult'.Oferta default "",
+            controlDate: payload.Envelope.Body.ValidarCuestionarioResponse.'ValidarCuestionarioResult'.FechaControl,
+            identification: ""
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+	<sub-flow name="registerLog_evidentVerification" doc:id="6c66a69c-a987-47fd-8b44-2785f08838fc" >
+		<ee:transform doc:name="Log Body" doc:id="1b359512-ba67-440e-a4b6-6c7b6c3ca526" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var inputBody = vars.inputBody.wsRequestConsultEvidentVerification
+var errorMsg = error.muleMessage.typedValue
+---
+{
+    Identificador_Peticion: correlationId,
+    Tipo_Documento: inputBody.answers.identification.'type' default "", 
+    Numero_Identificacion: inputBody.answers.identification.number as Number default null,
+    Numero_Conexion: "",
+    Tipo_Transaccion: "Registro Log LISIM",
+    Fecha_Inicio: now(), 
+    Fecha_Fin: now(),
+    Estado_Transaccion: "",
+    Sistema_Origen: "MULESOFT",
+    Atributos: [
+      {
+        name: "FECHA_CONSULTA",
+        value: now() as DateTime{format: "dd/MM/yyyy"}
+      },
+      {
+        name: "HORA_CONSULTA",
+        value: now() as DateTime{format: "HH:mm"}
+      },
+      {
+        name: "TIPO_IDENTIFICACION",
+        value: inputBody.answers.identification.'type' default ""
+      },
+      {
+        name: "NUMERO_IDENTIFICACION",
+        value: inputBody.answers.identification.number default ""
+      },
+      {
+        name: "APELLIDO",
+        value: (inputBody.header.properties filter($.name == 'APELLIDO'))[0].value default ""
+      },
+      {
+        name: "NOMBRE",
+        value: (inputBody.header.properties filter($.name == 'NOMBRE'))[0].value default ""
+      },
+      {
+        name: "TRAMITE",
+        value: (inputBody.header.properties filter($.name == 'TRAMITE'))[0].value default ""
+      },
+      {
+        name: "TIPO_CONSULTA",
+        value: ""
+      },
+      {
+        name: "USUARIO",
+        value: (inputBody.header.properties filter($.name == 'USUARIO'))[0].value default ""
+      },
+      {
+        name: "CANAL",
+        value: (inputBody.header.properties filter($.name == 'CANAL'))[0].value default ""
+      },
+      {
+        name: "PROVEEDOR",
+        value: (inputBody.header.properties filter($.name == 'PROVEEDOR'))[0].value default ""
+      },
+      {
+        name: "CIUDAD",
+        value: (inputBody.header.properties filter($.name == 'CIUDAD'))[0].value default ""
+      },
+      {
+        name: "DEPARTAMENTO",
+        value: (inputBody.header.properties filter($.name == 'DEPARTAMENTO'))[0].value default ""
+      },
+      {
+        name: "ESTADO_ETB",
+        value: if (vars.flagNegativeLog == true) "ERROR" else "CONSULTA EXITOSA"
+      },
+      {
+        name: "SISTEMA_ORIGEN",
+        value: (inputBody.header.properties filter($.name == 'SISTEMA ORIGEN'))[0].value default ""
+      },
+      {
+        name: "MENSAJE",
+        value:  if (vars.flagNegativeLog == true and errorMsg != null) write(errorMsg, 'application/xml') else write(payload, "application/xml"),
+      },
+      {
+        name: "NIVEL_RIESGO",
+        value:  ""
+      },
+      {
+        name: "SCORE",
+        value: ""
+      },
+      {
+        name: "ID",
+        value: correlationId,
+      },
+      {
+        name: "MODELO",
+        value: (inputBody.header.properties filter($.name == 'MODELO'))[0].value default ""
+      },
+      {
+        name: "PORTAL",
+        value: (inputBody.header.properties filter($.name == 'PORTAL'))[0].value default ""
+      },
+      {
+        name: "NUMERO_CONTACTO",
+        value: (inputBody.header.properties filter($.name == 'NUMERO_CONTACTO'))[0].value default ""
+      },
+      {
+        name: "TIPO",
+        value: (inputBody.header.properties filter($.name == 'TIPO'))[0].value default ""
+      },
+      {
+        name: "ESTRATO",
+        value: (inputBody.header.properties filter($.name == 'ESTRATO'))[0].value default ""
+      }
+      ]
+  }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="registerLog-client" doc:id="c41b5c70-74df-41b1-93d0-a5070d383914" name="registerLog-client"/>
+	</sub-flow>
+</mule>

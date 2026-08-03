@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-cd-order" doc:id="57b99191-9e81-4049-9e54-09879f599e7e" >
+		<try doc:name="Try" doc:id="2323e084-0e22-431b-a76a-8cddc9beb117" >
+			<http:request method="GET" doc:name="Call mongo-sapi" doc:id="b6a56009-2c22-4658-a482-7b7156be00a6" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.orderByOrderNumber.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orderNumber" : vars.orderNumber
+}]]]></http:uri-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="92064266-31bc-4307-84c8-61cc019f9ac7" when='#[error.muleMessage.typedValue.status == 404 and error.muleMessage.typedValue.message.message == "There are no matching records"]'>
+					<set-variable value="#[p('mongo-sapi.postes.properties.collection')]" doc:name="Set Variable" doc:id="e7843632-1002-4502-9dd2-c0b74e0bbb84" variableName="collectionOrigin" />
+					<http:request method="GET" doc:name="Call mongo-sapi" doc:id="04c608bd-5d24-439d-909c-527236b5952b" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.orderByOrderNumber.path}">
+						<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId
+}]]]></http:headers>
+						<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orderNumber" : vars.orderNumber
+}]]]></http:uri-params>
+						<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"collection" : vars.collectionOrigin
+}]]]></http:query-params>
+					</http:request>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="patch-cd-order" doc:id="48bcf5b9-0f99-418d-94e8-6d2cf2decdb5" >
+		<choice doc:name="Choice" doc:id="d0c4e4a9-99db-4e65-bb99-59193e3a1d4a" >
+			<when expression='#[vars.collectionOrigin != null]'>
+				<http:request method="PATCH" doc:name="Call mongo-sapi" doc:id="aab59829-1c47-470e-8e96-b7a4d54e7703" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.orderByOrderNumber.path}">
+					<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId
+}]]]></http:headers>
+					<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orderNumber" : vars.orderNumber
+}]]]></http:uri-params>
+					<http:query-params><![CDATA[#[output application/java
+---
+{
+	"collection" : vars.collectionOrigin
+}]]]></http:query-params>
+				</http:request>
+			</when>
+			<otherwise>
+				<http:request method="PATCH" doc:name="Call mongo-sapi" doc:id="902290a2-d023-4ca9-8da8-f332ee1b5d95" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.orderByOrderNumber.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orderNumber" : vars.orderNumber
+}]]]></http:uri-params>
+		</http:request>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="patch-updateParametersPostes-client" doc:id="5744a094-9894-4b07-b5be-d904c728dbe3" >
+		<choice doc:name="Choice" doc:id="2001e227-660e-4845-a238-67cf4f2324e9" >
+			<when expression='#[vars.collectionOrigin != null]'>
+				<http:request method="PATCH" doc:name="Call mongo-sapi" doc:id="15a8e999-39d3-406c-a772-b5fb9b633615" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.postes.path}">
+					<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+					<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orderNumber" : vars.orderNumber,
+	"idPoste" : vars.idPoste
+}]]]></http:uri-params>
+					<http:query-params><![CDATA[#[output application/java
+---
+{
+	"collection" : vars.collectionOrigin
+}]]]></http:query-params>
+				</http:request>
+			</when>
+			<otherwise>
+				<http:request method="PATCH" doc:name="Call mongo-sapi" doc:id="d8e774e0-04ad-4847-b320-ffc0f797bfd6" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.postes.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orderNumber" : vars.orderNumber,
+	"idPoste" : vars.idPoste
+}]]]></http:uri-params>
+		</http:request>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-customerPrivacyParameters-client" doc:id="5f906f9f-04bf-4580-8b25-2a35b2dcf8c1" >
+		<http:request method="GET" doc:name="Call mongo-sapi" doc:id="2d6dee11-857e-4769-af9c-dba0c860a435" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.getParametersByType.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"typeParameter" : vars.parameterType
+}]]]></http:uri-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="patch-customerPrivacyParameters-client" doc:id="52840c5d-36d1-447a-a8f3-8a38e50785ca" >
+		<http:request method="PATCH" doc:name="Call mongo-sapi" doc:id="6522519c-42fd-4228-9337-2b613592f239" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.getParametersByType.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"typeParameter" : vars.collectionTarget
+}]]]></http:uri-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="get-customerContact-client" doc:id="96204379-e2e7-4c99-b88f-7887df7f4d8b" >
+		<http:request method="GET" doc:name="Call mongo-sapi" doc:id="7309ee61-dd4f-46ec-b5a1-008051f9632e" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.getClient.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"tipoDocumento" : vars.tipoDocumento,
+	"numeroIdentificacion" : vars.numeroDocumento
+}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="patch-customerContact-client" doc:id="9efd5984-357d-458e-a8f4-ac6426593cee" >
+		<http:request method="PATCH" doc:name="Call mongo-sapi" doc:id="ddd0284a-fff1-4010-b1fe-8f9ab276c1b3" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.getClient.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"tipoDocumento" : vars.tipoDocumento,
+	"numeroIdentificacion" : vars.numeroDocumento
+}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow name="post-checkCustomerChannel-client" doc:id="d78df0f4-abdb-4696-b73a-ccbfa335ccc4" >
+		<http:request method="GET" doc:name="Call mongo-sapi" doc:id="e5613e8f-12b8-44e8-b4f4-3b3a2807e0fd" config-ref="mongo-HTTP_Request_configuration" path="${mongo-sapi.getClient.channelValidation.path}" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('mongo-sapi.client_secret'),
+	"client_id" : p('mongo-sapi.client_id'),
+	"systemId": vars.systemId,
+	"processName": vars.processname
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"channelValue" : payload.valor_canal
+}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+</mule>

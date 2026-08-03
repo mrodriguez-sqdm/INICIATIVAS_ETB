@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:jms="http://www.mulesoft.org/schema/mule/jms" xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd  http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd">
+	<flow name="experience-xapi-services-main">
+        <http:listener path="/*" config-ref="experience-xapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <try doc:name="Try" doc:id="c3fc50cc-f7fa-4467-84a1-b7d74afd427c">
+			<flow-ref doc:name="Call initial Logger" doc:id="cbe6fa84-8104-4234-9d92-4a2237eefb65" name="initial-loggin-Sub_Flow" />
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b5200d62-8eaf-4d8a-b832-c4e6204fd770">
+					<logger level="INFO" doc:name="Logger" doc:id="e0340d78-f8e7-4a0f-adc3-00f41a8fcc9a" message="#[error]" category="error_loggin" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+        <apikit:router config-ref="experience-xapi-services-config" />
+        <try doc:name="Try" doc:id="453ab307-d47d-4754-826c-ec155252861c">
+				<async doc:name="Async" doc:id="bd24aa1f-a9f2-447d-981a-64d85e8968ce">
+					<flow-ref doc:name="Call logger" doc:id="c18184c0-9fce-4216-9f91-483ffe784c2f" name="loggin-client-call" />
+				</async>
+				<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7f190013-0969-461b-ac1e-1c9b8914efc3">
+						<logger level="INFO" doc:name="Logger" doc:id="745361a8-6c00-47e8-9783-d635325efacd" message="#[error]" category="error_loggin" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		<error-handler ref="common-error-handler-v2" />
+    </flow>
+    <flow name="experience-xapi-services-console">
+        <http:listener path="/console/*" config-ref="experience-xapi-services-httpListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="experience-xapi-services-config" />
+    </flow>
+    <flow name="post:\v1\nonStandardAddress:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="post-nonStantardAddress-handler" doc:id="d64908f0-3ee7-4cda-bc79-8a7194fc5a95" name="post-nonStantardAddress-handler" />
+    </flow>
+    <flow name="get:\billing\v1\billing_accounts\(account_id)\cycles:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="4103d487-28fc-49e0-af74-511041638981" name="get-accounts_cycles-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\billing\v1\hierarchy-account:experience-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="f071b071-9d7d-4bc2-ac9a-f6316159eaa2" name="get-hierarchy-account-handler" />
+    </flow>
+    <flow name="get:\operations\v1\orders\(orderNumber):experience-xapi-services-config">
+        <flow-ref doc:name="get-order-status-handler" doc:id="52de8076-425a-47f9-8799-f6105a5cd03e" name="get-order-status-handler" />
+    </flow>
+    <flow name="post:\operations\v1\cancelOrder:application\json:experience-xapi-services-config" doc:id="470bc182-e68f-4a0c-b835-6ef7d2409170">
+        <flow-ref doc:name="Go to Handler" doc:id="671f4ce2-baad-4319-a9b8-6446f653c7b5" name="post-cancelOrder-handler" />
+    </flow>
+    <flow name="get:\operations\v1\inventory\(serviceAccount):experience-xapi-services-config">
+        <flow-ref doc:name="get-inventory-handler" doc:id="f15aa7fc-b480-4e49-886d-03631cca7d57" name="get-inventory-handler" />
+    </flow>
+    <flow name="get:\operations\v1\incident\(ticketNumber):experience-xapi-services-config" doc:id="f514a819-7b44-4d1f-b953-9a2b56d96745">
+        <flow-ref doc:name="Flow Reference" doc:id="ad30da86-f1d2-4f14-b3da-7cf7ad719ffb" name="get-incident-handler" />
+    </flow>
+    <flow name="post:\operations\v1\orders\cancelOrder:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="post-order-cancel-handler" doc:id="2781bc4c-3d93-40c5-a76d-4f1352a9a422" name="post-order-cancel-handler" />
+    </flow>
+    <flow name="post:\operations\v1\incident:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="post-incident-handlerSub_Flow" doc:id="0c042ba8-0dc1-4f08-9468-c1f4ab9b4fab" name="post-incident-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\interaction:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="post-interaction-handlerSub_Flow" doc:id="ee812611-17c2-4b3e-a2a9-9dfbc0123240" name="post-interaction-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\provisioning:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="post-provisioning-handler" doc:id="0e35b437-d8d3-49ea-a66d-19b7ae29603a" name="post-provisioning-handler" />
+    </flow>
+    <flow name="post:\operations\v1\availability\confirm:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="post-availability-order-handler" doc:id="d72da082-21b5-4ca6-a00e-0093ff3227f8" name="post-availability-order-handler" />
+    </flow>
+    <flow name="post:\operations\v1\provisioning\confirm:application\json:experience-xapi-services-config" doc:id="fa7692e8-f60a-440d-946a-ac3358662b0a">
+        <flow-ref doc:name="post-confirmProvisioning" doc:id="a155009d-b490-43e2-a758-56377368242e" name="post-confirmProvisioning-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\operations\v1\orders\(orderNumber)\poles:experience-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="27d10661-879e-41f2-ba79-113ccd12d61e" name="get-poles-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\operations\v1\orders\(orderNumber)\poles:experience-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="755ed891-34af-4224-9013-27b50cfffe20" name="patch-poleState-handlerSub_Flow" />
+    </flow>
+    <flow name="delete:\operations\v1\orders\(orderNumber)\poles:experience-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="e2983391-11e3-41b5-8f92-ca99f7cf81b7" name="delete-poles-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\orders\poles:experience-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="4bef3045-8fa2-4b0c-b21d-f6a3536808fc" name="post-insertPole-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\operations\v1\orders\poles:experience-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="bd7fe7e6-e119-4053-a4eb-eb41a53254e1" name="patch-poleCoords-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\login:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="7e90db1c-4fe2-4692-b386-fc7d711c9bf0" name="get-login-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\operations\v1\orders\(orderNumber)\poles\(idPoste):application\json:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="a5578f8e-cda4-4738-8282-41a59b3d22ba" name="patch-updateParametersPostes-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\support\v1\imei:experience-xapi-services-config">
+        <flow-ref doc:name="Call handler" doc:id="d9686a56-8d3d-4205-951b-5c48c3cf96db" name="Consulta-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\fulfillment\v1\tramits:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="Call Handler" doc:id="089020d1-0354-4819-ace0-0023a0e3dfd3" name="post-register-tramits-handler" />
+    </flow>
+    <flow name="get:\operations\v1\resInvList\(externalId):experience-xapi-services-config" doc:id="bc6162ff-8b66-4036-9ad3-1bede65f3214">
+        <flow-ref doc:name="Go to Handler" doc:id="7a8cb4df-8c9a-4998-bfc7-ba2c10ea8b07" name="get-revInvList-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\invokeETADirectInbound:application\json:experience-xapi-services-config" doc:id="dc840a38-b25c-46b8-8c94-30a18dd46f39">
+        <flow-ref doc:name="Go to Handler" doc:id="fbaa1309-722d-4e1e-972e-9008459eba09" name="post-invokeETADirectInbound-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\referred\activeLines:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="ced22a60-9bab-4004-869a-abe263610e33" name="get-referredActiveLines-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\v1\referred:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="8981f2aa-0437-495f-9b9e-d764ca1863d1" name="get-referred-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\referred:application\json:experience-xapi-services-config" doc:id="872e3e2d-bdae-4155-87e0-5b218c90ee2e">
+        <flow-ref doc:name="Go to Handler" doc:id="0676d6a9-c38f-4493-8771-2a0a58df4f54" name="post-referred-handler" />
+    </flow>
+    <flow name="delete:\v1\referred:experience-xapi-services-config" doc:id="5d2b5141-9601-4646-9cf1-aae1fdb96e63">
+        <flow-ref doc:name="Go to Handler" doc:id="4d8a647b-e65a-47b0-9190-9cf2495fc720" name="delete-referred-handler" />
+    </flow>
+    <flow name="get:\v1\referred\quotas:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="6a178d44-6e96-4c48-a004-05e55231d4a9" name="get-referredQuotas-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\incident:application\json:experience-xapi-services-config" doc:id="76b42ada-a0cb-46cc-aaf6-c5add5adfb86">
+        <flow-ref doc:name="Go to handler" doc:id="6668c701-69be-4ff2-a621-cb75e1c0e69d" name="post-createIncident-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\operations\v1\servicios\(id)\estadocuenta\certificado:experience-xapi-services-config" doc:id="16f5258b-b088-4fc5-b9e0-364f6ba5e9ad">
+        <flow-ref doc:name="Go to Handler" doc:id="2a3c94a8-bbb9-4a64-a708-f13ea77c287b" name="get-serviceAccountState-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\v1\logs:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="66ed59be-03b3-4e91-99c1-0698e9de5053" name="post-traceabilityLog-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\operations\v1\customer\privacy:experience-xapi-services-config" doc:id="a82497f7-cfbe-409e-8afc-0a9b613da9b8">
+        <flow-ref doc:name="Go to Handler" doc:id="8d7dc53a-0e23-4f70-b8ae-012e4ac07e6f" name="get-customerPrivacyParameters-handlerSub_Flow" />
+    </flow>
+    <flow name="get:\operations\v2\customer\privacy:experience-xapi-services-config" doc:id="734b9986-5305-414d-b6b2-254f666e941d">
+		<flow-ref doc:name="Go to Handler" doc:id="2e22fd86-b97a-4c50-8f85-c66522b3a7d9" name="get-customerPrivacyParameters-handlerSub_Flow_v2" />
+	</flow>
+	<flow name="patch:\operations\v1\customer\privacy:application\json:experience-xapi-services-config" doc:id="59e466da-0bbe-4f03-984a-f388a91ee160">
+        <flow-ref doc:name="Go to Handler" doc:id="c3673974-d729-4e1d-ba01-26767e600791" name="patch-customerPrivacyParameters-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\customer\checkChannel:application\json:experience-xapi-services-config" doc:id="84fefc15-f28e-4b25-8d54-158b7203bc21">
+        <flow-ref doc:name="Go to Handler" doc:id="d78c38ec-c244-4efd-ae46-dc5b86321e12" name="post-checkCustomerChannel-handlerSub_Flow" />
+    </flow>
+    <flow name="patch:\operations\v1\customer\contact:application\json:experience-xapi-services-config" doc:id="b03ceaf0-46b4-443d-a90a-8934503481e1">
+        <flow-ref doc:name="Go to Handler" doc:id="4d745a20-18a6-4cce-ba66-18f1b9deac53" name="patch-customerContact-handlerSub_Flow" />
+    </flow>
+	<flow name="get:\operations\v1\customer\contact:experience-xapi-services-config" doc:id="889c059a-8c19-4969-9b3f-4cd81a879f65">
+        <flow-ref doc:name="Go to Handler" doc:id="1ffd5e3f-2405-4f19-8167-ad37202175f7" name="get-customerContact-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\customer\contact:application\json:experience-xapi-services-config" doc:id="c963f011-4df0-466f-a63b-249505766125">
+        <flow-ref doc:name="Go to Handler" doc:id="a0083c7e-fe28-4ebc-bac1-4f2844f26542" name="post-customerContact-handlerSub_Flow" />
+    </flow>
+	<flow name="post:\operations\v1\customer\otp:application\json:experience-xapi-services-config" doc:id="baaf5a2d-d670-4551-b730-7739932d30ab">
+        <flow-ref doc:name="Go to Handler" doc:id="3912f7dd-2419-4e63-8148-865ec8366c18" name="post-creationOtp-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\customer\otp\validation:application\json:experience-xapi-services-config" doc:id="d9e8ca4a-50de-4e28-97c3-83fbe8d7aed8">
+        <flow-ref doc:name="Go to Handler" doc:id="62ea8e07-cf72-4c23-ab96-5ac08eab8dd4" name="post-otpValidation-handlerSub_Flow" />
+    </flow>
+	<flow name="post:\billing\v1\negociaciones\block_invoice:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="08e9a6f7-d625-441c-9aee-5cff913e38f3" name="post-negociaciones-block_invoice-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\billing\v1\negociaciones\change_invoice:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="27086f86-d914-4406-a4c8-9b3449e9cf93" name="post-negociaciones-change_invoice-handlerSub_Flow" />
+    </flow>
+	<flow name="post:\billing\v1\negociaciones\payment_notif:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="23b58c0b-a756-48a3-94f3-39f249db7ed9" name="post-negociaciones-payment_notif-handlerSub_Flow" />
+    </flow>
+	<flow name="post:\billing\v1\negociaciones\solfact_checkdata:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="e02867c3-a048-4606-be86-94530cca1ade" name="post-negociaciones-solfact_checkdata-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\operations\v1\getCapacity:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="post-capacity-handler" doc:id="a719e190-a99e-49c5-90e7-8b93d92971f3" name="post-capacity-handler" />
+    </flow>
+	<flow name="post:\billing\v1\negociaciones\solfact_getdata:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="Go to handler" doc:id="13a82ec1-84d0-43ee-9dca-8f9bdee9e464" name="post-negociaciones-solfact_getdata-handlerSub_Flow" />
+    </flow>
+    <flow name="post:\billing\v1\notifyMDM:application\json:experience-xapi-services-config" doc:id="c8bd69de-4507-4d30-8fdf-450d2eb953a7">
+        <flow-ref doc:name="Go to handler" doc:id="c25b2947-e7d9-4612-8a20-b283cf0a95b7" name="post-NotifyBillToMDM-handlerSub_Flow" />
+    </flow>
+	<flow name="post:\operations\v1\process:application\json:experience-xapi-services-config">
+        <flow-ref doc:name="Go to Handler" doc:id="74ae611a-6e1b-4dd4-83ce-d81d505a109a" name="post-process-handler" />
+    </flow>
+    <flow name="post:\support\v1\positiveRecord:application\xml:experience-xapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="c8555ea2-3718-4a87-b043-76ea921a31f3" name="post-insertPositiveRecord-HandlerSub_Flow"/>
+    </flow>
+	<flow name="post:\operations\v1\schedule\order:application\json:experience-xapi-services-config">
+		<flow-ref doc:name="Go to handler" doc:id="861dd320-69da-4c92-922e-52060e55deb2" name="post-createOrder-handlerSub_Flow"/>
+    </flow>
+	<flow name="post:\billing\v1\getInvoice:application\json:experience-xapi-services-config" doc:id="0317560a-4d99-4edd-a3e1-f04fc3e89141" >
+		<flow-ref doc:name="Go to Handler" doc:id="9b244d94-da2c-47c4-b057-f2203868b9e2" name="post-getInvoice-handlerSub_Flow" />
+	</flow>
+</mule>

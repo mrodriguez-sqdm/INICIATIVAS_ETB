@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-updateParametersPostes-orchestratorSub_Flow" doc:id="10219012-1451-4e98-a24d-09623e444141" >
+		<flow-ref doc:name="Get orderByOrderNumber" doc:id="2ae5d15b-af3b-4afb-93df-08f82dc59a06" name="get-cd-order"/>
+		<ee:transform doc:name="Get postebyIdPoste" doc:id="52297271-cd19-4d38-96be-b99355af2012">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="postebyIdPoste"><![CDATA[%dw 2.0
+output application/java
+---
+payload[0].Orden_Activacion.Postes_Instalacion 
+filter ((item, index) -> item.ID == vars.idPoste)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="58a22643-7bc3-40d2-848c-e3e39f6f8cc0" >
+			<when expression="#[!isEmpty(vars.postebyIdPoste)]">
+				<set-variable value="#[output application/java&#10;---&#10;indexOf(payload[0].Orden_Activacion.Postes_Instalacion.ID, vars.idPoste)]" doc:name="Get posteIndex" doc:id="67bc72f4-4de7-4b81-899a-9266be08a6ef" variableName="posteIndex" />
+				<ee:transform doc:name="Transform Message" doc:id="2f9d3e5a-57b7-45be-ab7e-84cda88a755d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::util::Values
+output application/json
+---
+{
+	newParams: (vars.postebyIdPoste map (obj) -> 
+	(vars.initialpayload.params reduce (param, acc = obj) -> 
+		(if(acc[param.param]?) 
+			acc update param.param with param.valorParam 
+		else 
+			acc ++ {(param.param): param.valorParam})))[0],
+	index: vars.posteIndex
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="Update poste" doc:id="7f64f65e-298f-4918-8136-c68aacaf019a" name="patch-updateParametersPostes-client" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set error response" doc:id="22852cac-ff8a-4e1e-bfba-ee0d390b07e1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 404,
+	descripcion: "No se encontró el Poste: " ++ vars.idPoste,
+	id: vars.orderNumber
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
