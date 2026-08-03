@@ -41,4 +41,40 @@ if(payload.modified > 0) 200 else 404]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
 	</sub-flow>
+	<sub-flow name="patch-payment-transaction-cus-client" doc:id="d9959de3-78e8-4530-a6dd-f80262375946" >
+		<mongo:update-documents collectionName="${mongoDb-mdm.collection-transaction}" doc:name="Update Payment Transaction" doc:id="90d85a3e-3027-4d83-b74f-bc8a7793a17e" config-ref="mdm_db_Config" >
+			<mongo:query ><![CDATA[#["{CUS: '" ++ vars.cus ++ "'}"]]]></mongo:query>
+			<mongo:content-to-update ><![CDATA[#[%dw 2.0
+output application/json
+---
+payload]]]></mongo:content-to-update>
+		</mongo:update-documents>
+		<ee:transform doc:name="set response" doc:id="b20f6d97-7a20-4c61-bec8-8299419fc56f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var resultCode = if(payload.modified > 0) 'SUCCESS' else "FAIL"
+var resultDescription = if(payload.modified > 0) "Transaction updated" else "The update could not be performed."
+---
+{
+  status: if (resultCode == "SUCCESS") 200 else 500,
+  code: resultCode,
+  message: {
+    message: resultDescription
+  },
+  messageServer: null,
+  (cause: []) if (resultCode != "SUCCESS"),
+  result: {
+    transaction: vars.transactionId
+  }
+}	]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.modified > 0) 200 else 404]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
 </mule>

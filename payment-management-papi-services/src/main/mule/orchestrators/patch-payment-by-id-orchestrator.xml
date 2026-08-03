@@ -173,8 +173,8 @@ var fechaColombia = fechaHoraColombia()
 
 fun getEstadoPayu(statePol, responseCodePol) =
     do {
-        var state = statePol as String
-        var code = responseCodePol as String
+        var state = (statePol default "") as String
+        var code = (responseCodePol default "") as String
         ---
         if (
             (["7", "12", "14"] contains state) and
@@ -204,7 +204,81 @@ fun getEstadoPayu(statePol, responseCodePol) =
             "NO_CONCILIADA"
     }
 
-var referenciaTransaccion = vars.payloadRequest.data.transaction.id default vars.payloadRequest.transaction_id default ""
+fun getEstadoWompi(status) =
+    do {
+        var state = upper((status default "") as String)
+        ---
+        if (state == "APPROVED")
+            "PAGADA"
+        else if (
+            ["PENDING", "PENDING_VALIDATION"] contains state
+        )
+            "EN_PROCESO"
+        else if (
+            ["DECLINED", "ERROR", "VOIDED"] contains state
+        )
+            "RECHAZADA"
+        else
+            "NO_CONCILIADA"
+    }
+
+fun getEstadoPayuDisputa(status) =
+    do {
+        var state = upper((status default "") as String)
+        ---
+        if (state == "WON")
+            "PAGADA"
+        else if (
+            ["LOST", "EXPIRED"] contains state
+        )
+            "RECHAZADA"
+        else if (
+            [
+                "OPENED",
+                "NOTIFIED",
+                "DOCUMENTS_REQUIRED",
+                "UNDER_REVIEW"
+            ] contains state
+        )
+            "EN_PROCESO"
+        else
+            "NO_CONCILIADA"
+    }
+
+var statusWompi =
+    vars.payloadRequest.data.transaction.status default null
+
+var statusPayuDisputa =
+    vars.payloadRequest.properties.state default null
+
+var statePolPayu =
+    vars.payloadRequest.state_pol default null
+
+var responseCodePolPayu =
+    vars.payloadRequest.response_code_pol default null
+
+var estadoPago =
+    if (statusWompi != null and statusWompi != "")
+        getEstadoWompi(statusWompi)
+    else if (statusPayuDisputa != null and statusPayuDisputa != "")
+        getEstadoPayuDisputa(statusPayuDisputa)
+    else if (
+        statePolPayu != null or
+        responseCodePolPayu != null
+    )
+        getEstadoPayu(
+            statePolPayu,
+            responseCodePolPayu
+        )
+    else
+        "NO_CONCILIADA"
+
+var referenciaTransaccion =
+    vars.payloadRequest.data.transaction.id
+        default vars.payloadRequest.transactionId
+        default vars.payloadRequest.transaction_id
+        default ""
+
 ---
 {
   query: {
@@ -216,10 +290,7 @@ var referenciaTransaccion = vars.payloadRequest.data.transaction.id default vars
         },
         u: {
           "\$set": {
-            Estado: getEstadoPayu(
-              vars.payloadRequest.state_pol,
-              vars.payloadRequest.response_code_pol
-            ),
+            Estado: estadoPago,
             Referencia_Transaccion: referenciaTransaccion,
             Estado_Pagos_Online: "Actualizado exitosamente",
             Fecha_Actualizacion: fechaColombia
