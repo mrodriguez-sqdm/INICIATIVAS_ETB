@@ -10,33 +10,66 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 		doc:id="b0e897a3-8eea-4d15-bb57-b70849ad3977">
 		<try doc:name="Try" doc:id="46bd68d6-caef-452e-a233-a536ebd7bc40" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="6b65110c-6855-4b7d-a8cb-47ffda1dda93" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /billing"]' />
-			<ee:transform doc:name="Transform Message" doc:id="bc3a848e-fc81-44ca-b753-3c054dfb589c">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-var serviceConfig =  if (payload.header.serviceEventId?)
-  {
-    token: p('secure::zsmart.userProfileToken'),
-    method: "UserProfile"
-  }
-else
-  {
-    token: p('secure::zsmart.addChargeToken'),
-    method: "chargeAdditionalFee"
-  }
+			<ee:transform doc:name="set initialPayload" doc:id="8b1e41a5-f3db-4ac9-b0b1-01475f785bbf">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<choice doc:name="validate serviceEventId" doc:id="f27f2594-8061-4bd1-969a-68686edd410b" >
+				<when expression="#[(vars.initialPayload.header.serviceEventId default null) != null]">
+					<ee:transform doc:name="set userProfile auth parameters" doc:id="7c3727c0-f5a9-4b6f-a2fd-844dc912aa11">
+						<ee:message>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="zsmartAuthParams" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	appCode: p('zsmart.auth.userProfile.appCode'),
+	appSecret: p('secure::zsmart.auth.userProfile.appSecret')
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="zsmart-auth-get-token" doc:id="0f808620-f738-4490-80da-8347b6e9a1f8" name="zsmart-auth-get-token" target="zsmartAuthToken" />
+					<ee:transform doc:name="set zsmart userProfile request" doc:id="830a09e5-e27f-46d1-8ac9-73fe64426362" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
 output application/json  
 ---
 {
-  access_token: serviceConfig.token,
-  method: serviceConfig.method,
+  access_token: vars.zsmartAuthToken,
+  method: "UserProfile",
+  version: "1.0",
+  content: vars.initialPayload
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<otherwise >
+					<ee:transform doc:name="set zsmart chargeAdditionalFee request" doc:id="bc3a848e-fc81-44ca-b753-3c054dfb589c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json  
+---
+{
+  access_token: p('secure::zsmart.addChargeToken'),
+  method: "chargeAdditionalFee",
   version: "1.0",
   content: payload
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+				</otherwise>
+			</choice>
 			<flow-ref doc:name="billing-zsmart-client" doc:id="8bab1859-5f03-497a-a951-63f7e855e59a" name="billing-zsmart-client" />
-			<choice doc:name="Choice" doc:id="6305409e-a871-4517-929f-9a81ff5cb9a1">
+			<choice doc:name="validate zsmart response" doc:id="6305409e-a871-4517-929f-9a81ff5cb9a1">
 			<when expression='#[(payload.res_code != "00000" or payload.result.responseCode != "0000")]'>
-				<ee:transform doc:name="Transform Message" doc:id="2d55d0d4-eb4b-41bd-b387-7d82311e03c0">
+				<ee:transform doc:name="set zsmartEror" doc:id="2d55d0d4-eb4b-41bd-b387-7d82311e03c0">
 					<ee:message>
 					</ee:message>
 					<ee:variables>
@@ -53,7 +86,7 @@ else
     resCode ++ ": " ++ resMessage]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
-				<choice doc:name="Choice" doc:id="1b23199b-fd03-4808-b53f-b3fb2814111a">
+				<choice doc:name="error type" doc:id="1b23199b-fd03-4808-b53f-b3fb2814111a">
 					<when expression="#[payload.result?]">
 						<raise-error doc:name="ZSMART:BUSINESS_ERROR" doc:id="bc186507-ae47-40bb-9049-9c46c4ec3a12" type="ZSMART:BUSINESS_ERROR" description="#[vars.zsmartError]" />
 					</when>

@@ -1,5 +1,10 @@
 %dw 2.0
-var serviceEventId = "805"
+import * from dw::Runtime
+var serviceEventId = payload.processCode  match {
+	case "ADDRESS_CHANGE" -> "805"
+    case "ADDRESS_CHANGE_BUNDLE" -> "814"
+    else -> fail("Invalid Process Code")
+}
 var transaction = payload.transaction
 var service = payload.service default {
 }
@@ -41,6 +46,10 @@ output application/json  skipNullOn = "everywhere"
 		"destDepartment": service.destDepartment,
 		"destCity": service.destCity,
 		"destAddress": service.destAddress,
+		("bundleMemberList": service.bundleMembers map ((bundleMember) -> {
+			"operate": bundleMember.operate,
+			"serviceNumber": bundleMember.serviceNumber
+		})) if (!isEmpty(service.bundleMembers default [])),
 		("contactDtoList": service.contacts map ((serviceContact) -> {
 			"operate": serviceContact.operate default operation,
 			"contactType": serviceContact.contactType,

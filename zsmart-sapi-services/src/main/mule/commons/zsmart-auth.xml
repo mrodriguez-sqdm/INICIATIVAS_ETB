@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="zsmart-auth-get-token" doc:id="21220fdb-8a2c-4afa-a14f-13335b7b151e" >
+		<try doc:name="Try" doc:id="2c318ce4-ebe4-4221-a45b-a129a8c72687" >
+			<ee:transform doc:name="set timestamp" doc:id="d9df9031-3c3b-4eb8-b74b-cc2b7a897c40">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="timestamp"><![CDATA[%dw 2.0
+output application/java
+---
+now() as Number {unit: 'milliseconds'} as String]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			<java:invoke-static method="generateSignature(String, String, String, String, String)" doc:name="Invoke static SignatureUtil" doc:id="188cad52-8eff-47fe-b544-d9acc528598c" class="com.zsmart.integration.util.SignatureUtil" target="signRSA">
+			<java:args><![CDATA[#[{
+	arg0: vars.zsmartAuthParams.appCode,
+	arg1: vars.zsmartAuthParams.appSecret,
+	arg2: p('zsmart.auth.responseType'),
+	arg3: vars.timestamp,
+	arg4: p('secure::zsmart.rsa.privateKey')
+}]]]></java:args>
+		</java:invoke-static>
+			<ee:transform doc:name="set zsmart auth request" doc:id="15c05c11-0d0b-4bbd-a0dd-805311b9aaae">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="authRequest"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    appCode: vars.zsmartAuthParams.appCode,
+	appSecret: vars.zsmartAuthParams.appSecret,
+    responseType: p('zsmart.auth.responseType'),
+    timestamp: vars.timestamp,
+    sign: vars.signRSA,
+    force: true
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			<flow-ref doc:name="billing-zsmart-auth-client" doc:id="4b02bb90-bb86-48e4-b9ce-b8c9a42fa8bb" name="billing-zsmart-auth-client" target="authResponse" />
+			<choice doc:name="validate authResponse" doc:id="df2d1f61-52be-4fdc-ac46-cb4c9b7ec14c">
+			<when expression='#[vars.authResponse.resCode != "00000"]'>
+				<ee:transform doc:name="set zsmartAuthError" doc:id="33ed5469-79fa-476d-87e0-c1f66f6061c0">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="zsmartAuthError"><![CDATA[%dw 2.0
+output application/java
+---
+(payload.resCode default "99999") ++ " - " ++ (payload.resMessage default "Zsmart Authentication Error")]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<raise-error doc:name="ZSMART:AUTHENTICATION_ERROR" doc:id="56f813fd-8464-465a-b007-b4cebc257bdf" type="ZSMART:AUTHENTICATION_ERROR" description="#[vars.zsmartAuthError]" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="set zsmartToken" doc:id="90fc51b5-31f3-462e-9a54-7ec6d099d4ef">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="zsmartToken"><![CDATA[%dw 2.0
+output application/json
+---
+vars.authResponse.data.accessToken]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="a1ba6459-e4e4-46dc-a76f-781a5b49dfe4" type="ZSMART:AUTHENTICATION_ERROR">
+					<ee:transform doc:name="set authentication error" doc:id="42a41e12-2b5a-4189-8f46-8844cc029066" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "401",
+    "code": "HTTP:UNAUTHORIZED",
+    "message": error.description,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "zsmart-sapi-services",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+401]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
