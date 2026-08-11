@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<sub-flow name="vpn-health-check-orchestratorSub_Flow" doc:id="7603f8c9-2221-443c-a015-741c146ee040" >
+		<flow-ref doc:name="Get Token From MS" doc:id="94fd3bed-4bc8-4f5e-ae1d-05cb31c3a62a" name="getToken" />
+		<flow-ref doc:name="Get VPN Status" doc:id="23c0a4b9-659a-4c01-80af-000711c3a8f7" name="getVpnStatus" />
+		<ee:transform doc:name="vpnValidation" doc:id="933b69ce-fb21-47cc-a042-cc880d7efbf3">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="vpnValidation" ><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+---
+payload.state.vpnConnectionStatus == "AVAILABLE" and 
+(payload.state.staticRoutes every ($.state == "AVAILABLE")) and 
+(payload.state.vpnTunnels.status contains ("UP"))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="a876887c-ec94-4d6e-8c3e-c6cc8b921452">
+			<when expression="#[vars.vpnValidation == false]">
+				<email:send doc:name="Notify Error" doc:id="ed6e6707-9e5f-4322-ab85-528d62549ff7" config-ref="Email_SMTP" fromAddress="#[p('email.from.address')]" subject="${vpnEmail.subject}" toAddresses="#[p('vpnEmail.to.addresses') splitBy &quot;,&quot;]" ccAddresses="#[p('vpnEmail.cc.addresses') splitBy &quot;,&quot;]">
+					<email:body contentType="text/plain" encoding="UTF-8">
+						<email:content><![CDATA[#[p('vpnEmail.body')]]]></email:content>
+					</email:body>
+				</email:send>
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

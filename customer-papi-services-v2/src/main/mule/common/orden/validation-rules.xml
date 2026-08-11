@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	
+	<sub-flow name="product-order-validate-rules-orchestratorSub_Flow" doc:id="2ffe4d49-002b-460f-9823-3be9eedb1bad" >
+		<ee:transform doc:name="Inicializacion de Variables" doc:id="6deb9928-0095-4f59-951a-c498d27c8806" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="resultadoSapi" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+				<ee:set-variable variableName="reglasAcumuladas" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<parallel-foreach doc:name="Parallel For Each" doc:id="bad7dc69-1d07-4439-a862-80e70954f9c0" collection="#[payload]" timeout="90000" target="reglasEvaluadas">
+			<set-variable value="#[payload]" doc:name="Set Variable currentRule" doc:id="1c6d896b-7a1f-4b65-ac66-06599c2c0855" variableName="currentRule" />
+		
+		<choice doc:name="Choice" doc:id="22f28cf9-6337-4760-bec3-accf84178eee" >
+				<when expression='#[vars.currentRule.accion.sistema == "mongo-db-sapi-services"]'>
+					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="fa9bf00e-dc9c-4900-becd-5155225fe51e">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// 1. Obtenemos el Request Original
+var requestOriginal = vars.RequestOrder 
+
+// 2. Función de navegación segura
+fun resolvePath(obj: Any, path: String) = 
+    if (path != null) 
+        path splitBy "." reduce (key, acc = obj) -> acc[key]
+    else null
+
+// 3. Construimos el filtro dinámico basado en las reglas
+var dynamicMatch = payload.accion.evaluacionRequest reduce (item, acc = {}) -> (
+    if (item.parametro != null and item.valor != null)
+        do {
+
+        	
+             // Resolvemos el valor real del request usando el path elegido
+           var valorReal =
+    if ((item.parametro default "") == "==" or isEmpty(item.parametro default ""))
+        item.comparacion
+    else
+        resolvePath(requestOriginal, item.parametro)
+            // Construimos la llave final (root o dot notation)
+            var llaveFinal = if (item.contenedor == "root") item.valor 
+                             else (item.contenedor ++ "." ++ item.valor)
+// --- LÓGICA DE TRANSFORMACIÓN DE VALOR ---
+            var valorFinal = if (item.valor == "_id") 
+                                { "\$oid": valorReal } // Si es _id, aplicamos formato ObjectId
+                             else if (item.usaRegex == true) 
+                                { "\$regex": valorReal } 
+                             else 
+                                valorReal
+            ---
+            acc ++ { (llaveFinal): valorFinal }
+        }
+    else acc
+)
+
+---
+if(upper(payload.accion.metodo) == "POST"){
+	"query": {
+    "aggregate": payload.accion.coleccion,
+    "pipeline": [
+      {
+        // Envolvemos el resultado en un $match para que Mongo filtre
+        "\$match": dynamicMatch
+      }
+    ],
+    "cursor": {}
+  }
+}
+else if(upper(payload.accion.metodo) == "GET")
+  	dynamicMatch
+else
+{}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+						</ee:variables>
+					</ee:transform>
+					<ee:transform doc:name="Transform Message" doc:id="7b4eb4e9-479e-47bb-87ce-2edcb460e169">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+	sistema: vars.currentRule.accion.sistema,
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: vars.currentRule.accion.metodo,
+	path: vars.currentRule.accion.path,
+	body: if(upper(vars.currentRule.accion.metodo) == "POST") payload else {},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:if(upper(vars.currentRule.accion.metodo) == "GET") payload else {},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					<set-variable value="#[payload]" doc:name="Set body sapi" doc:id="f8e5b99d-c2e3-4fd9-a41e-2e5cf3506a8e" variableName="requestDataSapi" />
+					<flow-ref doc:name="Flow Reference" doc:id="55fb148d-7e25-461e-bd20-b0d1206a5c97" name="generic-sapi-clientSub_Flow" />
+				</when>
+	<when expression='#[vars.currentRule.accion.sistema == "oracle-sapi-services"]'>
+					<ee:transform doc:name="Set Request Body Sapi by rule" doc:id="aae12081-9a76-4e89-9abd-7f07652e6657">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var requestOriginal = vars.RequestOrder default {}
+
+// 1. Mejora en la función de navegación: agregamos validación de nulo en cada paso
+fun resolvePath(obj: Any, path: String) = 
+    if (path != null and !isEmpty(path)) 
+        path splitBy "." reduce (key, acc = obj) -> 
+            if (acc != null) acc[key] else null
+    else null
+
+var dynamicMatch = (payload.accion.evaluacionRequest default []) reduce (item, acc = {}) -> (
+    // 2. Controlamos que el parámetro no sea nulo antes de procesar
+    if (item.parametro != null or item.comparacion != null)
+        do {
+            var parametroLimpio = item.parametro default ""
+            
+            var valorReal = if (parametroLimpio == "==" or parametroLimpio == "")
+                                item.comparacion
+                            else
+                                resolvePath(requestOriginal, parametroLimpio)
+
+            var llaveFinal = if (item.contenedor == "root") item.valor 
+                             else ((item.contenedor default "default") ++ "." ++ (item.valor default "key"))
+
+            var valorFinal = if (item.valor == "_id") 
+                                { "\$oid": valorReal }
+                             else if (item.usaRegex == true) 
+                                { "\$regex": valorReal } 
+                             else 
+                                valorReal
+            ---
+            // 3. Solo agregamos al match si el valorReal no es nulo para evitar queries inválidas en Mongo
+            if (valorReal != null) acc ++ { (llaveFinal): valorFinal }
+            else acc
+        }
+    else acc
+)
+
+---
+if(upper(payload.accion.metodo default "") == "POST"){
+    "query": {
+        "aggregate": payload.accion.coleccion,
+        "pipeline": [
+            { "\$match": dynamicMatch }
+        ],
+        "cursor": {}
+    }
+}
+else if(upper(payload.accion.metodo default "") == "GET")
+    dynamicMatch
+else
+    {}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+						</ee:variables>
+					</ee:transform>
+					<ee:transform doc:name="Transform Message" doc:id="7a99b119-2384-4093-bcd0-f3513784ed1d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+	sistema: vars.currentRule.accion.sistema,
+	basePath: p("oracle-sapi.base-path"),
+	host: p("oracle-sapi.host"),
+	port: p("oracle-sapi.port"),
+	method: vars.currentRule.accion.metodo,
+	path: vars.currentRule.accion.path,
+	body: if(upper(vars.currentRule.accion.metodo) == "POST") payload else {},
+	headers: {
+	"client_secret" : p('oracle-sapi.security.client-secret'),
+	"client_id" : p('oracle-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{},
+	uriParameters:if(upper(vars.currentRule.accion.metodo) == "GET") payload else {}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					<set-variable value="#[payload]" doc:name="Set body sapi" doc:id="88ea03c3-b7ef-4a68-a156-a3624420c6ba" variableName="requestDataSapi" />
+					<flow-ref doc:name="Flow Reference" doc:id="7c06c57e-be13-491f-a8d4-f0a8b7eb108d" name="generic-oracle-sapi-clientSub_Flow" />
+				
+</when>
+				<otherwise >
+					<raise-error 
+    doc:name="Raise error" 
+    type="SISTEMA:CONFIGURACION_INVALIDA" 
+    description='#["La regla con ID " ++ (vars.currentRule.idRegla default "Desconocida") ++ " no tiene la conexion parametrizada."]'/>
+				</otherwise>
+			</choice>
+			<ee:transform doc:name="set payload" doc:id="cf3c7edd-e495-4ec3-9d56-be06e248898b" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Importamos la librería de fechas
+import * from dw::core::Dates
+
+// 1. Datos de origen (usando tus nombres de variables actuales)
+var requestOriginal = vars.RequestOrder 
+var mongoResponse = if(vars.requestDataSapi.sistema == "mongo-db-sapi-services") payload default {} else {
+	result: [payload]
+} 
+var validaciones = vars.currentRule.accion.evaluacionRespuesta default []
+
+// --- FUNCIONES CORE ---
+fun resolvePath(obj: Any, path: Any, isManual: Boolean = false) = do {
+    var isSizeRequest = (path as String) matches /size\(.*\)/
+    var cleanPath = if (isSizeRequest) 
+                        (path as String) replace "size(" with "" replace ")" with ""
+                    else path as String
+    
+    var fullPath = if (isManual) cleanPath
+                   else if (cleanPath contains "payload.") cleanPath replace "payload." with "" 
+                   else if (cleanPath contains "result.") cleanPath
+                   else "result[0]." ++ cleanPath
+    ---
+    do {
+        var extractedData = (fullPath as String) splitBy "." reduce (key, acc = obj) -> (
+            if (acc == null) null 
+            else if (key contains "[") do {
+                var parts = key splitBy "["
+                var attr = parts[0]
+                var index = (parts[1] replace "]" with "") as Number
+                ---
+                if (acc[attr] != null) acc[attr][index] else null
+            } else acc[key]
+        )
+        ---
+        if (isSizeRequest) 
+            if (extractedData is Array) sizeOf(extractedData)
+            else if (extractedData is Object) sizeOf(keysOf(extractedData))
+            else if (extractedData == null) 0
+            else 1
+        else extractedData
+    }
+}
+
+fun getExpectedValue(expected: Any) = 
+    if (expected != null and expected is String and (expected matches /\{\{.*\}\}/)) do {
+        var pathReq = expected replace "{{" with "" replace "}}" with ""
+        ---
+        (pathReq as String) splitBy "." reduce (key, acc = requestOriginal) -> acc[key]
+    }
+    else expected
+
+fun checkCondition(actual, operator, expected) = do {
+    var a = if (actual != null and !(actual is Array) and !(actual is Object)) trim(actual as String) else actual
+    var e = if (expected != null and !(expected is Array) and !(expected is Object)) trim(expected as String) else expected
+    ---
+    operator match {
+        case "exists" -> actual != null
+        case "not_exists" -> actual == null
+        case "max_30_days" -> do {
+            var hoy = now() as Date
+            var fechaEvaluar = actual as Date default null
+            ---
+            if (fechaEvaluar != null) abs(daysBetween(fechaEvaluar, hoy)) <= 30 else false
+        }
+        case "mayor_hoy" -> do {
+	        var hoy = now() as Date
+	        var fechaEvaluar = actual as Date default null
+	        ---
+	        // Si fechaEvaluar es mayor a hoy, daysBetween devuelve un número positivo
+	        if (fechaEvaluar != null) (fechaEvaluar > hoy) else false
+    	}
+        case ">" -> (actual default 0) > (expected default 0)
+        case "==" -> upper(a) == upper(e)
+        case "!=" -> upper(a) != upper(e)
+        case "is_not_empty" -> !isEmpty(actual)
+        else -> false
+    }
+}
+
+// --- PROCESAMIENTO ---
+var listaResultados = validaciones map (item) -> do {
+    var categoriaRequest = lower(requestOriginal.category default "")
+    var pathFinalMongo = if (item.campoResultado contains "{category}")
+                            if (categoriaRequest == "lte") 
+                                item.campoResultado replace "{category}" with "score_movil"
+                            else 
+                                item.campoResultado replace "{category}" with "score_fija"
+                         else 
+                            item.campoResultado
+
+    var isManual = (item.tipoEvaluacion default "") == "MANUAL"
+    var valorEnMongo = resolvePath(mongoResponse, pathFinalMongo default "", false)
+    var valorAComparar = if (isManual)
+                            resolvePath(requestOriginal, item.valorEsperado default "", true)
+                         else
+                            getExpectedValue(item.valorEsperado)
+
+    var cumpleCondicion = checkCondition(valorEnMongo, item.logica, valorAComparar)
+    ---
+    {
+        descripcion: item.descripcion,
+        resultado: if (cumpleCondicion) "OK" else "FALLO",
+        comparacion: if (item.logica == "exists") 
+                (if (cumpleCondicion) "El objeto existe" else "El objeto NO existe")
+             else if (item.logica == "max_30_days")
+                "$(valorEnMongo default 'null') no supera los 30 días respecto a hoy"
+             else if (item.logica == "mayor_hoy")
+                "$(valorEnMongo default 'null') la agenda no es mayor a hoy"
+             else 
+                "$(upper(valorEnMongo) default 'null') $(item.logica) $(upper(valorAComparar) default 'null')",
+        critica: (not cumpleCondicion) and (item.obligatoria default false),
+        obligatoria: item.obligatoria
+    }
+}
+
+// --- SALIDA PARA SET VARIABLE ---
+---
+ {
+ 	resultadoRegla :{
+        idRegla: vars.currentRule.idRegla default "",
+        obligatoria: vars.currentRule.obligatoria default "",
+        evaluacionDetallada: listaResultados map (r) -> (r - "critica"),
+        esValido: if (isEmpty(listaResultados)) true 
+                  else not (listaResultados.critica contains true),
+        respuestaRegla: if (not (listaResultados.critica contains true)) vars.currentRule.siSeCumple 
+                        else vars.currentRule.siFalla,
+        estadoOrdenComercial: vars.currentRule.estadoOrdenComercial,
+    },
+    resultadoSistema :{
+        llave: vars.currentRule.accion.coleccion default "",
+        idRegla: vars.currentRule.idRegla default "",
+        objeto: payload.result[0] default {}
+    }
+ }
+   ]]></ee:set-payload>
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="resultadoSapi" ><![CDATA[%dw 2.0
+output application/json
+---
+do {
+    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
+    var acumulado = vars.resultadoSapi default []
+    
+    // 2. Creamos el objeto de la regla actual
+    var resultadoActual = {
+        llave: vars.currentRule.accion.coleccion default "",
+        idRegla: vars.currentRule.idRegla default "",
+        objeto: payload.result[0] default {}
+    }
+    ---
+    // 3. Retornamos la lista con el nuevo elemento al final
+    acumulado ++ [resultadoActual]
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		
+		
+		
+		</parallel-foreach>
+		<ee:transform doc:name="Set Variables Reglas y resultadoSapi" doc:id="59708b52-3088-45de-a81a-53d307ce338c" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="reglasAcumuladas" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.reglasEvaluadas map ((item) -> item.payload.resultadoRegla)]]></ee:set-variable>
+				<ee:set-variable variableName="resultadoSapi" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.reglasEvaluadas map ((item) -> item.payload.resultadoSistema)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<!-- [STUDIO:"For Each Rule"]<foreach doc:name="For Each Rule" doc:id="e07dd5d5-68fc-412a-96da-5d030f6a9a69" collection="#[payload&#93;">
+			<choice doc:name="Choice" doc:id="ebf9c3a7-b87b-4b3d-816b-c5a60ce249ab" >
+				<when expression="#[%dw 2.0&#10;output application/json&#10;&#10;// IDs que la regla actual exige&#10;var idsRequeridos = vars.currentRule.dependencias.reglas default [&#93;&#10;&#10;// El histórico, si es la primera vez, será un array vacío&#10;var historico = vars.reglasAcumuladas default [&#93;&#10;&#10;// Buscamos en el histórico&#10;var dependenciasEncontradas = historico filter ((acumulada) -&gt; &#10;    idsRequeridos contains acumulada.idRegla&#10;)&#10;&#10;// PASO DE SEGURIDAD 1: ¿Están todas? &#10;// (Si es la primera ejecución y hay requeridas, esto dará FALSE automáticamente)&#10;var estanTodas = if (isEmpty(idsRequeridos)) true &#10;                 else sizeOf(dependenciasEncontradas) == sizeOf(idsRequeridos)&#10;&#10;// PASO DE SEGURIDAD 2: ¿Son válidas?&#10;var todasSonValidas = sizeOf(dependenciasEncontradas filter ($.esValido == false)) == 0&#10;&#10;&#45;&#45;-&#10;// Lógica para el Choice:&#10;// Si la regla dice que es dependiente, pero el historial no tiene lo que ella necesita... &#10;// devuelve TRUE (bloquea y manda al camino de error).&#10;(vars.currentRule.dependencias.esDependiente default false) and (!(estanTodas and todasSonValidas))&#93;">
+					<ee:transform doc:name="Transform Message" doc:id="ab9f54a7-ffff-4e02-a5d3-db8b1f7b0363" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="reglasAcumuladas" ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+do {
+    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
+    var acumulado = vars.reglasAcumuladas default [&#93;
+    
+    // 2. Creamos el objeto de la regla actual
+    var resultadoActual = {
+		idRegla: vars.currentRule.idRegla default "",
+		obligatoria: vars.currentRule.obligatoria default false,
+		evaluacionDetallada: [{
+			descripcion: "No ejecutada: Una o más dependencias fallaron o no existen.",
+			comparacion: "N/A",
+			resultado: "FALLO",
+			critica: "",
+			obligatoria: ""
+			
+		}&#93;,
+		esValido: false,
+		respuestaRegla: vars.currentRule.siFalla default "Rechazo por dependencia",
+		estadoOrdenComercial: vars.currentRule.estadoOrdenComercial
+	}
+    &#45;&#45;-
+    // 3. Retornamos la lista con el nuevo elemento al final
+    acumulado ++ [resultadoActual&#93;
+}&#93;&#93;></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</when>
+				<otherwise >
+									</otherwise>
+			</choice>
+			
+
+
+</foreach> [STUDIO] -->
+	</sub-flow>
+	
+	
+</mule>
