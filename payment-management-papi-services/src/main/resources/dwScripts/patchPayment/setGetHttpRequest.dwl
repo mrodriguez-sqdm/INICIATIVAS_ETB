@@ -18,7 +18,11 @@ var systemKey =
 
 var configKey = systemKey ++ "-sapi"
 
-var paymentId = if (method == "wompiWebhook")
+var paymentLinkId = payload.data.transaction.payment_link_id default null
+
+var paymentId = if (method == "wompiWebhook" and paymentLinkId != null and paymentLinkId != "")
+					{cus: paymentLinkId}
+				else if (method == "wompiWebhook")
 					{id: payload.data.transaction.reference}
 				else if (method == "payuWebhook")
 					{id: payload.transactionId}
@@ -27,13 +31,18 @@ var paymentId = if (method == "wompiWebhook")
 				else
 					{ id: attributes.uriParams.paymentId }
 
+var paymentPath = if (method == "wompiWebhook" and paymentLinkId != null and paymentLinkId != "")
+					p(configKey ++ ".patchPaymentCus.path")
+				  else
+					p(configKey ++ ".patchPayment.path")
+
 ---
 {
     "host": p(configKey ++ ".host"),
     "port": p(configKey ++ ".port"),
     "basepath": p(configKey ++ ".basepath"),
     "method": p(configKey ++ ".patchPayment.method"),
-    "path": p(configKey ++ ".patchPayment.path"),
+    "path": paymentPath,
     "headers": {
         "client_id": p("secure::app.credentials.clientId"),
         "client_secret": p("secure::app.credentials.clientSecret"),
