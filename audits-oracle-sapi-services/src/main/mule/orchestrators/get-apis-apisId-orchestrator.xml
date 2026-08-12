@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-apis-apisId-orchestrator" doc:id="49f85613-3858-491a-871b-0cb6a63a06a8" >
+		<ee:transform doc:name="SplitBy and substring http_code" doc:id="bc52e10e-bbe3-44b0-9ca1-899a328bbce1" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="codes" ><![CDATA[%dw 2.0
+output application/json
+---
+(attributes.queryParams.http_code[1 to sizeOf(attributes.queryParams.http_code)-2])splitBy(",")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[[]]" doc:name="Variable Api" doc:id="6ae3965d-e168-4e9b-919c-b68dec8ef49b" variableName="Api" />
+		<foreach doc:name="For Each" doc:id="a679e691-132c-442d-b329-96dcbb2a7551" collection="#[vars.codes]">
+			<ee:transform doc:name="Transform Message" doc:id="a070b775-bbea-4bf7-aa7a-88c00d8f0da1">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="httpCode" ><![CDATA[payload[1 to sizeOf(payload)-2]]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<choice doc:name="Choice" doc:id="fadb117c-a797-4816-9fc9-0e0907d7525e" >
+				<when expression='#[vars.uris.system as String == "LOG_TRANSACCCIONES_OM"]'>
+					<ee:transform doc:name="Transform Message" doc:id="a9fe7c90-e387-4c4a-9cf8-f5b89c77ab2d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ 
+  "fecha": vars.querys.date as Number,
+  "api_name": vars.uris.api_id,
+  "http_code": vars.httpCode
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Transform Message" doc:id="1a600cdd-bbee-4a2e-b2b6-de59f0fa8a0f" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{ 
+  "fecha": vars.querys.date as Number,
+  "apiName": vars.uris.api_id,
+  "http_code": vars.httpCode
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</otherwise>
+			</choice>
+			<flow-ref doc:name="Go to get-apis-apisId-client" doc:id="5a3ec23c-69b4-4e21-951b-59eb1d435595" name="get-apis-apisId-clientSub_Flow" />
+			<ee:transform doc:name="Transform Message" doc:id="af7f8d8b-7bab-4685-a4f5-e35369d09808" >
+				<ee:message />
+				<ee:variables >
+					<ee:set-variable variableName="Api" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.Api as Array ++ [{ "http_code": vars.httpCode as String , "date": vars.querys.date as Number,
+  "apiName": vars.uris.api_id, "Count": payload}]
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		</foreach>
+		<ee:transform doc:name="Transform Message" doc:id="c0f3fc28-e0bf-4ba3-ba10-8a15fc73c00f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[vars.Api]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
