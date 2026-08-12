@@ -1,0 +1,598 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="thirdParty-get-orchestador" doc:id="a1b2c3d4-third-party-get">
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="b2c3d4e5-tp-get-params" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="c3d4e5f6-tp-get-headers" variableName="headers" />
+		<ee:transform doc:name="Save connectionNumber" doc:id="a0b1c2d3-tp-get-cn">
+			<ee:variables>
+				<ee:set-variable variableName="connectionNumber"><![CDATA[%dw 2.0
+output application/java
+var raw = vars.parameters.connectionNumber
+---
+if (raw is Array) (raw[0] as String) else (raw as String)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Build find query" doc:id="d4e5f6a7-tp-get-query">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	query: {
+		find: p('mongo-db-sapi.collections.resource-sharing-panel') default "DASHBOARD_COMPARTE_RECURSOS",
+		filter: {
+			Numero_Conexion: vars.connectionNumber
+		},
+		limit: 10
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call dynamicQueryAutoG" doc:id="e5f6a7b8-tp-get-client" name="dynamicQueryAutoG-mongo-db-sapi" />
+		<ee:transform doc:name="Evaluate has dashboard document" doc:id="a1b2c3d4-tp-get-has-doc">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="hasEtbUser"><![CDATA[%dw 2.0
+output application/json
+var body = if (payload is String) read(payload, "application/json") else payload
+var result = body.result default []
+---
+sizeOf(result) > 0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Validate ETB user in dashboard" doc:id="d4e5f6a7-tp-get-choice">
+			<when expression="#[vars.hasEtbUser == true]">
+				<ee:transform doc:name="Map get response" doc:id="f6a7b8c9-tp-get-resp">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var body = if (payload is String) read(payload, "application/json") else payload
+var result = body.result default []
+var docs = if (result is Array) result
+	else if ((result is Object) and !isEmpty(result)) [result]
+	else []
+---
+{
+	codeResponse: body.codigo default "200",
+	responseMessage: "The request was successful",
+	thirdParty: docs map (item) -> {
+		connectionNumber: item.Numero_Conexion default "",
+		modificationDate: item.Fecha_Modificacion default null,
+		subscribers: (item.Lista_Abonados default []) map (a) -> {
+			chargingCycle: a.Ciclo_Charging default "",
+			subscriptionDate: a.Fecha_Subscripcion default null,
+			connectionNumber: a.Numero_Conexion default "",
+			product: a.Producto default null
+		}
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Not found no ETB plan" doc:id="e5f6a7b8-tp-get-404-ref" name="thirdParty-not-found-no-plan-orchestador" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+
+	<sub-flow name="thirdParty-create-orchestador" doc:id="a7b8c9d0-third-party-post">
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="c9d0e1f2-tp-post-headers" variableName="headers" />
+		<set-variable value="#[payload]" doc:name="Save body" doc:id="d0e1f2a3-tp-post-body" variableName="inputPayload" />
+		<ee:transform doc:name="Save connectionNumber" doc:id="a1b2c3d4-tp-post-cn">
+			<ee:variables>
+				<ee:set-variable variableName="connectionNumber"><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputPayload.connectionNumber as String]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Validate ETB plan" doc:id="b2c3d4e5-tp-post-val" name="thirdParty-validate-etb-plan-orchestador" />
+		<choice doc:name="Validate parent has ETB plan" doc:id="e4f5a6b7-tp-has-plan">
+			<when expression="#[vars.hasPlan == true]">
+				<ee:transform doc:name="Build find parent for duplicate check" doc:id="a1a2a3a4-tp-dup-find">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	query: {
+		find: p('mongo-db-sapi.collections.resource-sharing-panel') default "DASHBOARD_COMPARTE_RECURSOS",
+		filter: {
+			Numero_Conexion: vars.connectionNumber
+		},
+		limit: 1
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Call dynamicQueryAutoG duplicate check" doc:id="b1b2b3b4-tp-dup-client" name="dynamicQueryAutoG-mongo-db-sapi" />
+				<ee:transform doc:name="Evaluate referred already exists" doc:id="c1c2c3c4-tp-dup-eval">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="alreadyExists"><![CDATA[%dw 2.0
+output application/json
+var body = if (payload is String) read(payload, "application/json") else payload
+var result = body.result default []
+var docs = if (result is Array) result else if ((result is Object) and !isEmpty(result)) [result] else []
+var abonados = if (sizeOf(docs) > 0) (docs[0].Lista_Abonados default []) else []
+var referred = vars.inputPayload.referredConnectionNumber as String
+---
+sizeOf(abonados filter ((a) -> (a.Numero_Conexion as String) == referred)) > 0]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Validate referred not duplicated" doc:id="d1d2d3d4-tp-dup-choice">
+					<when expression="#[vars.alreadyExists == false]">
+						<ee:transform doc:name="Build ciclo charging aggregate" doc:id="e1f2a3b4-tp-agg-query">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var lineaPadre = vars.connectionNumber
+---
+{
+	query: {
+		aggregate: "MDM_SERVICIO_ACTIVO",
+		pipeline: [
+			{
+				"\$match": {
+					Numero_Conexion: lineaPadre,
+					Estado: { "\$in": ["Activo", "Suspendido"] }
+				}
+			},
+			{
+				"\$sort": {
+					Fecha_Actualizacion: -1
+				}
+			},
+			{
+				"\$limit": 1
+			},
+			{
+				"\$project": {
+					"_id": 0,
+					Numero_Conexion: 1,
+					Estado: 1,
+					Cuenta_Facturacion: 1
+				}
+			},
+			{
+				"\$lookup": {
+					from: "MDM_CUENTA_FACTURACION",
+					localField: "Cuenta_Facturacion",
+					foreignField: "Cuenta_Facturacion",
+					pipeline: [
+						{
+							"\$match": {
+								Estado: { "\$in": ["A", "ACTIVO"] }
+							}
+						},
+						{
+							"\$sort": {
+								Fecha_Modificacion: -1
+							}
+						},
+						{
+							"\$project": {
+								"_id": 0,
+								Ciclo_Facturacion: 1
+							}
+						},
+						{
+							"\$limit": 1
+						}
+					],
+					"as": "facturacion"
+				}
+			},
+			{
+				"\$set": {
+					ciclo_facturacion_numero: {
+						"\$convert": {
+							"input": {
+								"\$arrayElemAt": ["\$facturacion.Ciclo_Facturacion", 0]
+							},
+							to: "int",
+							onError: null,
+							onNull: null
+						}
+					}
+				}
+			},
+			{
+				"\$lookup": {
+					from: "PAR_CICLO_FACTURACION",
+					localField: "ciclo_facturacion_numero",
+					foreignField: "Ciclo_Facturacion",
+					pipeline: [
+						{
+							"\$project": {
+								"_id": 0,
+								PAM_Schedule: 1
+							}
+						},
+						{
+							"\$limit": 1
+						}
+					],
+					"as": "ciclo_estandar"
+				}
+			},
+			{
+				"\$lookup": {
+					from: "PAR_CICLO_FACTURACION_NEGOCIOS",
+					localField: "ciclo_facturacion_numero",
+					foreignField: "Ciclo_Facturacion",
+					pipeline: [
+						{
+							"\$project": {
+								"_id": 0,
+								PAM_Schedule: 1
+							}
+						},
+						{
+							"\$limit": 1
+						}
+					],
+					"as": "ciclo_negocios"
+				}
+			},
+			{
+				"\$lookup": {
+					from: "PAR_CICLO_FACTURACION_FIJO_MOVIL",
+					localField: "ciclo_facturacion_numero",
+					foreignField: "Ciclo_Facturacion",
+					pipeline: [
+						{
+							"\$project": {
+								"_id": 0,
+								PAM_Schedule: 1
+							}
+						},
+						{
+							"\$limit": 1
+						}
+					],
+					"as": "ciclo_fijo_movil"
+				}
+			},
+			{
+				"\$set": {
+					Dia_Recarga_Original: {
+						"\$convert": {
+							"input": {
+								"\$ifNull": [
+									{ "\$arrayElemAt": ["\$ciclo_estandar.PAM_Schedule", 0] },
+									{
+										"\$ifNull": [
+											{ "\$arrayElemAt": ["\$ciclo_negocios.PAM_Schedule", 0] },
+											{ "\$arrayElemAt": ["\$ciclo_fijo_movil.PAM_Schedule", 0] }
+										]
+									}
+								]
+							},
+							to: "int",
+							onError: null,
+							onNull: null
+						}
+					}
+				}
+			},
+			{
+				"\$set": {
+					Dia_Recarga_Recursos: {
+						"\$cond": [
+							{ "\$eq": ["\$Dia_Recarga_Original", null] },
+							null,
+							{
+								"\$let": {
+									vars: {
+										residuo: { "\$mod": ["\$Dia_Recarga_Original", 5] }
+									},
+									in: {
+										"\$let": {
+											vars: {
+												diaMasCercano: {
+													"\$switch": {
+														branches: [
+															{
+																"case": { "\$eq": ["\$\$residuo", 0] },
+																then: "\$Dia_Recarga_Original"
+															},
+															{
+																"case": { "\$lte": ["\$\$residuo", 2] },
+																then: { "\$subtract": ["\$Dia_Recarga_Original", "\$\$residuo"] }
+															}
+														],
+														"default": {
+															"\$add": [
+																"\$Dia_Recarga_Original",
+																{ "\$subtract": [5, "\$\$residuo"] }
+															]
+														}
+													}
+												}
+											},
+											in: {
+												"\$cond": [
+													{ "\$lt": ["\$\$diaMasCercano", 5] },
+													5,
+													{
+														"\$cond": [
+															{ "\$gt": ["\$\$diaMasCercano", 30] },
+															30,
+															"\$\$diaMasCercano"
+														]
+													}
+												]
+											}
+										}
+									}
+								}
+							}
+						]
+					}
+				}
+			},
+			{
+				"\$project": {
+					"_id": 0,
+					Linea: "\$Numero_Conexion",
+					Estado_Servicio: "\$Estado",
+					Cuenta_Facturacion: 1,
+					Dia_Recarga_Original: 1,
+					Dia_Recarga_Recursos: 1
+				}
+			}
+		],
+		cursor: {}
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Call dynamicQuery MDM" doc:id="f2a3b4c5-tp-agg-client" name="dynamicQuery-mongo-db-sapi" />
+				<ee:transform doc:name="Save Dia_Recarga_Recursos" doc:id="a3b4c5d6-tp-save-ciclo">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="cicloCharging"><![CDATA[%dw 2.0
+output application/java
+var body = if (payload is String) read(payload, "application/json") else payload
+var result = body.result default []
+var docs = if (result is Array) result else if (result is Object and !isEmpty(result)) [result] else []
+var dia = if (sizeOf(docs) > 0) docs[0].Dia_Recarga_Recursos else null
+---
+if (dia != null) (dia as String) else null]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Build push query" doc:id="b4c5d6e7-tp-post-query">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var nowDt = (now() >> "America/Bogota") as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX" }
+---
+{
+	query: {
+		update: p('mongo-db-sapi.collections.resource-sharing-panel') default "DASHBOARD_COMPARTE_RECURSOS",
+		updates: [{
+			q: {
+				Numero_Conexion: vars.inputPayload.connectionNumber,
+				Lista_Abonados: {
+					"\$not": {
+						"\$elemMatch": {
+							Numero_Conexion: vars.inputPayload.referredConnectionNumber
+						}
+					}
+				}
+			},
+			u: {
+				"\$push": {
+					Lista_Abonados: {
+						Ciclo_Charging: vars.cicloCharging,
+						Fecha_Subscripcion: { "\$date": nowDt },
+						Numero_Conexion: vars.inputPayload.referredConnectionNumber,
+						Producto: null
+					}
+				},
+				"\$set": {
+					Fecha_Modificacion: { "\$date": nowDt }
+				}
+			},
+			multi: false
+		}]
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Call dynamicQueryAutoG" doc:id="c5d6e7f8-tp-post-client" name="dynamicQueryAutoG-mongo-db-sapi" />
+				<ee:transform doc:name="Map create response" doc:id="d6e7f8a9-tp-post-resp">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var nowDt = (now() >> "America/Bogota") as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX" }
+var padre = vars.inputPayload.connectionNumber
+var abonado = vars.inputPayload.referredConnectionNumber
+---
+{
+	codeResponse: payload.codigo default "200",
+	responseMessage: "The request was successful",
+	thirdParty: {
+		connectionNumber: padre,
+		subscriber: {
+			chargingCycle: vars.cicloCharging,
+			subscriptionDate: nowDt,
+			connectionNumber: abonado,
+			product: null
+		}
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</when>
+					<otherwise>
+						<set-variable value="#[409]" doc:name="httpStatus 409" doc:id="e1e2e3e4-tp-dup-409" variableName="httpStatus" />
+						<ee:transform doc:name="Referred already exists" doc:id="f1f2f3f4-tp-dup-err">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var padre = vars.inputPayload.connectionNumber default ""
+var abonado = vars.inputPayload.referredConnectionNumber default ""
+---
+{
+	status: "409",
+	code: "HTTP:CONFLICT",
+	message: "Referred connectionNumber " ++ abonado ++ " already exists for parent " ++ padre,
+	messageServer: "",
+	cause: [{
+		origin: "business-papi-services-v2",
+		message: "Subscriber already registered in Lista_Abonados"
+	}]
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Not found no ETB plan" doc:id="f5a6b7c8-tp-post-404-ref" name="thirdParty-not-found-no-plan-orchestador" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+
+	<sub-flow name="thirdParty-delete-orchestador" doc:id="b4c5d6e7-third-party-del">
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="c5d6e7f8-tp-del-params" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:id="d6e7f8a9-tp-del-headers" doc:name="Save headers" variableName="headers" />
+		<ee:transform doc:name="Build pull query" doc:id="e7f8a9b0-tp-del-query">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var nowDt = (now() >> "America/Bogota") as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX" }
+var rawPadre = vars.parameters.connectionNumber default vars.parameters.NUMERO_CONEXION
+var rawAbonado = vars.parameters.referredConnectionNumber default vars.parameters.NUMERO_CONEXION_ABONADO
+var padre = if (rawPadre is Array) (rawPadre[0] as String) else (rawPadre as String)
+var abonado = if (rawAbonado is Array) (rawAbonado[0] as String) else (rawAbonado as String)
+---
+{
+	query: {
+		update: p('mongo-db-sapi.collections.resource-sharing-panel') default "DASHBOARD_COMPARTE_RECURSOS",
+		updates: [{
+			q: {
+				Numero_Conexion: padre
+			},
+			u: {
+				"\$pull": {
+					Lista_Abonados: {
+						Numero_Conexion: abonado
+					}
+				},
+				"\$set": {
+					Fecha_Modificacion: { "\$date": nowDt }
+				}
+			},
+			multi: false
+		}]
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call dynamicQueryAutoG" doc:id="f8a9b0c1-tp-del-client" name="dynamicQueryAutoG-mongo-db-sapi" />
+		<ee:transform doc:name="Map delete response" doc:id="a9b0c1d2-tp-del-resp">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var body = if (payload is String) read(payload, "application/json") else payload
+var rawPadre = vars.parameters.connectionNumber
+var rawAbonado = vars.parameters.referredConnectionNumber
+var padre = if (rawPadre is Array) (rawPadre[0] as String) else (rawPadre as String)
+var abonado = if (rawAbonado is Array) (rawAbonado[0] as String) else (rawAbonado as String)
+---
+{
+	codeResponse: body.codigo default "200",
+	responseMessage: "The request was successful",
+	thirdParty: {
+		connectionNumber: padre,
+		subscriber: {
+			connectionNumber: abonado
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+
+	<!-- Validación reutilizable: padre con servicio Activo/Suspendido en MDM -->
+	<sub-flow name="thirdParty-validate-etb-plan-orchestador" doc:id="a1a2a3a4-tp-validate-plan">
+		<ee:transform doc:name="Build MDM plan validation query" doc:id="b1b2b3b4-tp-val-query">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	query: {
+		find: "MDM_SERVICIO_ACTIVO",
+		filter: {
+			Numero_Conexion: vars.connectionNumber,
+			Estado: { "\$in": ["Activo", "Suspendido"] }
+		},
+		limit: 1
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call dynamicQuery MDM plan" doc:id="c1c2c3c4-tp-val-mdm" name="dynamicQuery-mongo-db-sapi" />
+		<ee:transform doc:name="Evaluate hasPlan" doc:id="d1d2d3d4-tp-val-has-plan">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="hasPlan"><![CDATA[%dw 2.0
+output application/json
+var result = payload.result
+---
+sizeOf(result) > 0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+
+	<sub-flow name="thirdParty-not-found-no-plan-orchestador" doc:id="e1e2e3e4-tp-not-found">
+		<set-variable value="#[404]" doc:name="httpStatus 404" doc:id="f1f2f3f4-tp-404-status" variableName="httpStatus" />
+		<ee:transform doc:name="Not found - no ETB plan" doc:id="a2a3a4a5-tp-404-body">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 404,
+	code: "NOT_FOUND",
+	message: {
+		message: "No ETB plan found for connectionNumber " ++ (vars.connectionNumber default "")
+	},
+	messageServer: "",
+	cause: [{
+		origin: "business-papi-services-v2",
+		message: "Parent connection has no active or suspended service plan in ETB"
+	}]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
