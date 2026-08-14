@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="service-papi-services-v2-main" >
+		<http:listener doc:name="Listener" config-ref="service-papi-services-v2-httpListenerConfig" path="/v2/*" >
+			<http:response statusCode="#[vars.httpStatus default 200]" >
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="#[vars.httpStatus default 500]" >
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<flow-ref doc:name="Call initial Logger" name="initial-loggin-Sub_Flow" />
+		<apikit:router config-ref="service-papi-services-v2-config" doc:name="APIkit Router" />
+		<async doc:name="Async" >
+			<flow-ref doc:name="Call logger" name="loggin-client-call" />
+		</async>
+		<error-handler ref="common-error-handler-v2" />
+	</flow>
+	<flow name="service-papi-services-v2-console" >
+		<http:listener doc:name="Listener" config-ref="service-papi-services-v2-httpListenerConfig" path="/console/*" >
+			<http:response statusCode="#[vars.httpStatus default 200]" >
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="#[vars.httpStatus default 500]" >
+				<http:body ><![CDATA[#[payload]]]></http:body>
+				<http:headers ><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<apikit:console config-ref="service-papi-services-v2-config" doc:name="APIkit Console" />
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" type="APIKIT:NOT_FOUND" >
+				<ee:transform doc:name="Transform Message" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="get:\service:service-papi-services-v2-config" >
+		<flow-ref doc:name="Flow Reference" name="service-get-orchestadorSub_Flow"/>
+	</flow>
+	<flow name="get:\product:service-papi-services-v2-config" >
+		<flow-ref doc:name="Product consultation orchestrator" name="product-consultation-orchestratorSub_Flow"/>
+	</flow>
+	<flow name="post:\service:service-papi-services-v2-config" >
+		<set-variable value="#[payload]" doc:name="Set inputPayload" variableName="inputPayload" />
+		<flow-ref doc:name="Go to product orchestrator" name="product-orchestratorSub_Flow" />
+		<ee:transform doc:name="Normalize response (code/description)">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: payload.code default payload.codigo default payload.status default 0,
+  description: payload.description default payload.descripcion default (if (payload.message is Object) (payload.message as Object).message default "" else payload.message as String default "")
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="post:\order:application\json:service-papi-services-v2-config" >
+		<set-variable value="#[payload]" doc:name="Set inputPayload crear orden" variableName="inputPayload" />
+		<flow-ref doc:name="Crear orden orchestrator" name="order-create-orchestratorSub_Flow" />
+		<ee:transform doc:name="Normalize response (code/description)">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: payload.code default payload.codigo default payload.status default 0,
+  description: payload.description default payload.descripcion default (if (payload.message is Object) (payload.message as Object).message default "" else payload.message as String default ""),
+  (orderId: payload.orderId) if (payload.orderId != null),
+  (subscriptionId: payload.subscriptionId) if (payload.subscriptionId != null)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="post:\customer-products\(id)\service-orders:application\json:service-papi-services-v2-config" doc:id="413611c6-f2fa-4907-84b8-b4dd27714e48" >
+		<ee:transform doc:name="Transform Message" doc:id="7c05566e-7e5c-489e-8488-273d6d4a2039" >
+			<ee:variables >
+				<ee:set-variable variableName="id" ><![CDATA[attributes.uriParams.'id']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="cd7a9349-eba6-43c7-be5a-fb0a44a66077">
+			<when expression="#[payload.action == 'cancelCustomer']">
+				<flow-ref doc:name="Flow Reference" doc:id="9bd711e6-a6c3-4e3b-88e1-7751f47a3991" name="directv-cancel-customerProduct-orchestratorSub_Flow"/>
+			</when>
+			<when expression="payload.action == 'reconnectCustomer'">
+				<flow-ref doc:name="Flow Reference" doc:id="53c45819-e49c-4f1a-bc6d-0718217240c6" name="directv-reconection-customerProduct-orchestratorSub_Flow"/>
+			</when>
+			<when expression="#[payload.action == 'cancelAmazon']">
+				<flow-ref doc:name="Flow Reference" doc:id="3f061784-8df1-435e-8022-37f8f9c3f2ca" name="directv-cancel-Amazon-orchestratorSub_Flow"/>
+			</when>
+			<when expression="#[payload.action == 'reconnectAmazon']">
+				<flow-ref doc:name="Flow Reference" doc:id="5c3e294e-941d-4d08-9b55-b65316b72a7c" name="directv-reconection-Amazon-orchestratorSub_Flow"/>
+			</when>
+			<when expression="#[payload.action == 'activation']" >
+				<flow-ref doc:name="call orchestrator directv" doc:id="eea2783c-0cef-40a5-9596-7d1970f7b07b" name="directv-activation-orchestratorSub_Flow"/>
+			</when>
+		</choice>
+	</flow>
+	<flow name="get:\customer-products\(id)\service:service-papi-services-v2-config" doc:id="efa6d2ca-de9c-45f3-aeb2-4c4b48f9e35d" >
+		<flow-ref doc:name="Flow Reference" doc:id="2c9261d7-750b-47e2-b3d7-df0bc04485b8" name="directv-get-customer-orchestratorSub_Flow"/>
+	</flow>
+	<flow name="delete:\order:application\json:service-papi-services-v2-config" >
+		<set-variable value="#[payload]" doc:name="Set inputPayload eliminar orden" variableName="inputPayload" />
+		<flow-ref doc:name="Eliminar orden orchestrator" name="order-delete-orchestratorSub_Flow" />
+	</flow>
+	<flow name="post:\customer-products\(id)\service\reprovision:application\json:service-papi-services-v2-config" doc:id="f8dab9b5-e839-46ca-877a-cee3e794fcd1" >
+		<flow-ref doc:name="Flow Reference" doc:id="c7258a9f-64d7-4478-934c-8856daec1354" name="directv-reprovision-orchestratorSub_Flow" />
+	</flow>
+</mule>
