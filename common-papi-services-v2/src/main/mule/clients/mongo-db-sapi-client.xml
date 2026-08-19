@@ -1,122 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
 	xmlns="http://www.mulesoft.org/schema/mule/core"
 	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="
-http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
-	<sub-flow name="get-bot-system-mongo-db-sapi-client-sub-flow"
-		doc:id="57b00b5b-a978-47ab-a4b1-279908a6c8af">
-		<http:request
-			method="${mongoDbSapi.botSystem.get.method}"
-			doc:name="GET /bots/systems"
-			doc:id="8ab57522-be62-43bf-b9d1-9417ff3fbb1c"
-			config-ref="HTTP_Mongo_SAPI_Request_Config"
-			path="${mongoDbSapi.botSystem.path}" sendCorrelationId="AUTO">
-			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
-			<http:query-params><![CDATA[#[output application/java
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="mongo-db-sapi-common-request-cached"
+		doc:id="44047c2a-b91e-4683-b829-25dccfd07bee">
+		<set-variable value='#["HIT"]' doc:name="HIT"
+			doc:id="a20c834e-07d3-4f9d-8ad0-9d41a70ea33f" variableName="cache" />
+		<ee:cache doc:name="Cache"
+			doc:id="09156d10-bc11-482b-a055-349c873ec7e2"
+			cachingStrategy-ref="mongoSapiCachingStrategy">
+			<http:request method="#[payload.method]"
+				doc:name="Mongo DB SAPI Cached Request"
+				doc:id="fe8806c7-1299-4a96-ad09-7d32d60c3b41"
+				config-ref="client_sapi_config" path="#[payload.path]"
+				sendCorrelationId="AUTO">
+				<http:body><![CDATA[#[payload.body]]]></http:body>
+				<http:headers><![CDATA[#[payload.headers default {}]]]></http:headers>
+				<http:uri-params><![CDATA[#[payload.uriParameters default {}]]]></http:uri-params>
+				<http:query-params><![CDATA[#[payload.queryParameters default {}]]]></http:query-params>
+			</http:request>
+			<set-variable value='#["MISSED"]' doc:name="MISSED"
+				doc:id="73b24280-b801-4d78-9430-ebccb90d88da" variableName="cache" />
+		</ee:cache>
+		<ee:transform doc:name="set cached payload"
+			doc:id="51c002ba-b069-4204-9df4-791d4a7fd863">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
 ---
 {
-	"systemId": vars.systemId
-}]]]></http:query-params>
-		</http:request>
+	"cache": vars.cache 
+} ++ payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 	</sub-flow>
-	<sub-flow name="get-bot-channel-mongo-db-sapi-client-sub-flow"
-		doc:id="c3d66ee4-ef50-40fe-bad2-933dff6849ad">
-		<http:request
-			method="${mongoDbSapi.botChannel.get.method}"
-			doc:name="GET /bots/channels"
-			doc:id="60403983-0672-4598-a0df-83ccb75e3745"
-			config-ref="HTTP_Mongo_SAPI_Request_Config"
-			path="${mongoDbSapi.botChannel.path}" sendCorrelationId="AUTO">
-			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
-			<http:query-params><![CDATA[#[output application/java
----
-{
-	"channelId": vars.channelId
-}]]]></http:query-params>
-		</http:request>
-	</sub-flow>
-	<sub-flow name="get-service-mongo-db-sapi-client-sub-flow"
-		doc:id="bdcb1d39-5d9b-41e6-9845-5a98b7b36da3">
-		<http:request method="${mongoDbSapi.service.get.method}"
-			doc:name="GET /service" doc:id="d9ac637f-0fae-4639-806d-e117adc73e98"
-			config-ref="HTTP_Mongo_SAPI_Request_Config"
-			path="${mongoDbSapi.service.path}" sendCorrelationId="AUTO">
-			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
-			<http:query-params><![CDATA[#[vars.service]]]></http:query-params>
-		</http:request>
-	</sub-flow>
-	<sub-flow
-		name="get-serviceActive-mongo-db-sapi-client-sub-flow"
-		doc:id="93c1a324-d505-4105-bd9d-bd01db8ffc6c">
-		<http:request
-			method="${mongoDbSapi.serviceActive.get.method}"
-			doc:name="GET /serviceActive"
-			doc:id="68a56839-5d12-446a-a7f7-1ac7277b278e"
-			config-ref="HTTP_Mongo_SAPI_Request_Config"
-			path="${mongoDbSapi.serviceActive.path}" sendCorrelationId="AUTO">
-			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
-			<http:query-params><![CDATA[#[vars.serviceActive]]]></http:query-params>
-		</http:request>
-	</sub-flow>
-	<sub-flow name="get-customer-mongo-db-sapi-client-sub-flow"
-		doc:id="351de556-1fb2-48a3-bf91-abc3208f05f8">
-		<http:request method="${mongoDbSapi.customer.get.method}"
-			doc:name="GET /customer"
-			doc:id="cbe60db0-e7d6-43ea-9005-18b4dff855b0"
-			config-ref="HTTP_Mongo_SAPI_Request_Config"
-			path="${mongoDbSapi.customer.path}" sendCorrelationId="AUTO">
-			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
-			<http:query-params><![CDATA[#[vars.customer]]]></http:query-params>
-		</http:request>
-	</sub-flow>
-	<sub-flow
-		name="get-pqr-category-mongo-db-sapi-client-sub-flow"
-		doc:id="17a0ce80-e684-4e31-8e10-fda02a3d1d14">
-		<http:request
-			method="${mongoDbSapi.pqrCategory.get.method}"
-			doc:name="GET /pqrs/categories"
-			doc:id="b0ee60eb-91b9-4f24-a1bb-cff68376dc51"
-			config-ref="HTTP_Mongo_SAPI_Request_Config"
-			path="${mongoDbSapi.pqrCategory.path}" sendCorrelationId="AUTO">
-			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
-			<http:query-params><![CDATA[#[vars.pqrCategory default {}]]]></http:query-params>
-		</http:request>
-	</sub-flow>
-	<sub-flow
-		name="get-pqr-duplicate-mongo-db-sapi-client-sub-flow"
-		doc:id="a13560a3-0163-4ec4-9091-9d6be5366fdc">
-		<http:request
-			method="${mongoDbSapi.pqrDuplicate.get.method}"
-			doc:name="GET /pqrs/duplicates"
-			doc:id="9a86703b-aae0-42ab-8ff7-125cc6193050"
-			config-ref="HTTP_Mongo_SAPI_Request_Config"
-			path="${mongoDbSapi.pqrDuplicate.path}" sendCorrelationId="AUTO">
-			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
-			<http:query-params><![CDATA[#[vars.pqrDuplicate default {}]]]></http:query-params>
-		</http:request>
-	</sub-flow>
-	<sub-flow name="get-pqr-parent-mongo-db-sapi-client-sub-flow"
-		doc:id="0e66e007-1b59-49eb-bfd0-c9bae03f509f">
-		<http:request
-			method="${mongoDbSapi.pqrParent.get.method}"
-			doc:name="GET /pqrs/parents"
-			doc:id="65b66924-d3a4-4bcb-8193-d1954de07d85"
-			config-ref="HTTP_Mongo_SAPI_Request_Config"
-			path="${mongoDbSapi.pqrParent.path}" sendCorrelationId="AUTO">
-			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
-			<http:query-params><![CDATA[#[vars.pqrParent default {}]]]></http:query-params>
-		</http:request>
-	</sub-flow>
-	<sub-flow name="post-pqr-mongo-db-sapi-client-sub-flow"
-		doc:id="2db5afba-c5b3-47da-8132-68e07c63a713">
-		<http:request method="${mongoDbSapi.pqr.post.method}"
-			doc:name="POST /pqrs" doc:id="f4ae23e5-3f9e-400d-9dd3-392d282463a5"
-			config-ref="HTTP_Mongo_SAPI_Request_Config"
-			path="${mongoDbSapi.pqr.path}" sendCorrelationId="AUTO">
-			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
+	<sub-flow name="mongo-db-sapi-common-request"
+		doc:id="1010557f-e85c-4a12-8bb9-69c23b5cac29">
+		<http:request method="#[payload.method]"
+			doc:name="Mongo DB SAPI Request"
+			doc:id="e70d01fe-be29-46b1-978a-8338d2208937"
+			config-ref="client_sapi_config" path="#[payload.path]"
+			sendCorrelationId="AUTO">
+			<http:body><![CDATA[#[payload.body]]]></http:body>
+			<http:headers><![CDATA[#[payload.headers default {}]]]></http:headers>
+			<http:uri-params><![CDATA[#[payload.uriParameters default {}]]]></http:uri-params>
+			<http:query-params><![CDATA[#[payload.queryParameters default {}]]]></http:query-params>
 		</http:request>
 	</sub-flow>
 	<sub-flow
