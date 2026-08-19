@@ -82,4 +82,91 @@ fun toText(value) =
 		</ee:transform>
 		<flow-ref doc:name="post_log_audits-oracle-sapi-clientSub_Flow" doc:id="91ffa879-d8bd-48df-b351-43fcb3fd6c71" name="post_log_audits-oracle-sapi-clientSub_Flow"/>
 	</sub-flow>
+	<sub-flow name="insert-error-auditSub_Flow" doc:id="25e43db0-d551-45db-98b1-313451fd54e8" >
+		<ee:transform doc:name="Transform Message" doc:id="b0c9a654-782a-4420-9c30-376809491e3c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+
+import * from dw::Runtime
+
+output application/json
+
+var colombiaNow = now() >> "America/Bogota"
+
+var currentTimeMs = now() as Number {unit: "milliseconds"}
+
+var startExecutionTimeMs =
+    vars.auditContext.startTimeMs default currentTimeMs
+
+fun toText(value) =
+    if (value == null)
+        null
+    else if (value is String)
+        value
+    else
+        try(
+            () -> write(
+                value,
+                (payload.^mediaType as String)
+                    default "application/json"
+            )
+        )
+        orElse (() -> value as String)
+
+---
+
+{
+    PAYLOAD:
+        toText(
+            vars.auditContext.payloadOut
+                default payload
+        ),
+
+    FECHA:
+        colombiaNow as String {
+            format: "yyyy-MM-dd'T'HH:mm:ss.SSS"
+        },
+
+    ATTRIBUTES:
+        if (vars.auditContext.attributes != null)
+            write(
+                vars.auditContext.attributes,
+                "application/json"
+            )
+        else
+            null,
+
+    HTTPCODE:
+        vars.auditContext.httpCode
+            default attributes.statusCode
+            default 0,
+
+    HOST:
+        vars.auditContext.host default null,
+
+    CORRELATIONID:
+        vars.auditContext.correlationId default null,
+
+    APINAME:
+        vars.auditContext.apiName default null,
+
+    PROCESSNAME:
+        vars.auditContext.processName default null,
+
+    PATH:
+        vars.auditContext.path default null,
+
+    HTTPMETHOD:
+        vars.auditContext.httpMethod default null,
+
+    TIEMPO_RESPUESTA_MS:
+        currentTimeMs - startExecutionTimeMs,
+
+    IP:
+        vars.auditContext.ip default null
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post_log_audits-oracle-sapi-clientSub_Flow" doc:id="2840ba53-75ef-4e0e-94d9-e60dcd5b0ff6" name="post_log_audits-oracle-sapi-clientSub_Flow" />
+	</sub-flow>
 </mule>
