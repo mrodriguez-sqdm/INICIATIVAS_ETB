@@ -132,10 +132,17 @@ var abonados = if (sizeOf(docs) > 0) (docs[0].Lista_Abonados default []) else []
 var referred = vars.inputPayload.referredConnectionNumber as String
 ---
 sizeOf(abonados filter ((a) -> (a.Numero_Conexion as String) == referred)) > 0]]></ee:set-variable>
+						<ee:set-variable variableName="abonadosCount"><![CDATA[%dw 2.0
+output application/json
+---
+sizeOf(payload.result[0].Lista_Abonados default [])]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
 				<choice doc:name="Validate referred not duplicated" doc:id="d1d2d3d4-tp-dup-choice">
 					<when expression="#[vars.alreadyExists == false]">
+						<flow-ref doc:name="Get pasaGigas quantity" doc:id="a4b5c6d7-tp-pasa-qty-ref" name="thirdParty-get-pasagigas-quantity" />
+						<choice doc:name="Validate pasaGigas limit" doc:id="b5c6d7e8-tp-pasa-limit">
+							<when expression="#[(vars.abonadosCount default 0) as Number &lt; (vars.pasaGigasMax default 0) as Number]">
 						<ee:transform doc:name="Build ciclo charging aggregate" doc:id="e1f2a3b4-tp-agg-query">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
@@ -373,12 +380,8 @@ payload]]></ee:set-payload>
 					<ee:variables>
 						<ee:set-variable variableName="cicloCharging"><![CDATA[%dw 2.0
 output application/java
-var body = if (payload is String) read(payload, "application/json") else payload
-var result = body.result default []
-var docs = if (result is Array) result else if (result is Object and !isEmpty(result)) [result] else []
-var dia = if (sizeOf(docs) > 0) docs[0].Dia_Recarga_Recursos else null
 ---
-if (dia != null) (dia as String) else null]]></ee:set-variable>
+payload.result[0].Dia_Recarga_Recursos as String default null]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
 				<ee:transform doc:name="Build push query" doc:id="b4c5d6e7-tp-post-query">
@@ -392,16 +395,13 @@ var nowDt = (now() >> "America/Bogota") as String { format: "yyyy-MM-dd'T'HH:mm:
 		update: p('mongo-db-sapi.collections.resource-sharing-panel') default "DASHBOARD_COMPARTE_RECURSOS",
 		updates: [{
 			q: {
-				Numero_Conexion: vars.inputPayload.connectionNumber,
-				Lista_Abonados: {
-					"\$not": {
-						"\$elemMatch": {
-							Numero_Conexion: vars.inputPayload.referredConnectionNumber
-						}
-					}
-				}
+				Numero_Conexion: vars.inputPayload.connectionNumber
 			},
 			u: {
+				"\$set": {
+					Numero_Conexion: vars.inputPayload.connectionNumber,
+					Fecha_Modificacion: { "\$date": nowDt }
+				},
 				"\$push": {
 					Lista_Abonados: {
 						Ciclo_Charging: vars.cicloCharging,
@@ -409,11 +409,9 @@ var nowDt = (now() >> "America/Bogota") as String { format: "yyyy-MM-dd'T'HH:mm:
 						Numero_Conexion: vars.inputPayload.referredConnectionNumber,
 						Producto: null
 					}
-				},
-				"\$set": {
-					Fecha_Modificacion: { "\$date": nowDt }
 				}
 			},
+			upsert: true,
 			multi: false
 		}]
 	}
@@ -444,6 +442,30 @@ var abonado = vars.inputPayload.referredConnectionNumber
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
+							</when>
+							<otherwise>
+								<set-variable value="#[409]" doc:name="httpStatus 409 limit" doc:id="c6d7e8f9-tp-pasa-409" variableName="httpStatus" />
+								<ee:transform doc:name="PasaGigas limit reached" doc:id="d7e8f9a0-tp-pasa-409-body">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var padre = vars.inputPayload.connectionNumber default ""
+var maxPermitidos = vars.pasaGigasMax default 0
+---
+{
+	status: "409",
+	code: "HTTP:CONFLICT",
+	message: "Parent " ++ padre ++ " already has the maximum referred subscribers. Allowed: " ++ (maxPermitidos as String),
+	messageServer: "",
+	cause: [{
+		origin: "business-papi-services-v2",
+		message: "pasaGigasBeneficiaryQuantity limit reached"
+	}]
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</otherwise>
+						</choice>
 					</when>
 					<otherwise>
 						<set-variable value="#[409]" doc:name="httpStatus 409" doc:id="e1e2e3e4-tp-dup-409" variableName="httpStatus" />
@@ -594,5 +616,162 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+	</sub-flow>
+
+	<sub-flow name="thirdParty-get-pasagigas-quantity" doc:id="e8f9a0b1-tp-pasa-qty">
+		<try doc:name="Try MDM pasaGigas" doc:id="f9a0b1c2-tp-pasa-mdm-try">
+			<ee:transform doc:name="Build pasaGigas MDM query" doc:id="a0b1c2d3-tp-pasa-mdm-q">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	query: {
+		aggregate: "MDM_SERVICIO_ACTIVO",
+		pipeline: [
+			{
+				"\$match": {
+					Numero_Conexion: vars.connectionNumber
+				}
+			},
+			{
+				"\$set": {
+					id_catalogo: {
+						"\$arrayElemAt": ["\$Bundles.id_catalogo", 0]
+					}
+				}
+			},
+			{
+				"\$set": {
+					numero_plan: {
+						"\$convert": {
+							"input": "\$id_catalogo",
+							"to": "int",
+							onError: null,
+							onNull: null
+						}
+					}
+				}
+			},
+			{
+				"\$lookup": {
+					"from": "CMP_OFERTA_PRODUCTO",
+					"let": {
+						idPlan: "\$numero_plan"
+					},
+					pipeline: [
+						{
+							"\$match": {
+								"\$expr": {
+									"\$and": [
+										{ "\$eq": ["\$num_agrupacion", "\$\$idPlan"] },
+										{ "\$eq": ["\$secuencia", 0] },
+										{ "\$eq": ["\$estado", "Activo"] }
+									]
+								}
+							}
+						},
+						{
+							"\$set": {
+								pasagigas: {
+									"\$arrayElemAt": [{
+										"\$filter": {
+											"input": { "\$ifNull": ["\$parametros_bundle", []] },
+											"as": "p",
+											"cond": { "\$eq": ["\$\$p.parametro", "LINEAS PASAGIGAS"] }
+										}
+									}, 0]
+								}
+							}
+						},
+						{
+							"\$project": {
+								"_id": 0,
+								cantidad: {
+									"\$convert": {
+										"input": "\$pasagigas.valor",
+										"to": "int",
+										onError: 0,
+										onNull: 0
+									}
+								}
+							}
+						}
+					],
+					"as": "beneficio"
+				}
+			},
+			{
+				"\$project": {
+					"_id": 0,
+					Linea: "\$Numero_Conexion",
+					Cantidad_Lineas_Permitidas: {
+						"\$ifNull": [{ "\$arrayElemAt": ["\$beneficio.cantidad", 0] }, 0]
+					}
+				}
+			}
+		],
+		cursor: {}
+	}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call dynamicQuery MDM" doc:id="b1c2d3e4-tp-pasa-mdm-call" name="dynamicQuery-mongo-db-sapi" />
+			<ee:transform doc:name="Save MDM pasaGigas docs" doc:id="c2d3e4f5-tp-pasa-mdm-save">
+				<ee:variables>
+					<ee:set-variable variableName="pasaGigasMdmDocs"><![CDATA[%dw 2.0
+output application/json
+---
+payload.result default []]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue MDM" doc:id="d3e4f5a6-tp-pasa-mdm-err" type="ANY">
+					<set-variable value="#[[]]" doc:name="Empty MDM docs" doc:id="e4f5a6b7-tp-pasa-mdm-empty" variableName="pasaGigasMdmDocs" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="MDM or BOT_PARAMETRIZATION" doc:id="f5a6b7c8-tp-pasa-src">
+			<when expression="#[!isEmpty(vars.pasaGigasMdmDocs default [])]">
+				<set-variable value="#[output application/json &#10;--- &#10;(vars.pasaGigasMdmDocs[0].Cantidad_Lineas_Permitidas default 0) as Number default 0]" doc:name="Save pasaGigasMax from MDM" doc:id="a6b7c8d9-tp-pasa-max-mdm" variableName="pasaGigasMax" />
+			</when>
+			<otherwise>
+				<try doc:name="Try BOT_PARAMETRIZATION" doc:id="b7c8d9e0-tp-pasa-bot-try">
+					<ee:transform doc:name="Build BOT_PARAMETRIZATION query" doc:id="c8d9e0f1-tp-pasa-bot-q">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	query: {
+		find: "BOT_PARAMETRIZATION",
+		filter: {
+			Code: "PARAMETROS_FUNCIONALES_PASAGIGAS"
+		},
+		sort: {
+			"_id": -1
+		},
+		limit: 1
+	}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<flow-ref doc:name="Call dynamicQueryAutoG" doc:id="d9e0f1a2-tp-pasa-bot-call" name="dynamicQueryAutoG-mongo-db-sapi" />
+					<ee:transform doc:name="Save pasaGigasMax from BOT" doc:id="e0f1a2b3-tp-pasa-max-bot">
+						<ee:variables>
+							<ee:set-variable variableName="pasaGigasMax"><![CDATA[%dw 2.0
+output application/json
+---
+(payload.result[0].Value default 0) as Number default 0]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue BOT" doc:id="f1a2b3c4-tp-pasa-bot-err" type="ANY">
+							<set-variable value="#[0]" doc:name="pasaGigasMax 0" doc:id="a2b3c4d5-tp-pasa-max-0" variableName="pasaGigasMax" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</otherwise>
+		</choice>
 	</sub-flow>
 </mule>
