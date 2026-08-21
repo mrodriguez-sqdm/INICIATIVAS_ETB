@@ -6,23 +6,64 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
-	<sub-flow name="get-resource-orchestrator"
+	<sub-flow name="subscriptions-wbd-orchestrator"
 		doc:id="029cce0a-392e-46ec-89b5-a5fe5979f941">
 		<logger level="INFO" doc:name="Log Orchestration Start"
 			doc:id="5a0df5a8-926d-45c5-a822-35b60e2193d7"
-			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /resources"]' />
-		<flow-ref doc:name="get-resources-backend-client" doc:id="c0d56c2d-6691-48ad-8d47-671416530ce2" name="get-resources-backend-client"/>
+			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /subscriptions/parnertId"]' />
+		<ee:transform doc:name="Set Variables" doc:id="a7f70f7a-2e42-4ba6-8596-2355623a75ff" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="getUriParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  partnerId: attributes.uriParams.partnerId
+}]]></ee:set-variable>
+				<ee:set-variable variableName="getQueryParams" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+  partner_user_id: attributes.queryParams.partner_user_id
+}]]></ee:set-variable>
+				<ee:set-variable variableName="getHeaders" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  date: attributes.headers.Date,
+  signature: attributes.headers.Signature
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="get-subscription-wbd-client" doc:id="c0d56c2d-6691-48ad-8d47-671416530ce2" name="get-subscription-wbd-client"/>
 		<ee:transform doc:name="set response" doc:id="591db913-19f5-4eaf-ab33-4d23c20d40b9" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
-{
-  message: "This is a dummy RAML response that shoud be replaced with the actual API Response."
-} as Object {encoding: "UTF-8", mediaType: "application/json"}]]></ee:set-payload>
+if (attributes.statusCode == 202) {
+  "Code": 200,
+  "Message": "operation successful",
+  "Result": payload
+  }
+else {
+	"Code": attributes.statusCode,
+	"Message": payload.error,
+	"Result": payload.error_description
+	}]]></ee:set-payload>
 			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (attributes.statusCode == 200)
+	200
+else
+	400]]></ee:set-variable>
+			</ee:variables>
 		</ee:transform>
 		<logger level="INFO" doc:name="Log Orchestration End"
-                message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=GET /resources"]' />
+                message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=GET /subscriptions/parnertId"]' />
 	</sub-flow>
 </mule>
