@@ -1,15 +1,15 @@
 package com.zsmart.integration.util;
 
+import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
-import java.security.MessageDigest;
 import java.security.PrivateKey;
+import java.security.Signature;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
-import javax.crypto.Cipher;
 
-public class SignatureUtil {
+public class SignatureUtil2 {
 
-	private SignatureUtil() {
+	private SignatureUtil2() {
 	}
 
 	/**
@@ -23,32 +23,25 @@ public class SignatureUtil {
 	public static String generateSignature(String appCode, String appSecret, String responseType, String timestamp,
 			String privateKeyBase64) throws Exception {
 
+		// 1. Construir la cadena de texto base
 		String rawString = appCode + "&" + appSecret + "&" + responseType + "&" + timestamp;
 
-		// 1. MD5 del string base
-		MessageDigest md5Digest = MessageDigest.getInstance("MD5");
-		byte[] md5Bytes = md5Digest.digest(rawString.getBytes("UTF-8"));
-		String md5Hex = bytesToHex(md5Bytes);
-
-		// 2. Cifrado RSA del hash con la clave privada
+		// 2. Reconstruir la clave privada RSA (PKCS#8) desde Base64
 		byte[] keyBytes = Base64.getDecoder().decode(privateKeyBase64);
 		PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyBytes);
 		KeyFactory keyFactory = KeyFactory.getInstance("RSA");
 		PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
 
-		Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-		cipher.init(Cipher.ENCRYPT_MODE, privateKey);
-		byte[] encrypted = cipher.doFinal(md5Hex.getBytes("UTF-8"));
+		// 3. Inicializar la clase nativa Signature con el algoritmo MD5withRSA
+		Signature signatureEngine = Signature.getInstance("MD5withRSA");
+		signatureEngine.initSign(privateKey);
+		
+		// Pasar el string original directamente (Signature se encarga del Hash internamente)
+		signatureEngine.update(rawString.getBytes(StandardCharsets.UTF_8));
+		byte[] signatureBytes = signatureEngine.sign();
 
-		// 3. Resultado en Base64
-		return Base64.getEncoder().encodeToString(encrypted);
-	}
-
-	private static String bytesToHex(byte[] bytes) {
-		StringBuilder sb = new StringBuilder(bytes.length * 2);
-		for (byte b : bytes) {
-			sb.append(String.format("%02x", b));
-		}
-		return sb.toString();
+		// 4. Retornar el resultado codificado en Base64
+		return Base64.getEncoder().encodeToString(signatureBytes);
 	}
 }
+
