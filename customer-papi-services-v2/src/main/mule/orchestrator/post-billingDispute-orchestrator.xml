@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-billingDispute-orchestratorSub_Flow" doc:id="f052bf81-1351-476c-9109-44a06a8a5fb2" >
+		<ee:transform doc:name="set billingHeaders" doc:id="8533911b-d77f-40ae-a5aa-7f5ef6808827" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="billingHeaders" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set Zsmart Request" doc:id="c9782a1b-1b49-494c-93b5-9c4ab21bacb1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+	basePath: p("zsmart-sapi.base-path"),
+	host: p("zsmart-sapi.host"),
+	port: p("zsmart-sapi.port"),
+	method: "POST",
+	path: p('zsmart-sapi.resources.createDispute.path'),
+	body: {
+		transactionID: payload.transactionId,
+		msisdn: payload.msisdn,
+		accountNumber: payload.accountNumber,
+		partyType: payload.partyType,
+		partyCode: payload.partyCode,
+		comment: payload.comment,
+		charge: payload.charge,
+		billId: payload.billId,
+		channelCode: payload.channelCode,
+		disputeItemExParamList: payload.disputes map ((dispute) -> {
+			acctItemID: dispute.acctItemId,
+			charge: dispute.charge
+		})
+	},
+	headers: vars.billingHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart create-dispute)" doc:id="7ebe5f8a-49b1-47b6-8ea6-2ca06eb62267" name="generic-zsmart-sapi-clientSub_Flow" />
+		<ee:transform doc:name="set billingDispute response" doc:id="63eaaafa-1073-4ab3-9cbf-f192592ea2b4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+var zsmartResponse = payload.result.result
+---
+{
+  codeResponse: payload.status default "200",
+  messageResponse: payload.message default "Success",
+  resultCode: zsmartResponse.resultCode,
+  resultMsg: zsmartResponse.resultMsg,
+  transactionId: zsmartResponse.transactionID,
+  disputes: zsmartResponse.disputeExParam map ((dispute) -> {
+      disputeId: dispute.disputeID,
+      charge: dispute.charge,
+      adjustId: dispute.adjustID,
+      resultMessage: dispute.resultMsg 
+  })
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
