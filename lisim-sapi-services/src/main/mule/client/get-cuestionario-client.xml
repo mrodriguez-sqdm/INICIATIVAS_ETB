@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="get-cuestionario-clientSub_Flow" doc:id="9ab9b21c-4762-4e21-a0e9-9ff4270a3bef" >
+		<ee:transform doc:name="Parse request body" doc:id="618c0e41-8eac-4a02-b01b-8bdab8c2390f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns tem http://tempuri.org/
+var queryParams = attributes.queryParams
+var separateDate = splitBy((splitBy(queryParams.FechaExpedicion," ")[0]),"/")
+var date= separateDate[2] ++ "-" ++ separateDate[1] ++ "-" ++ separateDate[0]
+var time=  ( (queryParams.FechaExpedicion splitBy (" "))[1] as Time) as String {format: "HH:mm:ss.SSSS"}
+var datetime= date ++ "T" ++ time
+---
+soapenv#Envelope:{
+    soapenv#Header:{},
+    soapenv#Body:{
+        tem#ObtenerCuestionario:{
+            //Optional
+            tem#objSolicitud: {
+                //Optional
+                tem#Usuario: p('lisim.usuario'),
+                //Optional
+                tem#Contrasena: p('lisim.contrasena'),
+                //Optional
+                tem#TipoIdentificacion: 
+                (
+                	if(queryParams.TipoIdentificacion == "CC")
+                		1
+                	else if(queryParams.TipoIdentificacion == "CE")
+                		2
+                	else
+                		9             
+                )
+                ,
+                //Optional
+                tem#Identificacion: queryParams.Identificacion default "",
+                //Optional
+                tem#Apellido: queryParams.Apellido default "",
+                tem#FechaExpedicion: datetime,
+                tem#Modelo: queryParams.Modelo default "",
+                tem#Departamento: queryParams.Departamento default "",
+                tem#Ciudad: queryParams.Ciudad default "",
+                //Optional
+                tem#Asesor: queryParams.Asesor default "",
+                //Optional
+                tem#CanalVenta: queryParams.CanalVenta default "",
+                //Optional
+                tem#Proveedor: queryParams.Proveedor default "",
+                //Optional
+                tem#Portal: queryParams.Portal default "",
+            }
+        }
+    }   
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<async doc:name="Async" doc:id="6f7c34b5-f704-47a1-9a2b-5c5d94a3111a">
+			<flow-ref doc:name="Call logger before" doc:id="222c87a5-ed92-4728-92d2-aea52871204c" name="loggin-client-call" />
+		</async>
+		<http:request method="POST" doc:name="Request get cuestionario LISIM" doc:id="314ad60c-8bec-486b-bc69-3e30759503af" config-ref="HTTP_Request_configuration_lisim" path="${lisim.pathValidarIdentificacion}"/>
+		<async doc:name="Async" doc:id="cae4c3e9-0244-4d27-b77d-22f70c585f33">
+			<flow-ref doc:name="Call logger after" doc:id="2a579514-c898-4b53-a37d-8c2208da2955" name="loggin-client-call" />
+		</async>
+		<ee:transform doc:name="Parse LISIM Response to JSON" doc:id="68bfed17-58b3-459b-9a5d-e731b0257a4d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

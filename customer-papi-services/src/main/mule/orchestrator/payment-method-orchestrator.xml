@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-payment-orchestratorSub_Flow" doc:id="6fb10fbe-0110-4ddb-8633-fc1a98feaf9e" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="fc6a4e3e-4e0b-4be1-87ff-67828b4936cc" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="74960683-27da-49e5-834d-cc30d6150571" variableName="headers" />
+		<ee:transform doc:name="Set Body Payload Bot" doc:id="712d668f-7087-47a4-9531-28e1bcbc40f0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Document_Type": (vars.parameters.CUSTOMER_ID_TYPE default ""),
+    "Document_Number": (vars.parameters.CUSTOMER_ID default ""),
+    "Audit": {
+      "Canal": vars.headers.name
+ 	}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="c4f05430-ba0e-427c-9e4d-3fb972dd2bc6" name="post-payments-get-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="fd1a65dd-d206-4c76-92c0-13a8297132ed" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="a1608672-7090-4449-9f82-cea1c15e373b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var response = payload
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: response.WSResponseHeader.Service.statusDetail[0].errorMessage,
+  paymentMethod: {
+        services: response.WSResponseBody.Services map {
+            billingAccount: $.Billing_Account default "",
+            icon: $.Icon default "",
+            nickname: $.Nickname default "",
+            phone: $.Phone default "",
+            plan: $.Plan default "",
+            scheduledPayment: {
+                creditCard: $.Scheduled_Payment.Credit_Card default "",
+                creditCardCompany: $.Scheduled_Payment.Credit_Card_Company default ""
+            }
+        }
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-payment-insert-orchestratorSub_Flow" doc:id="2108953e-9d44-4b12-bbe6-6ad05d569439" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="f6768296-5e6c-4d43-be15-227e87f3ba6a" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="c0b5d6fb-95cc-4581-b3b6-1c5258128a98" variableName="headers" />
+		<ee:transform doc:name="Set Body Payload Bot" doc:id="239524fd-9871-45dc-8b34-5b97c3d3f36c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+       "Cardholder": {
+            "Document_Number": payload.customer.documentNumber default "",
+            "Document_Type": payload.customer.documentType default "",
+            "Name": payload.customer.name default ""
+        },
+        "CVV": payload.paymentMethod.cvv default "",
+        "Credit_Card": payload.paymentMethod.creditCard default "",
+        "Credit_Card_Company": payload.paymentMethod.creditCardCompany default "",
+        "Expiration_Date": payload.paymentMethod.expirationDate default "",
+        "Phone": payload.customer.phone default "",
+    "Audit": {
+      "Canal": vars.headers.name
+ 	}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="ad870f75-e0f1-4c96-ba9c-27cc9dea242f" name="post-payments-insert-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="5c02f7bc-0278-4c07-b60f-75fb044c2a16" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="3d0dfde8-34a2-4b64-94f2-c8af37559bbd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var response = payload
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: response.WSResponseHeader.Service.statusDetail[0].errorMessage,
+  paymentMethod: {
+        id: response.WSResponseBody.id
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-payment-inactive-orchestratorSub_Flow" doc:id="ace5aeb5-517b-49c4-8ff7-4ec125f01e71" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="9aebb5be-417b-4ddc-a364-70e2e14014af" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="86b9f555-c381-4235-ab32-08c4bf6b6b32" variableName="headers" />
+		<ee:transform doc:name="Set Body Payload Bot" doc:id="d898b727-3d41-4996-b304-0d9a0d800b8c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Token": payload.paymentMethod.token default null,
+    "Phone": payload.customer.phone default "",
+    "Audit": {
+      "Canal": vars.headers.name
+ 	}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="a0e779c7-2782-4f6b-b06e-25554d9907cb" name="post-payments-inactive-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="1d6026dd-c47b-4172-a15a-ba0694408d72" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="8ea85526-4f55-4ebe-b712-bc3ea6601e37" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var response = payload
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: response.WSResponseHeader.Service.statusDetail[0].errorMessage
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

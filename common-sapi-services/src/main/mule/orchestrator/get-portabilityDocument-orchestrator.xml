@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-portabilityDocument-orchestratorSub_Flow" doc:id="d0c67d44-64b6-4a98-87cd-ffcc5482149d" >
+		<choice doc:name="Choice" doc:id="329ad46b-c1ac-4ee9-9702-00984f0b8692" >
+			<when expression='#[attributes.queryParams.defaultPath == "ON"]'>
+				<ee:transform doc:name="Default base path" doc:id="13fda4ee-38c2-4c7c-9188-c130d68e3360" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="filePath" ><![CDATA[%dw 2.0
+output application/java
+---
+p('sftp-portability.path') ++ vars.filePath]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+		</choice>
+		<until-successful maxRetries="${template.portability.retries.amount}" doc:name="Until Successful" doc:id="ad717f50-503e-433d-bd18-78a04c5e84cf" millisBetweenRetries="${template.portability.retries.milliseconds}">
+			<flow-ref doc:name="Go to Client" doc:id="f310a7ed-e128-40dd-abcb-721d722ab95e" name="get-portabilityDocuments-client" />
+			<ee:transform doc:name="Prepare output" doc:id="7f74ee60-41d6-4e40-b802-7590e1bfbcd4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Binaries
+---
+{
+	status: "OK",
+	description: "success",
+	fileName: ((((vars.filePath default "") splitBy  "\\")[-1]) splitBy  "/")[-1],
+	fileContent: toBase64(payload)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		</until-successful>
+	</sub-flow>
+</mule>

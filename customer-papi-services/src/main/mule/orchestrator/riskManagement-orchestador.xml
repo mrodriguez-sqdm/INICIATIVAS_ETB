@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-riskManagement-orchestratorSub_Flow" doc:id="89dc52fc-1007-4df4-894a-db2c7a632d1e" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="ba3a0b5d-5305-4c6a-b7bd-bb14722aa05c" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="4809376c-03e1-42d5-92f4-2e729455f80d" variableName="headers" />
+		<ee:transform doc:name="Set Body Payload Bot" doc:id="b348500f-6e60-405c-b7da-7ac3bcafa0fc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Document_Type": (vars.parameters.CUSTOMER_ID_TYPE default ""),
+    "Document_Number": (vars.parameters.CUSTOMER_ID default ""),
+    "Pre_Order": (vars.parameters.ORDER_NUMBER default ""),
+    "Audit": {
+      "Canal": vars.headers.name
+ 	}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="a86be2ba-6936-4e6d-b083-ef0540414b13" name="post-mecna-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="d136c275-ea8a-428a-b479-ade356904a41" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="2e9c7085-7454-4780-8986-2e129703bedc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var response = payload
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: response.WSResponseHeader.Service.statusDetail[0].errorMessage,
+  customerRisk: {
+    result: response.WSResponseHeader.Service.statusDetail[0].errorDetailCode,
+    properties: response.WSResponseHeader.Property map (p) -> {
+      name: p.name,
+      value: p.value
+    }
+  }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

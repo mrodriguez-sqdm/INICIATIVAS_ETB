@@ -1,0 +1,946 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-set-order-Sub_Flow"
+		doc:id="103c8221-a039-46e5-a953-f2cde3fb2794">
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="ec0d7529-8c58-47fb-9b69-406e795a0da1" variableName="headers" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="690dc5ea-7d07-4ca2-961c-011f2dc6b481">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var actionFeatures = [
+    "flujo",
+    "origen_equipo",
+    "PERFIL",
+    "score",
+    "AutorizoUsoMismaFirma"
+]
+
+fun colombiaDate() =
+    (now() >> "America/Bogota")
+
+fun orderCreationDate() =
+    colombiaDate() as String {format: "yyyy/MM/dd HH:mm:ss"}
+
+fun atdpDate() =
+    (colombiaDate() as LocalDateTime)
+        as String {format: "yyyy-MM-dd'T'HH:mm:ss"}
+
+---
+{
+    requestHeader: {
+        system: {
+            correlationId: vars.correlationId default ""
+        }
+    },
+    requestBody: {
+        documentType: payload.requestCustomer.documentType,
+        identificationNumber: payload.requestCustomer.documentNumber,
+        orderType: payload.through.throughType,
+        orderSubtype: payload.through.throughSubtype,
+        orderStatus: "PENDIENTE",
+        orderCreationDate: orderCreationDate(),
+        creatorUser: payload.createdBy,
+        modifierUser: payload.updatedBy,
+        sellerUser: payload.createdBy,
+        channel: payload.channel,
+        subchannel: payload.subcategory,
+        sourceSystem: "MDM-MOV",
+        catalogGroupingNumber: payload.requestService.productGroupingNumber as String,
+        invoiceDeliveryType: payload.requestBillingAccount.deliveryType,
+        planType: payload.requestService.planType,
+
+        orderCharacteristics:
+            payload.featureOrder map (item) ->
+                (
+                    {
+                        characteristic: item.feature,
+                        value: item.value as String
+                    }
+                    ++
+                    (
+                        if (actionFeatures contains item.feature)
+                            {
+                                action: item.feature
+                            }
+                        else
+                            {}
+                    )
+                    ++
+                    {
+                        extractorUpdate: "1"
+                    }
+                ),
+
+        setType: payload.setType,
+
+        atdp: {
+            date: atdpDate()
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="reqIn"><![CDATA[payload]]></ee:set-variable>
+				<ee:set-variable variableName="headersIn"><![CDATA[attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="post-orders-sapi-client-sub-flow"
+			doc:id="86421fb5-a6e2-47e4-8942-f20078c96967"
+			name="post-orders-sapi-client-sub-flow" target="responseOrderIni"/>
+		<logger level="INFO" doc:name="responseOrderIni" doc:id="56a177ac-bf58-461b-821a-4a17e150547f" message="#[vars.responseOrderIni]"/>
+		<choice doc:name="Choice" doc:id="ec01881c-bdd4-4b10-b060-34ea7c3369d7" >
+			<when expression='#[vars.responseOrderIni.body.operationResult != "1"]'>
+				<ee:transform doc:name="Transform Message" doc:id="20454810-e611-414c-8778-d4e063dae96c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "FAIL",
+  "code": vars.responseOrderIni.body.operationResult as String,
+  "message": (vars.responseOrderIni.body.operationResultDescription default "Error - creación orden") as String,
+  "orderStep": "creación orden"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="post-set-order-cunSub_Flow" doc:id="318deea3-e7ba-40a7-a462-c514f19c9db1" name="post-set-order-cun-Sub_Flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-set-order-cun-Sub_Flow" doc:id="25340967-48cd-4c8f-8b45-87f818db50c3" >
+		<ee:transform doc:name="Transform Message" doc:id="062e6bc8-6e87-4c34-ab7c-d5f2abd7c7ab" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var payloadRequest = vars.reqIn
+
+fun colombiaDate(format) =
+    (now() >> "America/Bogota") as String {format: format}
+
+---
+{
+    pqrType: "VTA",
+    pqrDate: colombiaDate("dd/MM/yyyy HH:mm:ss"),
+    system: payloadRequest.channel,
+    orderNumber: vars.responseOrderIni.body.databaseId,
+    connectionNumber: "",
+    identification: payloadRequest.requestCustomer.documentNumber,
+    identificationType: payloadRequest.requestCustomer.documentType,
+    user: payloadRequest.channel
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-cun-assignments-clientSub_Flow" doc:id="6c367002-217c-4dc4-bdea-8b70d6fac6cb" name="post-cun-assignments-clientSub_Flow"/>
+		<logger level="INFO" doc:name="Logger" doc:id="d3910b43-1625-4119-976e-af9e07fdcb33" message="#[vars.reqIn]"/>
+		<ee:transform doc:name="Transform Message" doc:id="35b7f3ce-87c9-4532-9aeb-e9fa7411b5fa" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var cun = payload.cun
+
+---
+{
+	requestHeader: {
+		system: {
+			name: vars.reqIn.channel
+		}
+	},
+	requestBody: {
+		id: vars.responseOrderIni.body.mongoId,
+		cun: cun.cunNumber,
+		documentType: vars.reqIn.requestCustomer.documentType,
+		identificationNumber: vars.reqIn.requestCustomer.documentNumber,
+		orderNumber: vars.responseOrderIni.body.databaseId,
+		"setType": "U"
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-orders-sapi-client-sub-flow" doc:id="f5888fd7-4716-49fb-9466-0885dc2e55b2" name="post-orders-sapi-client-sub-flow"/>
+		<choice doc:name="Choice" doc:id="36fea015-e6ed-4000-be40-681c6c981fe9" >
+			<when expression='#[(payload.header.service.status default "") != "OK"]'>
+				<ee:transform doc:name="Transform Message" doc:id="9576eed0-19a2-46da-98b5-490c28d3695d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "FAIL",
+  "code": payload.body.operationResult as String,
+  "message": (payload.body.operationResultDescription default "Error - asignación Cun") as String,
+  "orderStep": "asignación Cun",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="post-set-order-phase(OrdenCreada)-Sub_Flow" doc:id="350826f4-fb8d-4ff6-9492-077defe353e5" name="post-set-order-phase(OrdenCreada)-Sub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-set-order-phase(OrdenCreada)-Sub_Flow" doc:id="ce7209e4-8700-4872-acb6-9d329d8ed666" >
+		<ee:transform doc:name="Transform Message" doc:id="30b110eb-3038-4dc6-a80e-a494c8f3f289" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+    requestHeader: {
+        system: {
+            correlationId: vars.correlationId default ""
+        }
+    },
+    requestBody: {
+        orderNumber: vars.responseOrderIni.body.databaseId,
+        phase: "ORDEN CREADA",
+        updateUser: vars.reqIn.createdBy,
+        status: "EXITOSO"
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-order-phases-sapi-client-sub-flow" doc:id="22064bbc-0b6b-4f2a-9c30-c595d3cf88dc" name="post-order-phases-sapi-client-sub-flow"/>
+		<choice doc:name="Choice" doc:id="3b50ab41-c116-48ba-9f1c-9b86e3e6123c" >
+			<when expression='#[payload.body.operationResult != "1"]'>
+				<ee:transform doc:name="Transform Message" doc:id="5c308fd5-c172-49b4-b98a-07817a199f6d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "FAIL",
+  "code": payload.body.operationResult,
+  "message": (payload.header.service.statusDetail default "Error - Orden Creada") as String,
+  "orderStep": "Orden Creada",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="post-set-order-serviceOrder-Sub_Flow" doc:id="4ffcd7e3-7c75-4201-bf3d-fe7a4dc9b5a4" name="post-set-order-serviceOrder-Sub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-set-order-serviceOrder-Sub_Flow" doc:id="393ae7b4-5c6f-4d14-a4f2-71582dee8631" >
+		<ee:transform doc:name="Transform Message" doc:id="a0925efd-428d-4c16-95e8-fc66b0269130" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "CMP_OFERTA_PRODUCTO",
+    "filter": {
+      "num_agrupacion": vars.reqIn.requestService.productGroupingNumber as Number
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow get CMP_OFERTA_PRODUCTO" doc:id="82dafd75-73b1-4bd9-ad9b-3217c50cc3ef" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="payloadResponseCMP_OF_PROD"/>
+		<ee:transform doc:name="Transform Message" doc:id="a2ba86d7-bae6-483f-aa0f-78e40dea3966" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var productoPrimario =
+    ((payload.result default [])
+        filter ($.tipo_producto == "Primario"))[0] default {}
+
+---
+{
+  requestHeader: {
+    system: {},
+    properties: []
+  },
+  requestBody: {
+    id: vars.responseOrderIni.body.mongoId default "",
+    orderDetails: [
+      {
+        productType: "Plan",
+        productCode: "1807",
+        product: "TELEFONIA MOVIL (LTE)",
+        planOffer: "PLAN SUPERSONICA PRO PREPAGO",
+        offerValue: 0,
+        serviceClass: "LTE PREPAID",
+        action: "ADD",
+        serviceMode: "PREPAGO",
+        serviceCharacteristics: [
+          {
+            characteristic: "RVC PARM Index DS",
+            value: "NA"
+          },
+          {
+            characteristic: "Price",
+            value: "0"
+          },
+          {
+            characteristic: "NOMBRE PLAN",
+            value: productoPrimario.producto default ""
+          },
+          {
+            characteristic: "RVC FEAT",
+            value: "NA"
+          },
+          {
+            characteristic: "Service_Class",
+            value: "LTE PREPAGO"
+          },
+          {
+            characteristic: "Modalidad_Servicio",
+            value: "PREPAGO"
+          },
+          {
+            characteristic: "MODO ADQUISICION EQUIPO",
+            value: "PROPIO"
+          }
+        ]
+      }
+    ],
+    setType: "U"
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-orders-sapi-client-sub-flow" doc:id="da350d42-02fe-4f65-b38a-4b905145d54e" name="post-orders-sapi-client-sub-flow" />
+		<choice doc:name="Choice" doc:id="53ff0095-4ab8-455b-8c8e-7256294053d7" >
+			<when expression='#[(payload.header.service.status default "") != "OK"]'>
+				<ee:transform doc:name="Transform Message" doc:id="da216000-4625-4376-af15-9747c4699a9a" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "FAIL",
+  "code": payload.body.operationResult,
+  "message": (payload.header.service.statusDetail default "Error - Creación Orden Servicio") as String,
+  "orderStep": "Creación Orden Servicio",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="post-order-bundles-Sub_Flow" doc:id="4371777c-3940-4daa-8055-23740a3e7149" name="post-order-bundles-Sub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-order-bundles-Sub_Flow" doc:id="2d2523fd-389d-4897-ab5f-a22c98607743" >
+		<ee:transform doc:name="Transform Message" doc:id="76590430-a615-4f69-9a97-5bfef46f5f36" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var items = vars.payloadResponseCMP_OF_PROD.result default []
+
+var bundles = items filter ((item) -> item.tipo_producto == "BUNDLE")
+var primarios = items filter ((item) -> item.tipo_producto == "Primario")
+var secundarios = items filter ((item) -> item.tipo_producto == "SECUNDARIO")
+
+fun getId(item) =
+    item.'_id'.'\$oid' default item.'_id' default ""
+
+---
+{
+  requestHeader: {
+    system: {
+      name: "PORTAL_LTE",
+      correlationId: vars.correlationId default "",
+      processingServer: "APP_SERVER"
+    }
+  },
+  requestBody: {
+    orderNumber: vars.responseOrderIni.body.databaseId,
+    bundles: bundles map (bundle) -> {
+      id: getId(bundle),
+      catalogId: bundle.id_producto default "",
+      name: bundle.producto default "",
+      activationDate: true,
+      deactivationDate: true,
+      primaryItems: primarios map (primary) -> {
+        id: getId(primary),
+        primaryId: primary.id_producto default "",
+        name: primary.producto default "",
+        activationDate: null,
+        deactivationDate: null,
+        secondaryItems: secundarios map (secondary) -> {
+          id: getId(secondary),
+          secondaryId: secondary.id_producto default "",
+          name: secondary.producto default "",
+          activationDate: true,
+          deactivationDate: true
+        }
+      },
+      optionalItems: []
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-order-bundles-sapi-client-sub-flow" doc:id="24a77b6b-ea1d-4d54-b77e-0426f3f62d65" name="post-order-bundles-sapi-client-sub-flow" />
+		<ee:transform doc:name="Transform Message" doc:id="338dd782-29fc-4a02-9d39-8df8ec06084d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="b7e6dc49-6de6-42a8-bcbc-b266b64f3c07" >
+			<when expression='#[trim((payload.responseBody.operationResult default "") as String) != "1"]'>
+				<ee:transform doc:name="Transform Message" doc:id="c09e9c44-3d32-4467-bfb5-dadc19a5b921" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "FAIL",
+  "code": payload.responseBody.operationResult,
+  "message": (payload.responseBody.operationResultDescription default "Error - Actualización Bundle") as String,
+  "orderStep": "Actualización Bundle",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="post-set-order-phase(ClienteCargado)-Sub_Flow" doc:id="3e29ba7c-d2f3-4423-9852-bcbd4c9dce8f" name="post-set-order-phase(ClienteCargado)-Sub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-set-order-phase(ClienteCargado)-Sub_Flow" doc:id="6d4140b5-d81d-474f-9348-5983913e1a6e" >
+		<ee:transform doc:name="Transform Message" doc:id="41003704-d59f-4476-ba24-94d27e99f70b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+    requestHeader: {
+        system: {
+            correlationId: vars.correlationId default ""
+        }
+    },
+    requestBody: {
+        orderNumber: vars.responseOrderIni.body.databaseId,
+        phase: "ORDEN CREADA",
+        updateUser: vars.reqIn.createdBy,
+        status: "CLIENTE CARGADO"
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-order-phases-sapi-client-sub-flow" doc:id="1836a59d-4836-4379-9376-60df581bbece" name="post-order-phases-sapi-client-sub-flow" />
+		<choice doc:name="Choice" doc:id="51456965-a979-401b-a6d4-cce68ff7a6c3" >
+			<when expression='#[payload.body.operationResult != "1"]'>
+				<ee:transform doc:name="Transform Message" doc:id="5d1ef1e7-d6f6-4b70-bbab-eba904219057" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "FAIL",
+  "code": payload.body.operationResult,
+  "message": (payload.header.service.statusDetail default "Error - Cliente Cargado") as String,
+  "orderStep": "Cliente Cargado",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="get-resource-inventory-resources-and-post-lte-resources-Sub_Flow" doc:id="b3d2e104-d085-461f-a0a1-204c90dcf092" name="get-resource-inventory-resources-and-post-lte-resources-Sub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-resource-inventory-resources-and-post-lte-resources-Sub_Flow" doc:id="7c1502e1-1556-48b8-88f6-555a77be08f6" >
+		<flow-ref doc:name="get-resource-inventory-resources-sapi-client-sub-flow" doc:id="1ab7ccee-23f8-453d-a20a-f08979bbc74b" name="get-resource-inventory-resources-sapi-client-sub-flow" />
+		<choice doc:name="Choice" doc:id="e00fec6d-ba33-453a-a4d7-2a976bf252b2" >
+			<when expression="#[(payload.code as Number) != 0]">
+				<ee:transform doc:name="Transform Message" doc:id="fca65830-844c-4ce5-bec8-37201fc5cc1f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 'FAIL',
+  "code": payload.code as String,
+  "message": (payload.description default "Error - Consulta Inventario") as String,
+  "orderStep": "Consulta Inventario",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="5a654d1f-b57d-4fb9-8bca-52b0ec898eef">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var orderId = vars.responseOrderIni.body.databaseId default ""
+
+---
+{
+    channel: "PORTAL MOVILIDAD",
+    iccid: payload.iccid,
+    externalId: orderId,
+    orderId: orderId,
+    serviceId: orderId ++ "-1",
+    operation: "RESERVAR",
+    resourceType: "ICCID",
+    procedure: "VENTA"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="post-lte-resources-sapi-client-sub-flow" doc:id="836bcf98-60ac-419d-8d67-2ca47244bbb1" name="post-lte-resources-sapi-client-sub-flow" />
+				<choice doc:name="Choice" doc:id="f62d4f65-9b96-43b6-b94b-188eb5a74427">
+			<when expression="#[(payload.errorCode as Number) != 0]">
+				<ee:transform doc:name="Transform Message" doc:id="c220c74e-3490-48af-998b-5d26af1ccec7">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 'FAIL',
+  "code": payload.errorCode as String,
+  "message": (payload.errorDescription default "Error - Reserva SIM") as String,
+  "orderStep": "Reserva SIM",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="post-add-characteristics-order-Sub_Flow" doc:id="cc5c21cc-6809-497f-a625-3e86eed69722" name="post-add-characteristics-order-Sub_Flow" />
+			</otherwise>
+		</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-add-characteristics-order-Sub_Flow" doc:id="f0e4206c-fed1-47ee-90b7-fe4f26671912" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="598d01f9-a7e3-412b-873e-cfc50cb9a962" >
+			<route >
+				<ee:transform doc:name="Transform Message" doc:id="3a648b70-6fbb-400f-b042-c22ad5c2694f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var orderId = vars.responseOrderIni.body.databaseId default ""
+
+---
+{
+  query: {
+    update: "MDM_ORDEN",
+    updates: [
+      {
+        q: {
+          Numero_Orden: orderId
+        },
+        u: {
+          "\$push": {
+            Caracteristicas_Orden: {
+              "\$each": [
+                {
+                  Caracteristica: "ICCID",
+                  Valor: payload.iccid default "",
+                  Accion: "",
+                  actualizacion_extractor: "1"
+                },
+                {
+                  Caracteristica: "MSISDN",
+                  Valor: payload.msisdn default "",
+                  Accion: "",
+                  actualizacion_extractor: "1"
+                }
+              ]
+            }
+          }
+        },
+        multi: false
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="responseResources"><![CDATA[payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="128feb99-7b5c-477b-b34e-ee085c338c39" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+			</route>
+			<route >
+				<ee:transform doc:name="Transform Message" doc:id="c23ba716-70ff-4da0-85d4-34c0282ac3e9" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var orderId = vars.responseOrderIni.body.databaseId default ""
+
+---
+{
+  query: {
+    update: "MDM_ORDEN_SERVICIO",
+    updates: [
+      {
+        q: {
+          Id_Orden_Sistema_Origen: orderId
+        },
+        u: {
+          "\$set": {
+            Numero_Conexion: payload.msisdn default ""
+          },
+          "\$push": {
+            Caracteristica_Servicio: {
+              "\$each": [
+                {
+                  Caracteristica: "ICCID",
+                  Valor: payload.iccid default "",
+                  Accion: "",
+                  actualizacion_extractor: "1"
+                },
+                {
+                  Caracteristica: "MSISDN",
+                  Valor: payload.msisdn default "",
+                  Accion: "",
+                  actualizacion_extractor: "1"
+                }
+              ]
+            }
+          }
+        },
+        multi: false
+      }
+    ]
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="6175806f-dcc8-4e1c-85e4-99c1efed99f0" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+			</route>
+		</scatter-gather>
+		<choice doc:name="Choice" doc:id="6e124fa1-b8b6-42c3-9abb-819233c51097" >
+			<when expression='#[((payload."0".payload.result.nModified default 0) as String) != "1"&#10;and&#10;((payload."1".payload.result.nModified default 0) as String) != "1"]'>
+				<ee:transform doc:name="Transform Message" doc:id="096483fe-1f10-4a21-a696-416fd9a14305" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload ++ {
+  "orderStep": "Error - Añadir Caracteristicas",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="post-set-order-phase(InventarioExitoso)-Sub_Flow" doc:id="35afdd38-9173-4320-88d2-4572c12a05c9" name="post-set-order-phase(InventarioExitoso)-Sub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="product-order-get-customer-lteSub_Flow" doc:id="94e2655b-5326-4f11-ae83-d0b4ca611b97" >
+		<ee:transform doc:name="Transform Message" doc:id="7d3aa8a7-4c50-4d21-a2a2-716f267a4569" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  query: {
+    find: "MDM_CLIENTE",
+    filter: {
+      Tipo_Documento: vars.reqIn.requestCustomer.documentType,
+      Numero_Identificacion: vars.reqIn.requestCustomer.documentNumber
+    },
+    projection: {
+      "_id": 0,
+      Correo_Electronico: 1,
+      Nombres: 1
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="5fec432a-9a16-4572-a346-8bc6187cbc9e" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+	</sub-flow>
+	<sub-flow name="post-set-order-phase(InventarioExitoso)-Sub_Flow" doc:id="f8928b35-4a09-47df-a11c-5f5cd3ad8956" >
+		<ee:transform doc:name="Transform Message" doc:id="5b230d04-3e23-4023-9cc4-35ca0d6f8c50" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+    requestHeader: {
+        system: {
+            correlationId: vars.correlationId default ""
+        }
+    },
+    requestBody: {
+        orderNumber: vars.responseOrderIni.body.databaseId,
+        phase: "INVENTARIO",
+        updateUser: vars.reqIn.createdBy,
+        status: "EXITOSO"
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-order-phases-sapi-client-sub-flow" doc:id="ba88f2ba-9fff-4136-a7b2-4fceb38d4996" name="post-order-phases-sapi-client-sub-flow" />
+		<flow-ref doc:name="product-order-get-customer-lteSub_Flow" doc:id="01424cc4-970b-48c8-a28e-15258fafe555" name="product-order-get-customer-lteSub_Flow" target="responseGetCustomer"/>
+		<ee:transform doc:name="Transform Message" doc:id="81622a88-6d3e-4b72-b59a-4a3d8486a595" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var orderId = vars.responseOrderIni.body.databaseId default ""
+var reqIn = vars.reqIn default {}
+var resources = vars.responseResources default {}
+
+fun colombiaDateTime() =
+    (now() >> "America/Bogota") as String {
+        format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+    }
+
+---
+{
+  query: {
+    insert: "MDM_ACTIVACION_ESIM",
+    documents: [
+      {
+        Fecha_Creacion: {
+          "\$date": colombiaDateTime()
+        },
+        Usuario_Creacion: reqIn.createdBy default reqIn.updatedBy default "",
+        Fecha_Modificacion: {
+          "\$date": colombiaDateTime()
+        },
+        Usuario_Modificacion: reqIn.updatedBy default "",
+        Canal: reqIn.channel default "",
+        Estado: "RESERVADO",
+        EnvioResponsys: true,
+        Fecha_Activacion: null,
+        ICCID: resources.iccid default "",
+        MSISDN: resources.msisdn default "",
+        IMSI: resources.imsi default "",
+        Numero_Documento: reqIn.requestCustomer.documentNumber default "",
+        Tipo_Documento: reqIn.requestCustomer.documentType default "",
+        Numero_Orden: orderId,
+        ParametrosResponsys: [
+          {
+            Parametro: "EMAIL_ADDRESS_",
+            Valor: vars.responseGetCustomer.result[0].Correo_Electronico default ""
+          },
+          {
+            Parametro: "MOBILE_NUMBER_",
+            Valor: resources.msisdn default ""
+          },
+          {
+            Parametro: "NOMBRE",
+            Valor: vars.responseGetCustomer.result[0].Nombres default ""
+          },
+          {
+            Parametro: "ICCID",
+            Valor: resources.iccid default ""
+          },
+          {
+            Parametro: "IMG_QR",
+            Valor: ""
+          },
+          {
+            Parametro: "CEDULA",
+            Valor: reqIn.requestCustomer.documentNumber default "",
+          },
+          {
+            Parametro: "URL_MANUAL_EQUIPO",
+            Valor: ""
+          },
+          {
+            Parametro: "PORTABILIDAD",
+            Valor: reqIn.portability default "NO"
+          }
+        ],
+        Reenvio: [],
+        Tramite: reqIn.processType default ""
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="1e218027-cc89-4912-89ec-2361aa9052e3" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="7a4a4110-04c8-42ea-9ca4-d42c359a206e" >
+			<when expression='#[(payload.result.n as String) != "1"]'>
+				<ee:transform doc:name="Transform Message" doc:id="297ed2d6-47a3-424d-9719-09c1cf66bb93" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload ++ {
+  "orderStep": "Error - Inventario Exitoso",
+  "orderNumber": vars.responseOrderIni.body.databaseId  
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<async doc:name="Async" doc:id="9647e08f-bfa7-492c-9eda-b60ea8ea6a55" >
+					<flow-ref doc:name="post-service-orchestrations(Activate)-Sub_Flow" doc:id="7ad9aed5-4ff5-49bb-925d-44ff3627b094" name="post-service-orchestrations(Activate)-Sub_Flow" />
+				</async>
+				<ee:transform doc:name="Transform Message" doc:id="2c442ba6-0cf2-49d6-b462-aa588bf1d912" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var orderNumber = vars.responseOrderIni.body.databaseId default ""
+
+---
+{
+  responseCode: "200",
+  message: "Se ha creado correctamente la orden",
+  result: {
+    orderNumber: orderNumber
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-service-orchestrations(Activate)-Sub_Flow" doc:id="03d16298-6a37-4ae0-9eb2-df13127ec56b" >
+		<ee:transform doc:name="Transform Message" doc:id="2b2f28fb-81b8-4f48-b0df-f681dab2e584" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var orderNumber = vars.responseOrderIni.body.databaseId
+var user = vars.reqIn.createdBy
+
+---
+{
+  requestHeader: {
+    externalId: "Orquestador_Fija",
+    system: "Orquestador_Fija"
+  },
+  requestBody: {
+    id: "PortalLTE_Activacion_Linea",
+    parameters: [
+      {
+        attribute: "ORDER_NUM",
+        value: orderNumber
+      },
+      {
+        attribute: "USERID",
+        value: user
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-service-orchestrations-client-sub-flow" doc:id="80df62a3-0a5b-4662-8379-fd6188b511f9" name="post-service-orchestrations-client-sub-flow" />
+		<choice doc:name="Choice" doc:id="5de42635-3a49-44a0-8592-4dc774811302" >
+			<when expression='#[payload.responseBody.response.status != "OK"]'>
+				<ee:transform doc:name="Transform Message" doc:id="537bbcde-ff88-4aa2-8a65-3e78d448ab29" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 'FAIL',
+  "code": payload.responseBody.response.code as String,
+  "message":
+    if (
+        !isEmpty(payload.responseBody.response.description default "") or
+        !isEmpty(payload.responseBody.response.customDescription default "")
+    )
+        (payload.responseBody.response.description default "") ++
+        " - " ++
+        (payload.responseBody.response.customDescription default "")
+    else
+        "Error - Activación",
+  "orderStep": "Activación",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="product-order-lteSub_Flow" doc:id="67184dc9-9311-4360-8db4-e76dda45a566" name="product-order-lteSub_Flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="product-order-lteSub_Flow" doc:id="eb71d3d2-5877-4f4f-ba2e-d200004f8801" >
+		<ee:transform doc:name="Transform Message" doc:id="f454eace-6e49-4616-bf7f-4e7d5839f138">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var orderId = vars.responseOrderIni.body.databaseId default ""
+
+fun colombiaDateTime() =
+    (now() >> "America/Bogota") as String {
+        format: "yyyy-MM-dd'T'HH:mm:ss'Z'"
+    }
+
+---
+{
+  query: {
+    update: "MDM_ACTIVACION_ESIM",
+    updates: [
+      {
+        q: {
+          Numero_Orden: orderId
+        },
+        u: {
+          "\$set": {
+            Estado: "ACTIVADO",
+            Usuario_Modificacion: vars.reqIn.updatedBy,
+            Fecha_Modificacion: {
+              "\$date": colombiaDateTime()
+            }
+          }
+        },
+        multi: false
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="a1a05903-7dab-44c1-afc8-ce73d38c3d56" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="08e80c53-5601-4a90-9307-28bebf82091e" >
+			<when expression='#[(payload.result.nModified as String) != "1"]' >
+				<ee:transform doc:name="Transform Message" doc:id="499d4e54-7afa-4b28-b6d2-e36ffd3d9ac1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload ++ {
+  "orderStep": "Error - Actualización activación",
+  "orderNumber": vars.responseOrderIni.body.databaseId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger Actualización activación" doc:id="5f46fc7d-6eb1-45bb-8376-d220d67bda6e" message='#[%dw 2.0&#10;output application/json&#10;&#10;var orderNumber = vars.responseOrderIni.body.databaseId default ""&#10;&#10;---&#10;{&#10;  responseCode: "200",&#10;  message: "Activación Exitosa",&#10;  result: {&#10;    orderNumber: orderNumber&#10;  }&#10;}]'/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
