@@ -1,13 +1,8 @@
 %dw 2.0
 import * from dw::Runtime
-var serviceEventId = payload.processCode  match {
-	case "ADDRESS_CHANGE" -> "805"
-    case "ADDRESS_CHANGE_BUNDLE" -> "814"
-    else -> fail("Invalid Process Code")
-}
+var serviceEventId = "814"
 var transaction = payload.transaction
-var service = payload.service default {
-}
+var services = payload.services default []
 var serviceNumber = transaction.serviceNumber
 var operation = "M"
 var currency = "1"
@@ -30,9 +25,10 @@ output application/json  skipNullOn = "everywhere"
 		"billType": transaction.billType,
 		"comments": transaction.comments
 	},
-	// service Mapping
-	("billProdInst": {
+	// services Mapping
+	("billProdInstList": services map ((service) -> {
 		"operate": operation,
+		"areaCode": service.areaCode,
 		"serviceNumber": service.serviceNumber,
 		"socialLevel": service.socialLevel,
 		"effDate": service.effectiveDate,
@@ -47,12 +43,12 @@ output application/json  skipNullOn = "everywhere"
 		"destCity": service.destCity,
 		"destAddress": service.destAddress,
 		("bundleMemberList": service.bundleMembers map ((bundleMember) -> {
-			"operate": bundleMember.operate,
+			"operate": bundleMember.operate default operation,
 			"serviceNumber": bundleMember.serviceNumber
 		})) if (!isEmpty(service.bundleMembers default [])),
 		("contactDtoList": service.contacts map ((serviceContact) -> {
-			"operate": serviceContact.operate default operation,
 			"contactType": serviceContact.contactType,
+			"operate": serviceContact.operate default operation,
 			"contactId": serviceContact.contactId,
 			"firstName": serviceContact.firstName,
 			"lastName": serviceContact.lastName,
@@ -70,37 +66,37 @@ output application/json  skipNullOn = "everywhere"
 			"district": serviceContact.district,
 			"addressName": serviceContact.addressName
 		})) if (!isEmpty(service.contacts default []))
-	}) if (!isEmpty(service default {
-	})),
+	})) if (!isEmpty(services default [])),
 	// Service Attributes Mapping
-	("billProdInstAttrList": service.attributes default [] map ((serviceAttr) -> {
-		"operate": serviceAttr.operate,
-		"serviceNumber": service.serviceNumber,
+	("billProdInstAttrList": services flatMap (bpi) -> bpi.attributes default [] map ((serviceAttr) -> {
+		"operate": serviceAttr.operate default operation,
+		"serviceNumber": bpi.serviceNumber,
 		"attrCode": serviceAttr.attrCode,
 		"value": serviceAttr.value,
 		"effDate": serviceAttr.effectiveDate
-	})) if (!isEmpty(flatten(service.attributes default []))),
+	})) if (!isEmpty(flatten(services.attributes default []))),
 	// Service Offers Mapping
-	("billOfferInstList": service.offers default [] map ((offer) -> {
-		"operate": offer.operate,
+	("billOfferInstList": services flatMap (boi) -> boi.offers default [] map ((offer) -> {
+		"operate": offer.operate default operation,
 		"offerInstIdCRM": offer.offerInstanceIdCRM,
 		"offerCode": offer.offerCode,
 		"effDate": offer.effectiveDate,
 		"expDate": offer.expirationDate,
-		"instanceIdCRM": service.serviceNumber
-	})) if (!isEmpty(flatten(service.offers default []))),
+		"instanceIdCRM": boi.serviceNumber
+	})) if (!isEmpty(flatten(services.offers default []))),
 	// Service Offers Attributes Mapping
-	("billOfferInstAttrList": service.offers default [] flatMap (so) -> so.attributes default [] map ((offerAttr) -> {
-		"operate": offerAttr.operate,
-		"offerInstIdCRM": so.offerInstanceIdCRM,
+	("billOfferInstAttrList": services flatMap (boi) -> boi.offers default [] flatMap (o) -> o.attributes default [] map ((offerAttr) -> {
+		"operate": offerAttr.operate default operation,
+		"offerInstIdCRM": o.offerInstanceIdCRM,
 		"attrCode": offerAttr.attrCode,
 		"value": offerAttr.value,
 		"effDate": offerAttr.effectiveDate
-	})) if (!isEmpty(flatten(service.offers default []))),
+	})) if (!isEmpty(flatten(services.offers..attributes default []))),
 	// Service Charges Mapping
-	("chargeList": service.charges default [] map (charge) -> {
+	("chargeList": services flatMap (chl) -> chl.charges default [] map (charge) -> {
 		"billingNbr": charge.billingNbr,
 		"basicCharge": charge.basicCharge,
+		"acctId": charge.acctId default transaction.acctId,
 		"chargeType": charge."type",
 		"perCharge": charge.perCharge,
 		"acctItemTypeCode": charge.acctItemTypeCode,
@@ -109,5 +105,5 @@ output application/json  skipNullOn = "everywhere"
 		"origAcctItemTypeCode": charge.origAcctItemTypeCode,
 		"currencyId": currency,
 		"paidFlag": charge.paidFlag
-	}) if (!isEmpty(flatten(service.charges default [])))
+	}) if (!isEmpty(flatten(services.charges default [])))
 }
