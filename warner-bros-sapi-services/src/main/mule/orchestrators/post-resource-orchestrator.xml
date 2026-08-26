@@ -1,40 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
 	xmlns="http://www.mulesoft.org/schema/mule/core"
 	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
 	<sub-flow name="events-wbd-orchestrator"
 		doc:id="029cce0a-392e-46ec-89b5-a5fe5979f941">
 		<logger level="INFO" doc:name="Log Orchestration Start"
 			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /resources"]' />
-		<ee:transform doc:name="set variables" doc:id="a1dcf5b8-07d4-45c4-ba84-467d21e83c64" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
----
-payload]]></ee:set-payload>
-			</ee:message>
-			<ee:variables >
-				<ee:set-variable variableName="postUriParams" ><![CDATA[%dw 2.0
-output application/json
----
-{
-  partnerId: attributes.uriParams.partnerId
-}]]></ee:set-variable>
-				<ee:set-variable variableName="postHeaders" ><![CDATA[%dw 2.0
-output application/java
----
-{
-  Date: attributes.headers.Date,
-  Digest: attributes.headers.Digest,
-  Signature: attributes.headers.Signature,
-  "Content-Type": attributes.headers["Content-Type"]
-}]]></ee:set-variable>
-			</ee:variables>
-		</ee:transform>
+		<java:invoke-static method="generateHeaders(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)" doc:name="Invoke static" doc:id="cc4cc089-b64a-4f13-8fca-4a224478816f" class="com.etb.security.WbdSignatureUtil" target="wbdHeaders">
+			<java:args><![CDATA[#[{
+    arg0: "POST",
+    arg1: "default.any-latam.stg.api.discomax.com",
+    arg2: "/gauth/integration-api/v2/event/8f728693-00b4-494d-a033-c711ac138cb8",
+    arg3: "etb-api-stg-key-001-4096",
+    arg4: p("wbd.api.privateKey"),
+    arg5: write(payload, "application/json")
+}]]]></java:args>
+		</java:invoke-static>
 		<flow-ref doc:name="post-subscription-wbd-client"
 			doc:id="5769df10-89f4-48d5-91d5-03dae0defab1"
 			name="post-subscription-wbd-client" />
