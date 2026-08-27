@@ -217,8 +217,9 @@ mediaType:
             type: string
             enum:
               - DIRECTV
+              - HBO
             example: "DIRECTV"
-            description: Identifies the third-party OTT provider to which the request is directed (e.g., DIRECTV, PRIME_VIDEO, DISNEY).
+            description: Identifies the third-party OTT provider to which the request is directed (e.g., DIRECTV, PRIME_VIDEO, DISNEY, HBO).
         body:
           application/json:
             type: !include /datatypes/request/post-dtv-customer-products-service-orders.raml
@@ -228,6 +229,14 @@ mediaType:
                   reconnectCustomer: !include /examples/request/post-dtv-customer-products-service-orders-reconnectCustomer.json
                   cancelAmazon: !include /examples/request/post-dtv-customer-products-service-orders-cancelAmazon.json
                   reconnectAmazon: !include /examples/request/post-dtv-customer-products-service-orders-reconnectAmazon.json
+                  
+                  accountProvision: !include /examples/request/post-hbo-customer-products-service-orders-accountProvision.json
+                  accountTerminated: !include /examples/request/post-hbo-customer-products-service-orders-accountTerminated.json
+                  multiProductAdded: !include /examples/request/post-hbo-customer-products-service-orders-multiProductAdded.json
+                  multiProductTerminated: !include /examples/request/post-hbo-customer-products-service-orders-multiProductTerminated.json
+                  multiProductSwitched: !include /examples/request/post-hbo-customer-products-service-orders-multiProductSwitched.json
+                  multiProductPaused: !include /examples/request/post-hbo-customer-products-service-orders-multiProductPaused.json
+                  multiProductResumed: !include /examples/request/post-hbo-customer-products-service-orders-multiProductResumed.json
         responses:
           200:
             body:
@@ -239,7 +248,15 @@ mediaType:
                   reconnectCustomer: !include /examples/response/post-dtv-customer-products-service-orders-reconnectCustomer.json
                   cancelAmazon: !include /examples/response/post-dtv-customer-products-service-orders-cancelAmazon.json
                   reconnectAmazon: !include /examples/response/post-dtv-customer-products-service-orders-reconnectAmazon.json
-
+                  
+                  accountProvision: !include /examples/response/post-hbo-customer-products-service-orders-accountProvision.json
+                  accountTerminated: !include /examples/response/post-hbo-customer-products-service-orders-accountTerminated.json
+                  multiProductAdded: !include /examples/response/post-hbo-customer-products-service-orders-multiProductAdded.json
+                  multiProductTerminated: !include /examples/response/post-hbo-customer-products-service-orders-multiProductTerminated.json
+                  multiProductSwitched: !include /examples/response/post-hbo-customer-products-service-orders-multiProductSwitched.json
+                  multiProductPaused: !include /examples/response/post-hbo-customer-products-service-orders-multiProductPaused.json
+                  multiProductResumed: !include /examples/response/post-hbo-customer-products-service-orders-multiProductResumed.json
+                  
           400:
             body:
               application/json:
@@ -280,14 +297,17 @@ mediaType:
             type: string
             enum:
               - DIRECTV
+              - HBO
             example: "DIRECTV"
-            description: Identifies the third-party OTT provider to which the request is directed (e.g., DIRECTV, PRIME_VIDEO, DISNEY).
+            description: Identifies the third-party OTT provider to which the request is directed (e.g., DIRECTV, PRIME_VIDEO, DISNEY, HBO).
         responses:
           200:
             body:
               application/json:
                 type: !include /datatypes/response/get-dtv-customer-products-service.raml
-                example: !include /examples/response/get-dtv-customer-products-service.json
+                examples:
+                  DIRECTV: !include /examples/response/get-dtv-customer-products-service.json
+                  HBO: !include /examples/response/get-hbo-customer-products-service.json
           400:
             body:
               application/json:
@@ -357,6 +377,94 @@ mediaType:
                 application/json:
                   type: !include /datatypes/response/error.raml
                   example: !include /examples/response/error-500.json
+
+  /redirect:
+    /{providerId}:
+      get:
+        is: [security_client_id,tibcoHeaders]
+        displayName: Retrieve OTT Subscriber Details
+        description: |
+          This service generates a temporary redirect URL to OTT. Discovery to initiate or continue a customer's registration or login process on ott.
+        queryParameters:
+          ORIGIN:
+            type: string
+            example: "WHATSAPP"
+            description: "Parameter that allows the origin of the request to be identified"
+          OTT_PLATFORM:
+            type: string
+            enum:
+              - HBO
+            example: "HBO"
+            description: Identifies the third-party OTT provider to which the request is directed (e.g., DIRECTV, PRIME_VIDEO, DISNEY, HBO).
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /datatypes/response/get-ott-customer-products-redirect-providerId.raml
+                examples: 
+                  HBO: !include /examples/response/get-hbo-customer-products-redirect-providerId.json
+          400:
+              body:
+                application/json:
+                  type: !include /datatypes/response/error.raml
+                  example: !include /examples/response/error-400.json
+          401:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/response/error-401.json
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/response/error-404.json
+          500:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/response/error-500.json
+          501:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/response/error-500.json
+  
+  /event-listener:
+    post:
+      is: [security_client_id]
+      displayName: Receive WBD Events
+      description: |
+        Receives registration, subscription and error events generated by Warner Bros. Discovery.
+      headers:
+        Date:
+          type: string
+          required: true
+          description: |
+            Request date and time in UTC using RFC-1123 format.
+          example: "Fri, 01 Dec 2021 01:23:45 UTC"
+        Digest:
+          type: string
+          required: true
+          description: |
+            SHA-512 digest of the request body encoded in Base64.
+          example: "SHA-512=Zj4TA4TlWrVIQDKP4vZ+R3TrGiTsx/K0v3zfMDmSgRoZQiOLn1v1FDKXOPJUPd8F7rzkBW/BFwttypR+KZgHmQ=="
+        Signature:
+          type: string
+          required: true
+          description: |
+            HTTP digital signature generated by WBD using its private key.
+          example: 'keyId="abc123def456_test",algorithm="hs2019",created=1638365025,headers="host date (request-target) digest",signature="0uKeDxj+Mg2Bh9cBnZ/25lXJs5n+qj93FvPkYpnqtTE="'
+
+      body:
+        application/json:
+          type: !include /datatypes/request/post-hbo-event-listener.raml
+          examples:
+            HBO: !include /examples/request/post-hbo-event-listener.json
+
+      responses:
+        204:
+          description: Event received successfully.
+
 
 /product:
    get:
