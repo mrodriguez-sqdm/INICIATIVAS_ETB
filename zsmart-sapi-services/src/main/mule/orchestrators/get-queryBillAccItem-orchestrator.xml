@@ -7,16 +7,39 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="billAccItem-zsmart-orchestrator" doc:id="1ffcb285-de5b-490d-acde-a7d20d803b5e" >
 		<try doc:name="Try" doc:id="7fcd967d-cf3d-4e9e-a262-733f50cb543c" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="5954f5a6-1721-4225-8e93-c7b1ca85586b" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /billAccItem"]' />
+			<ee:transform doc:name="set initialParams" doc:id="390f4ba7-b69b-4ca9-a980-afc66ade5fae">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialParams"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set accountReceivableProfile auth parameters" doc:id="519da584-403e-4f32-ac4f-2714a3b29de3">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.accountReceivableProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.accountReceivableProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.accountReceivableProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="0b00398e-0704-437b-a2d1-ddd2b1c774a8" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="df0320fc-f23f-4f36-8913-61b2af1c133d" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
-
 var transId =
-	if (!isEmpty(attributes.queryParams.msisdn))
-		attributes.queryParams.msisdn
+	if (!isEmpty(vars.initialParams.msisdn))
+		vars.initialParams.msisdn
 	else
-		attributes.queryParams.accountNumber
+		vars.initialParams.accountNumber
 
 ---
 {
@@ -25,10 +48,10 @@ var transId =
   version: "1.0",
   content: {
   	transactionID: transId ++ (now() as String {format: "YYYYMMddHHmmss"}),
-	msisdn: attributes.queryParams.msisdn,
-	accountNumber: attributes.queryParams.accountNumber,
-	billNumber: attributes.queryParams.billNumber,
-	channelCode: attributes.queryParams.channelCode
+	msisdn: vars.initialParams.msisdn,
+	accountNumber: vars.initialParams.accountNumber,
+	billNumber: vars.initialParams.billNumber,
+	channelCode: vars.initialParams.channelCode
   }
 }]]></ee:set-payload>
 				</ee:message>

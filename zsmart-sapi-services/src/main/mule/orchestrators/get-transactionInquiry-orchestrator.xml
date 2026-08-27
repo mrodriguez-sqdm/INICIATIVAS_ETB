@@ -7,30 +7,53 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="transactionInquiry-zsmart-orchestrator" doc:id="f8661dcf-eefa-4790-bd2e-1832b4dd6aa7" >
 		<try doc:name="Try" doc:id="5fbf60d6-3b80-4cff-9e62-d18d346672ca" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="e7904855-44fc-4172-8d35-c6fc6c58829f" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /transactionInquiry"]' />
+			<ee:transform doc:name="set initialParams" doc:id="d8cd4cc1-86bf-4221-930e-a3f1ad8e5309">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialParams"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set accountReceivableProfile auth parameters" doc:id="fbbc4b13-0fa4-49ea-8a61-472d934468d3">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.accountReceivableProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.accountReceivableProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.accountReceivableProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="ab64bf18-98d7-4afd-8ac0-8053042574bd" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="469f5080-1bd8-494d-8d7f-e0b3187ed652">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
-
 var transId =
-	if (!isEmpty(attributes.queryParams.msisdn))
-		attributes.queryParams.msisdn
+	if (!isEmpty(vars.initialParams.msisdn))
+		vars.initialParams.msisdn
 	else
-		attributes.queryParams.accountNumber
+		vars.initialParams.accountNumber
 ---
 {
-  access_token: p('secure::zsmart.transInfoInquiryToken'),
+  access_token: vars.zsmartToken,
   method: "transInfoInquiry",
   version: "1.0",
   content: {
   	transactionID: transId ++ (now() as String {format: "YYYYMMddHHmmss"}),
-  	msisdn: attributes.queryParams.msisdn,
-  	accountNumber: attributes.queryParams.accountNumber,
-  	startTime: attributes.queryParams.startTime,
-  	endTime: attributes.queryParams.endTime,
-  	transType: attributes.queryParams.transType,
-  	channelCode: attributes.queryParams.channelCode,
-  	channelFilter: attributes.queryParams.channelFilter
+  	msisdn: vars.initialParams.msisdn,
+  	accountNumber: vars.initialParams.accountNumber,
+  	startTime: vars.initialParams.startTime,
+  	endTime: vars.initialParams.endTime,
+  	transType: vars.initialParams.transType,
+  	channelCode: vars.initialParams.channelCode,
+  	channelFilter: vars.initialParams.channelFilter
   	}
 }]]></ee:set-payload>
 			</ee:message>

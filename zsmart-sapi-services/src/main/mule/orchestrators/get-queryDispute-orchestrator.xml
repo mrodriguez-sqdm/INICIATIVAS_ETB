@@ -7,29 +7,52 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="queryDispute-zsmart-orchestrator" doc:id="3ecf396c-eb17-4370-95fd-b3c02025cca2" >
 		<try doc:name="Try" doc:id="c7c7a27c-f8d4-4f0b-bcb6-1f05c2a144e4" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="68ce0916-4f1b-43cf-9aec-c315e5915bcf" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /queryDispute"]' />
+			<ee:transform doc:name="set initialParams" doc:id="69a821d4-e8d4-4c49-80cb-51a8cc86631a">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialParams"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set accountReceivableProfile auth parameters" doc:id="c3e27c86-a421-4f2a-8383-0f3c5fe13d53">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.accountReceivableProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.accountReceivableProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.accountReceivableProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="903390ce-979f-4a63-a46a-f67627e592b9" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="239bc5fe-8141-426a-a46d-e72e772d8ebc" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
-
 var transId =
-	if (!isEmpty(attributes.queryParams.msisdn))
-		attributes.queryParams.msisdn
+	if (!isEmpty(vars.initialParams.msisdn))
+		vars.initialParams.msisdn
 	else
-		attributes.queryParams.accountNumber
+		vars.initialParams.accountNumber
 ---
 {
-  access_token: p('secure::zsmart.queryDisputeToken'),
+  access_token: vars.zsmartToken,
   method: "qryDispute",
   version: "1.0",
   content: {
   	transactionID: transId ++ (now() as String {format: "YYYYMMddHHmmss"}),
-  	msisdn: attributes.queryParams.msisdn,
-  	accountNumber: attributes.queryParams.accountNumber,
-  	channelCode: attributes.queryParams.channelCode,
-  	queryClosedFlag: attributes.queryParams.queryClosedFlag,
-  	beginDate: attributes.queryParams.beginDate,
-  	endDate: attributes.queryParams.endDate
+  	msisdn: vars.initialParams.msisdn,
+  	accountNumber: vars.initialParams.accountNumber,
+  	channelCode: vars.initialParams.channelCode,
+  	queryClosedFlag: vars.initialParams.queryClosedFlag,
+  	beginDate: vars.initialParams.beginDate,
+  	endDate: vars.initialParams.endDate
   	}
 }]]></ee:set-payload>
 				</ee:message>

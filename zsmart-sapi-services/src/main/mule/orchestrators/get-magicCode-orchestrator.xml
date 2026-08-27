@@ -7,19 +7,42 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="magicCode-zsmart-orchestrator" doc:id="9d890947-cf17-4af2-84b0-af76ff98c0d5" >
 		<try doc:name="Try" doc:id="216cd564-96cd-4da7-a909-1b6794c0b8fa" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="32a437fe-6b13-436d-bdcd-c8f1dd9e6194" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /magicCode"]' />
+			<ee:transform doc:name="set initialParams" doc:id="e9ef2fd0-daae-4300-bd20-86653e871d8e">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialParams"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set accountReceivableProfile auth parameters" doc:id="df34aeaf-a688-4b98-ad85-7d2ab0b9d21f">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.accountReceivableProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.accountReceivableProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.accountReceivableProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="ef755a88-b6a9-42b0-99d8-6496d9c59abc" name="zsmart-auth-get-token" />
 			<ee:transform doc:name="set zsmart request" doc:id="3c99958c-0a0d-4bf7-aab3-a86bcdb2f3a5" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
-
 ---
 {
-  access_token: p('secure::zsmart.magicCodeToken'),
+  access_token: vars.zsmartToken,
   method: "magiccode",
   version: "1.0",
   content: {
-  	targetUserCode: attributes.queryParams.targetUserCode,
-  	targetUrl: attributes.queryParams.targetUrl
+  	targetUserCode: vars.initialParams.targetUserCode,
+  	targetUrl: vars.initialParams.targetUrl
   	}
 }]]></ee:set-payload>
 				</ee:message>

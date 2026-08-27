@@ -7,16 +7,39 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="createDispute-zsmart-orchestrator" doc:id="3ecf396c-eb17-4370-95fd-b3c02025cca2" >
 		<try doc:name="Try" doc:id="c7c7a27c-f8d4-4f0b-bcb6-1f05c2a144e4" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="68ce0916-4f1b-43cf-9aec-c315e5915bcf" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /createDispute"]' />
+			<ee:transform doc:name="set initialPayload" doc:id="fe50f60c-5928-48e2-800c-1b06f15bb8ef">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set accountReceivableProfile auth parameters" doc:id="82b75039-0035-40e9-b57c-42726b3c7575">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.accountReceivableProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.accountReceivableProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.accountReceivableProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="60b31848-8691-453f-9f0b-c456feaab671" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="239bc5fe-8141-426a-a46d-e72e772d8ebc" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
 ---
 {
-  access_token: p('secure::zsmart.createDisputeToken'),
+  access_token: vars.zsmartToken,
   method: "createDispute",
   version: "1.0",
-  content: payload
+  content: vars.initialPayload
 }]]></ee:set-payload>
 				</ee:message>
 			</ee:transform>

@@ -7,17 +7,39 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="payment-zsmart-orchestrator" doc:id="757b64ad-79f4-40e2-8dbb-3e130f5e0070" >
 		<try doc:name="Try" doc:id="2905a819-b6ab-41f9-b0a1-7388f5682195" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="f6d5180b-2750-4956-8451-9601db826a9e" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /payment"]' />
+			<ee:transform doc:name="set initialPayload" doc:id="8047c4a4-4471-4893-b216-4611c16487ff">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set accountReceivableProfile auth parameters" doc:id="f7d59b71-72c8-4f7f-b4ca-cd0d775ae484">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.accountReceivableProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.accountReceivableProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.accountReceivableProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="374eb23a-72fe-4ece-bf1f-2d04aaa2e31e" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="d8a178c6-3814-452f-bbce-833a2f29dddb" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-
+output application/json skipNullOn="everywhere"
 ---
 {
-    access_token: p('secure::zsmart.paymentToken'),
+    access_token: vars.zsmartToken,
     method: "Payment",
     version: "1.0",
-    content: payload
+    content: vars.initialPayload
 }]]></ee:set-payload>
 				</ee:message>
 			</ee:transform>

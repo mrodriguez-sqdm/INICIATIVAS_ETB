@@ -7,33 +7,56 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="billingHistory-zsmart-orchestrator" doc:id="2a4ea662-ad91-4bcf-b575-fc085de9108f" >
 		<try doc:name="Try" doc:id="d275e716-f265-466b-bae2-8447ec3921ca" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="01375bd3-e9f2-4c43-8a1d-16f1ce93f57d" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /billingHistory"]' />
+			<ee:transform doc:name="set initialParams" doc:id="b1db12fc-903b-498a-b357-3da9015128f3">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialParams"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set accountReceivableProfile auth parameters" doc:id="e0f75cd6-9906-44a2-ac44-82b897c2f6ae">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.accountReceivableProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.accountReceivableProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.accountReceivableProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="4baf1334-3d9d-4e99-8dc7-5e619acb2eec" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="acf1dda1-abe7-4159-9588-affc3801bee4" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
-
 var transId =
-	if (!isEmpty(attributes.queryParams.msisdn))
-		attributes.queryParams.msisdn
+	if (!isEmpty(vars.initialParams.msisdn))
+		vars.initialParams.msisdn
 	else
-		attributes.queryParams.accountNumber
+		vars.initialParams.accountNumber
 
 ---
 {
-  access_token: p('secure::zsmart.billingHistoryToken'),
+  access_token: vars.zsmartToken,
   method: "billHistoryQuery",
   version: "1.0",
   content: {
   	transactionID: transId ++ (now() as String {format: "YYYYMMddHHmmss"}),
-	msisdn: attributes.queryParams.msisdn,
-	accountNumber: attributes.queryParams.accountNumber,
-	InvoiceNumber: attributes.queryParams.invoiceNumber,
-	startTime: attributes.queryParams.startTime,
-	endTime: attributes.queryParams.endTime,
-	billingCycleID: attributes.queryParams.billingCycleID,
-	currencyCode: attributes.queryParams.currencyCode,
-	channelCode: attributes.queryParams.channelCode,
-	billType: attributes.queryParams.billType
+	msisdn: vars.initialParams.msisdn,
+	accountNumber: vars.initialParams.accountNumber,
+	InvoiceNumber: vars.initialParams.invoiceNumber,
+	startTime: vars.initialParams.startTime,
+	endTime: vars.initialParams.endTime,
+	billingCycleID: vars.initialParams.billingCycleID,
+	currencyCode: vars.initialParams.currencyCode,
+	channelCode: vars.initialParams.channelCode,
+	billType: vars.initialParams.billType
   }
 }]]></ee:set-payload>
 				</ee:message>

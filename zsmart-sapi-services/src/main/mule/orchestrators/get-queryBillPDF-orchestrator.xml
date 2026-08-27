@@ -7,19 +7,43 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="queryBillPDF-zsmart-orchestrator" doc:id="e40dc0f6-530b-4cf7-b5e0-ecf01ac9f2ef" >
 		<try doc:name="Try" doc:id="91542438-0a0e-4381-b7ce-7978e66c0476" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="e96a2b5b-d2e2-497e-bbc0-8d4dee9b3848" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /queryBillPDF"]' />
+			<ee:transform doc:name="set initialParams" doc:id="bbeb2b4e-818d-438c-8378-b60356e9911f">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialParams"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set accountReceivableProfile auth parameters" doc:id="3cf9c694-6a91-48d1-b962-db3c38767098">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.accountReceivableProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.accountReceivableProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.accountReceivableProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="957eb0a3-eeaf-46c3-b48a-fa00e0e66b17" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="3bb63700-4e01-4dee-8eb9-161604bd05df" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
 ---
 {
-	access_token: p('secure::zsmart.queryBillPDFToken'),
+	access_token: vars.zsmartToken,
   	method: "queryBillPDF",
   	version: "1.0",
   	content: {
-  		transactionID: attributes.queryParams.accountNumber ++ (now() as String {format: "YYYYMMddHHmmss"}),
-		invoiceNumber: attributes.queryParams.invoiceNumber,
-		accountNumber: attributes.queryParams.accountNumber
+  		transactionID: vars.initialParams.accountNumber ++ (now() as String {format: "YYYYMMddHHmmss"}),
+		invoiceNumber:vars.initialParams.invoiceNumber,
+		accountNumber: vars.initialParams.accountNumber
 	}
 }]]></ee:set-payload>
 				</ee:message>

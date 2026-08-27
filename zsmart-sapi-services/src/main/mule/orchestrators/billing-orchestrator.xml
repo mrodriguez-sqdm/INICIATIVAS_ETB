@@ -20,52 +20,38 @@ output application/json
 payload]]></ee:set-variable>
 				</ee:variables>
 			</ee:transform>
-			<choice doc:name="validate serviceEventId" doc:id="f27f2594-8061-4bd1-969a-68686edd410b" >
-				<when expression="#[(vars.initialPayload.header.serviceEventId default null) != null]">
-					<ee:transform doc:name="set userProfile auth parameters" doc:id="7c3727c0-f5a9-4b6f-a2fd-844dc912aa11">
-						<ee:message>
-						</ee:message>
-						<ee:variables >
-							<ee:set-variable variableName="zsmartAuthParams" ><![CDATA[%dw 2.0
+			<ee:transform doc:name="set auth profile parameters" doc:id="67134a14-b4c9-4f9e-be76-9ea99250060a">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
 output application/java
+var profileType = if ((vars.initialPayload.header.serviceEventId default null) != null) "userProfile" else "subscriberProfile"
 ---
 {
-	appCode: p('zsmartToken.auth.userProfile.appCode'),
-	appSecret: p('secure::zsmartToken.auth.userProfile.appSecret')
+  appCode: p('zsmartToken.auth.' ++ profileType ++ '.appCode'),
+  appSecret: p('secure::zsmartToken.auth.' ++ profileType ++ '.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.' ++ profileType ++ '.privateKey')
 }]]></ee:set-variable>
-						</ee:variables>
-					</ee:transform>
-					<flow-ref doc:name="zsmart-auth-get-token" doc:id="0f808620-f738-4490-80da-8347b6e9a1f8" name="zsmart-auth-get-token"/>
-					<ee:transform doc:name="set zsmart userProfile request" doc:id="830a09e5-e27f-46d1-8ac9-73fe64426362" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json  
+			</ee:variables>
+		</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="995df683-1883-4f9d-a944-7517f3152cce" name="zsmart-auth-get-token" />
+			<ee:transform doc:name="set zsmart request" doc:id="125f88b3-67fe-49c3-8d0d-710dac050223">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
 ---
 {
   access_token: vars.zsmartToken,
-  method: "UserProfile",
+  method: if ((vars.initialPayload.header.serviceEventId default null) != null) 
+            "UserProfile" 
+          else 
+            "chargeAdditionalFee",
   version: "1.0",
   content: vars.initialPayload
 }]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</when>
-				<otherwise >
-					<ee:transform doc:name="set zsmart chargeAdditionalFee request" doc:id="bc3a848e-fc81-44ca-b753-3c054dfb589c">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-output application/json  
----
-{
-  access_token: p('secure::zsmart.addChargeToken'),
-  method: "chargeAdditionalFee",
-  version: "1.0",
-  content: payload
-}]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-				</otherwise>
-			</choice>
 			<flow-ref doc:name="billing-zsmart-client" doc:id="8bab1859-5f03-497a-a951-63f7e855e59a" name="billing-zsmart-client" />
 			<choice doc:name="validate zsmart response" doc:id="6305409e-a871-4517-929f-9a81ff5cb9a1">
 			<when expression='#[(payload.res_code != "00000" or payload.result.responseCode != "0000")]'>

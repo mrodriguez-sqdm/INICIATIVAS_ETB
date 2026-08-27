@@ -7,25 +7,47 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="generateInvoicePDF-zsmart-orchestrator" doc:id="01603ca3-2865-4d4a-8ccc-1d8a8bce228c" >
 		<try doc:name="Try" doc:id="5f532cf4-255e-43db-9dc5-0823e8bdc6f5" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="ce65d4a2-cb07-4ed7-b3aa-48ba75c6c213" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /generateInvoicePDF"]' />
+			<ee:transform doc:name="set initialPayload" doc:id="1867eae6-1091-434d-bab8-c0a7dc8afee6">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set balanceMgmtProfile auth parameters" doc:id="ac559440-cec7-4940-8d06-eda5a948d2b8">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.balanceMgmtProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.balanceMgmtProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.balanceMgmtProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="17712e87-0101-4659-91b3-340c1dbc0a0c" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="524bae69-4f58-4ac8-9ce2-f961a05f6546">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
-
 var transId =
-	if (!isEmpty(payload.msisdn))
-		payload.msisdn
+	if (!isEmpty(vars.initialPayload.msisdn))
+		vars.initialPayload.msisdn
 	else
-		payload.accountCode
+		vars.initialPayload.accountCode
 ---
 {
-    access_token: p('secure::zsmart.generateInvoiceToken'),
+    access_token: vars.zsmartToken,
     method: "generateInvoicePDF",
     version: "1.0",
     content:
     	{
     		transactionID: transId ++ (now() as String {format: "YYYYMMddHHmmss"})
-    	} ++ payload
+    	} ++ vars.initialPayload
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>

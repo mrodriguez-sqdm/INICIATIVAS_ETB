@@ -7,17 +7,39 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="attributeSync-zsmart-orchestrator" doc:id="25719fd5-0853-4509-9b4b-e86fe83eb37f" >
 		<try doc:name="Try" doc:id="58e1bec4-8cbd-460d-9490-d95ec039fc6a" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="30d0ffdd-a745-422e-bf4f-b243f883284f" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /attributeSync"]' />
+			<ee:transform doc:name="set initialPayload" doc:id="f19a925f-6c62-4b71-8601-1e7ccccea12e">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set offerSyncProfile auth parameters" doc:id="523c67b5-6fdb-4606-baae-3ee39e57455b">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.offerSyncProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.offerSyncProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.offerSyncProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="e4e29b78-b77a-4636-a152-1494066df501" name="zsmart-auth-get-token" />
 			<ee:transform doc:name="set zsmart request" doc:id="fdbe67d9-4c0a-4d49-b866-482c2c10df8f" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
-
 ---
 {
-    access_token: p('secure::zsmart.attributeSyncToken'),
+    access_token: vars.zsmartToken,
     method: "attributeSynchronization",
     version: "1.0",
-    content: payload
+    content: vars.initialPayload
 }]]></ee:set-payload>
 				</ee:message>
 			</ee:transform>

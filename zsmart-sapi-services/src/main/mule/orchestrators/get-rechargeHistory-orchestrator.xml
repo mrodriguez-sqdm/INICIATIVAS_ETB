@@ -7,20 +7,43 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="rechargeHistory-zsmart-orchestrator" doc:id="cca50801-3b48-4fad-90e0-5ba3c34e4feb" >
 		<try doc:name="Try" doc:id="6d44f6dc-d995-4740-877b-63ac61e4b32f" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="e2e4e72c-7616-4022-b82c-f0952d3e292a" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /rechargeHistory"]' />
+			<ee:transform doc:name="set initialParams" doc:id="28fad3e5-f45c-40dc-8d83-57eaf18bc6c0">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialParams"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set balanceMgmtProfile auth parameters" doc:id="0db78a7c-28e4-4751-8ea3-e58e21c797a3">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.balanceMgmtProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.balanceMgmtProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.balanceMgmtProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="01b45dcd-cbb9-4a53-b69c-8eb63013a971" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="47621dbc-0fb8-464f-a8c6-c4e765bfd00c" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
-
 ---
 {
-  access_token: p('secure::zsmart.rechargeHistoryToken'),
+  access_token: vars.zsmartToken,
   method: "queryRechargeHis",
   version: "1.0",
   content: {
-	serviceNumber: attributes.queryParams.serviceNumber,
-	beginDate: attributes.queryParams.beginDate,
-	endDate: attributes.queryParams.endDate
+	serviceNumber: vars.initialParams.serviceNumber,
+	beginDate: vars.initialParams.beginDate,
+	endDate: vars.initialParams.endDate
   }
 }]]></ee:set-payload>
 				</ee:message>

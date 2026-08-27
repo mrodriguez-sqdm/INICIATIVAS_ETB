@@ -7,19 +7,43 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="etbAcctStatement-zsmart-orchestrator" doc:id="f90feb93-fefe-46c0-99d6-a1269d700d9c" >
 		<try doc:name="Try" doc:id="857be604-f100-4aec-87b3-612f37a4bd71" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="036eadbe-24eb-4281-930f-78ef68715bcf" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /queryInvoicePDF"]' />
+			<ee:transform doc:name="set initialParams" doc:id="53299601-df16-44fb-8dc7-8f336b5fd85d">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialParams"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set accountReceivableProfile auth parameters" doc:id="d2fbe945-0ca6-4ffc-a5a8-800195d73de5">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.accountReceivableProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.accountReceivableProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.accountReceivableProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="ce5f9cf5-9681-420c-918d-fa983be24619" name="zsmart-auth-get-token" />
 			<ee:transform doc:name="set zsmart request" doc:id="86f65547-67f7-43ce-a565-f06b390fbd53" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn = "everywhere"
 ---
 {
-	access_token: p('secure::zsmart.etbAcctStatementToken'),
+	access_token: vars.zsmartToken,
 	method: "etbAccountStatement",
 	version: "1.0",
 	content: {
-		docType: attributes.queryParams.docType,
-		docNumber: attributes.queryParams.docNumber,
-		channelCode: attributes.queryParams.channelCode
+		docType: vars.initialParams.docType,
+		docNumber: vars.initialParams.docNumber,
+		channelCode: vars.initialParams.channelCode
 	}
 }]]></ee:set-payload>
 				</ee:message>

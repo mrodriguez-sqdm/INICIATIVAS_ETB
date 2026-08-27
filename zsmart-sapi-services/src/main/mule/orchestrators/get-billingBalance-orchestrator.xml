@@ -7,18 +7,43 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="billingBalance-zsmart-orchestrator" doc:id="51250242-e967-4ae8-bedd-439a9c3299ec" >
 		<try doc:name="Try" doc:id="bf33288b-0336-4c02-a58d-4d344a39018f" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="23c9d7c1-a033-4616-bb0e-6b5c8d194c31" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /billingBalance"]' />
+			<ee:transform doc:name="set initialParams" doc:id="21fa4b34-a68c-47f4-84c9-2c859f53139d" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="initialParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set balanceMgmtProfile auth parameters" doc:id="8a2fe96b-b1bc-4c04-b681-414fc55e9a48">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.balanceMgmtProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.balanceMgmtProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.balanceMgmtProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="f5d5aaac-45d5-415d-a082-81c4164d9a8a" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="22e140ed-8179-4202-bdb8-3ed8eca71082">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
 ---
 {
-  access_token: p('secure::zsmart.billingBalanceToken'),
+  access_token: vars.zsmartToken,
   method: "queryAccountbalance",
   version: "1.0",
   content: {
-    msisdn: attributes.queryParams.msisdn,
-    accountCode: attributes.queryParams.accountCode default " "
+    msisdn: vars.initialParams.msisdn,
+    accountCode: vars.initialParams.accountCode default " "
   }
 }]]></ee:set-payload>
 			</ee:message>
@@ -42,7 +67,7 @@ else
     resCode ++ ": " ++ resMessage]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
-				<choice doc:name="error type" doc:id="275c3f94-755f-443a-98c9-12a7d0ded578">
+					<choice doc:name="error type" doc:id="275c3f94-755f-443a-98c9-12a7d0ded578">
 					<when expression="#[payload.result?]">
 						<raise-error doc:name="ZSMART:BUSINESS_ERROR" doc:id="55a6ff48-ddd4-4f15-8d70-3838acf8329a" type="ZSMART:BUSINESS_ERROR" description="#[vars.zsmartError]" />
 					</when>

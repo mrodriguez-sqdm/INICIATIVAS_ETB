@@ -7,20 +7,43 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="queryInvoicePDF-zsmart-orchestrator" doc:id="11ce1d60-48af-46b8-aef9-68ab85080dd6" >
 		<try doc:name="Try" doc:id="96bed638-931e-416f-8808-a7e16706b271" >
 			<logger level="INFO" doc:name="Log Orchestration Start" doc:id="d6a00c06-9dc9-464b-8e9b-3cf49d35ecd3" message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /queryInvoicePDF"]' />
+			<ee:transform doc:name="set initialParams" doc:id="1859420b-f67b-4442-a736-d5bd44764b68">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialParams"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set balanceMgmtProfile auth parameters" doc:id="f831c85a-3f20-4669-b943-6dd225a3e572">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  appCode: p('zsmartToken.auth.balanceMgmtProfile.appCode'),
+  appSecret: p('secure::zsmartToken.auth.balanceMgmtProfile.appSecret'),
+  privateKey: p('secure::zsmartToken.auth.balanceMgmtProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="13500ae7-87d8-4822-8d52-fcbdb2715433" name="zsmart-auth-get-token"/>
 			<ee:transform doc:name="set zsmart request" doc:id="3edb4ce9-8594-468b-aeb7-1ed7b54a75ea" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
-
 ---
 {
-  access_token: p('secure::zsmart.queryInvoicePDFToken'),
+  access_token: vars.zsmartToken,
   method: "queryInvoicePDF",
   version: "1.0",
   content: {
-  	transactionID: attributes.queryParams.transactionID,
-  	invoiceType: attributes.queryParams.invoiceType,
-  	comments: attributes.queryParams.comments
+  	transactionID: vars.initialParams.transactionID,
+  	invoiceType: vars.initialParams.invoiceType,
+  	comments: vars.initialParams.comments
   	}
 }]]></ee:set-payload>
 				</ee:message>
