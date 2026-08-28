@@ -161,6 +161,27 @@ sizeOf(payload.result[0].Lista_Abonados default [])]]></ee:set-variable>
 					<when expression="#[vars.alreadyExists == false]">
 						<flow-ref doc:name="Get pasaGigas quantity" doc:id="a4b5c6d7-tp-pasa-qty-ref" name="thirdParty-get-pasagigas-quantity" />
 						<choice doc:name="Validate pasaGigas limit" doc:id="b5c6d7e8-tp-pasa-limit">
+							<when expression="#[(vars.pasaGigasMax default 0) as Number == 0]">
+								<set-variable value="#[409]" doc:name="httpStatus 409 no pasaGigas" doc:id="c6d7e8f9-tp-pasa-409-ng" variableName="httpStatus" />
+								<ee:transform doc:name="Line without pasaGigas" doc:id="d7e8f9a0-tp-pasa-409-ng-body">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var padre = vars.inputPayload.connectionNumber default ""
+---
+{
+	status: "409",
+	code: "HTTP:CONFLICT",
+	message: "La línea " ++ padre ++ " no puede asociar referidos porque no tiene beneficio PasaGigas",
+	messageServer: "",
+	cause: [{
+		origin: "business-papi-services-v2",
+		message: "La línea no tiene PasaGigas habilitado"
+	}]
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</when>
 							<when expression="#[(vars.abonadosCount default 0) as Number &lt; (vars.pasaGigasMax default 0) as Number]">
 						<ee:transform doc:name="Build ciclo charging aggregate" doc:id="e1f2a3b4-tp-agg-query">
 					<ee:message>
@@ -474,11 +495,11 @@ var maxPermitidos = vars.pasaGigasMax default 0
 {
 	status: "409",
 	code: "HTTP:CONFLICT",
-	message: "Parent " ++ padre ++ " already has the maximum referred subscribers. Allowed: " ++ (maxPermitidos as String),
+	message: "La línea " ++ padre ++ " ya tiene el máximo de referidos permitidos. Permitidos: " ++ (maxPermitidos as String),
 	messageServer: "",
 	cause: [{
 		origin: "business-papi-services-v2",
-		message: "pasaGigasBeneficiaryQuantity limit reached"
+		message: "Se alcanzó el límite de referidos PasaGigas"
 	}]
 }]]></ee:set-payload>
 									</ee:message>
@@ -498,11 +519,11 @@ var abonado = vars.inputPayload.referredConnectionNumber default ""
 {
 	status: "409",
 	code: "HTTP:CONFLICT",
-	message: "Referred connectionNumber " ++ abonado ++ " already exists for parent " ++ padre,
+	message: "El referido " ++ abonado ++ " ya existe para la línea " ++ padre,
 	messageServer: "",
 	cause: [{
 		origin: "business-papi-services-v2",
-		message: "Subscriber already registered in Lista_Abonados"
+		message: "El referido ya está registrado en Lista_Abonados"
 	}]
 }]]></ee:set-payload>
 							</ee:message>
@@ -519,27 +540,74 @@ var abonado = vars.inputPayload.referredConnectionNumber default ""
 	<sub-flow name="thirdParty-delete-orchestador" doc:id="b4c5d6e7-third-party-del">
 		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="c5d6e7f8-tp-del-params" variableName="parameters" />
 		<set-variable value="#[attributes.headers]" doc:id="d6e7f8a9-tp-del-headers" doc:name="Save headers" variableName="headers" />
-		<ee:transform doc:name="Build pull query" doc:id="e7f8a9b0-tp-del-query">
+		<ee:transform doc:name="Save delete params" doc:id="b0c1d2e3-tp-del-save-params">
+			<ee:variables>
+				<ee:set-variable variableName="connectionNumber"><![CDATA[%dw 2.0
+output application/java
+var rawPadre = vars.parameters.connectionNumber default vars.parameters.NUMERO_CONEXION
+---
+if (rawPadre is Array) (rawPadre[0] as String) else (rawPadre as String)]]></ee:set-variable>
+				<ee:set-variable variableName="referredConnectionNumber"><![CDATA[%dw 2.0
+output application/java
+var rawAbonado = vars.parameters.referredConnectionNumber default vars.parameters.NUMERO_CONEXION_ABONADO
+---
+if (rawAbonado is Array) (rawAbonado[0] as String) else (rawAbonado as String)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Build find parent for delete" doc:id="c1d2e3f4-tp-del-find">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
+---
+{
+	query: {
+		find: p('mongo-db-sapi.collections.resource-sharing-panel') default "DASHBOARD_COMPARTE_RECURSOS",
+		filter: {
+			Numero_Conexion: vars.connectionNumber
+		},
+		limit: 1
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Call dynamicQueryAutoG find parent" doc:id="d2e3f4a5-tp-del-find-client" name="dynamicQueryAutoG-mongo-db-sapi" />
+		<ee:transform doc:name="Evaluate referred exists" doc:id="e3f4a5b6-tp-del-eval">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="hasParentDoc"><![CDATA[%dw 2.0
+output application/json
+---
+sizeOf(payload.result default []) > 0]]></ee:set-variable>
+				<ee:set-variable variableName="referredExists"><![CDATA[%dw 2.0
+output application/json
+---
+sizeOf((payload.result[0].Lista_Abonados default []) filter ((a) -> (a.Numero_Conexion as String) == vars.referredConnectionNumber)) > 0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Validate referred exists before delete" doc:id="f4a5b6c7-tp-del-choice">
+			<when expression="#[vars.referredExists == true]">
+				<ee:transform doc:name="Build pull query" doc:id="e7f8a9b0-tp-del-query">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
 var nowDt = (now() >> "America/Bogota") as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX" }
-var rawPadre = vars.parameters.connectionNumber default vars.parameters.NUMERO_CONEXION
-var rawAbonado = vars.parameters.referredConnectionNumber default vars.parameters.NUMERO_CONEXION_ABONADO
-var padre = if (rawPadre is Array) (rawPadre[0] as String) else (rawPadre as String)
-var abonado = if (rawAbonado is Array) (rawAbonado[0] as String) else (rawAbonado as String)
 ---
 {
 	query: {
 		update: p('mongo-db-sapi.collections.resource-sharing-panel') default "DASHBOARD_COMPARTE_RECURSOS",
 		updates: [{
 			q: {
-				Numero_Conexion: padre
+				Numero_Conexion: vars.connectionNumber
 			},
 			u: {
 				"\$pull": {
 					Lista_Abonados: {
-						Numero_Conexion: abonado
+						Numero_Conexion: vars.referredConnectionNumber
 					}
 				},
 				"\$set": {
@@ -550,31 +618,59 @@ var abonado = if (rawAbonado is Array) (rawAbonado[0] as String) else (rawAbonad
 		}]
 	}
 }]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
-		<flow-ref doc:name="Call dynamicQueryAutoG" doc:id="f8a9b0c1-tp-del-client" name="dynamicQueryAutoG-mongo-db-sapi" />
-		<ee:transform doc:name="Map delete response" doc:id="a9b0c1d2-tp-del-resp">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Call dynamicQueryAutoG" doc:id="f8a9b0c1-tp-del-client" name="dynamicQueryAutoG-mongo-db-sapi" />
+				<ee:transform doc:name="Map delete response" doc:id="a9b0c1d2-tp-del-resp">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
-var body = if (payload is String) read(payload, "application/json") else payload
-var rawPadre = vars.parameters.connectionNumber
-var rawAbonado = vars.parameters.referredConnectionNumber
-var padre = if (rawPadre is Array) (rawPadre[0] as String) else (rawPadre as String)
-var abonado = if (rawAbonado is Array) (rawAbonado[0] as String) else (rawAbonado as String)
 ---
 {
-	codeResponse: body.codigo default "200",
+	codeResponse: payload.codigo default "200",
 	responseMessage: "The request was successful",
 	thirdParty: {
-		connectionNumber: padre,
+		connectionNumber: vars.connectionNumber,
 		subscriber: {
-			connectionNumber: abonado
+			connectionNumber: vars.referredConnectionNumber
 		}
 	}
 }]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<set-variable value="#[404]" doc:name="httpStatus 404" doc:id="a5b6c7d8-tp-del-404-status" variableName="httpStatus" />
+				<ee:transform doc:name="Not found - referred does not exist" doc:id="b6c7d8e9-tp-del-404-body">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var padre = vars.connectionNumber default ""
+var abonado = vars.referredConnectionNumber default ""
+var hasParent = vars.hasParentDoc default false
+---
+{
+	status: 404,
+	code: "NOT_FOUND",
+	message: {
+		message: if (hasParent)
+			"No se encontró el referido " ++ abonado ++ " para el connectionNumber " ++ padre
+		else
+			"No se encontraron referidos para el connectionNumber " ++ padre
+	},
+	messageServer: "",
+	cause: [{
+		origin: "business-papi-services-v2",
+		message: if (hasParent)
+			"El referido no existe en Lista_Abonados"
+		else
+			"La línea no tiene referidos registrados"
+	}]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 
 	<!-- Validación reutilizable: padre con servicio Activo/Suspendido en MDM -->
