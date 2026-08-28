@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="validate-data-client-ruleSub_Flow" doc:id="83a9f063-bff6-4484-aaad-10cc0257fffa" >
+		<ee:transform doc:name="request MDM_CLIENTE" doc:id="074d07b8-74e6-47a2-b5dd-42b054980e58" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+    "aggregate": p('mongo-db-sapi.collections.client'),
+    "pipeline": [
+      {
+        // Envolvemos el resultado en un $match para que Mongo filtre
+        "\$match": {
+        	"Numero_Identificacion": vars.requestOrder.requestCustomer.documentNumber,
+        	"Tipo_Documento": vars.requestOrder.requestCustomer.documentType,
+        	"Estado": "ACTIVO"
+        }
+      }
+    ],
+    "cursor": {}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to Mongo" doc:id="150d950e-2cdd-490b-a10a-0dfec01898ab" name="mongo-dynamic-query-subFlow" target="responseMongo"/>
+		<choice doc:name="Validate Query Result Mongo" doc:id="7b8587c3-c9e7-45ce-bf15-8cce397bfb41" >
+			<when expression="#[(typeOf(vars.responseMongo.result) == Array) and sizeOf(vars.responseMongo.result) &gt; 0]">
+				<ee:transform doc:name="Validaciones Data Cliente" doc:id="146bc415-3169-4c7b-8261-e3e007deac20" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var record = vars.responseMongo.result[0]
+
+// Wrapper común: empaqueta el resultado de cualquier validación
+fun resultado(id: String, condicionValida: Boolean, mensajeValido: String, mensajeInvalido: String) = {
+	evaluateId: id,
+	isValid: condicionValida,
+	detail: if (condicionValida) mensajeValido else mensajeInvalido
+}
+
+// Reglas de apoyo
+fun poblado(valor: Any) = not (isEmpty(valor default "") or valor == null)
+
+fun esTrue(valor: Any) =
+	(valor default "") as String {caseSensitive: false} == "true"
+---
+[
+	// 1. Nombre_Cliente poblado
+	resultado("Campo_Nombre_Cliente",
+		poblado(record.Nombre_Cliente),
+		"Nombre_Cliente poblado",
+		"Nombre_Cliente no poblado"),
+
+	// 2. ATDP existe y HABEAS_DATA == true
+	resultado("Campo_ATDP_HabeasData",
+		(record.ATDP != null) and esTrue(record.ATDP.HABEAS_DATA),
+		"ATDP presente con HABEAS_DATA en true",
+		"ATDP ausente o HABEAS_DATA distinto de true"),
+
+	// 3. EnvioComunicaciones: Medio y Dato poblados
+	resultado("Campo_EnvioComunicaciones",
+		(record.EnvioComunicaciones != null)
+			and poblado(record.EnvioComunicaciones.MedioComunicacion)
+			or poblado(record.EnvioComunicaciones.DatoComunicacion1),
+		"EnvioComunicaciones con Medio y Dato poblados",
+		"EnvioComunicaciones ausente o incompleto"),
+
+	// 4. Correo_Electronico O Telefono_Movil poblado
+	resultado("Campo_ContactoDirecto",
+		poblado(record.Correo_Electronico) or poblado(record.Telefono_Movil),
+		"Correo o Telefono_Movil poblado",
+		"Correo y Telefono_Movil vacios"),
+
+	// 5. Datos demograficos: Pais, Ciudad, Departamento poblados
+	resultado("Campo_DatosDemograficos",
+		poblado(record.Pais) and poblado(record.Ciudad) and poblado(record.Departamento),
+		"Pais, Ciudad y Departamento poblados",
+		"Falta al menos un dato demografico (Pais/Ciudad/Departamento)")
+]]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<choice doc:name="Validate Rules TRUE" doc:id="7b75e683-59aa-4f5e-87a2-a059099f2cff" >
+					<when expression="#[sizeOf(payload filter (e) -&gt; e.isValid == false) &gt; 0]">
+						<ee:transform doc:name="Datos de cliente Invalidos" doc:id="d80d9995-58d5-4a2d-83e8-8597f7037b90" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-client'),
+	isValid: false,
+	detailEvaluated: payload
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Set Response y Transform Cliente_Tramite" doc:id="9f718c2e-2088-4f0e-8f29-153d4965d016" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-client'),
+	isValid: true,
+	detailEvaluated: payload
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="objectCliente_Tramite" ><![CDATA[%dw 2.0
+output application/json
+
+var objectCustomer = vars.responseMongo.result[0]
+
+---
+{
+  Cliente_Tramite: {
+    "_id": {
+   "\$oid": objectCustomer."_id"."\$oid"
+  },
+    Tipo_Documento: objectCustomer.Tipo_Documento,
+    Numero_Documento: objectCustomer.Numero_Identificacion,
+    Tipo_Cliente: objectCustomer.Tipo_Cliente,
+    Nombre_Corto_Empresa: objectCustomer.Nombre_Corto_Empresa,
+    Nombre_Cliente: objectCustomer.Nombre_Cliente,
+    Estado: objectCustomer.Estado,
+    Segmento: objectCustomer.Segmento,
+    Segmento_UEN: objectCustomer.Segmento_UEN,
+    UEN: objectCustomer.UEN,
+    Categoria: objectCustomer.Categoria,
+    Cliente_Valor: objectCustomer.Cliente_Valor,
+    EsquemaAtencion: objectCustomer.EsquemaAtencion,
+    ServiciosPS: objectCustomer.ServiciosPS,
+    Telefono_Fijo: objectCustomer.Telefono_Fijo,
+    Telefono_Movil: objectCustomer.Telefono_Movil,
+    Extension: objectCustomer.Extension,
+    Telefono_Movil2: objectCustomer.Telefono_Movil2,
+    Email: objectCustomer.Correo_Electronico,
+    Direccion: objectCustomer.Direccion,
+    Cobertura: objectCustomer.Cobertura,
+    Pais: objectCustomer.Pais,
+    Departamento: objectCustomer.Departamento,
+    Ciudad: objectCustomer.Ciudad,
+    Barrio: objectCustomer.Barrio,
+    Localidad: objectCustomer.Localidad,
+    Estrato: objectCustomer.Estrato,
+    Usuario_Modificador: lower(objectCustomer.Usuario_Modificador),
+    Autorizacion_Datacredito: objectCustomer.Autorizacion_Datacredito,
+    Fecha_Expedicion_Documento: objectCustomer.Fecha_Expedicion_Documento,
+    Fecha_Nacimiento: objectCustomer.Fecha_Nacimiento,
+    Genero: objectCustomer.Genero,
+    Rango_Edad: objectCustomer.Rango_Edad,
+    Estado_Civil: objectCustomer.Estado_Civil,
+    Ciudad_Exp_Documento: objectCustomer.Ciudad_Exp_Documento,
+    Depto_Exp_Documento: objectCustomer.Depto_Exp_Documento,
+    Scoring: objectCustomer.Scoring,
+    Tipo_Scoring: objectCustomer.Tipo_Scoring,
+    Clasificacion_Scoring: objectCustomer.Clasificacion_Scoring,
+    Fecha_Scoring: objectCustomer.Fecha_Scoring,
+    Fecha_Actualizacion: objectCustomer.Fecha_Creacion,
+    Sistema_Origen: null,
+    Modificado_MDM: objectCustomer.Modificado_MDM,
+    Id_Cuenta_Facturacion_Salesforce: objectCustomer.Id_Cuenta_Facturacion_Salesforce,
+    Ejecutivo_Experiencia: objectCustomer.Ejecutivo_Experiencia,
+    actualizacion_extractor: objectCustomer.actualizacion_extractor,
+    Caracteristica_Cliente: objectCustomer.Caracteristica_Cliente,
+    Id_Cuenta_Cliente: (objectCustomer.Id_Cuenta_Cliente default "") as Number default 0,
+    Nombres: objectCustomer.Nombres,
+    Primer_Apellido: objectCustomer.Primer_Apellido,
+    Segundo_Apellido: objectCustomer.Segundo_Apellido default "",
+    Fecha_Creacion: objectCustomer.Fecha_Creacion,
+    Direcciones: objectCustomer.Direcciones,
+    Cuenta_Facturacion_Id: objectCustomer.Cuenta_Facturacion_Id,
+    Cuenta_Servicio_Id: objectCustomer.Cuenta_Servicio_Id,
+    Adjuntos_Cliente: objectCustomer.Adjuntos_Cliente,
+    Scoring_Fija: objectCustomer.Scoring_Fija,
+    Fecha_Validacion_Identidad: objectCustomer.Fecha_Validacion_Identidad,
+    Autoriza_Manejo_Datos_Personales: objectCustomer.Autoriza_Manejo_Datos_Personales,
+    Autoriza_Consulta_Centrales: objectCustomer.Autoriza_Consulta_Centrales,
+    Datos_Empresa: objectCustomer.Datos_Empresa,
+    ATDP: objectCustomer.ATDP,
+    Contacto: (objectCustomer.Contacto default []) map (c) -> {
+      "_id": {
+   "\$oid": c."_id"."\$oid"
+  },
+      Autorizado: c.Autorizado,
+      Direccion_Asociada: c.Direccion_Asociada,
+      Email_Contacto: c.Email_Contacto,
+      Estado: c.Estado,
+      Movil_Contacto: c.Movil_Contacto,
+      Nombre_Contacto: c.Nombre_Contacto,
+      Nombre_Individual: c.Nombre_Individual,
+      Numero_Documento: c.Numero_Documento,
+      Primer_Apellido: c.Primer_Apellido,
+      Telefono_Contacto: c.Telefono_Contacto,
+      Tipo_Documento: c.Tipo_Documento
+    },
+    Comunicaciones_Cobranza: objectCustomer.Comunicaciones_Cobranza,
+    Usuario_Creacion: ""
+  }
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Cliente Inexistente o Inactivo" doc:id="b930f8d0-17fe-46df-b4c0-334f66b493a2" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-client'),
+	isValid: false,
+	detailEvaluated: [
+		{
+	    "evaluateId": "Cliente_Inexistente",
+	    "isValid": false,
+	    "detail": "Cliente no existe o esta Inactivo"
+  		}
+	]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

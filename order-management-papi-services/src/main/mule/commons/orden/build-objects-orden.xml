@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+<sub-flow name="build-CUN-orderSub_Flow" doc:id="eb15bf1a-9a83-4748-9e1f-d65ab7636e50" >
+		<ee:transform doc:name="http request CUN" doc:id="bad22e7c-edc9-472b-83c2-c01bc11cf6eb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var fechaActual = (now() >> "UTC-5") as String {format: "dd/MM/yyyy HH:mm:ss"}
+---
+{
+		  "pqrType": "VTA",
+		  "pqrDate": fechaActual,
+		  "system": "MDM",
+		  "orderNumber": vars.orderNumber,
+		  "connectionNumber": "",
+		  "identification": vars.requestOrder.requestCustomer.documentNumber,
+		  "identificationType": vars.requestOrder.requestCustomer.documentType,
+		  "user": "MDM"
+}
+		]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<!-- [STUDIO:"Request CUN"]<logger level="INFO" doc:name="Request CUN" doc:id="45f7679f-0b27-41b5-8716-0c568c33d9c1" message="#[payload&#93;"/> [STUDIO] -->
+		<try doc:name="Try" doc:id="fc47f965-8976-492c-be6f-a5db5e496172" >
+			<flow-ref doc:name="sapi generate CUN" doc:id="6b2d6ce8-71f5-4dd9-bdd1-8aa09ecff5f4" name="generate-cun-subFlow" />
+			<logger level="INFO" doc:name="Response CUN" doc:id="ee8b2510-3d96-4d5a-a376-b1b0eddfe856" message="#[payload]" />
+			<ee:transform doc:name="Transform Message" doc:id="e86ef653-daa5-41dd-bb06-9ab2e6380a19">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"cun": payload.cun.cunNumber default "000"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="3a20d183-1e7d-4d20-aed5-f3e2bb420bde" type="ANY">
+					<logger level="INFO" doc:name="Response CUN" doc:id="c2b0fde7-772e-4edd-932d-edae64b8de55" message='#["Ocurrio un error generando el CUN: "++ error.detailedDescription]' />
+					<ee:transform doc:name="Transform Message1" doc:id="ae3c1901-8f2c-4299-93b3-0316f3092b4a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"cun": "000"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

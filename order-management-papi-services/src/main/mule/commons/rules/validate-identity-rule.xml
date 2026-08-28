@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="validate-identity-ruleSub_Flow" doc:id="2d5a6229-d2d5-488f-aebd-9a87c1a8cd89" >
+		<ee:transform doc:name="request MDM_VALIDACION_IDENTIDAD" doc:id="056491f3-2205-44fc-a6f5-769cf56a3b37" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+    "aggregate": p('mongo-db-sapi.collections.identity-validation'),
+    "pipeline": [
+      {
+        // Envolvemos el resultado en un $match para que Mongo filtre
+        "\$match": {
+        	"num_doc": vars.requestOrder.requestCustomer.documentNumber,
+        	"tipo_doc": vars.requestOrder.requestCustomer.documentType,
+        	"estado": "VIGENTE"
+        }
+      }
+    ],
+    "cursor": {}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to Mongo" doc:id="970932f0-77e9-469e-b077-910667dd3d71" name="mongo-dynamic-query-subFlow" target="responseMongo" />
+		<choice doc:name="Validate Query Result Mongo" doc:id="6d0386db-8a10-4447-b0d6-4a11aa962fc5" >
+			<when expression="#[(typeOf(vars.responseMongo.result) == Array) and sizeOf(vars.responseMongo.result) &gt; 0]" >
+				<ee:transform doc:name="Validate Data Client" doc:id="3328ac86-6564-421c-9a3e-720d5e129a43" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var record = vars.responseMongo.result[0]
+var hoy = now() as Date
+
+fun resultado(id: String, condicionValida: Boolean, mensajeValido: String, mensajeInvalido: String) = {
+	evaluateId: id,
+	isValid: condicionValida,
+	detail: if (condicionValida) mensajeValido else mensajeInvalido
+}
+
+fun poblado(valor: Any) = not (isEmpty(valor default "") or valor == null)
+
+// Vigente si la diferencia entre hoy y la fecha_consulta del score es <= 30 dias
+fun scoreVigente(scoreObj: Any) =
+	(scoreObj != null)
+		and poblado(scoreObj.fecha_consulta)
+		and ((hoy - (scoreObj.fecha_consulta as Date {format: "yyyy-MM-dd"})) as Number {unit: "days"}) <= 30
+
+var categoria = vars.requestOrder.category  // *** confirmar nombre/ruta real ***
+var esLTE = upper(categoria default "") == "LTE"
+
+var scoreRequerido = if (esLTE) record.score_movil else record.score_fija
+var nombreScoreRequerido = if (esLTE) "score_movil" else "score_fija"
+---
+[
+
+	resultado("Campo_Score_Segun_Categoria",
+		(scoreRequerido != null) and poblado(scoreRequerido.valor),
+		nombreScoreRequerido ++ " presente con valor para categoria " ++ (categoria default "N/A"),
+		nombreScoreRequerido ++ " no existe o no tiene valor para categoria " ++ (categoria default "N/A")),
+
+	resultado("Campo_Score_Vigencia_30_Dias",
+		scoreVigente(scoreRequerido),
+		"fecha_consulta del score dentro de los ultimos 30 dias",
+		"fecha_consulta del score supera los 30 dias o no esta poblada")
+]]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<!-- [STUDIO:"Validate Rules TRUE"]<choice doc:name="Validate Rules TRUE" doc:id="8c425126-f0cd-4939-8b9e-5dcdc604aa42" >
+					<when expression="#[sizeOf(payload filter (e) -&gt; e.isValid == false) &gt; 0&#93;" >
+						<ee:transform doc:name="Validacion Identidad Invalida" doc:id="09b44871-bbc6-49ce-811d-a0bc4ee7a682" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+{
+	ruleId: p('rules-id.validate-identity'),
+	isValid: false,
+	detailEvaluated: payload
+}&#93;&#93;></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Validacion Identidad Valida" doc:id="5d48bb06-0f90-460a-9dfc-36f8444094f1" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+&#45;&#45;-
+{
+	ruleId: p('rules-id.validate-identity'),
+	isValid: true,
+	detailEvaluated: payload
+}&#93;&#93;></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice> [STUDIO] -->
+				<ee:transform doc:name="Set Body Response Rules" doc:id="20f58e19-4f95-4356-98e5-61e9d3ca4e1c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var resultBolean = sizeOf(payload filter (e) -> e.isValid == false) > 0
+
+---
+{
+	ruleId: p('rules-id.validate-identity'),
+	isValid: if(resultBolean) false else true,
+	detailEvaluated: payload
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Cliente Inexistente o Inactivo" doc:id="7a5f6e3a-4685-4bb0-996c-84ea42f6acff" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.validate-identity'),
+	isValid: false,
+	detailEvaluated: [
+		{
+	    "evaluateId": "Validacion_Identidad",
+	    "isValid": false,
+	    "detail": "Cliente no cuenta con una validacion de identidad VIGENTE"
+  		}
+	]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

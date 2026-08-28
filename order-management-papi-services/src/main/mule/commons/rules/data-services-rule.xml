@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="data-services-fija-ruleSub_Flow" doc:id="2d5a6229-d2d5-488f-aebd-9a87c1a8cd89" >
+		<ee:transform doc:name="request MDM_VALIDACION_IDENTIDAD" doc:id="056491f3-2205-44fc-a6f5-769cf56a3b37" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+    "aggregate": p('mongo-db-sapi.collections.services-fija'),
+    "pipeline": [
+      {
+        // Envolvemos el resultado en un $match para que Mongo filtre
+        "\$match": {
+        	"Id_Cuenta_Servicio": vars.requestOrder.requestService.serviceAccountId
+        }
+      }
+    ],
+    "cursor": {}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to Mongo" doc:id="970932f0-77e9-469e-b077-910667dd3d71" name="mongo-dynamic-query-subFlow" target="responseMongo" />
+		<choice doc:name="Validate Query Result Mongo" doc:id="6d0386db-8a10-4447-b0d6-4a11aa962fc5" >
+			<when expression="#[(typeOf(vars.responseMongo.result) == Array) and sizeOf(vars.responseMongo.result) &gt; 0]" >
+				<ee:transform doc:name="Validate Data Client" doc:id="3328ac86-6564-421c-9a3e-720d5e129a43" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var record = vars.responseMongo.result[0]
+
+
+fun resultado(id: String, condicionValida: Boolean, mensajeValido: String, mensajeInvalido: String) = {
+	evaluateId: id,
+	isValid: condicionValida,
+	detail: if (condicionValida) mensajeValido else mensajeInvalido
+}
+---
+[
+	resultado("Campo_Estado_Principal_Activo",
+		upper(record.Estado.Principal.Descripcion default "") != "INACTIVO",
+		"El servicio no esta inactivo, se puede continuar con la cancelacion",
+		"El servicio a cancelar ya esta inactivo")
+]]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<choice doc:name="Validate Rules TRUE" doc:id="8c425126-f0cd-4939-8b9e-5dcdc604aa42">
+					<when expression="#[sizeOf(payload filter (e) -&gt; e.isValid == false) &gt; 0]">
+						<ee:transform doc:name="Validacion Identidad Invalida" doc:id="09b44871-bbc6-49ce-811d-a0bc4ee7a682">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-service'),
+	isValid: false,
+	detailEvaluated: payload
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Validacion Identidad Valida" doc:id="5d48bb06-0f90-460a-9dfc-36f8444094f1">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-service'),
+	isValid: true,
+	detailEvaluated: payload
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="objectServicio_Tramite" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseMongo.result[0]]]></ee:set-variable>
+								<ee:set-variable variableName="orderNumber" ><![CDATA[vars.responseMongo.result[0]]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Cliente Inexistente o Inactivo" doc:id="7a5f6e3a-4685-4bb0-996c-84ea42f6acff" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-service'),
+	isValid: false,
+	detailEvaluated: [
+		{
+	    "evaluateId": "Cuenta_Servicio",
+	    "isValid": false,
+	    "detail": "Numero de cuenta de servicio: "++ (vars.requestOrder.requestService.serviceAccountId default "") ++" no existe"
+  		}
+	]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

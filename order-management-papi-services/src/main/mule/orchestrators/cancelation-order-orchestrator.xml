@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="cancelation-order-subFlow"
+		doc:id="029cce0a-392e-46ec-89b5-a5fe5979f941">
+		<ee:transform doc:name="Set Variables" doc:id="033fa6d0-4319-4d69-9b7f-d277bd528c3b" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="requestOrder" ><![CDATA[payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="7b2e290b-f6be-47ae-be7c-08062845c5a5" >
+			<route >
+				<flow-ref doc:name="call to rule client" doc:id="5769df10-89f4-48d5-91d5-03dae0defab1" name="validate-data-client-ruleSub_Flow" />
+			</route>
+			<route >
+				<flow-ref doc:name="call to rule Validate Identity" doc:id="bdd344a5-1324-4e33-b92f-c6700cd944b7" name="validate-identity-ruleSub_Flow"/>
+			</route>
+			<route >
+				<choice doc:name="Choice" doc:id="c1470144-a09f-4d7b-a5d5-356d07e3d51b">
+					<when expression='#[vars.requestOrder.category == "LTE"]'>
+						<logger level="INFO" doc:name="Logger" doc:id="5f39d6e9-b633-4f77-8c73-6741cc1041a2" />
+					</when>
+					<otherwise >
+						<flow-ref doc:name="call to rule data-service" doc:id="1730100d-a7b8-458b-961a-09b28cbaa210" name="data-services-fija-ruleSub_Flow"/>
+					</otherwise>
+				</choice>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Transform Message" doc:id="1d1b47b4-bb91-44a0-9d58-2eb1f957b66f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// pluck extrae los valores del objeto payload ("0","1","2" -> sus payloads), sin importar cuántas rutas tenga el scatter-gather
+var resultadosRutas = payload pluck ((value, key) -> value.payload)
+
+var todasLasValidaciones = resultadosRutas flatMap (regla) -> regla.detailEvaluated
+var reglasInvalidas = todasLasValidaciones filter (v) -> v.isValid == false
+---
+{
+	isValid: sizeOf(reglasInvalidas) == 0,
+	reglas: resultadosRutas,
+	camposInvalidos: reglasInvalidas
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
