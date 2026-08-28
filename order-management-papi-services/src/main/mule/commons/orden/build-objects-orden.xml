@@ -19,14 +19,14 @@ var fechaActual = (now() >> "UTC-5") as String {format: "dd/MM/yyyy HH:mm:ss"}
 		  "system": "MDM",
 		  "orderNumber": vars.orderNumber,
 		  "connectionNumber": "",
-		  "identification": vars.requestOrder.requestCustomer.documentNumber,
-		  "identificationType": vars.requestOrder.requestCustomer.documentType,
+		  "identification": vars.requestOrder.customer.documentNumber,
+		  "identificationType": vars.requestOrder.customer.documentType,
 		  "user": "MDM"
 }
 		]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<!-- [STUDIO:"Request CUN"]<logger level="INFO" doc:name="Request CUN" doc:id="45f7679f-0b27-41b5-8716-0c568c33d9c1" message="#[payload&#93;"/> [STUDIO] -->
+		<logger level="INFO" doc:name="Request CUN" doc:id="45f7679f-0b27-41b5-8716-0c568c33d9c1" message="#[payload]"/>
 		<try doc:name="Try" doc:id="fc47f965-8976-492c-be6f-a5db5e496172" >
 			<flow-ref doc:name="sapi generate CUN" doc:id="6b2d6ce8-71f5-4dd9-bdd1-8aa09ecff5f4" name="generate-cun-subFlow" />
 			<logger level="INFO" doc:name="Response CUN" doc:id="ee8b2510-3d96-4d5a-a376-b1b0eddfe856" message="#[payload]" />
@@ -56,5 +56,110 @@ output application/json
 				</on-error-continue>
 			</error-handler>
 		</try>
+	</sub-flow>
+	<sub-flow name="build-cuentaFacturacion-ordenSub_Flow" doc:id="b0c9ec4d-de8e-4911-b5d2-ba94c07c1e5f" >
+		<ee:transform doc:name="request MDM_CD_CUENTA_FACTURACION" doc:id="8b28555f-3500-43f4-aa04-a7405aadafd7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+    "aggregate": p('mongo-db-sapi.collections.facturacion'),
+    "pipeline": [
+      {
+        // Envolvemos el resultado en un $match para que Mongo filtre
+        "\$match": {
+        	"Cuenta_Facturacion": vars.objectServicio_Tramite.Id_Cuenta_Facturacion
+        }
+      }
+    ],
+    "cursor": {}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to Mongo" doc:id="fa07dbf1-6632-4fbc-af83-4fce4c32dfab" name="mongo-dynamic-query-subFlow" target="responseMongo" />
+		<choice doc:name="Validate Query Result Mongo" doc:id="b976becd-0523-40b7-8780-2e1b00de307c" >
+			<when expression="#[(typeOf(vars.responseMongo.result) == Array) and sizeOf(vars.responseMongo.result) &gt; 0]" >
+				<ee:transform doc:name="Set fecha_ejecucion" doc:id="a2052783-22ec-4216-868a-7807f79a9549">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var TESR = vars.requestOrder.through.throughType
+var fecha_corte = vars.responseMongo.result[0].Fecha_Corte_Facturacion
+
+fun pad2(n: Number): String = if (n < 10) "0" ++ (n as String) else (n as String)
+
+fun crearFecha(anno: Number, mes: Number, dia: Number): Date =
+	((anno as String) ++ "-" ++ pad2(mes) ++ "-" ++ pad2(dia)) as Date {format: "yyyy-MM-dd"}
+
+fun primerDiaMes(fecha: Date): Date = crearFecha(fecha.year, fecha.month, 1)
+
+fun ultimoDiaMes(fecha: Date): Date = (primerDiaMes(fecha) + |P1M|) - |P1D|
+
+var UMBRAL_DIAS = 3
+
+fun fechaEjecucionCancelacionVoluntaria(fechaCorteFacturacion: Number): Date = do {
+	var hoy = now() as Date
+	var intDiaCorte = fechaCorteFacturacion default 0
+	var corteEsFinDeMes = (intDiaCorte == 0) or (intDiaCorte > 31)
+	---
+	if (corteEsFinDeMes)
+		ultimoDiaMes(hoy)
+	else do {
+		var fechaCorteMesActual = crearFecha(hoy.year, hoy.month, intDiaCorte)
+		var diasParaCorte = (fechaCorteMesActual - hoy) as Number {unit: "days"}
+		---
+		if (diasParaCorte >= UMBRAL_DIAS)
+			fechaCorteMesActual
+		else
+			fechaCorteMesActual + |P1M|
+	}
+}
+
+fun generarFechaEjecucionPorCiclo(tramite: String, fechaCorteFacturacion: Number): Date | Null =
+	tramite match {
+		case t if (t == TESR) -> fechaEjecucionCancelacionVoluntaria(fechaCorteFacturacion)
+		else -> null
+	}
+
+var fecha = generarFechaEjecucionPorCiclo(
+	TESR default "TESR",
+	fecha_corte default "0"
+)
+---
+{  
+	objectCuentaFacturacion: vars.responseMongo.result[0],
+	fechaEjecucion: if (fecha != null)
+		{
+			"\$date": (fecha as String {format: "yyyy-MM-dd"}) ++ "T00:00:00.000Z"
+		}
+	else
+		null
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+							</ee:variables>
+						</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Cuenta Facturacion Inexistente" doc:id="eafdbd5f-663a-4777-8c92-29eeaeed5fe8" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="objectCuenta_Facturacion" ><![CDATA[%dw 2.0
+output application/json
+---
+{  
+	objectCuentaFacturacion: null,
+	fechaEjecucion: null
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="072520f1-92f0-4f2e-8c68-b1b6b2ade619" message='#["No existe cuenta facturacion"]'/>
+			</otherwise>
+		</choice>
 	</sub-flow>
 </mule>

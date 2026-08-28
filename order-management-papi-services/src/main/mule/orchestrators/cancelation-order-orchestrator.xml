@@ -13,10 +13,23 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 			</ee:message>
 			<ee:variables >
 				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="fechas" ><![CDATA[%dw 2.0
+output application/json
+
+var fechaActual = (now() >> "UTC-5") as String {format: "dd/MM/yyyy HH:mm:ss"}
+
+var fechaMongo = {
+        "\$date": (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+    }
+---
+{
+	actual: fechaActual,
+	mongo: fechaMongo
+}]]></ee:set-variable>
 				<ee:set-variable variableName="requestOrder" ><![CDATA[payload]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<scatter-gather doc:name="Scatter-Gather" doc:id="7b2e290b-f6be-47ae-be7c-08062845c5a5" >
+		<scatter-gather doc:name="Parallel Validation Rules" doc:id="7b2e290b-f6be-47ae-be7c-08062845c5a5" >
 			<route >
 				<flow-ref doc:name="call to rule client" doc:id="5769df10-89f4-48d5-91d5-03dae0defab1" name="validate-data-client-ruleSub_Flow" />
 			</route>
@@ -34,9 +47,11 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 				</choice>
 			</route>
 		</scatter-gather>
-		<ee:transform doc:name="Transform Message" doc:id="1d1b47b4-bb91-44a0-9d58-2eb1f957b66f" >
+		<ee:transform doc:name="set Variable cumulativeRules" doc:id="1d1b47b4-bb91-44a0-9d58-2eb1f957b66f" >
 			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="cumulativeRules" ><![CDATA[%dw 2.0
 output application/json
 
 // pluck extrae los valores del objeto payload ("0","1","2" -> sus payloads), sin importar cuántas rutas tenga el scatter-gather
@@ -49,6 +64,162 @@ var reglasInvalidas = todasLasValidaciones filter (v) -> v.isValid == false
 	isValid: sizeOf(reglasInvalidas) == 0,
 	reglas: resultadosRutas,
 	camposInvalidos: reglasInvalidas
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="4c614152-c3fa-4447-9d10-a6d15b52d4f8" >
+			<when expression="#[vars.cumulativeRules.isValid]">
+				<flow-ref doc:name="Generate Order Number" doc:id="eec03246-e01d-436b-aa1e-c713d8f773d8" name="generate-OrderNumber-Sub_Flow" target="orderNumber" />
+				<choice doc:name="Choice" doc:id="50c53b7d-b8d2-4f48-81da-047ed106f865" >
+					<when expression='#[vars.requestOrder.category == "LTE"]' >
+						<logger level="INFO" doc:name="Logger" doc:id="cdc22c17-b1a4-41fb-a572-c17f769f04a0" />
+					</when>
+					<otherwise >
+						<flow-ref doc:name="call to rule data-service" doc:id="13ef1518-8414-4c59-8252-54bb6b87f205" name="cancelation-order-fija-orchestratorSub_Flow"/>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Response Failed" doc:id="37d8dc8f-93f2-4ff6-9913-7dd61c8df644" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "400",
+	messageResponse: "Error Created Order",
+	message: vars.cumulativeRules.reglas
+	
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable httpStatus" doc:id="222509b4-be6e-4e6f-a0fa-c162c35e0d0c" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="cancelation-order-movil-orchestratorSub_Flow" doc:id="e6c7beb1-cde9-4a1b-b933-5685e792aa2e" >
+		<logger level="INFO" doc:name="Logger" doc:id="99a6436a-ef16-4ad7-9393-8495526e3129" message="movil"/>
+	</sub-flow>
+	<sub-flow name="cancelation-order-fija-orchestratorSub_Flow" doc:id="7d671704-6686-49ab-b11a-cb42b2f99b3e" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="1afcdc91-8198-42d7-b096-9a888f95570a">
+			<route>
+				<flow-ref doc:name="Build CUN Number" doc:id="febc52b4-7863-4df5-ae65-f6d5333f4b99" name="build-CUN-orderSub_Flow" target="cunNumber"/>
+			</route>
+			<route >
+				<flow-ref doc:name="Build Cuenta Facturacion" doc:id="a8b0f8d4-2827-4d1f-bd8f-33d5da68d9c3" name="build-cuentaFacturacion-ordenSub_Flow" target="responseCuentaFacturacion"/>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Objeto MDM_CD_ORDEN" doc:id="345643de-a65d-422d-97f5-2f2abe739791" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+  "query" : {
+    "insert": p('mongo-db-sapi.collections.orden-fija'),
+    "documents": [
+      {
+        "Fecha_Creacion": vars.fechas.mongo,
+        "Fecha_Modificacion": vars.fechas.mongo,
+        "Usuario_Modificacion": "SILICE",
+        "Usuario_Creacion": "SILICE",
+        "Actualizacion_Extractor": "1",
+        "Numero_Orden": vars.orderNumber,
+        "Canal": "Canal_Fibra",
+        "Fase": "ORDERF",
+        "Estado_Orden_Comercial": {
+	         "Codigo" : "O70",                                             
+	         "Descripcion" : "Orquestación Pendiente",                
+	         "Fecha" : vars.fechas.mongo,
+	         "Reintentos" :0,
+	         "CodigoExcepcion" : 0
+          },
+        "Tramite": {
+          "Tipo_Tramite": vars.requestOrder.through.throughType,
+          "Subtipo_Tramite": "",
+          "Fecha_Tramite": vars.fechas.mongo,
+          "Fecha_Reconexion": null,
+          "Fecha_Suspension": null,
+          "Fecha_Ejecucion": vars.responseCuentaFacturacion.fechaEjecucion,
+          "Conservar_Numero_Conexion": false,
+          "Clausula_Permanencia": true,
+          "Valor_Clausula_Permanencia": 0,
+          "Causal_Cancelacion": vars.requestOrder.through.reasonCancellation,
+          "Subcausal_Cancelacion": vars.requestOrder.through.subReasonCancellation,
+          "Descripcion_Cancelacion": null,
+          "MotivosOrden": null
+        },
+        "Tipo_Servicio": "Fija",
+        "CUN": vars.cunNumber.cun,
+        "Cliente_Anterior": vars.objectCliente_Tramite.Cliente_Tramite,
+        "Cliente_Tramite": vars.objectCliente_Tramite.Cliente_Tramite,
+        "Servicio_Anterior": vars.objectServicio_Tramite,
+        "Servicio_Tramite": vars.objectServicio_Tramite,
+        "Orden_Servicio" : {                                                        
+	        "Numero_Orden" : "OS-" ++ vars.orderNumber default "",
+	        "Estado_Orden" : {
+	            "Codigo" : "110",                                                  
+	            "Descripcion" : "Consulta Reserva Inventario",                            
+	            "Fecha" : vars.fechas.mongo,
+	            "Reintentos" : 0,
+	            "CodigoExcepcion" : 0
+        }},
+        "Agendamiento": { 
+	        "Enriquecida" : false,
+	        "Agenda" : false,
+	        "Razon" : "107",
+	        "Comentarios" : "NO LO NECESITA",
+	        "Tipo_ActuacionII" : "",
+	        "ListaCuotas" : []
+        },
+        "Orden_Activacion": null,
+        "Cuenta_Facturacion_Anterior": vars.responseCuentaFacturacion.objectCuentaFacturacion,
+        "Cuenta_Facturacion_Tramite": vars.responseCuentaFacturacion.objectCuentaFacturacion,
+        "Orden_Requiere_Disponibilidad": if(vars.ordenServicio.Factibilidad default false) true else null,
+        "Orden_Requiere_Agendamiento": if(vars.ordenServicio.Factibilidad default false) false else null,
+        "Precio_Total_Orden": "",
+        "Adjuntos": {
+        "Servicio":  {}
+    },
+        "Adjuntos_Cliente": null,
+        "Adjuntos_Servicio": null,
+        "Caracteristica_Orden": [{
+            "Caracteristica" : "BIOMETRIA_ENVIO_OTP",
+            "Valor" : "true"
+        },
+        {
+            "Caracteristica" : "OTP_ID_MONGO",
+            "Valor" : vars.objectValidateIdentity."_id"."\$oid"
+        }],
+        "Otros": {
+            "Envio_Contrato": "",
+            "Usuario_Venta": "",
+            "Medio_Comunicacion": ""
+          },
+         "Presencial": false,
+         "OfertaSugerida": [],
+         "Reserva": null
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to mongo Sapi" doc:id="cbb57793-624a-48e5-95dc-6309546dc4fe" name="mongo-dynamic-query-subFlow" target="resultadoOrden"/>
+		<ee:transform doc:name="Set Response" doc:id="0e7d8538-24dd-4f11-b834-84bbbfa1f99b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: if(vars.resultadoOrden.result.ok > 0) "200" else "500",
+    messageResponse: if(vars.resultadoOrden.result.ok > 0) "Order Created" else "Error Created Order",
+    order: {
+        orderNumber: vars.orderNumber default "",
+        cun: vars.cunNumber.cun,
+        rulesApplied: vars.cumulativeRules.reglas
+    }
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
