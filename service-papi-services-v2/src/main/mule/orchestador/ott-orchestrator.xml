@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-customer-products-id-service-ott-orchestratorSub_Flow" doc:id="45b7c97f-6dfd-4be4-9ecb-562d3eef07f7" >
+		<choice doc:name="Choice" doc:id="64c52a6c-8b1b-4467-91f0-8754ef76b7f2" >
+			<when expression='#[attributes.queryParams.OTT_PLATFORM == "DIRECTV"]'>
+				<flow-ref doc:name="directv-get-customer-orchestratorSub_Flow" doc:id="bf4d8717-ff47-4ebb-aacc-0ec4dedbd785" name="directv-get-customer-orchestratorSub_Flow"/>
+			</when>
+			<when expression='#[attributes.queryParams.OTT_PLATFORM == "HBO"]'>
+				<flow-ref doc:name="wbd-service-orchestratorSub_Flow" doc:id="a0ed701c-d1d0-417f-8ac8-d9a45cd68966" name="wbd-service-orchestratorSub_Flow"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="29a5fb13-709f-4bc4-bd50-d8607f8b0ba4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "400",
+  code: "INVALID_OTT_PLATFORM",
+  message: "La plataforma OTT enviada no se encuentra soportada.",
+  ott_platform: attributes.queryParams.OTT_PLATFORM default null
+}]]></ee:set-payload>
+			</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-customer-products-service-orders-ott-orchestratorSub_Flow" doc:id="c866c490-a4a6-442f-bf82-0eefa5affa0d" >
+		<choice doc:name="Choice" doc:id="556d237d-830c-4a68-8590-fe34ebcdb104" >
+			<when expression='#[attributes.queryParams.OTT_PLATFORM == "DIRECTV"]' >
+				<choice doc:name="Choice" doc:id="af0937ba-c6c7-46e7-aea2-98094eaa4668" >
+					<when expression="#[payload.action == 'cancelCustomer']" >
+						<flow-ref doc:name="Flow Reference" doc:id="e766d4fc-0ae7-4b8c-9ea1-716cea839d4c" name="directv-cancel-customerProduct-orchestratorSub_Flow" />
+					</when>
+					<when expression="payload.action == 'reconnectCustomer'" >
+						<flow-ref doc:name="Flow Reference" doc:id="99115930-cf00-4c19-bc73-7f952b001ff8" name="directv-reconection-customerProduct-orchestratorSub_Flow" />
+					</when>
+					<when expression="#[payload.action == 'cancelAmazon']" >
+						<flow-ref doc:name="Flow Reference" doc:id="a4117768-dff1-4b7a-8dcd-61b7c233df9b" name="directv-cancel-Amazon-orchestratorSub_Flow" />
+					</when>
+					<when expression="#[payload.action == 'reconnectAmazon']" >
+						<flow-ref doc:name="Flow Reference" doc:id="42088b62-7a78-4815-ac00-e49547de8588" name="directv-reconection-Amazon-orchestratorSub_Flow" />
+					</when>
+					<when expression="#[payload.action == 'activation']" >
+						<flow-ref doc:name="call orchestrator directv" doc:id="dc9bf380-2dc2-48ba-82f8-c81e99ddb4b8" name="directv-activation-orchestratorSub_Flow" />
+					</when>
+				</choice>
+			</when>
+			<when expression='#[attributes.queryParams.OTT_PLATFORM == "HBO"]' >
+				<flow-ref doc:name="wbd-service-orders-orchestratorSub_Flow" doc:id="f639441b-0f3c-401a-85bc-0f3e3ec1b68c" name="wbd-service-orders-orchestratorSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="d6aa96a4-5e96-41b5-ac3e-5990dd7ea508" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: "400",
+  code: "INVALID_OTT_PLATFORM",
+  message: "La plataforma OTT enviada no se encuentra soportada.",
+  ott_platform: attributes.queryParams.OTT_PLATFORM default null
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

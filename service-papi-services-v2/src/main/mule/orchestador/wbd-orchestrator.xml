@@ -1,18 +1,422 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="wbd-service-orders-orchestratorSub_Flow" doc:id="81c1f499-fe45-4b73-9492-11a7fd58f297" >
+		<ee:transform doc:name="Transform Message" doc:id="0cc3181c-051e-458f-aafa-ae3b7f060710" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+fun isoToUnix(date) =
+    if (date == null)
+        null
+    else
+        (date as DateTime) as Number
+
+---
+{
+    (id: payload.eventId)
+        if (payload.eventId?),
+
+    (partner_user_id: payload.partnerUserId)
+        if (payload.partnerUserId?),
+
+    (timestamp: isoToUnix(payload.occurredAt))
+        if (payload.occurredAt?),
+
+    (event_type: payload.eventType)
+        if (payload.eventType?),
+
+    (event_data: {
+
+        (address: {
+            (country: payload.eventData.address.country)
+                if (payload.eventData.address.country?)
+        })
+            if (payload.eventData.address?),
+
+        (email: payload.eventData.email)
+            if (payload.eventData.email?),
+
+        (phone_number: payload.eventData.phoneNumber)
+            if (payload.eventData.phoneNumber?),
+
+        (name: payload.eventData.name)
+            if (payload.eventData.name?),
+
+        (products:
+            payload.eventData.products map (product) -> {
+                (code: product.code) if (product.code?),
+                (name: product.name) if (product.name?),
+                (starts: isoToUnix(product.starts)) if (product.starts?),
+                (renews: isoToUnix(product.renews)) if (product.renews?),
+                (expires: isoToUnix(product.expires)) if (product.expires?),
+                (sub_id: product.subscriptionId) if (product.subscriptionId?),
+                (trx_id: product.transactionId) if (product.transactionId?),
+                (status: product.status) if (product.status?),
+                (reason: product.reason) if (product.reason?)
+            }
+        )
+            if (payload.eventData.products?),
+
+        (products_terminated:
+            payload.eventData.productsTerminated map (product) -> {
+                (code: product.code) if (product.code?),
+                (sub_id: product.subscriptionId) if (product.subscriptionId?)
+            }
+        )
+            if (payload.eventData.productsTerminated?),
+
+        (products_added:
+            payload.eventData.productsAdded map (product) -> {
+                (code: product.code) if (product.code?),
+                (sub_id: product.subscriptionId) if (product.subscriptionId?),
+                (starts: isoToUnix(product.starts)) if (product.starts?),
+                (renews: isoToUnix(product.renews)) if (product.renews?),
+                (trx_id: product.transactionId) if (product.transactionId?)
+            }
+        )
+            if (payload.eventData.productsAdded?),
+
+        (effective_date: isoToUnix(payload.eventData.effectiveDate))
+            if (payload.eventData.effectiveDate?),
+
+        (reason: payload.eventData.reason)
+            if (payload.eventData.reason?),
+
+        (details: payload.eventData.details)
+            if (payload.eventData.details?)
+    })
+        if (payload.eventData?)
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="eventType" ><![CDATA[payload.eventType]]></ee:set-variable>
+				<ee:set-variable variableName="eventId" ><![CDATA[payload.eventId]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="099e4cd2-441f-4bc9-903b-dbb618c0d132" variableName="solicitudEvento"/>
 		<flow-ref doc:name="post-event-wbd-sapi-clientSub_Flow" doc:id="af989c52-d980-411a-a7b9-12af1637f474" name="post-event-wbd-sapi-clientSub_Flow"/>
+		<async doc:name="Async" doc:id="dc97ba78-3d44-4f79-be28-47297eb0d9e7" >
+			<ee:transform doc:name="Transform Message" doc:id="3062d93c-f750-4563-a9f2-c35b5b852e28" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+---
+{
+  query: {
+    insert: "MDM_TRAZABILIDAD_EVENTOS_THIRDPARTY",
+    documents: [
+      {
+        proveedor: "HBO",
+        estado: if ((attributes.statusCode default 0) == 202) "EXITOSO" else "FALLIDO",
+        solicitudEvento: vars.solicitudEvento,
+        respuestaEvento: {
+          httpStatus: attributes.statusCode
+        },
+        fechaCreacion: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},
+        fechaActualizacion: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+      }
+    ]
+  }
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="mongo-db-sapi-dynamicQuery-clientSub_Flow" doc:id="00f3bec5-6ff7-43cf-b7eb-e8da96512e97" name="mongo-db-sapi-dynamicQuery-clientSub_Flow"/>
+		</async>
+		<ee:transform doc:name="Transform Message" doc:id="9793a453-8d6b-46a4-a4c5-5024b2c717cc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+    code: (payload.Code default 202) as String,
+    message: "Event accepted for processing",
+    result: {
+        eventId: vars.eventId default "",
+        eventType: vars.eventType default "",
+        status: upper(payload.Result default "")
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 	</sub-flow>
 	<sub-flow name="wbd-service-orchestratorSub_Flow" doc:id="097c1f17-d233-49c6-9e35-cffdb62a9e18" >
 		<flow-ref doc:name="get-subscriptions-wbd-sapi-clientSub_Flow" doc:id="dee27fa3-4e35-4808-9b5e-8765815e02f5" name="get-subscriptions-wbd-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="4ba9a35e-0361-42b1-8067-dd8cb346901f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+fun unixToIso(timestamp) =
+    if (timestamp == null)
+        null
+    else
+        (timestamp as DateTime) as String {
+            format: "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        }
+
+---
+{
+    code: (payload.Code default 200) as String,
+    message: "Subscriptions retrieved successfully",
+    data: {
+        products: (payload.Result.products default []) map (product) -> {
+            code: product.code default "",
+            name: product.name default "",
+            starts: unixToIso(product.starts),
+            expires: unixToIso(product.expires),
+            status: product.status default "",
+            subscriptionId: product.sub_id default "",
+            transactionId: product.trx_id default ""
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 	</sub-flow>
 	<sub-flow name="wbd-redirect-providerId-orchestratorSub_Flow" doc:id="4377517d-fb60-456c-811e-d88ec0d3cb49" >
+		<flow-ref doc:name="get-subscriptions-wbd-sapi-clientSub_Flow" doc:id="f4f33211-0935-4fcc-8aa0-306b65e9a998" name="get-subscriptions-wbd-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Transform Message" doc:id="23532742-63c5-4c1b-8acf-fe0d083d44f7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var product = payload.Result.products[0]
+
+---
+{
+  partner_user_id: attributes.uriParams.providerId,
+  code: product.code,
+  sub_id: product.sub_id,
+  starts: product.starts
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 		<flow-ref doc:name="post-activation-url-wbd-sapi-clientSub_Flow" doc:id="db462fe2-cf24-40a9-8ae7-929f4ffeb869" name="post-activation-url-wbd-sapi-clientSub_Flow"/>
 	</sub-flow>
 	<sub-flow name="wbd-event-listener-orchestratorSub_Flow" doc:id="9ff2e6fe-b88a-46e4-8096-6d1341c9db21" >
+		<ee:transform doc:name="Transform Message" doc:id="365212f1-c8fb-405f-9fde-7a867905491f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+fun isoToUnix(date) =
+    if (date == null)
+        null
+    else
+        (date as DateTime) as Number
+
+---
+{
+    (id: payload.eventId)
+        if (payload.eventId?),
+
+    (event_type: payload.eventType)
+        if (payload.eventType?),
+
+    (user_id: payload.userId)
+        if (payload.userId?),
+
+    (partner_user_id: payload.partnerUserId)
+        if (payload.partnerUserId?),
+
+    (timestamp: isoToUnix(payload.occurredAt))
+        if (payload.occurredAt?),
+
+    (event_data: {
+
+        (product: {
+            (code: payload.eventData.product.code)
+                if (payload.eventData.product.code?),
+
+            (sub_id: payload.eventData.product.subscriptionId)
+                if (payload.eventData.product.subscriptionId?),
+
+            (starts: isoToUnix(payload.eventData.product.starts))
+                if (payload.eventData.product.starts?),
+
+            (expires: isoToUnix(payload.eventData.product.expires))
+                if (payload.eventData.product.expires?),
+
+            (reason: payload.eventData.product.reason)
+                if (payload.eventData.product.reason?)
+        })
+            if (payload.eventData.product?),
+
+        (address: {
+            (country: payload.eventData.address.country)
+                if (payload.eventData.address.country?)
+        })
+            if (payload.eventData.address?),
+
+        (email: payload.eventData.email)
+            if (payload.eventData.email?),
+
+        (phone_number: payload.eventData.phoneNumber)
+            if (payload.eventData.phoneNumber?),
+
+        (name: payload.eventData.name)
+            if (payload.eventData.name?),
+
+        (products:
+            payload.eventData.products map (product) -> {
+                (code: product.code)
+                    if (product.code?),
+
+                (sub_id: product.subscriptionId)
+                    if (product.subscriptionId?),
+
+                (status: product.status)
+                    if (product.status?),
+
+                (starts: isoToUnix(product.starts))
+                    if (product.starts?),
+
+                (expires: isoToUnix(product.expires))
+                    if (product.expires?),
+
+                (reason: product.reason)
+                    if (product.reason?)
+            }
+        )
+            if (payload.eventData.products?),
+
+        (action: payload.eventData.action)
+            if (payload.eventData.action?),
+
+        (products_added:
+            payload.eventData.productsAdded map (product) -> {
+                (code: product.code)
+                    if (product.code?),
+
+                (sub_id: product.subscriptionId)
+                    if (product.subscriptionId?),
+
+                (starts: (isoToUnix(product.starts) as String))
+                    if (product.starts?)
+            }
+        )
+            if (payload.eventData.productsAdded?),
+
+        (products_terminated:
+            payload.eventData.productsTerminated map (product) -> {
+                (code: product.code)
+                    if (product.code?),
+
+                (sub_id: product.subscriptionId)
+                    if (product.subscriptionId?)
+            }
+        )
+            if (payload.eventData.productsTerminated?),
+
+        (effective_date: isoToUnix(payload.eventData.effectiveDate))
+            if (payload.eventData.effectiveDate?),
+
+        (error: payload.eventData.error)
+            if (payload.eventData.error?),
+
+        (error_description: payload.eventData.errorDescription)
+            if (payload.eventData.errorDescription?),
+
+        (new_account_id_changed: payload.eventData.newAccountIdChanged)
+            if (payload.eventData.newAccountIdChanged?)
+    })
+        if (payload.eventData?)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="d47e5b44-21eb-4b7b-b200-08a65dc17392" variableName="notificacionEvento"/>
 		<flow-ref doc:name="post-event-listener-wbd-sapi-clientSub_Flow" doc:id="c0ec5ac2-cdaf-4e23-8b69-639d6caec381" name="post-event-listener-wbd-sapi-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="e5349f7c-02a4-4a39-8b63-2fc4963cded1" >
+			<when expression="#[payload.valid == true]">
+				<ee:transform doc:name="Transform Message" doc:id="065cf895-cbae-4c70-919e-40bf1bdfc32d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+var notification = payload
+
+var subId =
+    notification.event_data.product.sub_id
+        default notification.event_data.products[0].sub_id
+        default notification.event_data.products_added[0].sub_id
+        default notification.event_data.products_terminated[0].sub_id
+        default null
+
+var code =
+    notification.event_data.product.code
+        default notification.event_data.products[0].code
+        default notification.event_data.products_added[0].code
+        default notification.event_data.products_terminated[0].code
+        default null
+
+---
+{
+  query: {
+    update: "MDM_TRAZABILIDAD_EVENTOS_THIRDPARTY",
+    updates: [
+      {
+        q: {
+          "solicitudEvento.partner_user_id": notification.partner_user_id,
+          (
+            "solicitudEvento.event_data.products": {
+              "$elemMatch": {
+                (sub_id: subId) if (subId != null),
+                (code: code) if (code != null)
+              }
+            }
+          ) if (subId != null or code != null)
+        },
+        u: {
+          "$set": {
+            notificacionEvento: notification,
+            estado:
+              if (notification.event_type == "error_notification")
+                "FALLIDO"
+              else
+                "EXITOSO",
+            fechaActualizacion:
+              now() as String {
+                format: "yyyy-MM-dd'T'HH:mm:ssXXX"
+              }
+          }
+        },
+        multi: false,
+        upsert: false
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-dynamicQuery-clientSub_Flow" doc:id="14076576-b90f-4e73-8483-c35ae3b73f99" name="mongo-db-sapi-dynamicQuery-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="26e46756-b42f-4365-a770-cd2c6b578a2a" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+null]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="0707b5fd-765d-4ccc-872b-46fd380a0a6b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+null]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 </mule>
