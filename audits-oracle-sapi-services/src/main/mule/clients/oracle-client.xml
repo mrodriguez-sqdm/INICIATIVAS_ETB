@@ -11,14 +11,35 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 			<db:sql><![CDATA[#["INSERT INTO " ++ vars.tablesName as String ++ 
 " (TRANSACTIONID, PAYLOAD, FECHA, ATTRIBUTESREQUEST, HTTPCODE, HOST, CORRELATIONID, FECHACREACION, APINAME, PROCESSNAME) 
 VALUES (:transactionId, :request, :fecha, :attributes, :httpCode, :host, :correlationId, :fechaCreacion, :apiName, :processName)"]]]></db:sql>
-			<db:input-parameters><![CDATA[#[{
+			<db:input-parameters><![CDATA[#[%dw 2.0
+output application/java
+
+fun generateCorrelationId() =
+    "AUD-" ++
+    ((now() >> "America/Bogota") as String {
+        format: "yyyyMMddHHmmssSSS"
+    })
+    ++ "-" ++
+    ((uuid() splitBy "-")[0])
+
+fun getCorrelationId(value) =
+    if (
+        value == null
+        or trim((value default "") as String) == ""
+    )
+        generateCorrelationId()
+    else
+        value as String
+
+---
+{
 	"transactionId": payload.transaction_id,
 	"request": payload.body_request, 
 	"fecha": payload.fecha,
 	"attributes": payload.attributes_request,
 	"httpCode": payload.http_code,
 	"host": payload.host,
-	"correlationId": payload.correlation_id,
+	"correlationId": getCorrelationId(payload.correlation_id),
 	"fechaCreacion": payload.fecha_creacion as DateTime,
 	"apiName": payload.api_name,
 	"processName": payload.processname
@@ -31,14 +52,35 @@ VALUES (:transactionId, :request, :fecha, :attributes, :httpCode, :host, :correl
 " (ID, PAYLOAD, FECHA, ATTRIBUTES, HTTPCODE, HOST, CORRELATIONID, APINAME, PROCESSNAME, PATH, HTTPMETHOD, TIEMPO_RESPUESTA_MS, IP)
 VALUES (:id, :payload, TO_TIMESTAMP(:fecha, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF3'), :attributes, :httpCode, :host, :correlationId, :apiName, :processName, :path, :httpMethod, :tiempoRespuestaMs, :ip)"
 ]]]></db:sql>
-			<db:input-parameters ><![CDATA[#[{
+			<db:input-parameters ><![CDATA[#[output application/java
+
+fun generateCorrelationId() =
+    "AUD-" ++
+    ((now() >> "America/Bogota") as String {
+        format: "yyyyMMddHHmmssSSS"
+    })
+    ++ "-" ++
+    ((uuid() splitBy "-")[0])
+
+fun getCorrelationId(value) =
+    if (
+        value == null
+        or trim((value default "") as String) == ""
+    )
+        generateCorrelationId()
+    else
+        value as String
+
+---
+
+{
     "id": payload.ID,
     "payload": payload.PAYLOAD,
     "fecha": payload.FECHA,
     "attributes": payload.ATTRIBUTES,
     "httpCode": payload.HTTPCODE,
     "host": payload.HOST,
-    "correlationId": payload.CORRELATIONID,
+    "correlationId": getCorrelationId(payload.CORRELATIONID),
     "apiName": payload.APINAME,
     "processName": payload.PROCESSNAME,
     "path": payload.PATH,
