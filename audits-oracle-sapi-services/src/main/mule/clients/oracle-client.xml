@@ -14,20 +14,22 @@ VALUES (:transactionId, :request, :fecha, :attributes, :httpCode, :host, :correl
 			<db:input-parameters><![CDATA[#[%dw 2.0
 output application/java
 
-fun generateCorrelationId() =
+fun generateCorrelationId(apiName, processName) =
     "AUD-" ++
     ((now() >> "America/Bogota") as String {
-        format: "yyyyMMddHHmmssSSS"
+        format: "yyyyMMddHHmm"
     })
     ++ "-" ++
-    ((uuid() splitBy "-")[0])
+    ((apiName default "UNKNOWN") as String)
+    ++ "-" ++
+    ((processName default "UNKNOWN") as String)
 
-fun getCorrelationId(value) =
+fun getCorrelationId(value, apiName, processName) =
     if (
         value == null
         or trim((value default "") as String) == ""
     )
-        generateCorrelationId()
+        generateCorrelationId(apiName, processName)
     else
         value as String
 
@@ -39,7 +41,11 @@ fun getCorrelationId(value) =
 	"attributes": payload.attributes_request,
 	"httpCode": payload.http_code,
 	"host": payload.host,
-	"correlationId": getCorrelationId(payload.correlation_id),
+	"correlationId": getCorrelationId(
+        payload.correlation_id,
+        payload.api_name,
+        payload.processname
+    ),
 	"fechaCreacion": payload.fecha_creacion as DateTime,
 	"apiName": payload.api_name,
 	"processName": payload.processname
@@ -54,22 +60,33 @@ VALUES (:id, :payload, TO_TIMESTAMP(:fecha, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF3'), :a
 ]]]></db:sql>
 			<db:input-parameters ><![CDATA[#[output application/java
 
-fun generateCorrelationId() =
-    "AUD-" ++
-    ((now() >> "America/Bogota") as String {
-        format: "yyyyMMddHHmmssSSS"
-    })
-    ++ "-" ++
-    ((uuid() splitBy "-")[0])
+fun limitCorrelationId(value) =
+    if (sizeOf(value as String) > 50)
+        (value as String)[0 to 49]
+    else
+        value as String
 
-fun getCorrelationId(value) =
+fun generateCorrelationId(apiName, processName) =
+    limitCorrelationId(
+        "AUD-" ++
+        ((now() >> "America/Bogota") as String {
+            format: "yyyyMMddHHmm"
+        })
+        ++ "-" ++
+        ((apiName default "UNKNOWN") as String)
+        ++ "-" ++
+        ((processName default "UNKNOWN") as String)
+    )
+
+fun getCorrelationId(value, apiName, processName) =
     if (
         value == null
         or trim((value default "") as String) == ""
     )
-        generateCorrelationId()
+        generateCorrelationId(apiName, processName)
     else
-        value as String
+        limitCorrelationId(value)
+
 
 ---
 
@@ -80,7 +97,11 @@ fun getCorrelationId(value) =
     "attributes": payload.ATTRIBUTES,
     "httpCode": payload.HTTPCODE,
     "host": payload.HOST,
-    "correlationId": getCorrelationId(payload.CORRELATIONID),
+    "correlationId": getCorrelationId(
+        payload.CORRELATIONID,
+        payload.APINAME,
+        payload.PROCESSNAME
+    ),
     "apiName": payload.APINAME,
     "processName": payload.PROCESSNAME,
     "path": payload.PATH,
