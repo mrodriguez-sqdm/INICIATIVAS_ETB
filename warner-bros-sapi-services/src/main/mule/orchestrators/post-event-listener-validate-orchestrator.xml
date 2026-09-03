@@ -6,26 +6,58 @@
 http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="post-event-listener-validate-orchestratorSub_Flow" doc:id="d1a4d7ad-29b8-45a7-8dbe-86d93147b99b" >
-		<java:invoke-static method="validateRequest(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)" doc:name="Invoke static" doc:id="459484e7-eadd-4702-9471-4333b02ce9c5" class="com.etb.security.WbdSignatureValidator" target="signatureValid">
+		<ee:transform doc:name="Preserve Original Request" doc:id="6aa8adaf-8eae-4763-b74e-960e245bb954" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="originalPayload" ><![CDATA[payload]]></ee:set-variable>
+				<ee:set-variable variableName="originalHeaders" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="originalPath" ><![CDATA[attributes.requestPath]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<java:invoke-static method="getKeyId(java.lang.String)" doc:name="Extract Signature Key ID" doc:id="459484e7-eadd-4702-9471-4333b02ce9c5" class="com.etb.security.WbdSignatureValidator" target="wbdKeyId">
 			<java:args ><![CDATA[#[{
-    arg0: "POST",
-    arg1: attributes.headers.host,
-    arg2: attributes.requestPath,
-    arg3: attributes.headers.date,
-    arg4: attributes.headers.digest,
-    arg5: attributes.headers.signature,
-    arg6: write(payload, "application/json"),
-    arg7: p("wbd.signature.publicKey"),
-    arg8: p("wbd.signature.keyId")
+    arg0: attributes.headers.signature
 }]]]></java:args>
 		</java:invoke-static>
-		<ee:transform doc:name="Transform Message" doc:id="2f1f1292-3ab5-4f03-8818-091294cacafe" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<flow-ref doc:name="Get WBD JWKS - get-jwks-wbd-client" doc:id="243ad361-f313-4269-8397-5b0144c2aef2" name="get-jwks-wbd-client" target="wbdJwks"/>
+		<ee:transform doc:name="Select WBD Public Key" doc:id="f07bd300-2682-470a-8276-5f0b88b1efd7">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="wbdJwk"><![CDATA[%dw 2.0
+output application/java
+---
+(vars.wbdJwks.keys filter ($.kid == vars.wbdKeyId))[0] default null]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Validate Public Key Exists" doc:id="916b80c4-21e0-489d-8049-f6ae58f6b703" >
+			<when expression="#[vars.wbdJwk != null]">
+				<java:invoke-static method="validateRequest(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)" doc:name="Validate WBD Signature" doc:id="dd212275-95da-4eb0-8ba2-8ebf22e6e6f3" class="com.etb.security.WbdSignatureValidator" target="signatureValid">
+			<java:args><![CDATA[#[{
+  arg0: "POST",
+  arg1: vars.originalHeaders.host,
+  arg2: vars.originalPath,
+  arg3: vars.originalHeaders.date,
+  arg4: vars.originalHeaders.digest,
+  arg5: vars.originalHeaders.signature,
+  arg6: vars.originalPayload,
+  arg7: vars.wbdJwk.n,
+  arg8: vars.wbdJwk.e
+}]]]></java:args>
+		</java:invoke-static>
+			</when>
+			<otherwise >
+				<set-variable value="#[false]" doc:name="Set Signature Invalid" doc:id="af2604a2-11ed-459c-b15a-4f64f44f6586" variableName="signatureValid"/>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Build Signature Validation Response" doc:id="2f1f1292-3ab5-4f03-8818-091294cacafe">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
-  valid: vars.signatureValid
+  valid: vars.signatureValid default false
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>

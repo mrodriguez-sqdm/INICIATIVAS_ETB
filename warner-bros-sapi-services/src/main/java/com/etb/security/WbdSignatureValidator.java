@@ -1,44 +1,17 @@
 package com.etb.security;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
+import java.security.spec.RSAPublicKeySpec;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
 public class WbdSignatureValidator {
-
-    public static String normalizePublicKey(String publicKey) {
-        if (publicKey == null || publicKey.trim().isEmpty()) {
-            throw new IllegalArgumentException("Public key is empty");
-        }
-
-        return publicKey.replace("\\n", "\n");
-    }
-
-    public static PublicKey loadPublicKey(String publicKey) throws Exception {
-
-        String normalizedKey = normalizePublicKey(publicKey);
-
-        String cleanKey = normalizedKey
-                .replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----", "")
-                .replaceAll("\\s", "");
-
-        byte[] keyBytes = Base64.getDecoder().decode(cleanKey);
-
-        X509EncodedKeySpec keySpec =
-                new X509EncodedKeySpec(keyBytes);
-
-        KeyFactory keyFactory =
-                KeyFactory.getInstance("RSA");
-
-        return keyFactory.generatePublic(keySpec);
-    }
 
     public static String generateDigest(String body) throws Exception {
 
@@ -75,13 +48,16 @@ public class WbdSignatureValidator {
 
         for (String part : parts) {
 
-            String[] keyValue = part.trim().split("=", 2);
+            String[] keyValue =
+                    part.trim().split("=", 2);
 
             if (keyValue.length == 2) {
 
-                String key = keyValue[0].trim();
+                String key =
+                        keyValue[0].trim();
 
-                String value = keyValue[1].trim();
+                String value =
+                        keyValue[1].trim();
 
                 if (value.startsWith("\"") &&
                         value.endsWith("\"")) {
@@ -99,6 +75,61 @@ public class WbdSignatureValidator {
         return values;
     }
 
+    public static String getKeyId(
+            String signatureHeader) {
+
+        Map<String, String> signatureValues =
+                parseSignatureHeader(signatureHeader);
+
+        return signatureValues.get("keyId");
+    }
+
+    public static PublicKey buildPublicKey(
+            String modulus,
+            String exponent) throws Exception {
+
+        if (modulus == null ||
+                modulus.trim().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "JWKS modulus is empty"
+            );
+        }
+
+        if (exponent == null ||
+                exponent.trim().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "JWKS exponent is empty"
+            );
+        }
+
+        byte[] modulusBytes =
+                Base64.getUrlDecoder()
+                        .decode(modulus);
+
+        byte[] exponentBytes =
+                Base64.getUrlDecoder()
+                        .decode(exponent);
+
+        BigInteger modulusValue =
+                new BigInteger(1, modulusBytes);
+
+        BigInteger exponentValue =
+                new BigInteger(1, exponentBytes);
+
+        RSAPublicKeySpec keySpec =
+                new RSAPublicKeySpec(
+                        modulusValue,
+                        exponentValue
+                );
+
+        KeyFactory keyFactory =
+                KeyFactory.getInstance("RSA");
+
+        return keyFactory.generatePublic(keySpec);
+    }
+
     public static boolean validateRequest(
             String method,
             String host,
@@ -107,13 +138,15 @@ public class WbdSignatureValidator {
             String digest,
             String signatureHeader,
             String body,
-            String publicKey,
-            String expectedKeyId) throws Exception {
+            String modulus,
+            String exponent) throws Exception {
 
         String calculatedDigest =
                 generateDigest(body);
 
-        if (!calculatedDigest.equals(digest)) {
+        if (digest == null ||
+                !calculatedDigest.equals(digest)) {
+
             return false;
         }
 
@@ -139,13 +172,6 @@ public class WbdSignatureValidator {
             return false;
         }
 
-        if (expectedKeyId != null &&
-                !expectedKeyId.trim().isEmpty() &&
-                !expectedKeyId.equals(keyId)) {
-
-            return false;
-        }
-
         if (algorithm != null &&
                 !"hs2019".equalsIgnoreCase(algorithm)) {
 
@@ -166,10 +192,15 @@ public class WbdSignatureValidator {
                 + "digest: " + digest;
 
         PublicKey rsaPublicKey =
-                loadPublicKey(publicKey);
+                buildPublicKey(
+                        modulus,
+                        exponent
+                );
 
         Signature verifier =
-                Signature.getInstance("SHA512withRSA");
+                Signature.getInstance(
+                        "SHA512withRSA"
+                );
 
         verifier.initVerify(rsaPublicKey);
 
@@ -183,6 +214,8 @@ public class WbdSignatureValidator {
                 Base64.getDecoder()
                         .decode(signatureBase64);
 
-        return verifier.verify(signatureBytes);
+        return verifier.verify(
+                signatureBytes
+        );
     }
 }
