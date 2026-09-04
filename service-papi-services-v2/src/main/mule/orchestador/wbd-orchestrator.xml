@@ -16,10 +16,12 @@ fun isoToUnix(date) =
     else
         (date as DateTime) as Number
 
+fun generateEventId() =
+    uuid()
+
 ---
 {
-    (id: payload.eventId)
-        if (payload.eventId?),
+    id: generateEventId(),
 
     (partner_user_id: payload.partnerUserId)
         if (payload.partnerUserId?),
@@ -127,23 +129,6 @@ output application/json skipNullOn="everywhere"
 			</ee:transform>
 			<flow-ref doc:name="mongo-db-sapi-dynamicQuery-clientSub_Flow" doc:id="00f3bec5-6ff7-43cf-b7eb-e8da96512e97" name="mongo-db-sapi-dynamicQuery-clientSub_Flow" />
 		</async>
-		<ee:transform doc:name="Transform Message" doc:id="9793a453-8d6b-46a4-a4c5-5024b2c717cc" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-
----
-{
-    code: (payload.Code default 202) as String,
-    message: "Event accepted for processing",
-    result: {
-        eventId: vars.eventId default "",
-        eventType: vars.eventType default "",
-        status: upper(payload.Result default "")
-    }
-}]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
 	</sub-flow>
 	<sub-flow name="wbd-service-orchestratorSub_Flow" doc:id="097c1f17-d233-49c6-9e35-cffdb62a9e18" >
 		<flow-ref doc:name="get-subscriptions-wbd-sapi-clientSub_Flow" doc:id="dee27fa3-4e35-4808-9b5e-8765815e02f5" name="get-subscriptions-wbd-sapi-clientSub_Flow"/>
@@ -153,27 +138,25 @@ output application/json
 output application/json
 
 fun unixToIso(timestamp) =
-    if (timestamp == null)
-        null
-    else
-        (timestamp as DateTime) as String {
-            format: "yyyy-MM-dd'T'HH:mm:ss'Z'"
-        }
+    (timestamp as DateTime) as String {
+        format: "yyyy-MM-dd'T'HH:mm:ss'Z'"
+    }
 
 ---
 {
-    code: (payload.Code default 200) as String,
-    message: "Subscriptions retrieved successfully",
+    (code: (payload.Code as String)) if (payload.Code != null),
+    (message: payload.Message) if (payload.Message != null),
     data: {
-        products: (payload.Result.products default []) map (product) -> {
-            code: product.code default "",
-            name: product.name default "",
-            starts: unixToIso(product.starts),
-            expires: unixToIso(product.expires),
-            status: product.status default "",
-            subscriptionId: product.sub_id default "",
-            transactionId: product.trx_id default ""
-        }
+        (products: payload.Result.products map (product) -> {
+            (code: product.code) if (product.code != null),
+            (name: product.name) if (product.name != null),
+            (starts: unixToIso(product.starts)) if (product.starts != null),
+            (renews: unixToIso(product.renews)) if (product.renews != null),
+            (expires: unixToIso(product.expires)) if (product.expires != null),
+            (status: product.status) if (product.status != null),
+            (subscriptionId: product.sub_id) if (product.sub_id != null),
+            (transactionId: product.trx_id) if (product.trx_id != null)
+        }) if (payload.Result.products != null)
     }
 }]]></ee:set-payload>
 			</ee:message>

@@ -9,8 +9,6 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
 	<sub-flow name="post-events-wbd-orchestrator"
 		doc:id="029cce0a-392e-46ec-89b5-a5fe5979f941">
-		<logger level="INFO" doc:name="Log Orchestration Start"
-			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /resources"]' />
 		<java:invoke-static method="generateHeaders(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)" doc:name="Invoke static" doc:id="cc4cc089-b64a-4f13-8fca-4a224478816f" class="com.etb.security.WbdSignatureUtil" target="wbdHeaders">
 			<java:args><![CDATA[#[{
     arg0: "POST",
@@ -22,37 +20,29 @@ http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/jav
     arg5: write(payload, "application/json")
 }]]]></java:args>
 		</java:invoke-static>
+		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="978711d6-0e32-4d31-872b-9d1e71942c60" variableName="request"/>
 		<flow-ref doc:name="post-event-wbd-client"
 			doc:id="5769df10-89f4-48d5-91d5-03dae0defab1"
 			name="post-event-wbd-client" />
-		<ee:transform doc:name="set response" doc:id="2443e73e-8ba8-4e37-b23f-81a803d4dc8f" >
+		<logger level="INFO" doc:name="Logger" doc:id="6aaa8736-c79f-4258-98da-670b00eb26a3" message="#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    httpStatus: attributes.statusCode&#10;}]"/>
+		<ee:transform doc:name="Transform Message" doc:id="cb98decf-33ba-4bfe-b3c5-c67484789684" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
-if (attributes.statusCode == 202) {
-	"Code": 202,
-	"Message": "Operation accepted",
-	"Result": "Accepted"
-	}
-else {
-	"Code": attributes.statusCode,
-	"Message": payload.error,
-	"Result": payload.error_description
-	}
-]]></ee:set-payload>
+{
+    code: (attributes.statusCode) as String,
+    message: "Event accepted for processing",
+    result: {
+        eventId: vars.request.id default "",
+        eventType: vars.request.event_type default "",
+        status: if (attributes.statusCode == 202)
+                    "ACCEPTED"
+                else
+                    "REJECTED"
+    }
+}]]></ee:set-payload>
 			</ee:message>
-			<ee:variables >
-				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
-output application/json
----
-if (attributes.statusCode == 202)
-	200
-else
-	400]]></ee:set-variable>
-			</ee:variables>
 		</ee:transform>
-		<logger level="INFO" doc:name="Log Orchestration End"
-                message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /resources | status=201"]' />
 	</sub-flow>
 </mule>

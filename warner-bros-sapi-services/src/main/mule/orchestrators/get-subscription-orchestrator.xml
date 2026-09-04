@@ -9,20 +9,15 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
 	<sub-flow name="get-subscriptions-wbd-orchestrator"
 		doc:id="029cce0a-392e-46ec-89b5-a5fe5979f941">
-		<logger level="INFO" doc:name="Log Orchestration Start"
-			doc:id="5a0df5a8-926d-45c5-a822-35b60e2193d7"
-			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=GET /subscriptions/parnertId"]' />
 		<java:invoke-static method="generateHeaders(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)" doc:name="Invoke static" doc:id="1210afd2-4fb8-4edf-826b-f9ec227ae2ac" class="com.etb.security.WbdSignatureUtil" target="wbdHeaders">
 			<java:args ><![CDATA[#[{
-    arg0: "GET",
-    arg1: p("wbd.host"),
-      arg2: p("wbd.basePath")
-        ++ (p("wbd.subscriptions.path") replace "{partnerId}" with p("wbd.partnerId"))
-        ++ "?partner_user_id="
-        ++ attributes.queryParams.partner_user_id,
-    arg3: p("wbd.api.keyId"),
-    arg4: p("wbd.api.privateKey"),
-    arg5: null
+  arg0: "GET",
+  arg1: p("wbd.host"),
+  arg2: p("wbd.basePath")
+        ++ (p("wbd.subscriptions.path") replace "{partnerId}" with p("wbd.partnerId")),
+  arg3: p("wbd.api.keyId"),
+  arg4: p("wbd.api.privateKey"),
+  arg5: null
 }]]]></java:args>
 		</java:invoke-static>
 		<ee:transform doc:name="Set Variables" doc:id="a7f70f7a-2e42-4ba6-8596-2355623a75ff" >
@@ -51,33 +46,18 @@ output application/json
 			</ee:variables>
 		</ee:transform>
 		<flow-ref doc:name="get-subscription-wbd-client" doc:id="c0d56c2d-6691-48ad-8d47-671416530ce2" name="get-subscription-wbd-client"/>
-		<ee:transform doc:name="set response" doc:id="591db913-19f5-4eaf-ab33-4d23c20d40b9" >
+		<logger level="INFO" doc:name="Logger" doc:id="f9c02bca-714b-436b-867b-cf74750c7ea2" message="#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    httpStatus: attributes.statusCode&#10;}]" />
+		<ee:transform doc:name="Transform Message" doc:id="03b661b1-a9d7-4b7a-a78e-05bcaad3ce00" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
-if (attributes.statusCode == 202) {
-  "Code": 200,
-  "Message": "operation successful",
-  "Result": payload
-  }
-else {
-	"Code": attributes.statusCode,
-	"Message": payload.error,
-	"Result": payload.error_description
-	}]]></ee:set-payload>
+{
+    Code: (attributes.statusCode) as String,
+    Message: "operation successful",
+    Result: payload
+}]]></ee:set-payload>
 			</ee:message>
-			<ee:variables >
-				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
-output application/java
----
-if (attributes.statusCode == 200)
-	200
-else
-	400]]></ee:set-variable>
-			</ee:variables>
 		</ee:transform>
-		<logger level="INFO" doc:name="Log Orchestration End"
-                message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=GET /subscriptions/parnertId"]' />
 	</sub-flow>
 </mule>
