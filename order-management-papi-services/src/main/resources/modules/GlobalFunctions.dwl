@@ -22,10 +22,13 @@ fun poblado(valor: Any) = not (isEmpty(valor default "") or valor == null)
 
 //Regla que valida que el campo sea true
 fun esTrue(valor: Any) =
-	(valor default "") as String {caseSensitive: false} == "true"
+	(valor default "") ~= true
 	
 // Vigente si la diferencia entre hoy y la fecha_consulta del score es <= 30 dias
-fun scoreVigente(scoreObj: Any) =
-	(scoreObj != null)
-		and poblado(scoreObj.fecha_consulta)
-		and ((hoy - (scoreObj.fecha_consulta as Date {format: "yyyy-MM-dd"})) as Number {unit: "days"}) <= 30
+fun scoreVigente(scoreObj) =
+    do {
+        var fechaHoy = (now() >> "UTC-5") as Date
+        var fechaScore = scoreObj.Fecha as Date {format: "yyyy-MM-dd"}
+        ---
+        (fechaHoy - fechaScore) as Number {unit: "days"} <= 30
+    }

@@ -19,7 +19,7 @@ output application/json
         "\$match": {
         	"Numero_Identificacion": vars.requestOrder.customer.documentNumber,
         	"Tipo_Documento": vars.requestOrder.customer.documentType,
-        	"Estado": "ACTIVO"
+        	"Estado": { "\$regex": "ACTIVO"}
         }
       }
     ],
@@ -36,6 +36,8 @@ output application/json
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
+import modules::GlobalFunctions as global
+
 var record = vars.responseMongo.result[0]
 
 // Wrapper común: empaqueta el resultado de cualquier validación
@@ -45,42 +47,37 @@ fun resultado(id: String, condicionValida: Boolean, mensajeValido: String, mensa
 	detail: if (condicionValida) mensajeValido else mensajeInvalido
 }
 
-// Reglas de apoyo
-fun poblado(valor: Any) = not (isEmpty(valor default "") or valor == null)
-
-fun esTrue(valor: Any) =
-	(valor default "") as String {caseSensitive: false} == "true"
 ---
 [
 	// 1. Nombre_Cliente poblado
 	resultado("Campo_Nombre_Cliente",
-		poblado(record.Nombre_Cliente),
+		global::poblado(record.Nombre_Cliente),
 		"Nombre_Cliente poblado",
 		"Nombre_Cliente no poblado"),
 
 	// 2. ATDP existe y HABEAS_DATA == true
 	resultado("Campo_ATDP_HabeasData",
-		(record.ATDP != null) and esTrue(record.ATDP.HABEAS_DATA),
+		(record.ATDP != null) and global::esTrue(record.ATDP.HABEAS_DATA),
 		"ATDP presente con HABEAS_DATA en true",
 		"ATDP ausente o HABEAS_DATA distinto de true"),
 
 	// 3. EnvioComunicaciones: Medio y Dato poblados
 	resultado("Campo_EnvioComunicaciones",
 		(record.EnvioComunicaciones != null)
-			and poblado(record.EnvioComunicaciones.MedioComunicacion)
-			or poblado(record.EnvioComunicaciones.DatoComunicacion1),
+			and global::poblado(record.EnvioComunicaciones.MedioComunicacion)
+			or global::poblado(record.EnvioComunicaciones.DatoComunicacion1),
 		"EnvioComunicaciones con Medio y Dato poblados",
 		"EnvioComunicaciones ausente o incompleto"),
 
 	// 4. Correo_Electronico O Telefono_Movil poblado
 	resultado("Campo_ContactoDirecto",
-		poblado(record.Correo_Electronico) or poblado(record.Telefono_Movil),
+		global::poblado(record.Correo_Electronico) or global::poblado(record.Telefono_Movil),
 		"Correo o Telefono_Movil poblado",
 		"Correo y Telefono_Movil vacios"),
 
 	// 5. Datos demograficos: Pais, Ciudad, Departamento poblados
 	resultado("Campo_DatosDemograficos",
-		poblado(record.Pais) and poblado(record.Ciudad) and poblado(record.Departamento),
+		global::poblado(record.Pais) and global::poblado(record.Ciudad) and global::poblado(record.Departamento),
 		"Pais, Ciudad y Departamento poblados",
 		"Falta al menos un dato demografico (Pais/Ciudad/Departamento)")
 ]]]></ee:set-payload>
