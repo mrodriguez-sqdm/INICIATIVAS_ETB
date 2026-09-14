@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    
     <flow name="order-management-papi-services-main">
         <http:listener config-ref="order-management-papi-services-httpListenerConfig" path="/v1/*">
             <http:response statusCode="#[vars.httpStatus default 200]">
@@ -10,10 +11,10 @@
                 <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
             </http:error-response>
         </http:listener>
-        <flow-ref doc:name="Input Audit" doc:id="a18545d0-909c-48c4-9f4c-b1590c665543" name="auditSub_Flow"/>
-		<apikit:router config-ref="order-management-papi-services-config" />
-		<flow-ref doc:name="Output Audit" doc:id="5e88274b-a151-4c52-b763-fcccec817017" name="auditSub_Flow" />
-		<error-handler ref="common-error-handler-v2" />
+        <flow-ref doc:name="Input Audit" doc:id="a18545d0-909c-48c4-9f4c-b1590c665543" name="auditSub_Flow" />
+        <apikit:router config-ref="order-management-papi-services-config" />
+        <flow-ref doc:name="Output Audit" doc:id="5e88274b-a151-4c52-b763-fcccec817017" name="auditSub_Flow" />
+        <error-handler ref="common-error-handler-v2" />
     </flow>
     <flow name="order-management-papi-services-console">
         <http:listener config-ref="order-management-papi-services-httpListenerConfig" path="/console/*">
@@ -27,19 +28,50 @@
         </http:listener>
         <apikit:console config-ref="order-management-papi-services-config" />
     </flow>
-    <flow name="patch:\cancelProductOrder:application\json:order-management-papi-services-config">
-		<ee:transform doc:name="Transform Message" doc:id="c7055427-e8ff-400c-9784-e9ec1271473c" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+    <flow name="post:\cancelProductOrder:application\json:order-management-papi-services-config">
+        <flow-ref doc:name="post-resource-orchestrator" doc:id="1a61e028-0cfc-4c5a-8f29-a72aed9ba7e6" name="cancelation-order-subFlow" />
+    </flow>
+    <flow name="post:\replaceSim:application\json:order-management-papi-services-config">
+        <ee:transform doc:name="Transform Message">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
 output application/json
+
+import modules::GlobalFunctions as global
+
 ---
 {
-	"data": "sin implementar"
+  code: "200",
+  messageResponse: "Orden registrada exitosamente",
+  order: {
+  	date: global::fechaActual(),
+  	dateMongo: global::fechaMongo(),
+  	campoPobladoVoid: global::poblado(""),
+  	campoPobladoFilled: global::poblado("ETB"),
+    orderNumber: "MDM-FIBRA-551482",
+    cun: "123456789",
+    rulesApplied: [
+      {
+        isValid: false,
+        mandatory: true,
+        detailedEvaluation: [
+          {
+            compared: "1 > 0",
+            description: "Validar que la consulta contiene resultados",
+            mandatory: true,
+            result: "OK"
+          }
+        ],
+        idRule: "REG-CLIENTE-001",
+        responseRule: {
+          code: "404",
+          message: "No se encontraron coincidencias del cliente consultado"
+        }
+      }
+    ]
+  }
 }]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
-    </flow>
-    <flow name="post:\cancelProductOrder:application\json:order-management-papi-services-config">
-		<flow-ref doc:name="post-resource-orchestrator" doc:id="1a61e028-0cfc-4c5a-8f29-a72aed9ba7e6" name="cancelation-order-subFlow"/>
+            </ee:message>
+        </ee:transform>
     </flow>
 </mule>
