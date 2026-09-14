@@ -1,7 +1,7 @@
 %dw 2.0
 import * from dw::Runtime
 output application/json  skipNullOn = "everywhere"
-var serviceEventId = "809"
+var serviceEventId = "813"
 var transaction = payload.transaction
 var customer = payload.customer
 var account = payload.account

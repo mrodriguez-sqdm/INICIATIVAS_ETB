@@ -1,11 +1,7 @@
 %dw 2.0
 import * from dw::Runtime
 output application/json  skipNullOn = "everywhere"
-var serviceEventId = payload.processCode  match {
-	case "PLAN_CHANGE" -> "329"
-    case "PLAN_CHANGE_BUNDLE" -> "809"
-    else -> fail("Invalid Process Code")
-}
+var serviceEventId = "329"
 var transaction = payload.transaction
 var customer = payload.customer
 var account = payload.account
