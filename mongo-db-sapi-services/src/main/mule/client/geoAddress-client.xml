@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-geoAddressId-clientSub_Flow" doc:id="5b9ec3c4-de16-40fc-90a9-69c4a1ef8425" >
+		<async doc:name="Async" doc:id="7bbd72e5-f879-445b-92d2-2340c55e6b54" >
+			<flow-ref doc:name="Logger before" doc:id="0a470d98-7c4e-4ec2-a73c-4d2b002b69c6" name="loggin-client-call" />
+		</async>
+		<logger level="INFO" doc:name="Log query" doc:id="log-query-by-id" message="#['Buscando por Id_Address: ' ++ payload.Id_Address]"/>
+		<try doc:name="Try" doc:id="46b20a82-87bf-43d9-aa39-cd5149affc6c" >
+			<mongo:find-documents collectionName="#[p('mongoDb-zonag.geo-address-collection')]" fields="," doc:name="get address by id" doc:id="ec0bc9c4-d575-4d99-86dc-49c236e597a0" config-ref="zonag_mongo_config">
+				<mongo:query ><![CDATA[#[output application/json --- payload]]]></mongo:query>
+			</mongo:find-documents>
+			<logger level="INFO" doc:name="Log result" doc:id="log-result-by-id" message="#['Documentos encontrados: ' ++ sizeOf(payload)]"/>
+			<ee:transform doc:name="Transform Message" doc:id="6dd16128-2641-4515-8dc1-1c325e66dff1" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6beac040-3271-4787-9e6e-900b9aeccb72" type="ANY" >
+					<logger level="ERROR" doc:name="Log error" doc:id="log-error-by-id" message="#['Error en GET por ID: ' ++ error.description]"/>
+					<ee:transform doc:name="Set Empty Array" doc:id="5f62dd7a-67aa-463b-b29a-698da9df043c" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="040e5fbd-1f83-44cc-b8c0-7e9e9fc015a2" >
+			<flow-ref doc:name="Logger after" doc:id="256d5448-c98a-42dc-babb-50eb9f9f7468" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<sub-flow name="get-geoAddress-clientSub_Flow" doc:id="c2e6a4de-418e-482d-923e-1e79153bf315" >
+		<async doc:name="Async" doc:id="c7d5272d-05e6-4956-9047-332f6ba6a862">
+			<flow-ref doc:name="Logger before" doc:id="f2b68a5f-d56b-4c75-87e5-49cc8d58df20" name="loggin-client-call" />
+		</async>
+		<try doc:name="Try" doc:id="try-catch-geoAddress">
+			<choice doc:name="Choice" doc:id="choice-limit-handler">
+				<when expression="#[vars.queryLimit == 0]">
+					<ee:transform doc:name="Set Empty Array for limit 0" doc:id="set-empty-array-limit-0">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<when expression="#[vars.queryLimit == null]">
+					<mongo:find-documents doc:name="get address by filter without limit" doc:id="mongo-without-limit" collectionName="#[p('mongoDb-zonag.geo-address-collection')]" fields="," config-ref="zonag_mongo_config">
+						<mongo:query><![CDATA[#[payload]]]></mongo:query>
+					</mongo:find-documents>
+				</when>
+				<otherwise>
+					<mongo:find-documents doc:name="get address by filter with limit" doc:id="mongo-with-limit" collectionName="#[p('mongoDb-zonag.geo-address-collection')]" fields="," limit="#[vars.queryLimit]" config-ref="zonag_mongo_config">
+						<mongo:query><![CDATA[#[payload]]]></mongo:query>
+					</mongo:find-documents>
+				</otherwise>
+			</choice>
+			<ee:transform doc:name="Transform Message" doc:id="2cf42694-09fe-486c-9d5a-fd9b938688fe">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="on-error-continue-geoAddress" type="ANY">
+					<ee:transform doc:name="Set Empty Array" doc:id="set-empty-array-geoAddress">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="e3d9e97d-ec41-4e9e-8c6d-979f6a9f9f54" >
+			<flow-ref doc:name="Logger after" doc:id="e7092bc0-b084-452d-8939-0cc2b23a98e4" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	
+	<!-- DELETE Sub-flow -->
+	<sub-flow name="delete-geoAddress-clientSub_Flow" doc:id="delete-geo-address-client-subflow">
+		<async doc:name="Async" doc:id="869afe72-f33b-4e7a-b220-a42fc3baf2cf">
+			<flow-ref doc:name="Logger before" doc:id="0c4315fa-b065-4528-bdf7-093700a384f7" name="loggin-client-call" />
+		</async>
+		<try doc:name="Try" doc:id="delete-try-catch">
+			<ee:transform doc:name="Transform to MongoDB delete format" doc:id="delete-transform-query">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var addressIdFromUri = attributes.uriParams.addressId default null
+var addressIdClean = if (addressIdFromUri != null) trim(addressIdFromUri as String) else null
+---
+{
+	Id_Address: addressIdClean
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<mongo:remove-documents collectionName="#[p('mongoDb-zonag.geo-address-collection')]" doc:name="Delete geoAddress from MongoDB" doc:id="delete-geo-address-mongo" config-ref="zonag_mongo_config">
+				<mongo:query><![CDATA[#[payload]]]></mongo:query>
+			</mongo:remove-documents>
+			<ee:transform doc:name="Transform to delete response format" doc:id="delete-transform-response">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var correlationId = attributes.headers."x-correlation-id" default uuid()
+var currentDate = now()
+---
+{
+	system: {
+		correlationId: correlationId,
+		processingServer: "mongo-db-sapi-services",
+		responseDate: currentDate
+	},
+	response: {
+		code: "200",
+		message: "Geographic address deleted successfully",
+		"type": "SUCCESS"
+	}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="delete-on-error-continue" type="ANY">
+					<ee:transform doc:name="Set Error Response" doc:id="delete-set-error-response">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var correlationId = attributes.headers."x-correlation-id" default uuid()
+var currentDate = now()
+---
+{
+	system: {
+		correlationId: correlationId,
+		processingServer: "mongo-db-sapi-services",
+		responseDate: currentDate
+	},
+	response: {
+		code: "500",
+		message: "Error deleting geographic address: " ++ error.description,
+		"type": "ERROR"
+	}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="7ad40428-cb23-43a8-9c61-48d3fbec3273" >
+			<flow-ref doc:name="Logger after" doc:id="a3d815be-a7dc-4c95-8e13-06711a05abba" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	
+	<!-- INSERT Sub-flow -->
+	<sub-flow name="insert-geoAddress-clientSub_Flow" doc:id="insert-geo-address-client-subflow">
+		<async doc:name="Async" doc:id="04b3b161-edde-445b-a6a5-3c483d044992">
+			<flow-ref doc:name="Logger before" doc:id="3e628ad1-0120-4a4b-bfbc-8bc49a56cf1d" name="loggin-client-call" />
+		</async>
+		<try doc:name="Try" doc:id="insert-try-catch">
+			<ee:transform doc:name="Transform to MongoDB insert format" doc:id="insert-transform-document">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var geoData = payload.geoAddress
+var currentDate = now()
+
+// Función de homologación AC→CL, AK→KR
+fun homologate(address) = 
+    if (address != null)
+        (address 
+        replace /^AC / with "CL "
+        replace /^AK / with "KR ")
+    else
+        null
+
+// Campos obligatorios del request
+var detailedAddress = geoData.detailedAddress
+var currentAddress = geoData.currentAddress
+
+// Aplicar homologación AC→CL, AK→KR
+var detailedAddressHomologated = homologate(detailedAddress)
+var currentAddressHomologated = homologate(currentAddress)
+
+// Calcular Complemento_Direccion (con números reemplazados por #)
+var complement = if (detailedAddressHomologated != null and currentAddressHomologated != null)
+                    (if (detailedAddressHomologated contains currentAddressHomologated)
+                        do {
+                            var complementRaw = trim(detailedAddressHomologated replace currentAddressHomologated with "")
+                            ---
+                            // Reemplazar cada dígito individual por #
+                            complementRaw replace /\d/ with "#"
+                        }
+                    else
+                        "")
+                 else
+                    ""
+
+// Calcular Direccion_Contingente (sin espacios, usar dirección base ya homologada)
+var direccionContingente = if (currentAddressHomologated != null)
+        ((currentAddressHomologated splitBy " ") joinBy "")
+    else
+        null
+---
+{
+	Chip: geoData.chip,
+	Clase_Predio: geoData.propertyClass,
+	Direccion_Detallada: detailedAddressHomologated,
+	Estrato_Catastro: geoData.catastroStratum as String,
+	Fecha_Actualizacion_Detalle: geoData.detailUpdateDate,
+	Fecha_Modificacion_Address: geoData.addressModificationDate,
+	Id_Address: geoData.addressId,
+	Id_Barrio: geoData.neighborhoodId,
+	Id_Departamento: geoData.departmentId as String,
+	Id_Localidad: geoData.localityId as String,
+	Id_Municipio: geoData.municipalityId as String,
+	Id_Predio: geoData.propertyId,
+	Predio: geoData.property,
+	Tipo_Distancia: geoData.distanceType,
+	Type: geoData.addressType,
+	Geo_Ubicacion: {
+		"type": "Point",
+		coordinates: [geoData.longitude, geoData.latitude]
+	},
+	Actualizacion_Extractor: geoData.updateExtractor default null,
+	Direccion_Actual: currentAddressHomologated,
+	Municipio: geoData.municipality default null,
+	Localidad: geoData.locality default null,
+	Barrio: geoData.neighborhood default null,
+	Fecha_Creacion: currentDate,
+	Fecha_Modificacion: currentDate,
+	Usuario_Creacion: "UserService",
+	Usuario_Modificacion: "UserService",
+	Complemento_Direccion: complement,
+	Direccion_Contingente: direccionContingente
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<mongo:insert-document doc:name="Insert geoAddress in MongoDB" doc:id="08ccd0a2-0cff-4e42-89d9-599bb7fabc7b" config-ref="zonag_mongo_config" collectionName="#[p('mongoDb-zonag.geo-address-collection')]"/>
+			<ee:transform doc:name="Transform to insert response format" doc:id="insert-transform-response">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var correlationId = attributes.headers."x-correlation-id" default uuid()
+var currentDate = now()
+---
+{
+	system: {
+		correlationId: correlationId,
+		processingServer: "mongo-db-sapi-services",
+		responseDate: currentDate
+	},
+	response: {
+		code: "200",
+		message: "Geographic address inserted successfully",
+		"type": "SUCCESS"
+	}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="insert-on-error-continue" type="ANY">
+					<ee:transform doc:name="Set Error Response" doc:id="insert-set-error-response">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var correlationId = attributes.headers."x-correlation-id" default uuid()
+var currentDate = now()
+---
+{
+	system: {
+		correlationId: correlationId,
+		processingServer: "mongo-db-sapi-services",
+		responseDate: currentDate
+	},
+	response: {
+		code: "500",
+		message: "Error inserting geographic address: " ++ error.description,
+		"type": "ERROR"
+	}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="9505741a-ce2b-4dfd-8096-cb13f43a6da5" >
+			<flow-ref doc:name="Logger after" doc:id="4df9aa4e-7072-4562-8a6a-ddbbee47a6d4" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	
+	<!-- UPDATE Sub-flow -->
+	<sub-flow name="update-geoAddress-clientSub_Flow" doc:id="update-geo-address-client-subflow">
+		<async doc:name="Async" doc:id="59987d91-b729-4248-b54e-c076151dc1d4">
+			<flow-ref doc:name="Logger before" doc:id="f2458a97-7cee-4fbe-958b-488e472767c0" name="loggin-client-call" />
+		</async>
+		<try doc:name="Try" doc:id="update-try-catch">
+			<ee:transform doc:name="Transform to MongoDB update format" doc:id="update-transform-query-update">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var geoData = payload.geoAddress
+var addressId = attributes.uriParams.addressId
+
+// Función de homologación AC→CL, AK→KR
+fun homologate(address) = 
+    if (address != null)
+        (address 
+        replace /^AC / with "CL "
+        replace /^AK / with "KR ")
+    else
+        null
+
+// Campos obligatorios del request
+var detailedAddress = geoData.detailedAddress
+var currentAddress = geoData.currentAddress
+
+// Aplicar homologación AC→CL, AK→KR
+var detailedAddressHomologated = homologate(detailedAddress)
+var currentAddressHomologated = homologate(currentAddress)
+
+// Calcular Complemento_Direccion (con números reemplazados por #)
+var complement = if (detailedAddressHomologated != null and currentAddressHomologated != null)
+                    (if (detailedAddressHomologated contains currentAddressHomologated)
+                        do {
+                            var complementRaw = trim(detailedAddressHomologated replace currentAddressHomologated with "")
+                            ---
+                            // Reemplazar cada dígito individual por #
+                            complementRaw replace /\d/ with "#"
+                        }
+                    else
+                        "")
+                 else
+                    ""
+
+// Calcular Direccion_Contingente (sin espacios, usar dirección base ya homologada)
+var direccionContingente = if (currentAddressHomologated != null)
+        ((currentAddressHomologated splitBy " ") joinBy "")
+    else
+        null
+
+var updateFields = {
+	Chip: geoData.chip,
+	Clase_Predio: geoData.propertyClass,
+	Direccion_Detallada: detailedAddressHomologated,
+	Estrato_Catastro: geoData.catastroStratum as String,
+	Fecha_Actualizacion_Detalle: geoData.detailUpdateDate,
+	Fecha_Modificacion_Address: geoData.addressModificationDate,
+	Id_Barrio: geoData.neighborhoodId,
+	Id_Departamento: geoData.departmentId as String,
+	Id_Localidad: geoData.localityId as String,
+	Id_Municipio: geoData.municipalityId as String,
+	Id_Predio: geoData.propertyId,
+	Predio: geoData.property,
+	Tipo_Distancia: geoData.distanceType,
+	Type: geoData.addressType,
+	Geo_Ubicacion: {
+		"type": "Point",
+		coordinates: [geoData.longitude, geoData.latitude]
+	},
+	Actualizacion_Extractor: geoData.updateExtractor default null,
+	Direccion_Actual: currentAddressHomologated,
+	Municipio: geoData.municipality default null,
+	Localidad: geoData.locality default null,
+	Barrio: geoData.neighborhood default null,
+	Fecha_Modificacion: now(),
+	Usuario_Modificacion: "UserService",
+	Complemento_Direccion: complement,
+	Direccion_Contingente: direccionContingente
+}
+---
+{
+	query: {
+		Id_Address: addressId
+	},
+	update: updateFields,
+	upsert: false
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<mongo:update-documents collectionName="#[p('mongoDb-zonag.geo-address-collection')]" doc:name="Update geoAddress in MongoDB" doc:id="update-geo-address-mongo" config-ref="zonag_mongo_config">
+				<mongo:query><![CDATA[#[payload.query]]]></mongo:query>
+				<mongo:content-to-update><![CDATA[#[payload.update]]]></mongo:content-to-update>
+			</mongo:update-documents>
+			<ee:transform doc:name="Transform to update response format" doc:id="update-transform-response">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var correlationId = attributes.headers."x-correlation-id" default uuid()
+var currentDate = now()
+---
+{
+	system: {
+		correlationId: correlationId,
+		processingServer: "mongo-db-sapi-services",
+		responseDate: currentDate
+	},
+	response: {
+		code: "200",
+		message: "Geographic address updated successfully",
+		"type": "SUCCESS"
+	}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="update-on-error-continue" type="ANY">
+					<ee:transform doc:name="Set Error Response" doc:id="update-set-error-response">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var correlationId = attributes.headers."x-correlation-id" default uuid()
+var currentDate = now()
+---
+{
+	system: {
+		correlationId: correlationId,
+		processingServer: "mongo-db-sapi-services",
+		responseDate: currentDate
+	},
+	response: {
+		code: "500",
+		message: "Error updating geographic address: " ++ error.description,
+		"type": "ERROR"
+	}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<async doc:name="Async" doc:id="95f964cf-1e45-4963-8490-6e8187cf2a41" >
+			<flow-ref doc:name="Logger after" doc:id="72ab9504-d2f3-49fe-8e76-9e6eb644317a" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+</mule>
