@@ -12,9 +12,9 @@ output application/xml  skipNullOn="everywhere", writeDeclaredNamespaces="All"
       }
     },
     mdm#WSRequestBody: {
-      mdm#id: vars.pqrId,
-      mdm#set_type: "U",
-      mdm#estado_pqr: payload.pqrStatus
+      mdm#numero_pqr: vars.pqrId,
+      mdm#estado_pqr: payload.pqrStatus,
+      mdm#set_type: "U"
     }
   }
 }
