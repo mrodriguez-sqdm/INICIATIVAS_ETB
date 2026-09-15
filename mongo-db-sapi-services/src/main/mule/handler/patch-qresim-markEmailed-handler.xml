@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-qresim-markEmailed-handlerSub_Flow" doc:id="patch-qresim-markEmailed-handler-subflow" >
+		<logger level="INFO" doc:name="Logger - Start Handler" doc:id="patch-qresim-start-logger" message="Iniciando handler para marcar eSIM como enviado por correo"/>
+		
+		<ee:transform doc:name="Transform Message - Validate Input" doc:id="patch-qresim-validate-transform">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    Numero_Orden: payload.Numero_Orden default "",
+    ICCID: payload.ICCID default "",
+    EnvioResponsys: payload.EnvioResponsys default true
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="Numero_Orden"><![CDATA[payload.Numero_Orden default ""]]></ee:set-variable>
+				<ee:set-variable variableName="ICCID"><![CDATA[payload.ICCID default ""]]></ee:set-variable>
+				<ee:set-variable variableName="EnvioResponsys"><![CDATA[payload.EnvioResponsys default true]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		
+		<choice doc:name="Choice - Validate Input" doc:id="patch-qresim-validate-choice">
+			<when expression="#[vars.Numero_Orden != '' and vars.ICCID != '']">
+				<logger level="INFO" doc:name="Logger - Valid Input" doc:id="patch-qresim-valid-input-logger" 
+					message="Datos válidos recibidos - Numero_Orden: #[vars.Numero_Orden], ICCID: #[vars.ICCID]"/>
+				
+				<flow-ref doc:name="Flow Reference - Orchestrator" doc:id="patch-qresim-orchestrator-ref" name="patch-qresim-markEmailed-orchestratorSub_Flow"/>
+			</when>
+			<otherwise>
+				<logger level="ERROR" doc:name="Logger - Invalid Input" doc:id="patch-qresim-invalid-input-logger" 
+					message="Datos inválidos recibidos - Numero_Orden: #[vars.Numero_Orden], ICCID: #[vars.ICCID]"/>
+				
+				<ee:transform doc:name="Transform Message - Error Response" doc:id="patch-qresim-error-transform">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 400,
+    "code": "BAD_REQUEST",
+    "message": {
+        "message": "Numero_Orden e ICCID son requeridos"
+    },
+    "messageServer": "Bad Request - Missing required parameters",
+    "cause": [
+        {
+            "origin": "mongo-db-sapi-services",
+            "message": "Numero_Orden e ICCID son requeridos"
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus">400</ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		
+		<logger level="INFO" doc:name="Logger - End Handler" doc:id="patch-qresim-end-logger" message="Finalizando handler para marcar eSIM como enviado por correo"/>
+	</sub-flow>
+</mule>

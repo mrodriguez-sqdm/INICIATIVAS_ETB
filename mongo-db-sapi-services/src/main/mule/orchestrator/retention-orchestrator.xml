@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-retention-orchestratorSub_Flow" doc:id="7f3e6548-2c6e-4532-aa53-d35e097fcb2c" >
+		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="88508cbf-bafd-42c0-a121-b7d825e21170" variableName="req_retencion"/>
+		<flow-ref doc:name="Flow Reference" doc:id="48574a68-a9f2-47a8-9632-4b6c3aeae8ac" name="get-consecutive-retenciones-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="3be3eebd-6c81-4e26-91cc-2981413fa3c9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+((vars.req_retencion default {}) -- ["Numero_Retencion"]) ++ { Numero_Retencion: payload.Prefijo ++ payload.Secuencia as String}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="601ee5e1-f4d6-4a33-8023-c39c71f1d3ee" name="post-retention-create-clientSub_Flow"/>
+		<ee:transform doc:name="Set payload Response" doc:id="047285ad-206f-4c3c-8695-77b8198cd52f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "200",
+	mensaje: "Retencion creada con exito",
+	numeroRetencion: payload.Numero_Retencion
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="retention-orchestratorSub_Flow" doc:id="cf2055b5-f218-439b-8abd-751b5de90b70" >
+		<flow-ref doc:name="Flow Reference" doc:id="60d1e2c5-a091-4e7c-9a58-f93d8045fa73" name="patch-retention-update-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="1a2b066f-966a-4c95-a00d-1adbcd489167" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+	codigo: if(payload.matched == 0) "404" else "200",
+	mensaje: if(payload.matched == 0) 
+	           "No se encontro una retencion creada con el valor enviado" 
+	         else if(payload.modified == 0)
+	           "No se realizo ninguna modificacion"
+	         else
+	           "Retencion actualizada con exito." 
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
