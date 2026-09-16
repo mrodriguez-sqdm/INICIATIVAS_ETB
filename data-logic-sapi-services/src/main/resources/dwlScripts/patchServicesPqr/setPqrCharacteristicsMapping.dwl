@@ -14,8 +14,7 @@ output application/xml  skipNullOn="everywhere", writeDeclaredNamespaces="All"
     mdm#WSRequestBody: {
       mdm#id_pqr: vars.pqrId,
       mdm#caracteristica: payload.characteristics[0].name,
-      mdm#valor: payload.characteristics[0].value,
-      mdm#set_type: payload.characteristics[0].setType default "U"
+      mdm#valor: payload.characteristics[0].value
     }
   }
 }
