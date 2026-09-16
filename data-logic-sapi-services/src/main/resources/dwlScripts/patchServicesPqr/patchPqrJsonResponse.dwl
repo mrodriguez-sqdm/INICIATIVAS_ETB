@@ -12,9 +12,8 @@ var pqrResponse = (vars.pqrUpdateType) match {
 	"code": "201",
 	"message": "PQR actualizada correctamente",
 	"pqr": {
-		"databaseId": pqrResponse.database_id,
+		"id": vars.pqrId,
 		"operationResult": pqrResponse.OperationResult,
-		"operationResultDescription": pqrResponse.OperationResultDesc,
-		"mongoId": pqrResponse.mongo_id
+		"operationResultDescription": pqrResponse.OperationResultDesc
 	}
 }
