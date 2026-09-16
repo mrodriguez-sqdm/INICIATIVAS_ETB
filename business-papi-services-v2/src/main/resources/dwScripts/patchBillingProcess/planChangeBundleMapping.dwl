@@ -30,7 +30,7 @@ output application/json  skipNullOn = "everywhere"
 	},
 	// services Mapping
 	("billProdInstList": services map ((service) -> {
-		"operate": operation,
+		"operate": service.operate default operation,
 		"areaCode": service.areaCode,
 		"serviceNumber": service.serviceNumber,
 		"socialLevel": service.socialLevel,
