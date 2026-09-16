@@ -122,6 +122,9 @@ payload.id_transaccion]]></ee:set-variable>
 			<when expression='#[%dw 2.0&#10;output application/java&#10;---&#10;sizeOf(&#10;    flatten(payload.referencias.detalle_referencias.atributos default [])&#10;        filter ((atributo) -&gt;&#10;            atributo.atributo == "TIPO_PAGO" and&#10;            upper(atributo.valor) != "RECARGA"&#10;        )&#10;) == 0]'>
 				<flow-ref doc:name="patch-payment-by-id-azure-event-orchestratorSub_Flow" doc:id="c8329285-dd33-4870-b8cc-00ceb461a8f4" name="patch-payment-by-id-azure-event-orchestratorSub_Flow" />
 			</when>
+					<when expression='#[%dw 2.0&#10;output application/java&#10;---&#10;(&#10;    sizeOf(&#10;        flatten(payload.referencias.detalle_referencias.atributos default [])&#10;            filter ((atributo) -&gt;&#10;                atributo.atributo == "TIPO_PAGO" and&#10;                upper(atributo.valor default "") != "FACTURA"&#10;            )&#10;    ) == 0&#10;)&#10;and&#10;upper(payload.estado_transaccion default "") == "PAGADA"]'>
+						<flow-ref doc:name="patch-payment-by-id-factura-pagada-orchestratorSub_Flow" doc:id="0c5ca1bc-ffda-4830-885d-735383a9d3d4" name="patch-payment-by-id-factura-pagada-orchestratorSub_Flow"/>
+					</when>
 		</choice>
 			</route>
 		</scatter-gather>
@@ -307,5 +310,90 @@ var referenciaTransaccion =
 			</ee:variables>
 		</ee:transform>
 		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="2a7b3457-bbe7-482a-be89-193fcef4a692" name="sapi-http-client-sub-flow" />
+	</sub-flow>
+	<sub-flow name="patch-payment-by-id-factura-pagada-orchestratorSub_Flow" doc:id="1a8b46ef-7ee6-4c90-ae51-b70007681df5" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="feab0b8d-dc24-483b-8674-cbbf3e4ae0e1" >
+			<route >
+				<ee:transform doc:name="set MDM_FACTURA_ONLINE Transform Message" doc:id="bfe109ac-de08-467a-a9ab-b3a5396f2a13" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    query: {
+        find: "MDM_FACTURA_ONLINE",
+        filter: {
+            numero_cuenta_facturacion: "2659561",
+            numero_factura: "251693985"
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoMdmHttpRequest.dwl" variableName="httpRequest" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="7613b629-8a5c-4320-a388-34be7829ee7e" name="sapi-http-client-sub-flow" />
+			</route>
+			<route >
+				<ee:transform doc:name="set MDM_PAGOS_ONLINE Transform Message" doc:id="a0b88c9c-ee78-422f-a449-5df8e6ebe56e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    query: {
+        find: "MDM_PAGOS_ONLINE",
+        filter: {
+            NumeroCuentaFacturacion: "15052856597",
+            NumeroFactura: "15052856597"
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoMdmHttpRequest.dwl" variableName="httpRequest" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="be27b7d6-33e6-4d71-bea5-be8ca66723ca" name="sapi-http-client-sub-flow" />
+			</route>
+			<route >
+				<ee:transform doc:name="set BOT_PARAMETERS Transform Message" doc:id="e3b89712-7118-43f8-ac02-d122fec7ea99" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    query: {
+        find: "BOT_PARAMETERS",
+        filter: {
+            Code: "PARAMETERS_PAYMENT_GATEWAY",
+            Origin: "BANCOLOMBIA"
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoHttpRequest.dwl" variableName="httpRequest" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="84b80706-9f65-4f2a-a983-249964a2cf8a" name="sapi-http-client-sub-flow" />
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Set vars responses" doc:id="f5ad32d0-d6a9-49cb-91fb-08ea04720e79" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="responseFacturaOnline" ><![CDATA[payload[0]]]></ee:set-variable>
+				<ee:set-variable variableName="responsePagosOnline" ><![CDATA[payload[1]]]></ee:set-variable>
+				<ee:set-variable variableName="responseBotParameters" ><![CDATA[payload[2]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="8616f8ed-05f7-4773-8cf8-5cb55131b6aa" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable resource="dwScripts/patchPayment/setPostDataLogicPaymentsOnlineHttpRequest.dwl" variableName="httpRequest" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="9c2f00fa-1caf-41f0-b952-02299f2be59c" name="sapi-http-client-sub-flow" />
 	</sub-flow>
 </mule>

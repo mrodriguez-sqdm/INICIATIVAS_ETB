@@ -78,7 +78,11 @@ fun getNumAgrupacion() =
 
         Tipo: getTipo(),
         Valor: requestPayload.referencias.valor_pagar default "",
-        Fuente: requestPayload.atributos_pasarela.pasarela default "",
+        Fuente: 
+		    if (upper(requestPayload.atributos_pasarela.pasarela default "") == "WOMPI")
+		        "BANCOLOMBIA"
+		    else
+		        requestPayload.atributos_pasarela.pasarela default "",
         Origen: requestPayload.atributos_pasarela.tipo_pasarela default "",
         Estado_OCS: null,
         Referencia_Transaccion: null
