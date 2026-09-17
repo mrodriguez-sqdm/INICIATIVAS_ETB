@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-score" doc:id="779bafb0-4f57-415a-95fb-23a59ac1493e" >
+		<ee:transform doc:name="set variables" doc:id="95096b62-fe4a-4ed5-a2eb-fd129b670742" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+	"name": attributes.headers.name,
+	"systemId": attributes.headers.systemId,
+	"source": attributes.headers.source
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set lisim score request" doc:id="554adbf0-3fa8-41f7-80fd-501dcfd1c320" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "IdentityValidationId": payload.id,
+    "Model": payload.model,
+    "Stratum": payload.stratum,
+    "Department": payload.department,
+    "City": payload.city
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="lisim-sapi-client" doc:id="cd188d56-018c-4bfa-9c02-b8d2957222bb" name="lisim-sapi-score-clientSub_Flow" target="postLisimScoreResponse" />
+		<os:retrieve doc:name="retrieve validation details" doc:id="394f8abd-6119-474a-a52b-dc709d8874b8" key="#[vars.initialPayload.id]" objectStore="Validation_Object_Store" target="osValidationDetail" >
+			<os:default-value ><![CDATA[#[null]]]></os:default-value>
+		</os:retrieve>
+		<choice doc:name="identity available" doc:id="a5d832a9-1835-40c6-92f9-32448de2c301" >
+			<when expression="#[vars.osValidationDetail != null]" >
+				<ee:transform doc:name="set mongo get score params" doc:id="f9dbedb7-7930-4a40-92b7-b952c05ce6c6" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"technology": vars.osValidationDetail.technology,
+	"segment": vars.osValidationDetail.segment
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-get-score-variables-sub-flow" doc:id="8c023169-5e43-48b3-ac60-6d1a7c7b82b7" name="mongo-db-sapi-get-score-variables-sub-flow" target="getVariablesResponse" />
+				<ee:transform doc:name="set mongo get georeference params" doc:id="249cb75b-83eb-456d-8a43-398c4040f69b" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"tableNumber": vars.getVariablesResponse.variables[0].'Tabla_Asignada'
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-get-score-georeference-sub-flow" doc:id="e5e6a5e5-1804-43f6-a9d2-a7d54753f7a5" name="mongo-db-sapi-get-score-georeference-sub-flow" target="getGeoreferenceResponse" />
+				<ee:transform doc:name="set mongo patch identity request" doc:id="e5b2076e-294d-4a26-ad52-d91111507274" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var score = vars.postLisimScoreResponse.score as String
+var scoreDate = now() as Date
+---
+{
+	"estado": "VIGENTE",
+	"causal": "VALIDACION OBTENIDA EXITOSAMENTE",
+	"score_movil": {
+		"Valor": score,
+		"Fecha": scoreDate
+	},
+	"score_fija": {
+		"Valor": score,
+		"Fecha": scoreDate,
+		"Estrato": vars.initialPayload.stratum
+	}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"documentType": vars.osValidationDetail.documentType as String,
+	"documentNumber": vars.osValidationDetail.documentNumber
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="89088ee2-f952-40fe-aa34-5827949b6401" name="mongo-db-sapi-patch-identity-validation-sub-flow" />
+				<choice doc:name="technology validation" doc:id="8f723be2-ab52-4196-9ddb-d72cf821ade9" >
+					<when expression='#[vars.osValidationDetail.technology == "LTE"]' >
+						<ee:transform doc:name="set lte score response" doc:id="b078c0ac-303a-4742-9137-24faf596fbd0" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var scoreToCheck = vars.postLisimScoreResponse.score
+var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
+
+var matchedRange = rangos filter (rango) -> do {
+	var parts = rango.Codigo splitBy "_"
+	var low   = parts[0] as Number
+	var high  = parts[1] as Number
+	---
+	scoreToCheck >= low and scoreToCheck <= high
+}
+
+var lteScore = (matchedRange[0].Detalle map ((item, index) -> {
+	"Status Score": item.Nombre,
+	"Valor Maximo": item.Valor as Number,
+	"Oferta": vars.osValidationDetail.technology,
+    "Segmento": vars.osValidationDetail.segment
+}))[0]
+---
+{
+  code: "200",
+  message: "cliente validado exitosamente",
+  result: lteScore
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="set fixed score response" doc:id="41784720-bb6f-4f9a-bf5d-428ace18d735" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+var numberToCheck = vars.postLisimScoreResponse.score
+var estrato = vars.initialPayload.stratum default 0
+var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
+
+var matchedRange = rangos filter (rango) -> do {
+    var parts = rango.Codigo splitBy "_"
+    var low = parts[0] as Number
+    var high = parts[1] as Number
+    ---
+    numberToCheck >= low and numberToCheck <= high
+  }
+
+var matchedDetalle = (matchedRange[0].Detalle default []) filter (d) -> d.Nombre == ("ESTRATO " ++ (estrato as String))
+
+var fixedScore = (matchedDetalle map ((item, index) -> {
+    "Status Score": item.Nombre,
+    "Valor Maximo": item.Valor as Number,
+	"Oferta": vars.osValidationDetail.technology,
+    "Segmento": vars.osValidationDetail.segment
+}))[0]
+
+output application/json  
+---
+{
+    code: "200",
+    message: "cliente validado exitosamente",
+    result: fixedScore
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<raise-error doc:name="SCORE_VALIDATION:DETAILS_NOT_FOUND" doc:id="86960590-6075-4098-b0ed-9302d3bc9e06" type="SCORE_VALIDATION:DETAILS_NOT_FOUND" description="the validation details does not exist in OS" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

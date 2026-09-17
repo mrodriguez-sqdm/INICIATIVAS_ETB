@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation=" http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd  http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd  http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+    <flow name="customer-papi-services-main">
+        <http:listener config-ref="customer-papi-services-httpListenerConfig" path="/v2/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call initial Logger" doc:id="119f4f61-215b-4e18-b1aa-44655a7bf03e" name="initial-loggin-Sub_Flow" />
+        <apikit:router config-ref="customer-papi-services-config" />
+        <async doc:name="Async" doc:id="b50ba90c-3200-4e7c-9085-35c4582b869c">
+            <flow-ref doc:name="Call logger" doc:id="58eb40b2-dd62-49d5-9d69-bc2cd6b84f8f" name="loggin-client-call" />
+        </async>
+        <error-handler ref="common-error-handler-v2" />
+    </flow>
+    <flow name="customer-papi-services-console">
+        <http:listener config-ref="customer-papi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="customer-papi-services-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform doc:name="Transform Message">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="get:\customer:customer-papi-services-config">
+        <flow-ref doc:name="get-customer-orchestratorSub_Flow" doc:id="4e71f94c-db4f-4a4f-be33-81400001d372" name="get-customer-orchestratorSub_Flow" />
+    </flow>
+    <flow name="post:\riskValidation\identityValidation:customer-papi-services-config" doc:id="0c1e587a-3ec5-4d89-88b2-3b5399f97641">
+        <flow-ref doc:name="lisim-customer-papi-orchestrator-v2-identityValidation" doc:id="a92cf6c6-73ad-4954-a513-7aad509be64a" name="lisim-customer-papi-orchestrator-v2-identityValidation" />
+    </flow>
+    <flow name="post:\riskValidation\score:customer-papi-services-config" doc:id="5a7023b0-2ece-4ff8-a508-3f4ce6947009">
+        <flow-ref doc:name="lisim-customer-papi-orchestrator-v2-score" doc:id="ebdd4130-653e-4111-a63e-664d2e14e257" name="lisim-customer-papi-orchestrator-v2-score" />
+    </flow>
+    <flow name="post:\riskValidation\otp\resend:customer-papi-services-config" doc:id="5e3a3eaf-c5b0-4a3d-a681-fc7feb9c9fb6">
+        <flow-ref doc:name="lisim-customer-papi-orchestrator-v2-otp-resend" doc:id="886a3439-3e9f-4127-b933-eaf1ba242df1" name="lisim-customer-papi-orchestrator-v2-otp-resend" />
+    </flow>
+    <flow name="post:\riskValidation\otp\validation:customer-papi-services-config" doc:id="5233e07b-a6b5-43de-b38b-c8f7c586e139">
+        <flow-ref doc:name="lisim-customer-papi-orchestrator-v2-otp-validation" doc:id="33cf8c0d-90bc-438d-8223-364e5f593e02" name="lisim-customer-papi-orchestrator-v2-otp-validation" />
+    </flow>
+    <flow name="get:\riskValidation\questionnaire:customer-papi-services-config">
+        <flow-ref doc:name="lisim-customer-papi-orchestrator-v2-questionnaire" doc:id="e89e1d6e-fd7d-4a78-b960-ebf9ae7f2306" name="lisim-customer-papi-orchestrator-v2-questionnaire" />
+    </flow>
+    <flow name="post:\riskValidation\questionaries\validation:customer-papi-services-config" doc:id="1cb576c1-2733-4c1b-a610-3829619feba6">
+        <flow-ref doc:name="lisim-customer-papi-orchestrator-v2-questionnaire-validation" doc:id="05e7d20e-b51c-42c8-a97f-e6309ad82232" name="lisim-customer-papi-orchestrator-v2-questionnaire-validation" />
+    </flow>
+    <flow name="get:\riskValidation\mecna:customer-papi-services-config" doc:id="ca66a4d9-4fbb-4134-9901-660bda575332">
+        <flow-ref doc:name="lisim-customer-papi-orchestrator-v2-mecna" doc:id="b3dbfed9-cacf-475c-b182-fcf1944d3652" name="lisim-customer-papi-orchestrator-v2-mecna" />
+    </flow>
+	<flow name="post:\productOrder:customer-papi-services-config" doc:id="7162c3ec-1be7-496e-82f4-8f0910d4fc3d" >
+		<flow-ref doc:name="Call orchestrator" doc:id="55167a91-508c-4027-9e46-767621b997e5" name="product-order-create-orchestratorSub_Flow" />
+	</flow>
+    <flow name="get:\riskValidation\questionaries\(identityValidation):customer-papi-services-config">
+		<flow-ref doc:name="lisim-customer-papi-orchestrator-v2-questionnaire" doc:id="4a2c024f-2896-4dde-86fb-73a88053e435" name="lisim-customer-papi-orchestrator-v2-questionnaire"/>
+    </flow>
+	<flow name="patch:\productOrder:customer-papi-services-config" doc:id="ee770310-df39-4626-b73b-bf20ec32ca7c" >
+		<flow-ref doc:name="Call orchestrator" doc:id="8437208f-a973-4d4a-b281-c2c02bf8c915" name="product-order-update-orchestratorSub_Flow" />
+	</flow>
+	<flow name="get:\productOrder:customer-papi-services-config" doc:id="7b707a26-253e-43ce-ab72-de27edcdea8a" >
+		<flow-ref doc:name="Flow Reference" doc:id="7c7df59b-0c40-4883-92bf-863dd553cba8" name="product-order-get-orchestratorSub_Flow" />
+	</flow>
+	<flow name="get:\balance:customer-papi-services-config" doc:id="f1e2d3c4-get-balance-papi" >
+		<flow-ref doc:name="Consultar balance orchestrator" doc:id="e2d3c4b5-get-bal" name="get-balance-orchestratorSub_Flow"/>
+	</flow>
+	<flow name="post:\transferBalance:customer-papi-services-config" doc:id="7e0bad08-f431-4787-9cba-c3b10fba50af">
+		<set-variable value="#[payload]" doc:name="Set inputPayload" variableName="inputPayload" />
+		<flow-ref doc:name="Orquestador balance — transferencia" name="post-transferbalance-orchestratorSub_Flow" />
+	</flow>
+	<flow name="get:\customer360:customer-papi-services-config" doc:id="d9a9eeb2-b3ef-4159-8162-e5ba93a7563a" >
+		<flow-ref doc:name="get-customer360-orchestratorSub_Flow" doc:id="3227ff19-c658-470f-952a-7626c11a52a4" name="get-customer360-orchestratorSub_Flow"/>
+	</flow>
+</mule>

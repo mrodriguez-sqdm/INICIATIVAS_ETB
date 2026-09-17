@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-qresim-markEmailed-clientSub_Flow" doc:id="4042e36d-3973-4905-8b3b-ab5f967578f3" >
+		<logger level="INFO" doc:name="Logger - Start Client" doc:id="98c9bf48-2bd1-44ee-92da-1b75eb934f4a" 
+			message="Iniciando cliente para actualizar EnvioResponsys en MongoDB"/>
+		
+		<!-- Pre-validación: Verificar si EnvioResponsys ya está en true -->
+		<logger level="INFO" doc:name="Logger - Pre-validation" doc:id="608b9033-0993-4dd5-a20d-3bc483195359" 
+			message='#[payload]'/>
+		
+		<ee:transform doc:name="Transform Message" doc:id="e1d211d2-677f-4317-a778-c827b922ab78" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="parameters" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"ICCID": payload.ICCID,
+	"Numero_Orden": payload.Numero_Orden
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="1b76ac08-f062-418a-acff-da0190df3d1b" name="get-qresim-clientSub_Flow"/>
+		
+		<logger level="DEBUG" doc:name="Logger - Pre-validation Result" doc:id="656c0b43-ceec-48d4-9eae-71206f8f57a3" 
+			message="Resultado de pre-validación: #[payload]"/>
+		
+		<choice doc:name="Choice - Check EnvioResponsys Status" doc:id="ec64f357-e882-433d-b217-f4cf9f53351e">
+			<when expression="#[sizeOf(payload) > 0 and payload[0].EnvioResponsys == true]">
+				<logger level="INFO" doc:name="Logger - Already True" doc:id="182702a5-ab80-4176-8afb-ef4b00c9ecb8" 
+					message="EnvioResponsys ya está en true - omitiendo actualización"/>
+				
+				<ee:transform doc:name="Transform Message - Already True Response" doc:id="3068e741-e203-48ac-84f7-5c7c9d08c1ae">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "modifiedCount": 0,
+    "matchedCount": 1,
+    "acknowledged": true,
+    "alreadyMarked": true
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus">200</ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger - Proceed Update" doc:id="293afcee-944b-4246-b90d-85e68ad8a0a4" 
+					message="EnvioResponsys no está en true - procediendo con actualización"/>
+				
+				<ee:transform doc:name="Transform Message - Build Query" doc:id="9e9770b4-cc99-4abd-a690-bbd62b7ce58e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "Numero_Orden": vars.Numero_Orden,
+    "ICCID": vars.ICCID
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="mongoQuery"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "Numero_Orden": vars.Numero_Orden,
+    "ICCID": vars.ICCID
+}]]></ee:set-variable>
+				<ee:set-variable variableName="mongoUpdate"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    EnvioResponsys: vars.EnvioResponsys,
+    Fecha_Modificacion: now()
+}
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		
+		<logger level="DEBUG" doc:name="Logger - Query Details" doc:id="b7899378-2518-4601-acca-2721f5193906" 
+			message="#[Query: vars.mongoQuery - Update: vars.mongoUpdate]"/>
+		
+		<mongo:update-documents
+			config-ref="mdm_db_Config"
+			collectionName="MDM_ACTIVACION_ESIM"
+			doc:name="Update Documents - EnvioResponsys">
+			<mongo:query><![CDATA[#[vars.mongoQuery]]]></mongo:query>
+			<mongo:content-to-update><![CDATA[#[vars.mongoUpdate]]]></mongo:content-to-update>
+		</mongo:update-documents>
+		
+		<logger level="INFO" doc:name="Logger - Update Result" doc:id="f54bdf08-69db-4f65-89f5-1270f28c690f" 
+			message='#[payload]'/>
+		
+		<ee:transform doc:name="Transform Message - Process Result" doc:id="0170e302-9601-4212-a262-aff0b67e43fa">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "modifiedCount": payload.modified default 0,
+    "matchedCount": payload.matched default 0,
+    "acknowledged": payload.acknowledged default false,
+    "alreadyMarked": false
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		
+				<logger level="INFO" doc:name="Logger - End Client" doc:id="c3104738-8722-4a4e-b3b8-0802797012aa" 
+					message='#[payload.modifiedCount]'/>
+			</otherwise>
+		</choice>
+		
+		<logger level="INFO" doc:name="Logger - End Client" doc:id="c2677056-8762-4fb4-8088-23a03066cabc" 
+			message="Finalizando cliente para actualizar EnvioResponsys"/>
+	</sub-flow>
+</mule>

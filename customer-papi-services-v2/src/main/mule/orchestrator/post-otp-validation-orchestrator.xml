@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-otp-validation" doc:id="1bfef1e8-72ed-44e0-a4c7-569428f717d9" >
+		<ee:transform doc:name="set variables" doc:id="f3f58955-1f79-4b82-8660-bf530f9f34b9" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+	"name": attributes.headers.name,
+	"systemId": attributes.headers.systemId,
+	"source": attributes.headers.source
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set lisim otp sapi request" doc:id="13fb1ed7-0985-4c1a-856e-fca2066154cf" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "IdentityValidationId": payload.id,
+	"Code": payload.otpCode
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="lisim-sapi-otp-validate-clientSub_Flow" doc:id="bc98b1ae-0fde-4932-8951-9fcb3c5d55e0" name="lisim-sapi-otp-validate-clientSub_Flow" target="postLisimOtpResponse" />
+		<os:retrieve doc:name="retrieve validation details" doc:id="e4d81aa6-d3d6-4e02-88de-b9bdca212c13" key="#[vars.initialPayload.id]" objectStore="Validation_Object_Store" target="osValidationDetail" >
+			<os:default-value ><![CDATA[#[null]]]></os:default-value>
+		</os:retrieve>
+		<choice doc:name="identity available" doc:id="427300e8-16ba-4930-9342-a486f01c73e5" >
+			<when expression="#[vars.osValidationDetail != null]" >
+				<ee:transform doc:name="set mongo patch identity request" doc:id="311a8844-2d9c-4f39-9efb-d6d82004b076" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"fecha_consulta": now() as Date,
+	"causal": p('causales.causalOtpValidation')
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"documentType": vars.osValidationDetail.documentType as String,
+	"documentNumber": vars.osValidationDetail.documentNumber
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="d86e950f-2d03-4569-bc13-8cf1448f9636" name="mongo-db-sapi-patch-identity-validation-sub-flow" />
+			</when>
+			<otherwise >
+				<raise-error doc:name="SCORE_VALIDATION:DETAILS_NOT_FOUND" doc:id="1035806f-f6a0-4900-b972-d4ce0a9b7ada" type="SCORE_VALIDATION:DETAILS_NOT_FOUND" description="the validation details does not exist in OS" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="set otp validation response" doc:id="b76b1134-11a8-40b9-b6cf-79e2cbf8a77c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var isStringResult = vars.postLisimOtpResponse.result is String
+var isObjectResult = vars.postLisimOtpResponse.result is Object
+var hasMessageServer =
+  isObjectResult and vars.postLisimOtpResponse.result.messageServer != null
+
+---
+{
+  code: "200",
+  message:
+    if (isStringResult)
+      vars.postLisimOtpResponse.result
+    else if (hasMessageServer)
+      vars.postLisimOtpResponse.result.messageServer
+    else
+      "envio exitoso"
+}
+++
+(
+  if (isStringResult)
+    { result: vars.postLisimOtpResponse.result }
+  else if (isObjectResult and not hasMessageServer)
+    { result: vars.postLisimOtpResponse.result }
+  else
+    {}
+)
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

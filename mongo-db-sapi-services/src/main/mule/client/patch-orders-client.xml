@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-orders-client" doc:id="0e9103d1-0d97-4fef-a57d-9fdc92a5a752" >
+		<ee:transform doc:name="set content to update" doc:id="2eb8eeac-0f44-4fa6-a8ea-2b084ec2c308" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="updateDescription" ><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.status?)
+	"status"
+else if(payload.serviceStatusCode?)
+	"serviceStatusCode"
+else if(payload.transactionType?)
+	"transactionType"
+else if(payload.updateStateCharateristic?)
+	"updateStateCharateristic"
+else if(payload.updateType == "Poles")
+	"updatePoleInformation"
+else
+	"error"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="6cb49b74-e103-4db4-9441-88dfd4c3634e" >
+			<when expression="#[payload == null]">
+				<ee:transform doc:name="set bad request response" doc:id="b9fd53ab-fb52-4b93-be65-d1c91e27d3b9" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  response: {
+    result: {
+      code: "FAIL",
+      description: "The field to update does not exists"
+    },
+    responseDate: now(),
+    orderNumber: vars.orderNumber
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<async doc:name="Async" doc:id="ac0349d0-575a-4a72-9324-01d404e06e01" >
+			<flow-ref doc:name="Call logger before" doc:id="79a8fe21-ecc5-4652-81e3-59140a58cf72" name="loggin-client-call"/>
+		</async>
+				<mongo:update-documents doc:name="Update MDM_CD_ORDER Status" doc:id="758be585-acde-4036-ba49-27a878a99cbe" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-order}">
+			<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+{ 
+	'Numero_Orden': vars.orderNumber
+}]]]></mongo:query>
+			<mongo:content-to-update><![CDATA[#[%dw 2.0
+output application/json
+---
+payload]]]></mongo:content-to-update>
+		</mongo:update-documents>
+		<async doc:name="Async" doc:id="f2bc4b89-8f79-440e-90b6-e22fbccb5cc1" >
+			<flow-ref doc:name="Call logger after" doc:id="3bc9c380-77cd-41fc-8ec3-33a560fc86a0" name="loggin-client-call"/>
+		</async>
+				<ee:transform doc:name="set response" doc:id="08900fc2-329e-447f-9d2b-66a6fd50dd40">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+var UD = vars.updateDescription
+var resultCode = if(payload.modified > 0) 'SUCCESS' else "FAIL"
+var resultDescription = if(payload.modified > 0) "Order updated"
+	else if(UD == "error")
+        "There was an error updating the order"
+    else "The order could not be updated. The $(UD) has already been updated"
+output application/json
+---
+{
+  response: {
+    result: {
+      code: resultCode,
+      description: resultDescription
+    },
+    responseDate: now(),
+    orderNumber: vars.orderNumber
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.modified > 0) 200 else 404]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="patch-ordersCompleted-client" doc:id="cd3d0cdc-a672-4958-9790-688cfcd547b9" >
+		<ee:transform doc:name="set content to update" doc:id="9346d5a1-ff00-43a9-8f79-9c6f3b5a997a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if (payload.updateType == "Poles")
+{
+	"Orden_Activacion.Postes_Instalacion" : payload.toUpdate
+} 
+else null]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="updateDescription" ><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.updateType == "Poles")
+	"updatePoleInformation"
+else
+	"error"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="52838dcb-a2f2-45ac-9d9d-87c5cb361d47" >
+			<when expression="#[payload == null]">
+				<ee:transform doc:name="set bad request response" doc:id="3da8c369-716b-46cb-84d6-ddbddab52b80" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  response: {
+    result: {
+      code: "FAIL",
+      description: "The field to update does not exists"
+    },
+    responseDate: now(),
+    orderNumber: vars.orderNumber
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<async doc:name="Async" doc:id="7ec82458-21c7-461c-b84e-b81310afe447" >
+			<flow-ref doc:name="Call logger before" doc:id="3a3457a5-db70-4718-934d-07025d78b9cc" name="loggin-client-call"/>
+		</async>
+				<mongo:update-documents doc:name="Update MDM_CD_ORDER_COMPLETADA" doc:id="5dce9836-9f22-47d0-a68d-320ddf662381" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-order-completed}">
+			<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+{ 
+	'Numero_Orden': vars.orderNumber
+}]]]></mongo:query>
+			<mongo:content-to-update><![CDATA[#[%dw 2.0
+output application/json
+---
+payload]]]></mongo:content-to-update>
+		</mongo:update-documents>
+		<async doc:name="Async" doc:id="6427c42b-218a-4987-afd9-0acbdaa9f3ac" >
+			<flow-ref doc:name="Call logger after" doc:id="6a63430d-d8ce-43d7-9f7c-eab11199d75d" name="loggin-client-call"/>
+		</async>
+				<ee:transform doc:name="set response" doc:id="f54e1768-0daa-404a-a7ec-2b42f66a44cc">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+var UD = vars.updateDescription
+var resultCode = if(payload.modified > 0) 'SUCCESS' else "FAIL"
+var resultDescription = if(payload.modified > 0) "Order updated"
+	else if(UD == "error")
+        "There was an error updating the order"
+    else "The order could not be updated. The $(UD) has already been updated"
+output application/json
+---
+{
+  response: {
+    result: {
+      code: resultCode,
+      description: resultDescription
+    },
+    responseDate: now(),
+    orderNumber: vars.orderNumber
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.modified > 0) 200 else 404]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

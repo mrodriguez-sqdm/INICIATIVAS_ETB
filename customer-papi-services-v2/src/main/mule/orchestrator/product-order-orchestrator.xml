@@ -1,0 +1,531 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="product-order-create-orchestratorSub_Flow" doc:id="427d5021-21b6-4808-9363-450eb0e2fc39" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable headers" doc:id="f794dea2-bd6e-49e5-a232-c38d3432facf" variableName="headers"/>
+		<set-variable value="#[payload]" doc:name="Save Body Request Order" doc:id="521638ea-c45f-43b0-9197-80d567093f04" variableName="RequestOrder"/>
+		<flow-ref doc:name="Obtener Reglas MONGO/CHACHE" doc:id="ac8370f9-83ed-4bb1-a992-1e41eb2c0e2c" name="get-reglas-orden-mdm-cachingSub_Flow"/>
+		<ee:transform doc:name="Filter Rules" doc:id="72f1321d-9898-4d5a-89c6-3a03369317cb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Estos serían los parámetros que recibes de tu flujo o petición
+var currentTech = lower(vars.RequestOrder.category)
+var currentTramite = lower(vars.RequestOrder.through.throughType)
+var currentChannel = lower(vars.RequestOrder.channel)
+
+---
+payload filter ((regla) -> 
+    regla.habilitada == true 
+    and 
+    // 2. Convertimos la lista de tecnologías a minúsculas antes de comparar
+    ((regla.aplicaA.tecnologias map lower($)) contains currentTech)
+    and
+    // 3. Lo mismo para tipos de trámite
+    ((regla.aplicaA.tiposTramite map lower($)) contains currentTramite)
+    and
+    // 4. Y para el canal
+    (if (regla.aplicaA.canal != null) 
+        ((regla.aplicaA.canal map lower($)) contains currentChannel)
+     else true)
+)]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="43c8af33-af40-4cfe-a414-1d427593b2bd" name="product-order-validate-rules-orchestratorSub_Flow"/>
+		
+		<choice doc:name="¿Se cumplen todas las reglas?">
+			
+			<when expression="#[(vars.reglasAcumuladas map ((regla) -&gt; (regla.esValido == false and regla.obligatoria == true))) contains true]">
+				<ee:transform doc:name="Respuesta Error" doc:id="55d75a3b-968f-4d16-8208-3d56e4d8b263">
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "500",
+	messageResponse: "Error Created Order",
+	order: {
+		rulesApplied: vars.reglasAcumuladas map (regla) -> {
+			idRule: regla.idRegla,
+	        isValid: regla.esValido,
+	        mandatory: regla.obligatoria,
+	        detailedEvaluation: regla.evaluacionDetallada map (detalle) -> {
+	            compared: detalle.comparacion,
+	            description: detalle.descripcion,
+	            mandatory: detalle.obligatoria,
+	            result: detalle.resultado
+	        },
+	        
+	        responseRule: {
+	            code: regla.respuestaRegla.codigo,
+	            message: regla.respuestaRegla.mensaje
+	        }
+	    }
+	}
+	
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			</when>
+
+			<otherwise >
+				<scatter-gather doc:name="Scatter-Gather" doc:id="c21dc223-68e5-433c-92e2-f1c11a6cfdb9" >
+					<route >
+						<flow-ref doc:name="Build NumeroOrden" doc:id="3a465431-51bd-4649-bd66-038d19be08e6" name="generate-OrderNumber-Sub_Flow" target="orderNumber"/>
+					</route>
+					<route >
+						<flow-ref doc:name="Build ServicioTramite" doc:id="08f9b1d1-ede0-4ea6-bb05-b1f82244ef90" target="resultadoProductos" name="build-ServicioTramite-Sub_Flow"/>
+						
+					</route>
+					<route >
+						<logger level="INFO" doc:name="Logger" doc:id="dcf143ea-b2dd-46f0-ba30-b64dfe03eb30" message='#["ResultadoReglas: " ++ write(vars.resultadoSapi,"application/json")]'/>
+						<ee:transform doc:name="Build ClienteTramite" doc:id="cc37e7fc-22a4-4993-8b97-471cde05108a" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="clienteTramite" ><![CDATA[%dw 2.0
+output application/json
+
+fun findObject(nombreLlave) = 
+    (vars.resultadoSapi filter ($.llave == nombreLlave))[0].objeto default {}
+
+var objectCustomer = findObject("MDM_CLIENTE")
+
+var codigoGis = vars.RequestOrder.requestCustomer.addressGisCode
+---
+{
+  Cliente_Tramite: {
+    "_id": {
+   "\$oid": objectCustomer."_id"."\$oid"
+  },
+    Tipo_Documento: objectCustomer.Tipo_Documento,
+    Numero_Documento: objectCustomer.Numero_Identificacion,
+    Tipo_Cliente: objectCustomer.Tipo_Cliente,
+    Nombre_Corto_Empresa: objectCustomer.Nombre_Corto_Empresa,
+    Nombre_Cliente: objectCustomer.Nombre_Cliente,
+    Estado: objectCustomer.Estado,
+    Segmento: objectCustomer.Segmento,
+    Segmento_UEN: objectCustomer.Segmento_UEN,
+    UEN: objectCustomer.UEN,
+    Categoria: objectCustomer.Categoria,
+    Cliente_Valor: objectCustomer.Cliente_Valor,
+    EsquemaAtencion: objectCustomer.EsquemaAtencion,
+    ServiciosPS: objectCustomer.ServiciosPS,
+    Telefono_Fijo: objectCustomer.Telefono_Fijo,
+    Telefono_Movil: objectCustomer.Telefono_Movil,
+    Extension: objectCustomer.Extension,
+    Telefono_Movil2: objectCustomer.Telefono_Movil2,
+    Email: objectCustomer.Correo_Electronico,
+    Direccion: objectCustomer.Direccion,
+    Cobertura: objectCustomer.Cobertura,
+    Pais: objectCustomer.Pais,
+    Departamento: objectCustomer.Departamento,
+    Ciudad: objectCustomer.Ciudad,
+    Barrio: objectCustomer.Barrio,
+    Localidad: objectCustomer.Localidad,
+    Estrato: objectCustomer.Estrato,
+    Usuario_Modificador: lower(objectCustomer.Usuario_Modificador),
+    Autorizacion_Datacredito: objectCustomer.Autorizacion_Datacredito,
+    Fecha_Expedicion_Documento: objectCustomer.Fecha_Expedicion_Documento,
+    Fecha_Nacimiento: objectCustomer.Fecha_Nacimiento,
+    Genero: objectCustomer.Genero,
+    Rango_Edad: objectCustomer.Rango_Edad,
+    Estado_Civil: objectCustomer.Estado_Civil,
+    Ciudad_Exp_Documento: objectCustomer.Ciudad_Exp_Documento,
+    Depto_Exp_Documento: objectCustomer.Depto_Exp_Documento,
+    Scoring: objectCustomer.Scoring,
+    Tipo_Scoring: objectCustomer.Tipo_Scoring,
+    Clasificacion_Scoring: objectCustomer.Clasificacion_Scoring,
+    Fecha_Scoring: objectCustomer.Fecha_Scoring,
+    Fecha_Actualizacion: objectCustomer.Fecha_Creacion,
+    Sistema_Origen: null,
+    Modificado_MDM: objectCustomer.Modificado_MDM,
+    Id_Cuenta_Facturacion_Salesforce: objectCustomer.Id_Cuenta_Facturacion_Salesforce,
+    Ejecutivo_Experiencia: objectCustomer.Ejecutivo_Experiencia,
+    actualizacion_extractor: objectCustomer.actualizacion_extractor,
+    Caracteristica_Cliente: objectCustomer.Caracteristica_Cliente,
+    Id_Cuenta_Cliente: (objectCustomer.Id_Cuenta_Cliente default "") as Number default 0,
+    Nombres: objectCustomer.Nombres,
+    Primer_Apellido: objectCustomer.Primer_Apellido,
+    Segundo_Apellido: objectCustomer.Segundo_Apellido default "",
+    Fecha_Creacion: objectCustomer.Fecha_Creacion,
+    Direcciones: do {
+    var direccionesFiltradas = (objectCustomer.Direcciones default []) filter ($.Seleccionada == true)
+
+var instalacion = do {
+        var candidatas = direccionesFiltradas filter ($.Tipo_Direccion == "INSTALACION")
+        ---
+        if (isEmpty(codigoGis))
+            candidatas maxBy $.Id_Direccion
+        else
+            (candidatas filter ($.Cobertura.Direccion_GIS == codigoGis)) maxBy $.Id_Direccion
+    }
+
+    var facturacion = (direccionesFiltradas filter ($.Tipo_Direccion == "FACTURACION")) 
+        maxBy $.Id_Direccion
+    ---
+    [instalacion, facturacion] filter ($ != null)
+},
+    Cuenta_Facturacion_Id: objectCustomer.Cuenta_Facturacion_Id,
+    Cuenta_Servicio_Id: objectCustomer.Cuenta_Servicio_Id,
+    Adjuntos_Cliente: objectCustomer.Adjuntos_Cliente,
+    Scoring_Fija: objectCustomer.Scoring_Fija,
+    Fecha_Validacion_Identidad: objectCustomer.Fecha_Validacion_Identidad,
+    Autoriza_Manejo_Datos_Personales: objectCustomer.Autoriza_Manejo_Datos_Personales,
+    Autoriza_Consulta_Centrales: objectCustomer.Autoriza_Consulta_Centrales,
+    Datos_Empresa: objectCustomer.Datos_Empresa,
+    ATDP: objectCustomer.ATDP,
+    Contacto: (objectCustomer.Contacto default []) map (c) -> {
+      "_id": {
+   "\$oid": c."_id"."\$oid"
+  },
+      Autorizado: c.Autorizado,
+      Direccion_Asociada: c.Direccion_Asociada,
+      Email_Contacto: c.Email_Contacto,
+      Estado: c.Estado,
+      Movil_Contacto: c.Movil_Contacto,
+      Nombre_Contacto: c.Nombre_Contacto,
+      Nombre_Individual: c.Nombre_Individual,
+      Numero_Documento: c.Numero_Documento,
+      Primer_Apellido: c.Primer_Apellido,
+      Telefono_Contacto: c.Telefono_Contacto,
+      Tipo_Documento: c.Tipo_Documento
+    },
+    Comunicaciones_Cobranza: objectCustomer.Comunicaciones_Cobranza,
+    Usuario_Creacion: ""
+  }
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</route>
+				</scatter-gather>
+				<scatter-gather doc:name="Scatter-Gather" doc:id="27f200ed-95c8-47bd-ab38-859f52073a90" >
+					<route >
+						<flow-ref doc:name="Build OrdenServicio" doc:id="e7fc298a-fb44-480a-a5bd-0c2d60d11382" name="build-OrdenServicio-Sub_Flow" target="ordenServicio" />
+					</route>
+					<route >
+						<flow-ref doc:name="Build code CUN" doc:id="6b6c6c5a-4097-4710-9f0b-4da15b4b08a5" name="build-CUN-orderSub_Flow" target="cun" />
+					</route>
+				</scatter-gather>
+			<!-- ============================================================= -->
+<!-- INSERT CRITICO (sincrono): MDM_CD_ORDEN                       -->
+<!-- Su resultado determina el codigo 200/500 de la respuesta.     -->
+<!-- ============================================================= -->
+<ee:transform doc:name="Set Body Insert MDM_CD_ORDEN" doc:id="9b9d81c8-5378-427c-a08a-20a71f3dba7c">
+    <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+
+var inputData = vars.RequestOrder default {}
+var fechaActual = {
+        "\$date": (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+    }
+fun findObject(nombreLlave) =
+    (vars.resultadoSapi filter ($.llave == nombreLlave))[0].objeto default {}
+fun toDate(d) = if (isEmpty(d)) null else { "\$date": d }
+fun calcularEstadoComercial(reglas) = do {
+    var estadosLimpios = (reglas map (item) -> {
+        "esValido": item.esValido default false,
+        "estadoOrdenComercial": item.estadoOrdenComercial
+    }) orderBy (item) -> item.estadoOrdenComercial.Codigo
+    var reglasExitosas = estadosLimpios filter (item) -> item.esValido == true
+    var todasPasaron = sizeOf(reglasExitosas) == sizeOf(estadosLimpios)
+    var fechaActual = { "\$date": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"} }
+    ---
+    if (todasPasaron)
+    if(not (vars.ordenServicio.Factibilidad default true))
+       {
+            "Codigo": p("status-orchestrator.status-failed.disponibilidad.code"),
+            "Descripcion": p("status-orchestrator.status-failed.disponibilidad.description"),
+            "Fecha": fechaActual,
+            "Reintentos": 0,
+            "CodigoExcepcion": 0
+        }
+      /*else if(not (vars.agendamiento.confirmaAgendamiento default true))
+       {
+            "Codigo": p("status-orchestrator.status-failed.agendamineto.code"),
+            "Descripcion": p("status-orchestrator.status-failed.agendamineto.description"),
+            "Fecha": fechaActual,
+            "Reintentos": 0,
+            "CodigoExcepcion": 0
+        }*/
+    	else
+        // CASO 1: Éxito total -> Estado Maestro
+        {
+            "Codigo": p('estado-orden-servicio.disponibilidad-factible.codigo'),
+            "Descripcion": p('estado-orden-servicio.disponibilidad-factible.descripcion'),
+            "Fecha": fechaActual,
+            "Reintentos": 0,
+            "CodigoExcepcion": 0
+        }
+    else
+    	
+    if(not isEmpty(vars.ordenServicio.Factibilidad default true))
+       {
+            "Codigo": p("status-orchestrator.status-failed.disponibilidad.code"),
+            "Descripcion": p("status-orchestrator.status-failed.disponibilidad.description"),
+            "Fecha": fechaActual,
+            "Reintentos": 0,
+            "CodigoExcepcion": 0
+        }else{
+        	 (reglasExitosas[-1].estadoOrdenComercial ++ {
+	        "Fecha": fechaActual default "" ,
+	            "Reintentos": 0,
+	            "CodigoExcepcion": 0
+	        } default {})
+          }
+}
+fun reBuildOrdenServicio(orden: Object, confirmaAgendamiento: Boolean) = do {
+    if(confirmaAgendamiento)
+        orden update {
+            case estado at .Estado_Orden -> {
+                "Codigo": p('estado-orden-servicio.ejecutar-agenda.codigo'),
+                "CodigoExcepcion": estado.CodigoExcepcion,
+                "Descripcion": p('estado-orden-servicio.ejecutar-agenda.descripcion'),
+                "Excepcion": estado.Excepcion,
+                "Fecha": estado.Fecha,
+                "Reintentos": estado.Reintentos,
+            }
+        }
+    else
+        orden
+}
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: {
+  "query" : {
+    "insert": "MDM_CD_ORDEN",
+    "documents": [
+      {
+        "Fecha_Creacion": fechaActual,
+        "Fecha_Modificacion": null,
+        "Usuario_Modificacion": null,
+        "Usuario_Creacion": inputData.createdBy,
+        "Actualizacion_Extractor": "1",
+        "Numero_Orden": vars.orderNumber,
+        "Canal": "Canal_Fibra",
+        "Fase": "ORDERF",
+        "Estado_Orden_Comercial": calcularEstadoComercial(vars.reglasAcumuladas),
+        "Tramite": {
+          "Tipo_Tramite": inputData.through.throughType,
+          "Subtipo_Tramite": inputData.through.throughSubtype default "",
+          "Fecha_Tramite": fechaActual,
+          "Fecha_Reconexion": null,
+          "Fecha_Suspension": null,
+          "Fecha_Ejecucion": fechaActual,
+          "Conservar_Numero_Conexion": false,
+          "Clausula_Permanencia": true,
+          "Valor_Clausula_Permanencia": 0,
+          "Causal_Cancelacion": null,
+          "Subcausal_Cancelacion": null,
+          "Descripcion_Cancelacion": null,
+          "MotivosOrden": null
+        },
+        "Tipo_Servicio": null,
+        "CUN": vars.cun.cun,
+        "Cliente_Anterior": null,
+        "Cliente_Tramite": vars.clienteTramite.Cliente_Tramite,
+        "Servicio_Anterior": null,
+        "Servicio_Tramite": vars.resultadoProductos.Servicio_Tramite,
+        "Orden_Servicio": vars.ordenServicio.Orden_Servicio, // reBuildOrdenServicio(vars.ordenServicio.Orden_Servicio as Object,vars.agendamiento.confirmaAgendamiento),
+        "Agendamiento": { "Habilidad_Trabajo" : "MPPFTTH"},//vars.agendamiento.agendamiento,
+        "Orden_Activacion": null,
+        "Cuenta_Facturacion_Anterior": null,
+        "Cuenta_Facturacion_Tramite": {
+            "_id": { "\$oid": "000000000000000000000000" },
+            "Fecha_Creacion": null,
+            "Fecha_Modificacion": null,
+            "Usuario_Modificacion": null,
+            "Usuario_Creacion": null,
+            "Actualizacion_Extractor": null,
+            "Id_Cuenta_Facturacion": null,
+            "Cliente_Basico": null,
+            "Estado": null,
+            "Tipo_Facturacion": "",
+            "Tipo_Factura": "",
+            "Tipo_Envio": "",
+            "Valor_Factura": 0,
+            "Valor_Factura_Formato": null,
+            "Email_Facturacion": "",
+            "Ciclo_Facturacion": null,
+            "Dia_Corte": 0,
+            "Mora": false,
+            "Id_Direccion_Facturacion": 2,
+            "Fecha_Suspension": null,
+            "Ciclo_Charging": 0,
+            "Codigo_Ciclo_Charging": 0,
+            "Cuentas_Servicio": null,
+            "Fecha_Corte_Facturacion": null
+          },
+        "Orden_Requiere_Disponibilidad": if(vars.ordenServicio.Factibilidad default false) true else null,
+        "Orden_Requiere_Agendamiento": if(vars.ordenServicio.Factibilidad default false) false else null,
+        "Precio_Total_Orden": "",
+        "Adjuntos": {
+        "Servicio": (inputData.attachments.service default []) map (item) -> {
+            "nombre": item.fileName,
+            "ruta": item.path,
+            "tamano": item.size
+        }
+    },
+        "Adjuntos_Cliente": null,
+        "Adjuntos_Servicio": null,
+        "Caracteristica_Orden": inputData.orderCharacteristics default [] map (item) -> {
+            "Caracteristica": item.characteristic,
+            "Valor": item.value
+        },
+        "Otros": {
+            "Envio_Contrato": "",
+            "Usuario_Venta": "",
+            "Medio_Comunicacion": ""
+          },
+         "Presencial": false,
+         "OfertaSugerida": [],
+         "Reserva": null
+      }
+    ]
+  }
+},
+    headers: {
+    "client_secret" : p('mongo-db-sapi.security.client-secret'),
+    "client_id" : p('mongo-db-sapi.security.client-id'),
+    "name": vars.headers.name,
+    "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+    "source": vars.headers.source,
+    "systemId": vars.headers.systemId
+},
+    queryParameters:{},
+    uriParameters:{}
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+
+    <flow-ref doc:name="InsertOrder" doc:id="4e44b7c5-a077-40b5-bdf5-dddcc54d43ec" name="generic-sapi-clientSub_Flow"/>
+
+    <!-- Capturamos el resultado del insert critico ANTES del async -->
+    <!-- para que la respuesta lo lea sin condicion de carrera.      -->
+    <set-variable variableName="resultadoOrden"
+        doc:name="Set resultadoOrden"
+        doc:id="b1b2b3b4-0002-0002-0002-000000000001"
+        value="#[payload]"/>
+
+    <!-- ============================================================= -->
+    <!-- ASYNC: persistencias NO criticas, fuera del camino de respuesta -->
+    <!-- ============================================================= -->
+    <async doc:name="Async - persistencias secundarias" doc:id="b1b2b3b4-0002-0002-0002-000000000002">
+        <scatter-gather doc:name="Scatter-Gather" doc:id="3c9f159d-d73d-4cea-aa3a-47c1fe5f4970" >
+						<route >
+							<try doc:name="Try - persistencias secundarias" doc:id="b1b2b3b4-0002-0002-0002-000000000003">
+
+            <!-- Insert auditoria de reglas -->
+            <ee:transform doc:name="Set Body Insert MDM_REGLAS_ORDEN" doc:id="71ee1de7-cdbb-489e-9694-5eacbda60b35">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: {
+      "query" : {
+        "insert": "MDM_REGLAS_ORDEN",
+        "documents": [
+          {
+            "Numero_Orden": vars.orderNumber as String,
+            "Reglas_Aplicadas": vars.reglasAcumuladas
+           }
+          ]
+     }
+    },
+    headers: {
+    "client_secret" : p('mongo-db-sapi.security.client-secret'),
+    "client_id" : p('mongo-db-sapi.security.client-id'),
+    "name": vars.headers.name,
+    "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+    "source": vars.headers.source,
+    "systemId": vars.headers.systemId
+},
+    queryParameters:{},
+    uriParameters:{}
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            <flow-ref doc:name="Insert Reglas ejecutadas" doc:id="2ff8bbcd-c4b4-4bd6-9339-db7105347d54" name="generic-sapi-clientSub_Flow" />
+
+            <!-- Insert servicio (mismo sub-flow de hoy) -->
+            <flow-ref doc:name="create-mdm-cd-servicio" doc:id="34dda13e-683a-4022-a7f6-68efc9c77bc8" name="create-mdm-cd-servicioSub_Flow" />
+
+            <!-- Si una persistencia secundaria falla, NO afecta la respuesta -->
+            <!-- (ya se devolvio al canal). Solo se registra para conciliacion. -->
+            <error-handler>
+                <on-error-continue doc:name="On Error Continue - persistencia secundaria" doc:id="b1b2b3b4-0002-0002-0002-000000000004" type="ANY">
+                    <logger level="ERROR" doc:name="Log fallo persistencia secundaria" doc:id="b1b2b3b4-0002-0002-0002-000000000005" message='#["[ORDER][ASYNC][FALLO] Fallo persistencia secundaria (reglas/servicio) para Numero_Orden: " ++ (vars.orderNumber default "N/A") ++ ". CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default "N/A") ++ " | Error: " ++ (error.description default "desconocido")]' />
+                </on-error-continue>
+            </error-handler>
+        </try>
+						</route>
+						<route >
+							<flow-ref doc:name="Build Agendamiento" doc:id="6ae586c3-26a9-4edc-9a1a-9edb2a77f03d" name="build-agendamiento-orderSub_Flow" target="agendamiento" />
+							<flow-ref doc:name="Go To Update Order" doc:id="854ba9c0-da1b-4d88-b691-85d91dd34668" name="update-agendamiento-order-orchestratorSub_Flow" target="updateOrden"/>
+						</route>
+					</scatter-gather>
+    </async>
+
+    <!-- ============================================================= -->
+    <!-- RESPUESTA: lee el resultado del insert critico desde variable  -->
+    <!-- (antes leia payload."0".payload.result.ok del Scatter-Gather)  -->
+    <!-- ============================================================= -->
+    <ee:transform doc:name="Transform Message" doc:id="bbc03bd9-0ff0-46c0-9495-68990edc0b33">
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: if(vars.resultadoOrden.result.ok > 0) "200" else "500",
+    messageResponse: if(vars.resultadoOrden.result.ok > 0) "Order Created" else "Error Created Order",
+    order: {
+        orderNumber: vars.orderNumber default "",
+        cun: vars.cun.cun,
+        rulesApplied: vars.reglasAcumuladas map (regla) -> {
+            idRule: regla.idRegla,
+            isValid: regla.esValido,
+            mandatory: regla.obligatoria,
+            detailedEvaluation: regla.evaluacionDetallada map (detalle) -> {
+                compared: detalle.comparacion,
+                description: detalle.descripcion,
+                mandatory: detalle.obligatoria,
+                result: detalle.resultado
+            },
+            responseRule: {
+                code: regla.respuestaRegla.codigo,
+                message: regla.respuestaRegla.mensaje
+            }
+        }
+    }
+}]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+				
+</otherwise>
+		</choice>
+		
+	</sub-flow>
+</mule>
