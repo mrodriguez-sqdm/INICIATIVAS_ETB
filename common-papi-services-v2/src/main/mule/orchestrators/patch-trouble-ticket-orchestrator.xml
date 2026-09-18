@@ -12,6 +12,7 @@ http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mu
 	<sub-flow name="patch-trouble-ticket-orchestrator-sub-flow"
 		doc:id="b1ab798f-96bb-4230-8837-11fcfce8bab3">
 		<try doc:name="Try" doc:id="1720a960-cbdd-4ceb-8031-e366943a17ab" >
+			<validation:is-true doc:name="validate update" doc:id="43f660ad-2c7c-4853-a57a-34ebd863da94" expression="#[sizeOf(payload.ticket.pqr) &gt; 1]" message="The current service only supports one operation at the time. Please send one of user, status, activity or characteristics."/>
 			<ee:transform doc:name="set intialPayload - httpheader - pqrUpdateType" doc:id="75400652-cebc-42ef-8d67-e8fd81099c6b">
 			<ee:message>
 			</ee:message>
@@ -105,6 +106,30 @@ else
 		</ee:transform>
 			<flow-ref doc:name="patch-pqr-by-id-datalogic-sapi-client-sub-flow" doc:id="10f0ecfe-3ece-4404-97a7-db7ca2206e5e" name="patch-pqr-by-id-datalogic-sapi-client-sub-flow" />
 			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="a094ca9f-7d5b-489e-88c0-fb27901cea8f" type="VALIDATION:INVALID_BOOLEAN">
+					<ee:transform doc:name="set pqr body error" doc:id="412d6191-43cc-41e2-807b-7bdd2afecee2" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "PATCH_TROUBLE_TICKET:BAD_REQUEST",
+    "message": error.description,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
 				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="ccbc1c4c-aeac-4864-87fe-45b74e96ca39" type="VALIDATION:MULTIPLE">
 					<ee:transform doc:name="set pqr validation error" doc:id="11b821be-6f4f-40cd-a675-65305b868c85">
 						<ee:message>
