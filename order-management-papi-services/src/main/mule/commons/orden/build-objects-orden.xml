@@ -89,6 +89,8 @@ output application/json
 								<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 
+import modules::GlobalFunctions as global
+
 var TESR = vars.requestOrder.through.throughType
 var fecha_corte = vars.responseMongo.result[0].Fecha_Corte_Facturacion
 
@@ -131,9 +133,57 @@ var fecha = generarFechaEjecucionPorCiclo(
 	TESR default "TESR",
 	fecha_corte default "0"
 )
+
+var cf = vars.responseMongo.result[0]
 ---
 {  
-	objectCuentaFacturacion: vars.responseMongo.result[0],
+	objectCuentaFacturacion:  {
+		  "_id": {
+		    "\$oid": "000000000000000000000000"
+		  },
+		  Fecha_Creacion: global::parseFechaFlexible(cf.Fecha_Creacion),
+		  Fecha_Modificacion: global::parseFechaFlexible(cf.Fecha_Modificacion),
+		  Usuario_Modificacion: cf.Usuario_Modificador,
+		  Usuario_Creacion: cf.Usuario_Creador,
+		  Actualizacion_Extractor: null,
+		  Id_Cuenta_Facturacion: cf.Cuenta_Facturacion,
+		  Cliente_Basico: {
+		    "_id": {
+		      "\$oid": "000000000000000000000000"
+		    },
+		    Fecha_Creacion: null,
+		    Fecha_Modificacion: null,
+		    Usuario_Modificacion: null,
+		    Usuario_Creacion: null,
+		    Actualizacion_Extractor: null,
+		    Id_Cuenta_Cliente: 0,
+		    Tipo_Documento: cf.Tipo_Documento,
+		    Numero_Documento: cf.Numero_Identificacion
+		  },
+		  Estado: {
+		    Codigo: cf.Estado,
+		    Descripcion: null,
+		    Fecha: null,
+		    CodigoExcepcion: 0,
+		    Excepcion: null
+		  },
+		  Tipo_Facturacion: cf.Tipo_Factura,
+		  Tipo_Factura: cf.Tipo_Factura,
+		  Tipo_Envio: cf.Tipo_Entrega_Factura,
+		  Valor_Factura: 0.0, 
+		  Valor_Factura_Formato: null,
+		  Email_Facturacion: cf.Correo_Electronico,
+		  Ciclo_Facturacion: cf.Ciclo_Facturacion,
+		  Dia_Corte: cf.Fecha_Corte_Facturacion,
+		  Mora: false,
+		  Id_Direccion_Facturacion: cf.Id_Direccion_Facturacion as Number default 0,
+		  Fecha_Suspension: null, 
+		  Ciclo_Charging: cf.Ciclo_Charging as Number default 0,
+		  Codigo_Ciclo_Charging: cf.Codigo_Ciclo_Charging as Number default 0,
+		  Cuentas_Servicio: null,
+		  Fecha_Corte_Facturacion: cf.Fecha_Corte_Facturacion,
+		  Pago_Rec: cf.Pago_Rec default []
+		},
 	fechaEjecucion: if (fecha != null)
 		{
 			"\$date": (fecha as String {format: "yyyy-MM-dd"}) ++ "T00:00:00.000Z"
@@ -163,5 +213,143 @@ output application/json
 				<logger level="INFO" doc:name="Logger" doc:id="072520f1-92f0-4f2e-8c68-b1b6b2ade619" message='#["No existe cuenta facturacion"]'/>
 			</otherwise>
 		</choice>
+	</sub-flow>
+	<sub-flow name="build-servicios-objects-ordenSub_Flow" doc:id="94f22b1c-59e7-420f-a4f4-bd5580eec269" >
+		<foreach doc:name="For Each" doc:id="03243369-cd95-483b-8160-c293edc6b7fd" collection="vars.objectServicio_Tramite.Bundle.Primarios">
+					<ee:transform doc:name="Declare Variables 2" doc:id="618ae525-3fdc-41ab-8cc1-10c8c58a27c6">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="serviciosHijos"><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<foreach doc:name="For Each" doc:id="4ef91d9a-7d19-43f9-8352-7db6cf7d637e" collection="#[payload.Secundarios]">
+						<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="1e6a812a-583e-4750-ae0e-5a2818e6539f" message="#[payload&#93;"/> [STUDIO] -->
+						<choice doc:name="Choice" doc:id="3e80eee0-47fc-4aea-8706-29b4433fcb48" >
+							<when expression="#[payload.Aprovisionamiento]">
+								<flow-ref doc:name="get info clase servicio (hijos)" doc:id="cf834fc9-1795-4075-a724-26655c146475" name="get-mdm-cd-clase-servicioSub_Flow" target="claseServicioHijo" />
+								<ee:transform doc:name="object serviciosHijos" doc:id="2c12101b-8a05-4852-8129-1d1731a56c53">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="serviciosHijos"><![CDATA[%dw 2.0
+output application/json
+
+// Definición de la función
+fun buscarAccionAdd(listaAcciones) = (
+    (listaAcciones filter ($.Accion == "DELETE"))[0] default {}
+)
+
+var objectAccion = buscarAccionAdd(vars.claseServicioHijo.Acciones)
+
+
+---
+do {
+    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
+    var acumulado = vars.serviciosHijos default []
+    
+    // 2. Creamos el objeto del consecutivo actual
+    var resultadoActual = {
+		"Accion": objectAccion.Accion,
+		"Agendamiento": objectAccion.Agendamiento,
+		"Aprovisionamiento": objectAccion.Aprovisionamiento,
+		"Disponibilidad": objectAccion.Disponibilidad,
+		"Atributos": payload.Atributos,
+		"Clase_Servicio": vars.claseServicioHijo.Nombre,
+		"Codigo_Configuracion": payload.Codigo_Configuracion,
+		"Extendido": vars.claseServicioHijo.Extendida,
+		"Id_Clase_Servicio": payload.Id_Clase_Servicio,
+		"Id_Item": payload.Id_Item,
+		"Id_Servicio": payload.Id_Servicio,
+		"Id_Subtipo_Servicio": payload.Id_Subtipo_Servicio,
+		"Id_Tipo_Servicio": payload.Id_Tipo_Servicio,
+		"Nombre": payload.Nombre,
+		"Nuevo": true,
+		"Puertos": [],
+		"Rollback": [],
+		"Commit": [],
+		"Servicios_Hijos": []
+}
+    ---
+    // 3. Retornamos la lista con el nuevo elemento al final
+    acumulado ++ [resultadoActual]
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+							</when>
+							<otherwise >
+								<logger level="INFO" doc:name="Logger Producto Catalogo Secundarios" doc:id="1a255269-9a74-45a8-ba83-ccef02efb38c" message='#[%dw 2.0&#10;output application/json&#10;---&#10;"El servicio: " ++ (payload."_id"."\$oid" default (payload."_id" as String default "")) ++ " No se agrega en Orden_Servicio.Servicios. Correlation-Id: " ++ (vars.headers."X-CORRELATION-ID" default "")]'/>
+							</otherwise>
+						</choice>
+						<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="6085b8c8-83fa-43db-ad9a-dd3dd07561b6" message="#[vars.serviciosHijos&#93;"/> [STUDIO] -->
+					</foreach>
+					<choice doc:name="Choice" doc:id="66026a71-51d5-43af-9a01-d7682364f041" >
+						<when expression="#[payload.Aprovisionamiento]">
+							<flow-ref doc:name="get info clase servicio (hijos)1" doc:id="ce248847-bc5c-4902-b16f-427cc4e11d8d" name="get-mdm-cd-clase-servicioSub_Flow" target="claseServicio" />
+							<ee:transform doc:name="object Servicios" doc:id="abc3c342-abdc-40bf-9f9f-af127ca56618">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="serviciosPrimarios"><![CDATA[%dw 2.0
+output application/json
+
+// Definición de la función
+fun buscarAccionAdd(listaAcciones) = (
+    (listaAcciones filter ($.Accion == "DELETE"))[0] default {}
+)
+
+var objectAccion = buscarAccionAdd(vars.claseServicio.Acciones)
+
+
+---
+do {
+    // 1. Tomamos lo que ya tiene la variable o inicializamos con vacío
+    var acumulado = vars.serviciosPrimarios default []
+    
+    // 2. Creamos el objeto del consecutivo actual
+    var resultadoActual = {
+		"Accion": objectAccion.Accion,
+		"Agendamiento": objectAccion.Agendamiento,
+		"Aprovisionamiento": objectAccion.Aprovisionamiento,
+		"Disponibilidad": objectAccion.Disponibilidad,
+		"Atributos": payload.Atributos,
+		"Clase_Servicio": vars.claseServicio.Nombre,
+		"Codigo_Configuracion": payload.Codigo_Configuracion,
+		"Extendido": vars.claseServicio.Extendida,
+		"Id_Clase_Servicio": payload.Id_Clase_Servicio,
+		"Id_Item": payload.Id_Item,
+		"Id_Servicio": payload.Id_Servicio,
+		"Id_Subtipo_Servicio": payload.Id_Subtipo_Servicio,
+		"Id_Tipo_Servicio": payload.Id_Tipo_Servicio,
+		"Nombre": payload.Nombre,
+		"Nuevo": true,
+		"Puertos": [],
+		"Rollback": [],
+		"Commit": [],
+		"Servicios_Hijos": vars.serviciosHijos default []
+}
+    ---
+    // 3. Retornamos la lista con el nuevo elemento al final
+    acumulado ++ [resultadoActual]
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+							<logger level="INFO" doc:name="Logger" doc:id="180e26e4-7e54-48c8-8173-d4a69450e54a" message="#[vars.serviciosPrimarios]" />
+						</when>
+						<otherwise >
+							<logger level="INFO" doc:name="Logger Producto Catalogo Primarios" doc:id="5e60bbb7-d777-4ec7-b107-e5440e1274ab" message='#[%dw 2.0&#10;output application/json&#10;---&#10;"El servicio: " ++ (payload."_id"."\$oid" default (payload."_id" as String default "")) ++ " No se agrega en Orden_Servicio.Servicios. Correlation-Id: " ++ (vars.headers."X-CORRELATION-ID" default "")]' />
+						</otherwise>
+					</choice>
+		</foreach>
+		<ee:transform doc:name="Transform Message" doc:id="e1f4a458-cd01-4fe8-bfe5-1387059d57fd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+vars.serviciosPrimarios]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		
 	</sub-flow>
 </mule>

@@ -32,3 +32,18 @@ fun scoreVigente(scoreObj) =
         ---
         (fechaHoy - fechaScore) as Number {unit: "days"} <= 30
     }
+
+// Formatos de Fechas    
+fun parseFechaFlexible(valor) =
+    if (isEmpty(valor)) "0001-01-01T00:00:00.000Z"
+    else
+        (
+            if (valor matches /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?$/)
+                valor as String  // ya viene en formato ISO completo, se deja tal cual
+            else if (valor matches /^\d{4}-\d{2}-\d{2}$/)
+                ((valor as Date {format: "yyyy-MM-dd"}) as String {format: "yyyy-MM-dd"}) ++ "T00:00:00.000Z"
+            else if (valor matches /^\d{2}\/\d{2}\/\d{4}$/)
+                ((valor as Date {format: "dd/MM/yyyy"}) as String {format: "yyyy-MM-dd"}) ++ "T00:00:00.000Z"
+            else
+                "0001-01-01T00:00:00.000Z"
+        )
