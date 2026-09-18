@@ -103,10 +103,130 @@ output application/json
 				<flow-ref doc:name="Build CUN Number" doc:id="55df44fc-5672-4f31-a39f-e73953f9955c" name="build-CUN-orderSub_Flow" target="cunNumber" />
 			</route>
 			<route >
-				<logger level="INFO" doc:name="Logger" doc:id="af7e781a-f713-40ef-ba61-1ff5a9f794a6" message='#["Calculos"]'/>
+				<flow-ref doc:name="Build Cuenta Facturacion" doc:id="3a61e428-99e0-4c06-b450-b0d1ff3a7b59" name="build-cuentaFacturacion-ordenSub_Flow" target="responseCuentaFacturacion" />
 			</route>
 		</scatter-gather>
-		<set-variable value="#[{&#10;	result: {&#10;		ok: 1&#10;	}&#10;}]" doc:name="Set Variable" doc:id="6e2cd235-6daf-429c-a778-54cc9cd173ca" variableName="resultadoOrden"/>
+		<ee:transform doc:name="objeto MDM_ORDEN" doc:id="135d99b8-1a60-43ad-b19e-0cb07cbf585b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+import modules::GlobalFunctions as global
+
+---
+{
+  "query" : {
+    "insert": p('mongo-db-sapi.collections.orden-movil'),
+    "documents": [
+{
+    Tipo_Documento: vars.requestOrder.customer.documentType,
+    Numero_Identificacion: vars.requestOrder.customer.documentNumber,
+    CUN: vars.cunNumber.cun,
+    Id_Distribuidor: 0,
+    Tipo_Orden: "Tramite LTE",
+    Subtipo_Orden: "Cancelacion Voluntaria",
+    Estado_Orden: "PENDIENTE",
+    Causal_Estado_Orden: null,
+    Numero_Orden: vars.orderNumber,
+    Fecha_Creacion_Orden: global::fechaMongo(),
+    Usuario_Creador: vars.requestOrder.channel,
+    Usuario_Modificador: vars.requestOrder.channel,
+    Usuario_Vendedor: vars.requestOrder.channel,
+    Fecha_Actualizacion_Orden: global::fechaMongo(),
+    Canal: "MDM",
+    Subcanal: "PORTAL LTE",
+    Causal_Retiro_Cliente: null,
+    Forma_Entrega_Contrato: null,
+    Fecha_Inicio_Contrato: null,
+    Id_Orden_Sistema_Origen: vars.orderNumber,
+    Sistema_Origen: "MDM-MOV",
+    num_agrupacion: 0,
+    tipo_entrega_factura: null,
+    tipo_plan: vars.objectServicioActivo.Tipo_Linea,
+    ciclo_facturacion: vars.responseCuentaFacturacion.Ciclo_Facturacion,
+    Flag_Envio_Recibo: false,
+    codigo_operador: null,
+    celular_portabilidad: null,
+    tipo_plan_donante: null,
+    Caracteristicas_Orden: [
+        {
+            Caracteristica: "Fecha Vencimiento",
+            Valor: vars.responseCuentaFacturacion.fechaEjecucion,
+            Accion: "",
+            actualizacion_extractor: "1"
+        },
+        {
+            Caracteristica: "integration_id",
+            Valor: vars.requestOrder.service.serviceAccountId,
+            Accion: "",
+            actualizacion_extractor: "1"
+        },
+        {
+            Caracteristica: "Motivo Cancelacion",
+            Valor: vars.requestOrder.through.reasonCancellation,
+            Accion: "",
+            actualizacion_extractor: "1"
+        },
+        {
+            Caracteristica: "Adjunto Retención",
+            Valor: " ",
+            Accion: "Adjunto retención 1",
+            actualizacion_extractor: "1"
+        },
+        {
+            Caracteristica: "OTP_ID_MONGO",
+            Valor: vars.objectValidateIdentity."_id"."\$oid",
+            Accion: "",
+            actualizacion_extractor: "1"
+        },
+        {
+            Caracteristica: "BIOMETRIA_ENVIO_OTP",
+            Valor: "true",
+            Accion: "",
+            actualizacion_extractor: "1"
+        }
+    ],
+    Pago: null,
+    Validacion: null,
+    Fase_Orden: [
+        {
+            Fase: "ORDEN CREADA",
+            Fecha_Ejecucion: global::fechaMongo(),
+            Resultado: "OK",
+            Causal_Fase: null,
+            Usuario_Creo: vars.requestOrder.channel,
+            Estado: "EXITOSO",
+            Detalle_Fase: [
+                {
+                    Fecha_Registro: global::fechaMongo(),
+                    Codigo: null,
+                    Detalle: null
+                }
+            ],
+            Reintentos: 0,
+            actualizacion_extractor: "1"
+        }
+    ],
+    Cuenta_Facturacion: vars.objectServicioActivo.Cuenta_Facturacion,
+    Cuenta_Facturacion_Equipo: null,
+    Pago_Anticipado: null,
+    Valor_Recaudo: null,
+    Reportado_Pago: null,
+    Bundle_activo: vars.objectServicioActivo.Bundles,
+    Bundle_orden: null,
+    Direccion: null,
+    actualizacion_extractor: "1",
+    Promociones: null,
+    IMEI: null,
+    iccid: null,
+    producto_seleccionado: null
+}
+]
+}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to mongo Sapi" doc:id="c09200a9-b99c-4acc-9ef4-31a98104f7db" name="mongo-dynamic-query-subFlow" target="resultadoOrden" />
 		<ee:transform doc:name="Set Response" doc:id="e8ed86a7-a3b0-41d0-8ad0-c86dd52af829" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
@@ -234,7 +354,6 @@ import modules::GlobalFunctions as global
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<logger level="INFO" doc:name="Logger" doc:id="9968f214-ef38-4a29-b94b-d68e45e173a4" message='#[write(payload.query.documents[0], "application/json")]'/>
 		<flow-ref doc:name="call to mongo Sapi" doc:id="cbb57793-624a-48e5-95dc-6309546dc4fe" name="mongo-dynamic-query-subFlow" target="resultadoOrden"/>
 		<ee:transform doc:name="Set Response" doc:id="0e7d8538-24dd-4f11-b834-84bbbfa1f99b" >
 			<ee:message >

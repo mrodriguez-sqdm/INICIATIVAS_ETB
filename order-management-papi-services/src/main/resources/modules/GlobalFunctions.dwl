@@ -47,3 +47,21 @@ fun parseFechaFlexible(valor) =
             else
                 "0001-01-01T00:00:00.000Z"
         )
+        
+fun homologarAccion(tipoTramite) =
+    tipoTramite match {
+        case "VTA" -> "ADD"
+        case "TESR" -> "DELETE"
+        case "TRAMITE LTE" -> "DELETE"
+        else -> null
+    }
+
+fun enriquecerAtributos(atributos: Array, catalogo: Array): Array =
+    atributos map (attr) -> {
+        Nombre: attr.Nombre,
+        Valor: attr.Valor,
+        Tipo: attr.Tipo,
+        Clase: (catalogo filter ($.Nombre == attr.Nombre))[0].Clase_Atributo default "",
+        Nuevo: true,
+        Display: 0
+    }

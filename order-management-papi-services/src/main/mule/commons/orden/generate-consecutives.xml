@@ -8,9 +8,22 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	
 	<sub-flow name="consecutive-subflow" doc:id="90cc3f3b-cc54-42c3-a994-643a383d65f2" >
 		<flow-ref doc:name="Get Consecutive SR" doc:id="e4531e2c-f109-4ac1-b5ce-45485d2b07cf" name="mongo-dynamic-query-subFlow"/>
-		<ee:transform doc:name="Concatenar Prefijo-secuencia" doc:id="fadd1d9b-4a43-43b1-aef4-a697d9b0b44a" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<choice doc:name="Choice" doc:id="8d31ee18-ec47-40f5-9beb-98d7f9f0ac57" >
+			<when expression='#[vars.requestOrder.category == "LTE"]'>
+				<ee:transform doc:name="Transform Message" doc:id="ef55d7e8-8275-42e9-b307-cee61626e8ee" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="1d1da6ed-d7c8-4cd0-a92a-39eff28b6526" message="#[payload]"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Concatenar Prefijo-secuencia" doc:id="fadd1d9b-4a43-43b1-aef4-a697d9b0b44a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -18,6 +31,8 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 	<sub-flow name="generate-OrderNumber-Sub_Flow" doc:id="a21a32f7-317b-44ce-a0cb-1cf5fcd4500b" >
 		<choice doc:name="Choice" doc:id="284143e2-0260-4a43-a3b6-02da42f60677" >
@@ -27,9 +42,24 @@ output application/json
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
-{
-	"numero": ""
+{ 
+		"query" :{
+ 			"findAndModify": p('mongo-db-sapi.collections.par-consecutives'),
+ 			"query": { "Serie": "MDM_MOV"
+  			},
+  		"update": { "\$inc": { "Valor": 1 } },
+  		"new": true
+		}
 }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Get Consecutive" doc:id="22e264bf-7e50-4243-8578-b27e3ca06269" name="consecutive-subflow" target="consecutivoOrden" />
+				<ee:transform doc:name="Set Order Number Mov" doc:id="a0157c2e-a5d3-4c35-9d7e-ec71137b1cb8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+"MDM-MOV-" ++ (vars.consecutivoOrden.result.value.Valor as String)]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
 			</when>

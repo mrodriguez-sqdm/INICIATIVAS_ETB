@@ -64,6 +64,15 @@ output application/json
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+
+fun obtenerValorFiltro(tipoTramite) =
+    tipoTramite match {
+        case "TESR" -> vars.objectServicio_Tramite.Id_Cuenta_Facturacion
+        case "TRAMITE LTE" -> vars.objectServicioActivo.Integration_Id
+        else -> null
+    }
+
+
 ---
 {
 	"query": {
@@ -72,7 +81,7 @@ output application/json
       {
         // Envolvemos el resultado en un $match para que Mongo filtre
         "\$match": {
-        	"Cuenta_Facturacion": vars.objectServicio_Tramite.Id_Cuenta_Facturacion
+        	"Cuenta_Facturacion": obtenerValorFiltro(upper(vars.requestOrder.through.throughType))
         }
       }
     ],
@@ -125,7 +134,7 @@ fun fechaEjecucionCancelacionVoluntaria(fechaCorteFacturacion: Number): Date = d
 
 fun generarFechaEjecucionPorCiclo(tramite: String, fechaCorteFacturacion: Number): Date | Null =
 	tramite match {
-		case t if (t == TESR) -> fechaEjecucionCancelacionVoluntaria(fechaCorteFacturacion)
+		case t if (t == TESR or t == "Tramite LTE") -> fechaEjecucionCancelacionVoluntaria(fechaCorteFacturacion)
 		else -> null
 	}
 
@@ -226,7 +235,6 @@ output application/java
 						</ee:variables>
 					</ee:transform>
 					<foreach doc:name="For Each" doc:id="4ef91d9a-7d19-43f9-8352-7db6cf7d637e" collection="#[payload.Secundarios]">
-						<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="1e6a812a-583e-4750-ae0e-5a2818e6539f" message="#[payload&#93;"/> [STUDIO] -->
 						<choice doc:name="Choice" doc:id="3e80eee0-47fc-4aea-8706-29b4433fcb48" >
 							<when expression="#[payload.Aprovisionamiento]">
 								<flow-ref doc:name="get info clase servicio (hijos)" doc:id="cf834fc9-1795-4075-a724-26655c146475" name="get-mdm-cd-clase-servicioSub_Flow" target="claseServicioHijo" />
@@ -236,16 +244,12 @@ output application/java
 								<ee:set-variable variableName="serviciosHijos"><![CDATA[%dw 2.0
 output application/json
 
-fun homologarAccion(tipoTramite) =
-    tipoTramite match {
-        case "VTA" -> "ADD"
-        case "TESR" -> "DELETE"
-        else -> null
-    }
+import modules::GlobalFunctions as global
+
 
 // Definición de la función
 fun buscarAccionAdd(listaAcciones) = (
-    (listaAcciones filter ($.Accion == homologarAccion(vars.requestOrder.category)))[0] default {}
+    (listaAcciones filter ($.Accion == global::homologarAccion(vars.requestOrder.through.throughType)))[0] default {}
 )
 
 var objectAccion = buscarAccionAdd(vars.claseServicioHijo.Acciones)
@@ -262,7 +266,7 @@ do {
 		"Agendamiento": objectAccion.Agendamiento,
 		"Aprovisionamiento": objectAccion.Aprovisionamiento,
 		"Disponibilidad": objectAccion.Disponibilidad,
-		"Atributos": payload.Atributos,
+		"Atributos": global::enriquecerAtributos(payload.Atributos,vars.claseServicioHijo.Atributos default []) ,
 		"Clase_Servicio": vars.claseServicioHijo.Nombre,
 		"Codigo_Configuracion": payload.Codigo_Configuracion,
 		"Extendido": vars.claseServicioHijo.Extendida,
@@ -289,7 +293,6 @@ do {
 								<logger level="INFO" doc:name="Logger Producto Catalogo Secundarios" doc:id="1a255269-9a74-45a8-ba83-ccef02efb38c" message='#[%dw 2.0&#10;output application/json&#10;---&#10;"El servicio: " ++ (payload."_id"."\$oid" default (payload."_id" as String default "")) ++ " No se agrega en Orden_Servicio.Servicios. Correlation-Id: " ++ (vars.headers."X-CORRELATION-ID" default "")]'/>
 							</otherwise>
 						</choice>
-						<!-- [STUDIO:"Logger"]<logger level="INFO" doc:name="Logger" doc:id="6085b8c8-83fa-43db-ad9a-dd3dd07561b6" message="#[vars.serviciosHijos&#93;"/> [STUDIO] -->
 					</foreach>
 					<choice doc:name="Choice" doc:id="66026a71-51d5-43af-9a01-d7682364f041" >
 						<when expression="#[payload.Aprovisionamiento]">
@@ -301,19 +304,12 @@ do {
 							<ee:set-variable variableName="serviciosPrimarios"><![CDATA[%dw 2.0
 output application/json
 
-
-fun homologarAccion(tipoTramite) =
-    tipoTramite match {
-        case "VTA" -> "ADD"
-        case "TESR" -> "DELETE"
-        case "TRAMITE LTE" -> "DELETE"
-        else -> null
-    }
+import modules::GlobalFunctions as global
 
 
 // Definición de la función
 fun buscarAccionAdd(listaAcciones) = (
-    (listaAcciones filter ($.Accion == homologarAccion(vars.requestOrder.category)))[0] default {}
+    (listaAcciones filter ($.Accion == global::homologarAccion(vars.requestOrder.through.throughType)))[0] default {}
 )
 
 
@@ -331,7 +327,7 @@ do {
 		"Agendamiento": objectAccion.Agendamiento,
 		"Aprovisionamiento": objectAccion.Aprovisionamiento,
 		"Disponibilidad": objectAccion.Disponibilidad,
-		"Atributos": payload.Atributos,
+		"Atributos": global::enriquecerAtributos(payload.Atributos,vars.claseServicio.Atributos default []) ,
 		"Clase_Servicio": vars.claseServicio.Nombre,
 		"Codigo_Configuracion": payload.Codigo_Configuracion,
 		"Extendido": vars.claseServicio.Extendida,
@@ -353,13 +349,13 @@ do {
 }]]></ee:set-variable>
 						</ee:variables>
 					</ee:transform>
-							<logger level="INFO" doc:name="Logger" doc:id="180e26e4-7e54-48c8-8173-d4a69450e54a" message="#[vars.serviciosPrimarios]" />
 						</when>
 						<otherwise >
 							<logger level="INFO" doc:name="Logger Producto Catalogo Primarios" doc:id="5e60bbb7-d777-4ec7-b107-e5440e1274ab" message='#[%dw 2.0&#10;output application/json&#10;---&#10;"El servicio: " ++ (payload."_id"."\$oid" default (payload."_id" as String default "")) ++ " No se agrega en Orden_Servicio.Servicios. Correlation-Id: " ++ (vars.headers."X-CORRELATION-ID" default "")]' />
 						</otherwise>
 					</choice>
 		</foreach>
+		<logger level="INFO" doc:name="Logger" doc:id="c89c3969-5ee1-4e9e-bcbd-09c86c1d3a39" message="#[vars.serviciosPrimarios]"/>
 		<ee:transform doc:name="Set Payload Servicios" doc:id="e1f4a458-cd01-4fe8-bfe5-1387059d57fd" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
