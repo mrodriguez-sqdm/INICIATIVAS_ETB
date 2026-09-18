@@ -39,7 +39,7 @@ var fechaMongo = {
 			<route >
 				<choice doc:name="Choice" doc:id="c1470144-a09f-4d7b-a5d5-356d07e3d51b">
 					<when expression='#[vars.requestOrder.category == "LTE"]'>
-						<logger level="INFO" doc:name="Logger" doc:id="5f39d6e9-b633-4f77-8c73-6741cc1041a2" />
+						<flow-ref doc:name="call to rule data-service" doc:id="12132480-fb7d-4496-9978-f21d49a480cc" name="data-services-movil-ruleSub_Flow" />
 					</when>
 					<otherwise >
 						<flow-ref doc:name="call to rule data-service" doc:id="1730100d-a7b8-458b-961a-09b28cbaa210" name="data-services-fija-ruleSub_Flow"/>
@@ -72,10 +72,10 @@ var reglasInvalidas = todasLasValidaciones filter (v) -> v.isValid == false
 				<flow-ref doc:name="Generate Order Number" doc:id="eec03246-e01d-436b-aa1e-c713d8f773d8" name="generate-OrderNumber-Sub_Flow" target="orderNumber" />
 				<choice doc:name="Choice" doc:id="50c53b7d-b8d2-4f48-81da-047ed106f865" >
 					<when expression='#[vars.requestOrder.category == "LTE"]' >
-						<logger level="INFO" doc:name="Logger" doc:id="cdc22c17-b1a4-41fb-a572-c17f769f04a0" />
+						<flow-ref doc:name="call to create MDM_ORDEN" doc:id="044c860a-4446-4596-9a5d-a41b978abd00" name="cancelation-order-movil-orchestratorSub_Flow"/>
 					</when>
 					<otherwise >
-						<flow-ref doc:name="call to rule data-service" doc:id="13ef1518-8414-4c59-8252-54bb6b87f205" name="cancelation-order-fija-orchestratorSub_Flow"/>
+						<flow-ref doc:name="call to create MDM_CD_ORDEN" doc:id="13ef1518-8414-4c59-8252-54bb6b87f205" name="cancelation-order-fija-orchestratorSub_Flow"/>
 					</otherwise>
 				</choice>
 			</when>
@@ -98,7 +98,31 @@ output application/json
 		</choice>
 	</sub-flow>
 	<sub-flow name="cancelation-order-movil-orchestratorSub_Flow" doc:id="e6c7beb1-cde9-4a1b-b933-5685e792aa2e" >
-		<logger level="INFO" doc:name="Logger" doc:id="99a6436a-ef16-4ad7-9393-8495526e3129" message="movil"/>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="3fa8de88-1171-40e1-884e-4ab54b447e5a" >
+			<route >
+				<flow-ref doc:name="Build CUN Number" doc:id="55df44fc-5672-4f31-a39f-e73953f9955c" name="build-CUN-orderSub_Flow" target="cunNumber" />
+			</route>
+			<route >
+				<logger level="INFO" doc:name="Logger" doc:id="af7e781a-f713-40ef-ba61-1ff5a9f794a6" message='#["Calculos"]'/>
+			</route>
+		</scatter-gather>
+		<set-variable value="#[{&#10;	result: {&#10;		ok: 1&#10;	}&#10;}]" doc:name="Set Variable" doc:id="6e2cd235-6daf-429c-a778-54cc9cd173ca" variableName="resultadoOrden"/>
+		<ee:transform doc:name="Set Response" doc:id="e8ed86a7-a3b0-41d0-8ad0-c86dd52af829" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: if(vars.resultadoOrden.result.ok > 0) "200" else "500",
+    messageResponse: if(vars.resultadoOrden.result.ok > 0) "Order Created" else "Error Created Order",
+    order: {
+        orderNumber: vars.orderNumber default "",
+        cun: vars.cunNumber.cun,
+        rulesApplied: vars.cumulativeRules.reglas
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 	</sub-flow>
 	<sub-flow name="cancelation-order-fija-orchestratorSub_Flow" doc:id="7d671704-6686-49ab-b11a-cb42b2f99b3e" >
 		<scatter-gather doc:name="Scatter-Gather" doc:id="1afcdc91-8198-42d7-b096-9a888f95570a">

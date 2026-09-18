@@ -29,7 +29,7 @@ output application/json
 		<flow-ref doc:name="call to Mongo" doc:id="970932f0-77e9-469e-b077-910667dd3d71" name="mongo-dynamic-query-subFlow" target="responseMongo" />
 		<choice doc:name="Validate Query Result Mongo" doc:id="6d0386db-8a10-4447-b0d6-4a11aa962fc5" >
 			<when expression="#[(typeOf(vars.responseMongo.result) == Array) and sizeOf(vars.responseMongo.result) &gt; 0]" >
-				<ee:transform doc:name="Validate Data Client" doc:id="3328ac86-6564-421c-9a3e-720d5e129a43" >
+				<ee:transform doc:name="Validate Data Services" doc:id="3328ac86-6564-421c-9a3e-720d5e129a43" >
 					<ee:message >
 						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
@@ -47,13 +47,18 @@ fun resultado(id: String, condicionValida: Boolean, mensajeValido: String, mensa
 	resultado("Campo_Estado_Principal_Activo",
 		upper(record.Estado.Principal.Descripcion default "") != "INACTIVO",
 		"El servicio no esta inactivo, se puede continuar con la cancelacion",
-		"El servicio a cancelar ya esta inactivo")
+		"El servicio a cancelar ya esta inactivo"),
+		
+	resultado("Relacion_Cliente_Servicio",
+		record.Cliente.Numero_Documento == vars.requestOrder.customer.documentNumber and record.Cliente.Tipo_Documento == vars.requestOrder.customer.documentType,
+		"El cliente si esta asociado al servicio enviado",
+		"El cliente no esta asociado al servicio enviado")
 ]]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
 				<choice doc:name="Validate Rules TRUE" doc:id="8c425126-f0cd-4939-8b9e-5dcdc604aa42">
 					<when expression="#[sizeOf(payload filter (e) -&gt; e.isValid == false) &gt; 0]">
-						<ee:transform doc:name="Validacion Identidad Invalida" doc:id="09b44871-bbc6-49ce-811d-a0bc4ee7a682">
+						<ee:transform doc:name="Validacion Servicios Invalida" doc:id="09b44871-bbc6-49ce-811d-a0bc4ee7a682">
 							<ee:message>
 								<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -67,7 +72,7 @@ output application/json
 						</ee:transform>
 					</when>
 					<otherwise>
-						<ee:transform doc:name="Validacion Identidad Valida" doc:id="5d48bb06-0f90-460a-9dfc-36f8444094f1">
+						<ee:transform doc:name="Validacion Servicios Valida" doc:id="5d48bb06-0f90-460a-9dfc-36f8444094f1">
 							<ee:message>
 								<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -102,6 +107,108 @@ output application/json
 	    "evaluateId": "Cuenta_Servicio",
 	    "isValid": false,
 	    "detail": "Numero de cuenta de servicio: "++ (vars.requestOrder.service.serviceAccountId default "") ++" no existe"
+  		}
+	]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="data-services-movil-ruleSub_Flow" doc:id="879999d9-8f58-4816-ab67-0ba4eaa6e29c" >
+		<ee:transform doc:name="request MDM_CD_SERVICIO" doc:id="bd7c18e0-89fb-467b-af89-93024d678ce3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+    "aggregate": p('mongo-db-sapi.collections.services-movil'),
+    "pipeline": [
+      {
+        // Envolvemos el resultado en un $match para que Mongo filtre
+        "\$match": {
+        	"Integration_Id": vars.requestOrder.service.serviceAccountId
+        }
+      }
+    ],
+    "cursor": {}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to Mongo" doc:id="9ee9bed8-c87d-4d1c-9c25-2a2ba628e5cd" name="mongo-dynamic-query-subFlow" target="responseMongo" />
+		<choice doc:name="Validate Query Result Mongo" doc:id="81826d77-73ce-4ce5-add6-4e1b94fe0a67" >
+			<when expression="#[(typeOf(vars.responseMongo.result) == Array) and sizeOf(vars.responseMongo.result) &gt; 0]" >
+				<ee:transform doc:name="Validate Data Service" doc:id="64d32ac0-4404-4669-b4ae-df0acdec7d8c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var record = vars.responseMongo.result[0]
+
+
+fun resultado(id: String, condicionValida: Boolean, mensajeValido: String, mensajeInvalido: String) = {
+	evaluateId: id,
+	isValid: condicionValida,
+	detail: if (condicionValida) mensajeValido else mensajeInvalido
+}
+---
+[
+    resultado("Relacion_Cliente_Servicio",
+		record.Numero_Identificacion == vars.requestOrder.customer.documentNumber and record.Tipo_Documento == vars.requestOrder.customer.documentType,
+		"El cliente si esta asociado al servicio enviado",
+		"El cliente no esta asociado al servicio enviado")
+]]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<choice doc:name="Validate Rules TRUE" doc:id="aba8880b-755b-424c-9bcb-30f8e9c2d6a9" >
+					<when expression="#[sizeOf(payload filter (e) -&gt; e.isValid == false) &gt; 0]" >
+						<ee:transform doc:name="Validacion Servicios Invalida" doc:id="3ccd9e81-129c-479b-8acd-eb2d7e03ec20" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-service'),
+	isValid: false,
+	detailEvaluated: payload
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Validacion Servicios Valida" doc:id="6cea8ccc-ea5f-4285-a25d-1ef6c8a02a46" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-service'),
+	isValid: true,
+	detailEvaluated: payload
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Integration id Failed" doc:id="2837f97a-1adc-42ea-be44-98f41805fd25" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-service'),
+	isValid: false,
+	detailEvaluated: [
+		{
+	    "evaluateId": "Integration_Id",
+	    "isValid": false,
+	    "detail": "Numero integration id: "++ (vars.requestOrder.service.serviceAccountId default "") ++" no existe"
   		}
 	]
 }]]></ee:set-payload>
