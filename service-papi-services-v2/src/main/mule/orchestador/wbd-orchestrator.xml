@@ -108,6 +108,7 @@ fun generateEventId() =
 				<ee:message>
 					<ee:set-payload><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
+
 ---
 {
   query: {
@@ -116,13 +117,40 @@ output application/json skipNullOn="everywhere"
       {
       	idEvento: vars.solicitudEvento.id,
         proveedor: "HBO",
-        estado: if ((attributes.statusCode default 0) == 202) "EXITOSO" else "FALLIDO",
-        solicitudEvento: vars.solicitudEvento,
-        respuestaEvento: {
-          httpStatus: attributes.statusCode
-        },
-        fechaCreacion: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},
-        fechaActualizacion: now() as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"}
+
+        estado:
+          if ((attributes.statusCode default 0) == 202)
+            "EXITOSO"
+          else
+            "FALLIDO",
+
+        solicitudesEventos: [
+          vars.solicitudEvento
+        ],
+
+        respuestasEventos: [
+          {
+            idEvento: vars.solicitudEvento.id,
+            event_type: vars.solicitudEvento.event_type,
+            httpStatus: attributes.statusCode,
+            fechaRespuesta:
+              now() as String {
+                format: "yyyy-MM-dd'T'HH:mm:ssXXX"
+              }
+          }
+        ],
+
+        notificacionesEventos: [],
+
+        fechaCreacion:
+          now() as String {
+            format: "yyyy-MM-dd'T'HH:mm:ssXXX"
+          },
+
+        fechaActualizacion:
+          now() as String {
+            format: "yyyy-MM-dd'T'HH:mm:ssXXX"
+          }
       }
     ]
   }
@@ -193,10 +221,9 @@ var product = payload.Result.products[0]
 		<flow-ref doc:name="post-activation-url-wbd-sapi-clientSub_Flow" doc:id="db462fe2-cf24-40a9-8ae7-929f4ffeb869" name="post-activation-url-wbd-sapi-clientSub_Flow"/>
 	</sub-flow>
 	<sub-flow name="wbd-event-listener-orchestratorSub_Flow" doc:id="9ff2e6fe-b88a-46e4-8096-6d1341c9db21" >
-		<logger level="INFO" doc:name="Logger Payload" doc:id="bd640432-65f0-4a2a-8517-98f6aa9c976a" message="#[payload]"/>
-		<logger level="INFO" doc:name="Logger Headers" doc:id="4978d76b-a688-4f29-99fb-5094794381dd" message="#[attributes.headers]"/>
+		<logger level="INFO" doc:name="Logger Payload audit papi" doc:id="bd640432-65f0-4a2a-8517-98f6aa9c976a" message='#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;  "logMarker": "WBD_SIGNATURE_DEBUG_SYSTEM_INPUT",&#10;  "layer": "PAPI",&#10;  "request": {&#10;    "method": attributes.method default "",&#10;    "requestPath": attributes.requestPath default "",&#10;    "headers": attributes.headers default {},&#10;    "body": payload default {}&#10;  }&#10;}]'/>
 		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="d47e5b44-21eb-4b7b-b200-08a65dc17392" variableName="notificacionEvento"/>
-		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    name: "WARNER",&#10;    "X-CORRELATION-ID": payload.id,&#10;    source: "WARNER",&#10;    systemId: "MIGRACION",&#10;	"Date": attributes.headers.Date,&#10;	"Digest": attributes.headers.Digest,&#10;	"Signature": attributes.headers.Signature&#10;}]' doc:name="Set Variable" doc:id="9478335e-8ca1-40c5-8d22-b3dfd09531ef" variableName="headers"/>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    name: "WARNER",&#10;    "X-CORRELATION-ID": payload.id,&#10;    source: "WARNER",&#10;    systemId: "MIGRACION",&#10;	"Date": attributes.headers.Date,&#10;	"Digest": attributes.headers.Digest,&#10;	"Signature": attributes.headers.Signature,&#10;	"X-WBD-Original-Host": attributes.headers."X-WBD-Original-Host",&#10;    "X-WBD-Original-Method": attributes.headers."X-WBD-Original-Method",&#10;    "X-WBD-Original-Path": attributes.headers."X-WBD-Original-Path"&#10;}]' doc:name="Set Variable" doc:id="9478335e-8ca1-40c5-8d22-b3dfd09531ef" variableName="headers"/>
 		<flow-ref doc:name="post-event-listener-wbd-sapi-clientSub_Flow" doc:id="c0ec5ac2-cdaf-4e23-8b69-639d6caec381" name="post-event-listener-wbd-sapi-clientSub_Flow"/>
 		<choice doc:name="Choice" doc:id="e5349f7c-02a4-4a39-8b63-2fc4963cded1" >
 			<when expression="#[payload.valid == true]">
@@ -214,22 +241,29 @@ var notification = vars.notificacionEvento
     updates: [
       {
         q: {
-          idEvento: notification.id
+          "solicitudesEventos.partner_user_id": notification.partner_user_id,
+          "solicitudesEventos.event_data.products.sub_id": notification.event_data.products[0].sub_id
         },
+
         u: {
+          "\$push": {
+            notificacionesEventos: notification
+          },
+
           "\$set": {
-            notificacionEvento: notification,
             estado:
               if (notification.event_type == "error_notification")
                 "FALLIDO"
               else
                 "EXITOSO",
+
             fechaActualizacion:
               now() as String {
                 format: "yyyy-MM-dd'T'HH:mm:ssXXX"
               }
           }
         },
+
         multi: false,
         upsert: false
       }

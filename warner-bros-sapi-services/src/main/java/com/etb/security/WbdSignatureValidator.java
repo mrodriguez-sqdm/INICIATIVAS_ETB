@@ -13,6 +13,11 @@ import java.util.Map;
 
 public class WbdSignatureValidator {
 
+    /*
+     * ============================================================
+     * GENERAR DIGEST SHA-512
+     * ============================================================
+     */
     public static String generateDigest(String body) throws Exception {
 
         String requestBody = body == null ? "" : body;
@@ -31,6 +36,11 @@ public class WbdSignatureValidator {
         return "SHA-512=" + digestBase64;
     }
 
+    /*
+     * ============================================================
+     * PARSEAR SIGNATURE HEADER
+     * ============================================================
+     */
     public static Map<String, String> parseSignatureHeader(
             String signatureHeader) {
 
@@ -42,9 +52,11 @@ public class WbdSignatureValidator {
             );
         }
 
-        Map<String, String> values = new HashMap<>();
+        Map<String, String> values =
+                new HashMap<>();
 
-        String[] parts = signatureHeader.split(",");
+        String[] parts =
+                signatureHeader.split(",");
 
         for (String part : parts) {
 
@@ -62,28 +74,46 @@ public class WbdSignatureValidator {
                 if (value.startsWith("\"") &&
                         value.endsWith("\"")) {
 
-                    value = value.substring(
-                            1,
-                            value.length() - 1
-                    );
+                    value =
+                            value.substring(
+                                    1,
+                                    value.length() - 1
+                            );
                 }
 
-                values.put(key, value);
+                values.put(
+                        key,
+                        value
+                );
             }
         }
 
         return values;
     }
 
+    /*
+     * ============================================================
+     * OBTENER KEY ID
+     * ============================================================
+     */
     public static String getKeyId(
             String signatureHeader) {
 
         Map<String, String> signatureValues =
-                parseSignatureHeader(signatureHeader);
+                parseSignatureHeader(
+                        signatureHeader
+                );
 
-        return signatureValues.get("keyId");
+        return signatureValues.get(
+                "keyId"
+        );
     }
 
+    /*
+     * ============================================================
+     * CONSTRUIR PUBLIC KEY DESDE JWKS
+     * ============================================================
+     */
     public static PublicKey buildPublicKey(
             String modulus,
             String exponent) throws Exception {
@@ -113,10 +143,16 @@ public class WbdSignatureValidator {
                         .decode(exponent);
 
         BigInteger modulusValue =
-                new BigInteger(1, modulusBytes);
+                new BigInteger(
+                        1,
+                        modulusBytes
+                );
 
         BigInteger exponentValue =
-                new BigInteger(1, exponentBytes);
+                new BigInteger(
+                        1,
+                        exponentBytes
+                );
 
         RSAPublicKeySpec keySpec =
                 new RSAPublicKeySpec(
@@ -125,11 +161,20 @@ public class WbdSignatureValidator {
                 );
 
         KeyFactory keyFactory =
-                KeyFactory.getInstance("RSA");
+                KeyFactory.getInstance(
+                        "RSA"
+                );
 
-        return keyFactory.generatePublic(keySpec);
+        return keyFactory.generatePublic(
+                keySpec
+        );
     }
 
+    /*
+     * ============================================================
+     * VALIDAR REQUEST WBD
+     * ============================================================
+     */
     public static boolean validateRequest(
             String method,
             String host,
@@ -141,30 +186,68 @@ public class WbdSignatureValidator {
             String modulus,
             String exponent) throws Exception {
 
-        String calculatedDigest =
-                generateDigest(body);
-
-        if (digest == null ||
-                !calculatedDigest.equals(digest)) {
+        /*
+         * ========================================================
+         * 1. VALIDAR PARAMETROS REQUERIDOS
+         * ========================================================
+         */
+        if (method == null ||
+                host == null ||
+                path == null ||
+                date == null ||
+                digest == null ||
+                signatureHeader == null) {
 
             return false;
         }
 
+        /*
+         * ========================================================
+         * 2. VALIDAR DIGEST DEL BODY
+         * ========================================================
+         */
+        String calculatedDigest =
+                generateDigest(body);
+
+        if (!calculatedDigest.equals(digest)) {
+            return false;
+        }
+
+        /*
+         * ========================================================
+         * 3. PARSEAR SIGNATURE HEADER
+         * ========================================================
+         */
         Map<String, String> signatureValues =
-                parseSignatureHeader(signatureHeader);
+                parseSignatureHeader(
+                        signatureHeader
+                );
 
         String keyId =
-                signatureValues.get("keyId");
+                signatureValues.get(
+                        "keyId"
+                );
 
         String algorithm =
-                signatureValues.get("algorithm");
+                signatureValues.get(
+                        "algorithm"
+                );
 
         String headers =
-                signatureValues.get("headers");
+                signatureValues.get(
+                        "headers"
+                );
 
         String signatureBase64 =
-                signatureValues.get("signature");
+                signatureValues.get(
+                        "signature"
+                );
 
+        /*
+         * ========================================================
+         * 4. VALIDAR SIGNATURE HEADER
+         * ========================================================
+         */
         if (keyId == null ||
                 signatureBase64 == null ||
                 headers == null) {
@@ -173,46 +256,85 @@ public class WbdSignatureValidator {
         }
 
         if (algorithm != null &&
-                !"hs2019".equalsIgnoreCase(algorithm)) {
+                !"hs2019".equalsIgnoreCase(
+                        algorithm
+                )) {
 
             return false;
         }
 
-        String requestMethod =
-                method.toUpperCase();
-
-        String requestTarget =
-                requestMethod + " " + path;
-
-        String signingString =
-                "host: " + host + "\n"
-                + "date: " + date + "\n"
-                + "(request-target): "
-                + requestTarget + "\n"
-                + "digest: " + digest;
-
+        /*
+         * ========================================================
+         * 5. CONSTRUIR PUBLIC KEY DESDE JWKS
+         * ========================================================
+         */
         PublicKey rsaPublicKey =
                 buildPublicKey(
                         modulus,
                         exponent
                 );
 
+        /*
+         * ========================================================
+         * 6. CONSTRUIR REQUEST TARGET
+         * ========================================================
+         *
+         * Ejemplo:
+         *
+         * POST /v2/customer-products/event-listener
+         */
+        String requestTarget =
+                method.toUpperCase() +
+                        " " +
+                        path;
+
+        /*
+         * ========================================================
+         * 7. CONSTRUIR SIGNING STRING
+         * ========================================================
+         *
+         * IMPORTANTE:
+         * - Los nombres de los campos van en minuscula.
+         * - Se utiliza \n entre cada campo.
+         * - NO existe salto de linea despues del digest.
+         */
+        String signingString =
+                "host: " + host + "\n"
+                        + "date: " + date + "\n"
+                        + "(request-target): "
+                        + requestTarget + "\n"
+                        + "digest: " + digest;
+
+        /*
+         * ========================================================
+         * 8. DECODIFICAR SIGNATURE
+         * ========================================================
+         */
+        byte[] signatureBytes =
+                Base64.getDecoder()
+                        .decode(
+                                signatureBase64
+                        );
+
+        /*
+         * ========================================================
+         * 9. VALIDAR FIRMA RSA + SHA-512
+         * ========================================================
+         */
         Signature verifier =
                 Signature.getInstance(
                         "SHA512withRSA"
                 );
 
-        verifier.initVerify(rsaPublicKey);
+        verifier.initVerify(
+                rsaPublicKey
+        );
 
         verifier.update(
                 signingString.getBytes(
                         StandardCharsets.UTF_8
                 )
         );
-
-        byte[] signatureBytes =
-                Base64.getDecoder()
-                        .decode(signatureBase64);
 
         return verifier.verify(
                 signatureBytes
