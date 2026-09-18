@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-cun-history-orchestrator-sub-flow" doc:id="e1ccb0e9-8cb5-4569-9d1e-5469aebe41bd" >
+		<try doc:name="Try" doc:id="052d5b76-207a-4597-bc37-5a65fa5ddfc7" >
+			<ee:transform doc:name="set xml request" doc:id="9a40c305-0455-4007-a450-04cd16513cc6" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+
+ns tem http://tempuri.org/
+output application/xml skipNullOn = "everywhere",writeDeclaredNamespaces = "All"
+
+var origin = lower(payload.user)
+var user = "secure::cun.soap.credentials." ++ origin ++ ".user"
+var pass = "secure::cun.soap.credentials." ++ origin ++ ".pass"
+
+---
+{
+  tem#HistoricoCUN: {
+    tem#NumCun: payload.cunNumber,
+    tem#Identificacion: payload.identification,
+    tem#NumConexion: payload.connectionNumber,
+    tem#TipoIdentificacion: payload.identificationType,
+    tem#Usuario: p(user),
+    tem#Contrasena: p(pass)
+  }
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="cun-soap-history-clientSub_Flow" doc:id="995b2808-a230-4397-b5e6-073d6b04f45a" name="cun-soap-history-clientSub_Flow" />
+			<choice doc:name="validate soap response" doc:id="98815152-1848-4733-83da-eb1d457c1a02" >
+				<when expression='#[isEmpty(payload.body.HistoricoCUNResponse.HistoricoCUNResult.*clsHistorico.*CodError)]' >
+					<ee:transform doc:name="set json response" doc:id="06f50ac1-9050-49e3-ad7e-48be70b251da" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+
+ns tem http://tempuri.org/
+
+output application/json skipNullOn = "everywhere"
+
+var result = payload.body .tem#HistoricoCUNResponse.tem#HistoricoCUNResult
+
+---
+{
+    code: "201",
+    message: "CUN History Correctly",
+    cun: {
+        history: result.*tem#clsHistorico map (item) -> {
+            cunNumber: item.tem#NumCun,
+            system: item.tem#Sistema,
+            orderNumber: item.tem#NumOrden,
+            cunDate: item.tem#FechaCun,
+            connectionNumber: item.tem#Numconexion,
+            errorCode: item.tem#CodError,
+            errorMessage: item.tem#NomError
+        }
+    }
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<otherwise >
+					<raise-error doc:name="POST_CUN_HISTORY:RESULT_ERROR" doc:id="5bd3c1b3-7727-4bb1-8459-23df0bc6e33e" type="POST_CUN_HISTORY:RESULT_ERROR" description='#["HistoryCUNResult: " ++ (payload.body.RastroCunResponse.RastroCunResult.CodError as String) ++ " - " ++ (payload.body.RastroCunResponse.RastroCunResult.NomError as String)]' />
+				</otherwise>
+			</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c40d328a-cbf2-44c5-852a-8bbb85e92424" type="POST_CUN_HISTORY:RESULT_ERROR" >
+					<ee:transform doc:name="set result error" doc:id="e6e6c3c3-25af-43cd-a612-972c6e81227d" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "400",
+	"code": "POST_CUN_HISTORY:RESULT_ERROR",
+	"message": error.description,
+	"messageServer": error.description,
+	"cause": [{
+		"origin": "common-sapi-services",
+		"message": error.description
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="40dbca86-a93e-4a96-b9c3-11bd348c959e" type="WSC:SOAP_FAULT" >
+					<ee:transform doc:name="set fault error" doc:id="38fdece2-77d7-4906-b430-eb2e0eb559bf" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "500",
+	"code": "WSC:SOAP_FAULT",
+	"message": error.description,
+	"messageServer": error.description,
+	"cause": [{
+		"origin": "common-sapi-services",
+		"message": error.description
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

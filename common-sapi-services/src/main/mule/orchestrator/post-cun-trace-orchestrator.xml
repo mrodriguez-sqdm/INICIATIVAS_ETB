@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-cun-trace-orchestrator-sub-flow" doc:id="f219b5ac-3e64-4aa6-8d39-a4cc7ffa5124" >
+		<try doc:name="Try" doc:id="fab7a789-27c0-4932-9a66-5ebd2d7b9695" >
+			<ee:transform doc:name="set xml request" doc:id="a3366f25-5e39-4c53-80ec-db39f6cfe790" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+
+ns tem http://tempuri.org/
+output application/xml skipNullOn = "everywhere", writeDeclaredNamespaces = "All"
+
+var origin = lower(payload.user)
+var user = "secure::cun.soap.credentials." ++ origin ++ ".user"
+var pass = "secure::cun.soap.credentials." ++ origin ++ ".pass"
+
+---
+{
+  tem#RastroCun: {
+    tem#NumCun: payload.cunNumber,
+    tem#TipoPQR: payload.pqrType,
+    tem#FechaPQR: payload.pqrDate,
+    tem#Sistema: payload.system,
+    tem#NumOrden: payload.orderNumber,
+    tem#TipoIdentificacion: payload.identificationType,
+    tem#Identificacion: payload.identification,
+    tem#NumConexion: payload.connectionNumber,
+    tem#Usuario: p(user),
+    tem#Contrasena: p(pass)
+  }
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="cun-soap-trace-clientSub_Flow" doc:id="11ca93e7-bd8e-4f30-a77a-b91b6672bdca" name="cun-soap-trace-clientSub_Flow" />
+			<choice doc:name="validate soap response" doc:id="4e3470d7-fdfe-47c7-b28e-381f3942f54d" >
+				<when expression='#[payload.body.RastroCunResponse.RastroCunResult.CodError == "5013"]' >
+					<ee:transform doc:name="set json response" doc:id="7c4b7e40-c6b4-4377-b06e-72e602a3ddf9" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+
+ns tem http://tempuri.org/
+
+output application/json
+
+var result = payload.body.tem#RastroCunResponse.tem#RastroCunResult
+
+---
+{
+    code: "201",
+    message: "CUN Trace Correctly",
+    cun: {
+        CodError: result.tem#CodError,
+        NomError: result.tem#NomError
+    }
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<otherwise >
+					<raise-error doc:name="POST_CUN_TRACE:RESULT_ERROR" doc:id="5e24192b-78fc-432a-9dff-77001824aaba" type="POST_CUN_TRACE:RESULT_ERROR" description='#["TraceCUNResult: " ++ (payload.body.RastroCunResponse.RastroCunResult.CodError as String) ++ " - " ++ (payload.body.RastroCunResponse.RastroCunResult.NomError as String)]' />
+				</otherwise>
+			</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="a7866698-5998-43ac-83c8-cff5b68469e2" type="POST_CUN_TRACE:RESULT_ERROR" >
+					<ee:transform doc:name="set result error" doc:id="7edcf069-74b1-4be8-8d74-f7f9eb7cca4f" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "400",
+	"code": "POST_CUN_TRACE:RESULT_ERROR",
+	"message": error.description,
+	"messageServer": error.description,
+	"cause": [{
+		"origin": "common-sapi-services",
+		"message": error.description
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="c6977469-58cd-4114-a793-c277d890ea79" type="WSC:SOAP_FAULT" >
+					<ee:transform doc:name="set fault error" doc:id="1ecbca5e-5f1c-493d-b2fc-ab1db78b553f" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "500",
+	"code": "WSC:SOAP_FAULT",
+	"message": error.description,
+	"messageServer": error.description,
+	"cause": [{
+		"origin": "common-sapi-services",
+		"message": error.description
+	}]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
