@@ -7,10 +7,22 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<sub-flow name="agreement-get-orchestadorSub_Flow" doc:id="b0860e56-8ca6-4742-969e-d9ed5834fd70" >
 		<set-variable value="#[{&#10;    activeDate: &#10;        if (attributes.queryParams.ACTIVE_DATE != null)&#10;            ((attributes.queryParams.ACTIVE_DATE &#10;                as DateTime { format: &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot; }) &#10;                as String { format: &quot;dd/MM/yyyy&quot; })&#10;        else null,&#10;&#10;    cuentaPadre: attributes.queryParams.PARENT_ACCOUNT,&#10;    integrationId: attributes.queryParams.INTERACTION_ID&#10;}]" doc:name="Save Parameters" doc:id="e15c1919-9189-4d0d-9091-219f443a2e0f" variableName="parameters" />
 		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="5c681e50-f7fd-4536-b22b-4677e587476e" variableName="headers" />
-		<flow-ref doc:name="Flow Reference" doc:id="6679a871-3c66-4471-897f-6e7ac327ec62" name="get-PermanenceClause-portal-fija-sapi-clientSub_Flow"/>
-		<ee:transform doc:name="Transform Message" doc:id="fc2ecabe-4485-41bd-9e93-d89c9688ca44" >
+		<ee:transform doc:name="set targetSystem" doc:id="a9098937-8461-4f28-9d5a-1770912dffe0" >
 			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="targetSystem" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers.'x-target-system' default "1"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="validate x-target-system" doc:id="fd9bc282-ccb0-4594-a693-4741ff3baf65" >
+			<when expression='#[vars.targetSystem == "1"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="6679a871-3c66-4471-897f-6e7ac327ec62" name="get-PermanenceClause-portal-fija-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="fc2ecabe-4485-41bd-9e93-d89c9688ca44">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -59,6 +71,55 @@ output application/json
 ]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="set get query penalty permanent request" doc:id="7f221dd6-2412-4437-b473-23309c58092d" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="zsmartRequest" ><![CDATA[%dw 2.0
+output application/json
+var requestHeaders = attributes.headers
+var requestParams = attributes.queryParams
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.queryPenaltyPermanent.path'),
+	method: p('zsmart-sapi.queryPenaltyPermanent.get.method'),
+	headers: {
+		"client_secret": p('zsmart-sapi.security.client_secret'),
+		"client_id": p('zsmart-sapi.security.client_id'),
+		"name": requestHeaders.name,
+		"X-CORRELATION-ID": requestHeaders."X-CORRELATION-ID",
+		"source": requestHeaders.source,
+		"systemId": requestHeaders.systemId
+	},
+	queryParameters: {
+		serviceNumber: requestParams.'INTERACTION_ID'
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="zsmart-sapi-clientSub_Flow" doc:id="936ffa1a-1eb9-4f46-ae11-a93dc1ec9c61" name="zsmart-sapi-clientSub_Flow"/>
+				<ee:transform doc:name="set penalty response" doc:id="723f4dce-6f36-474e-8897-d6d757068b73" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json  skipNullOn = "everywhere"
+---
+{
+  "codeResponse": "200",
+  "responseMessage": "The request was successful",
+  "penalty":payload.result.penalty default {}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 
 	<sub-flow name="agreement-create-orchestadorSub_Flow" doc:id="e1f2a3b4-create-agreement-bpapi">
