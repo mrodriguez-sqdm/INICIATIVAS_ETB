@@ -65,3 +65,46 @@ fun enriquecerAtributos(atributos: Array, catalogo: Array): Array =
         Nuevo: true,
         Display: 0
     }
+    
+fun valorODefecto(valor: Any, porDefecto: Any): Any =
+    if (valor != null and valor != "") valor else porDefecto
+
+fun homologarCobertura(cobertura: Object): Object = {
+    Tipo_Cobertura: valorODefecto(cobertura.Tipo_Cobertura, ""),
+    Codigo_Lote: valorODefecto(cobertura.Codigo_Lote, ""),
+    Localidad: valorODefecto(cobertura.Localidad, ""),
+    Estrato: valorODefecto(cobertura.Estrato, 0),
+    Latitud: valorODefecto(cobertura.Latitud, 0),
+    Longitud: valorODefecto(cobertura.Longitud, 0),
+    Direccion_GIS: valorODefecto(cobertura.Direccion_GIS, ""),
+    NombreCobertura: valorODefecto(cobertura.NombreCobertura, ""),
+    Olt: valorODefecto(cobertura.Olt, ""),
+    Propietario: valorODefecto(cobertura.Propietario, ""),
+    Proposito: valorODefecto(cobertura.Proposito, ""),
+    Tecnologia: valorODefecto(cobertura.Tecnologia, ""),
+    Zona: valorODefecto(cobertura.Zona, ""),
+    TipoDistancia: valorODefecto(cobertura.TipoDistancia, ""),
+    TipoDistancia2: valorODefecto(cobertura.TipoDistancia2, null),
+    Distrito: valorODefecto(cobertura.Distrito, null),
+    Molecula: valorODefecto(cobertura.Molecula, null),
+    Viable: valorODefecto(cobertura.Viable, false)
+}
+
+fun homologarDireccion(direccion: Object): Object = {
+    Id_Direccion: valorODefecto(direccion.Id_Direccion, 0),
+    Direccion_Normalizada: valorODefecto(direccion.Direccion_Normalizada, ""),
+    Tipo_Direccion: valorODefecto(direccion.Tipo_Direccion, ""),
+    Codigo_Direccion: valorODefecto(direccion.Codigo_Direccion, ""),
+    Codigo_Departamento: valorODefecto(direccion.Codigo_Departamento, ""),
+    Codigo_Municipio: valorODefecto(direccion.Codigo_Municipio, ""),
+    Codigo_Pais: valorODefecto(direccion.Codigo_Pais, ""),
+    Nombre_Direccion: valorODefecto(direccion.Nombre_Direccion, null),
+    Departamento: valorODefecto(direccion.Departamento, ""),
+    Municipio: valorODefecto(direccion.Municipio, ""),
+    Estado: valorODefecto(direccion.Estado, ""),
+    Seleccionada: valorODefecto(direccion.Seleccionada, false),
+    Cobertura: homologarCobertura(direccion.Cobertura default {})
+}
+
+fun homologarDirecciones(direcciones: Array): Array =
+    direcciones map (direccion) -> homologarDireccion(direccion)

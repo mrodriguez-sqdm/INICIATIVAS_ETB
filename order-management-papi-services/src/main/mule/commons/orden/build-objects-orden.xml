@@ -28,10 +28,8 @@ import modules::GlobalFunctions as global
 		]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<logger level="INFO" doc:name="Request CUN" doc:id="45f7679f-0b27-41b5-8716-0c568c33d9c1" message="#[payload]"/>
 		<try doc:name="Try" doc:id="fc47f965-8976-492c-be6f-a5db5e496172" >
 			<flow-ref doc:name="sapi generate CUN" doc:id="6b2d6ce8-71f5-4dd9-bdd1-8aa09ecff5f4" name="generate-cun-subFlow" />
-			<logger level="INFO" doc:name="Response CUN" doc:id="ee8b2510-3d96-4d5a-a376-b1b0eddfe856" message="#[payload]" />
 			<ee:transform doc:name="Transform Message" doc:id="e86ef653-daa5-41dd-bb06-9ab2e6380a19">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
@@ -68,7 +66,7 @@ output application/json
 fun obtenerValorFiltro(tipoTramite) =
     tipoTramite match {
         case "TESR" -> vars.objectServicio_Tramite.Id_Cuenta_Facturacion
-        case "TRAMITE LTE" -> vars.objectServicioActivo.Integration_Id
+        case "TRAMITE LTE" -> vars.objectServicioActivo.Cuenta_Facturacion
         else -> null
     }
 
@@ -196,9 +194,13 @@ var cf = vars.responseMongo.result[0]
 	fechaEjecucion: if (fecha != null)
 		{
 			"\$date": (fecha as String {format: "yyyy-MM-dd"}) ++ "T00:00:00.000Z"
-		}
-	else
-		null
+		} 
+		else
+		 null,
+		fechaEjecucionFormated: if (fecha != null)
+		    (fecha as String {format: "yyyy-MM-dd"}) else
+		 null
+	
 }]]></ee:set-payload>
 							</ee:message>
 							<ee:variables>
@@ -355,7 +357,6 @@ do {
 						</otherwise>
 					</choice>
 		</foreach>
-		<logger level="INFO" doc:name="Logger" doc:id="c89c3969-5ee1-4e9e-bcbd-09c86c1d3a39" message="#[vars.serviciosPrimarios]"/>
 		<ee:transform doc:name="Set Payload Servicios" doc:id="e1f4a458-cd01-4fe8-bfe5-1387059d57fd" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
@@ -365,5 +366,31 @@ vars.serviciosPrimarios]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
 		
+	</sub-flow>
+	<sub-flow name="re-build-direccion-ordenSub_Flow" doc:id="b1e59613-49df-43ce-87f6-6fb83d4a1df7" >
+		<logger level="INFO" doc:name="Logger1" doc:id="b65b9674-bee6-44f6-b75f-51f620b2a9b0" message='#["Data Dir after" ++ write(vars.objectServicio_Tramite.Id_Direccion_Instalacion, "application/json")]' />
+		<ee:transform doc:name="Actualizar Direccion" doc:id="ad1b0211-f1f5-480c-9653-6666b14f49d0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+fun actualizarSeleccionada(direcciones: Array, idBuscado: Number | Null): Array =
+    if (idBuscado == null)
+        direcciones
+    else
+        direcciones map (direccion) ->
+            (direccion - "Seleccionada") ++ {
+                Seleccionada: direccion.Id_Direccion == idBuscado
+            }
+---
+vars.objectCliente_Tramite update {
+    case direcciones at .Cliente_Tramite.Direcciones ->
+        actualizarSeleccionada(direcciones, vars.objectServicio_Tramite.Id_Direccion_Instalacion)
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="f850e999-4ca7-47d5-b837-231dc9ff50ea" message='#["Data Dir up" ++ write(payload, "application/json")]' />
 	</sub-flow>
 </mule>
