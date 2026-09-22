@@ -47,7 +47,7 @@ output application/json  skipNullOn = "everywhere"
 		"destAddress": service.destAddress,
 		("contactDtoList": service.contacts map ((serviceContact) -> {
 			"contactType": serviceContact.contactType,
-			"operate": serviceContact.operate default operation,
+			"operate": serviceContact.operate,
 			"contactId": serviceContact.contactId,
 			"firstName": serviceContact.firstName,
 			"lastName": serviceContact.lastName,
@@ -69,10 +69,27 @@ output application/json  skipNullOn = "everywhere"
 	})),
 	// Service Attributes Mapping
 	("billProdInstAttrList": service.attributes default [] map ((serviceAttr) -> {
-		"operate": serviceAttr.operate default operation,
+		"operate": serviceAttr.operate,
 		"serviceNumber": service.serviceNumber,
 		"attrCode": serviceAttr.attrCode,
 		"value": serviceAttr.value,
 		"effDate": serviceAttr.effectiveDate
 	})) if (!isEmpty(flatten(service.attributes default []))),
+	// Service Offers Mapping
+	("billOfferInstList": service.offers default [] map ((offer) -> {
+		"operate": offer.operate,
+		"offerInstIdCRM": offer.offerInstanceIdCRM,
+		"offerCode": offer.offerCode,
+		"effDate": offer.effectiveDate,
+		"expDate": offer.expirationDate,
+		"instanceIdCRM": service.serviceNumber
+	})) if (!isEmpty(flatten(service.offers default []))),
+	// Service Offers Attributes Mapping
+	("billOfferInstAttrList": service.offers default [] flatMap (o) -> o.attributes default [] map ((offerAttr) -> {
+		"operate": offerAttr.operate,
+		"offerInstIdCRM": o.offerInstanceIdCRM,
+		"attrCode": offerAttr.attrCode,
+		"value": offerAttr.value,
+		"effDate": offerAttr.effectiveDate
+	})) if (!isEmpty(flatten(service.offers.attributes default []))),
 }

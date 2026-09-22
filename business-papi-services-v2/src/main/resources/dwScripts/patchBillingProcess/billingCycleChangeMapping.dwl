@@ -53,7 +53,7 @@ output application/json  skipNullOn = "everywhere"
 		"paymentTerm": account.paymentTerm,
 		"effDate": account.effectiveDate,
 		("contactDtoList": account.contacts map ((acctContact) -> {
-			"operate": acctContact.operate default operation,
+			"operate": acctContact.operate,
 			"contactType": acctContact.contactType,
 			"operate": operation,
 			"contactId": acctContact.contactId,
