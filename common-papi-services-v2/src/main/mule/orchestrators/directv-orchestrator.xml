@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="directv-customer-notifications-orchestratorSub_Flow" doc:id="8ea9e8c1-212b-4027-8db4-4f34750f055d" >
+		<ee:transform doc:name="Set Variable Headers y request body http" doc:id="aa4820e9-7315-4683-a700-50dcc4630f60" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var source = payload
+var thirdApp = source.thirdApp
+var deliveryChannel = source.deliveryChannel
+
+---
+{
+  "partnerCode": thirdApp.partnerCode,
+  "sendMail": deliveryChannel.sendMail
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="customerId" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.customer.customerID]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="33a6d4d4-bb05-490e-be79-7ae9577c59f2" name="post-customer-notifications-directv-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="Set Response Direectv Sapi" doc:id="57cdf302-1584-4823-bc57-8be5aa34a455" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Variables de control para facilitar el acceso
+var response = payload.ActivateRefreshResponse
+var metadata = response.ResponseMetadata
+
+---
+{
+  // El código lo manejamos como String según tu destino
+  "code": "200",  
+  "message": "Notification processed successfully",
+  "data": {
+    "notificationType": "ActivateRefresh",
+    "responseMetadata": {
+      "timeStamp": metadata.timeStamp,
+      "requestID": metadata.requestID
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

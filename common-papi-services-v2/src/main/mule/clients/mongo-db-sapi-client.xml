@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="mongo-db-sapi-common-request-cached"
+		doc:id="44047c2a-b91e-4683-b829-25dccfd07bee">
+		<set-variable value='#["HIT"]' doc:name="HIT"
+			doc:id="a20c834e-07d3-4f9d-8ad0-9d41a70ea33f" variableName="cache" />
+		<ee:cache doc:name="Cache"
+			doc:id="09156d10-bc11-482b-a055-349c873ec7e2"
+			cachingStrategy-ref="mongoSapiCachingStrategy">
+			<http:request method="#[payload.method]"
+				doc:name="Mongo DB SAPI Cached Request"
+				doc:id="fe8806c7-1299-4a96-ad09-7d32d60c3b41"
+				config-ref="client_sapi_config" path="#[payload.path]"
+				sendCorrelationId="AUTO">
+				<http:body><![CDATA[#[payload.body]]]></http:body>
+				<http:headers><![CDATA[#[payload.headers default {}]]]></http:headers>
+				<http:uri-params><![CDATA[#[payload.uriParameters default {}]]]></http:uri-params>
+				<http:query-params><![CDATA[#[payload.queryParameters default {}]]]></http:query-params>
+			</http:request>
+			<set-variable value='#["MISSED"]' doc:name="MISSED"
+				doc:id="73b24280-b801-4d78-9430-ebccb90d88da" variableName="cache" />
+		</ee:cache>
+		<ee:transform doc:name="set cached payload"
+			doc:id="51c002ba-b069-4204-9df4-791d4a7fd863">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"cache": vars.cache 
+} ++ payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="mongo-db-sapi-common-request"
+		doc:id="1010557f-e85c-4a12-8bb9-69c23b5cac29">
+		<http:request method="#[payload.method]"
+			doc:name="Mongo DB SAPI Request"
+			doc:id="e70d01fe-be29-46b1-978a-8338d2208937"
+			config-ref="client_sapi_config" path="#[payload.path]"
+			sendCorrelationId="AUTO">
+			<http:body><![CDATA[#[payload.body]]]></http:body>
+			<http:headers><![CDATA[#[payload.headers default {}]]]></http:headers>
+			<http:uri-params><![CDATA[#[payload.uriParameters default {}]]]></http:uri-params>
+			<http:query-params><![CDATA[#[payload.queryParameters default {}]]]></http:query-params>
+		</http:request>
+	</sub-flow>
+	<sub-flow
+		name="get-parametersRetention-mongo-db-sapi-clientSub_Flow"
+		doc:id="a9102fc6-7b02-4686-972c-4fcf46d2d436">
+		<http:request
+			method="${mongoDbSapi.parametersRetention.get.method}"
+			doc:name="Request" doc:id="e47880ac-98a3-4eba-bbd7-f60b911cc165"
+			config-ref="HTTP_Mongo_SAPI_Request_Config"
+			path="${mongoDbSapi.parametersRetention.path}"
+			sendCorrelationId="AUTO">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	parameterType : vars.parameterType
+}]]]></http:query-params>
+
+		</http:request>
+	</sub-flow>
+	<sub-flow name="get-operators-mongo-db-sapi-clientSub_Flow"
+		doc:id="d008a2c4-fa78-43d9-b236-f48700e7267a">
+		<http:request
+			method="${mongoDbSapi.operators.get.method}" doc:name="Request"
+			doc:id="91180b68-b297-4cda-b377-ab9a817c09e1"
+			config-ref="HTTP_Mongo_SAPI_Request_Config"
+			path="${mongoDbSapi.operators.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+	<sub-flow
+		name="get-bussinessDays-mongo-db-sapi-clientSub_Flow"
+		doc:id="677dd9a9-5cbb-4e0a-b51c-d6f5fc71546e">
+		<http:request
+			method="${mongoDbSapi.bussinessDays.get.method}" doc:name="Request"
+			doc:id="9d3169bd-29b9-4601-980d-586b60e85bcd"
+			config-ref="HTTP_Mongo_SAPI_Request_Config"
+			path="${mongoDbSapi.bussinessDays.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+}]]]></http:headers>
+		</http:request>
+	</sub-flow>
+
+</mule>
