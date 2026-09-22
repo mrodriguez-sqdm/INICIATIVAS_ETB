@@ -1,0 +1,537 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="directv-get-customer-orchestratorSub_Flow" doc:id="8ea9e8c1-212b-4027-8db4-4f34750f055d" >
+		<ee:transform doc:name="Set Variables Headers, UriParams" doc:id="aa4820e9-7315-4683-a700-50dcc4630f60" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="call get-customer-directv client" doc:id="33a6d4d4-bb05-490e-be79-7ae9577c59f2" name="get-customer-directv-sapi-clientSub_Flow" target="vRespuesta"/>
+		<ee:transform doc:name="Set Response Transform" doc:id="57cdf302-1584-4823-bc57-8be5aa34a455" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Variables de control
+var statusCode = vars.vRespuesta.status default 200
+var responseBody = vars.vRespuesta
+
+// Booleano para saber si el cliente realmente vino en el body
+var hasCustomer = responseBody.GetPartnerViewResponse != null
+---
+{
+  "code": statusCode as String,
+  
+  "message": if (hasCustomer) "Subscriber retrieved successfully" 
+             else responseBody.error,
+  
+  "data": if (hasCustomer) do {
+      // Usamos 'do' para crear variables locales solo si hay éxito
+      var customer = responseBody.GetPartnerViewResponse.GetPartnerViewResult.Customer
+      var individual = customer.IndividualRole
+      ---
+      {
+        "id": customer.ID,
+        "serviceSpecification": {
+          "name": "OTT"
+        },
+        "state": {
+          "id": customer.status.id,
+          "name": customer.status.name
+        },
+        "customer": [
+          {
+            "id": customer.ID,
+            "name": individual.NameUsing.IndividualNames.formattedName,
+            "givenNames": individual.NameUsing.IndividualNames.givenNames,
+            "familyNames": individual.NameUsing.IndividualNames.familyNames,
+            "middleNames": individual.NameUsing.IndividualNames.middleNames default "",
+            "aristocraticTitle": individual.NameUsing.IndividualNames.aristocraticTitle default "",
+            "aliveDuring": {
+              "startDateTime": individual.aliveDuring.startDateTime
+            },
+            "identifiedBy": individual.IdentifiedBy.IndividualIdentifications filter ($.cardNr != null) map (id) -> {
+              "scan": id.scan,
+              "cardNr": id.cardNr
+            },
+            "contactMedium": customer.ContactableVia.ContactMedium map (contact) -> {
+              "eMailAddress": contact.eMailAddress default "",
+              "addressId": contact.AddressId,
+              "eMailProtocol": contact.eMailProtocol default "Email"
+            },
+            "address": customer.AddressList.UrbanPropertyAddress map (addr) -> {
+              "addressCode": addr.addressCode default "",
+              "city": addr.city,
+              "streetNrFirst": addr.streetNrFirst,
+              "locality": addr.locality,
+              "streetName": addr.streetName,
+              "postCode": addr.postCode
+            }
+          }
+        ],
+        "serviceCharacteristic": [
+          {
+            "name": "customerInquiryList",
+            "value": responseBody.GetPartnerViewResponse.GetPartnerViewResult.CustomerInquiryList.CustomerInquiry default []
+          },
+          {
+            "name": "customerProductList",
+            // AQUÍ ESTABA EL ERROR: Filtramos para que solo pasen Objetos
+            "value": (responseBody.GetPartnerViewResponse.GetPartnerViewResult.CustomerProductList.Product default []) 
+                     filter ($ is Object) map (prod) -> {
+              "productStatus": prod.productStatus,
+              "productCategory": prod.productCategory
+            }
+          }
+        ]
+      }
+  } else {} // Si no existe el cliente, data queda como objeto vacío
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="directv-activation-orchestratorSub_Flow" doc:id="62f18daf-d195-48a1-9898-6a25bc94dc88" >
+		<ee:transform doc:name="Set Variables Headers, UriParams" doc:id="5d83b791-6fa4-463e-b577-3ce3f3dc807c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var source = payload
+var prod = source.product
+---
+{
+  "CaptureCustomerProductRequest": {
+    "CaptureCustomerProduct": {
+      "DeleteOffer": "false",
+      "ActivateInAllDevices": "true",
+      "ProductsCollection": [
+        {
+          "CustomerProductOffer": {
+            "Product": {
+              // Convertimos a String para asegurar que coincida con el destino
+              "productKey": prod.productKey as String default "",
+              "ID": prod.id as String default "",
+              "productCategory": {
+                "type": {
+                  "code": prod.productCategory."type".code
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="call activacion-directv client" doc:id="4e0df49e-bdd9-44ed-a7a0-7c917fd695a5" name="activacion-directv-sapi-clientSub_Flow"/>
+		<ee:transform doc:name="Set Resposne Transform" doc:id="2c57ef31-c7c5-4f4c-b65d-357fa98441c4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Acceso rápido a la oferta y al producto
+var offer = payload.ProductsCollection.CustomerProductOffer
+var prod = offer.Product
+---
+{
+  "code": "200",
+  "message": "Product activated successfully",
+  "result": {
+    "action": "activation",
+    "customer": {
+      "customerKey": offer.CustomerKey
+    },
+    "product": {
+      // Convertimos a número para mantener consistencia con el origen inicial
+      "id": prod.ID as Number,
+      "productKey": prod.productKey as Number,
+      "productCategory": {
+        "type": {
+          "code": prod.productCategory."type".code
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="directv-reprovision-orchestratorSub_Flow" doc:id="643ce65e-5288-4e3b-994c-1af24e398818" >
+		<ee:transform doc:name="Set Variables Headers, UriParams" doc:id="fb00f6e3-ff61-4f9c-9fc5-e2d1fd2b7015" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var source = payload
+var thirdApp = source.thirdApp
+---
+{
+  "partnerCode": thirdApp.partnerCode
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="call activacion-directv client" doc:id="b53a59fc-dcc8-4b04-b97d-13d13d032ecb" name="reaprovision-directv-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Set Resposne Transform" doc:id="400dceae-4fc1-440e-8693-0b1dd937efb5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+
+var activate = payload.ActivateRefreshResponse
+var meta = activate.ResponseMetadata
+---
+{
+  "code": "200",
+  "message": "Reprovision processed successfully",
+   "data": {
+	    "responseMetadata": {
+	      "timeStamp": meta.timeStamp,
+	      "requestID": meta.requestID
+	    }
+   }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="directv-cancel-customerProduct-orchestratorSub_Flow" doc:id="2b95d54f-9e97-45e1-9dab-f893c16b7ca1" >
+		<ee:transform doc:name="Set Variables Headers, UriParams" doc:id="05f35956-983b-4aa7-a966-a60ccff98b5f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "actionType": "CancelCustomerProducts",
+  "inmediate": payload.flags.immediate default true
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="call cancel customerProducts client" doc:id="3d4ecd36-5b58-497a-81be-9753b2319e84" name="productsCustomer-directv-sapi-clientSub_Flow" />
+		<logger level="INFO" doc:name="Logger" doc:id="7be0e61d-8182-4fa0-b276-553947e2527f" message="#[payload]"/>
+		<ee:transform doc:name="Set Resposne Transform" doc:id="db8dc72e-9053-4c4a-9bd5-c47c68ae8edc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Simplificamos la ruta al objeto principal para que el script sea más limpio
+var schedule = payload.CancelCustomerProductsResponse.CancelCustomerProductsResult.CustomerScheduleCollection.CustomerSchedules
+var metadata = payload.CancelCustomerProductsResponse.responseMetadata.requestMetadata
+---
+{
+  "code": "200",
+  "message": "Cancel processed successfully",
+  "result": {
+    "action": "cancelCustomer",
+    "customer": {
+      "customerKey": schedule.CustomerKey
+    },
+    "product": {
+      // Nota: Si necesitas que sea estático "directv", cambia schedule.Product.name por "directv"
+      "name": schedule.Product.name, 
+      "id": schedule.Product.id as Number default "0"
+    },
+    "order": {
+      "parentId": schedule.ParentId,
+      "status": {
+        "name": schedule.Status.name,
+        "id": schedule.Status.id
+      },
+      "entity": {
+        "type": schedule.Entity.Type,
+        "id": schedule.Entity.ID
+      },
+      "description":  schedule.Description,
+      "user": {
+        "name": schedule.User.name,
+        "id": schedule.User.id
+      },
+      "event": {
+        "name": schedule.Event.name,
+        "id": schedule.Event.id
+      },
+      "createDatetime": schedule.CreateDatetime,
+      "id": schedule.ID,
+      "reason": {
+        "name": schedule.Reason.name,
+        "id": schedule.Reason.id
+      },
+      "executeDatetime": schedule.ExecuteDatetime
+    }
+  },
+  "responseMetadata": {
+    "requestMetadata": {
+      "systemId": metadata.systemID,
+      "sender": {
+        "country": metadata.sender.country
+      },
+      "requestId": metadata.requestID,
+      "userId": metadata.userID
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="directv-reconection-customerProduct-orchestratorSub_Flow" doc:id="dff97f94-eeeb-4547-b6cf-a456c0fbd4ab" >
+		<ee:transform doc:name="Set Variables Headers, UriParams" doc:id="8911f6d8-524b-4531-80de-f962f0066c8c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "actionType": "ReconnectCustomerProduct"
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="call reconection customerProducts client" doc:id="48c476d1-e19f-4801-ac0c-068df9cb35f5" name="productsCustomer-directv-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Set Resposne Transform" doc:id="a15c614c-c5c7-49a6-944c-278d6f1a5b9c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Guardamos la ruta de la metadata en una variable para no repetir código largo
+var responseMeta = payload.ReconnectCustomerProductResponse.responseMetadata
+var requestMeta = responseMeta.requestMetadata
+---
+{
+  "code": "200",
+  "message": "Reconnect processed successfully",
+  "result": {
+    "action": "reconnectCustomer"
+  },
+  "responseMetadata": {
+    "requestMetadata": {
+      "systemId": requestMeta.systemID,
+      "sender": {
+        "country": requestMeta.sender.country
+      },
+      "requestId": requestMeta.requestID,
+      "userId": requestMeta.userID
+    },
+    "returnCode": responseMeta.returnCode,
+    "returnMessage": responseMeta.returnMessage
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="directv-cancel-Amazon-orchestratorSub_Flow" doc:id="a55a28da-abce-48ac-ac11-168ee664dc37" >
+		<ee:transform doc:name="Set Variables Headers, UriParams" doc:id="ae237282-2cce-4052-ae7f-aa906d65ee39" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "actionType": "CancelCustomerProductsAmazon",
+  "inmediate": payload.flags.immediate default true
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="productId" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.product.id default 0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="9bce2bb2-6816-434d-9e4c-44668b752330" message="#[payload]"/>
+		<flow-ref doc:name="call cancel customerAmazon client" doc:id="a6f0fcc3-391a-4426-8542-3abe349e6566" name="productsAmazon-directv-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Set Resposne Transform" doc:id="f01bb325-6d14-4bba-8b16-5d48d3ca1ebb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Variables para simplificar el acceso a las estructuras
+var schedule = payload.CancelCustomerProductsResponse.CancelCustomerProductsResult.CustomerScheduleCollection.CustomerSchedules
+var metadata = payload.CancelCustomerProductsResponse.responseMetadata.requestMetadata
+---
+{
+  "code": "200",
+  "message": "Cancel processed successfully",
+  "result": {
+    "action": "cancelAmazon",
+    "customer": {
+      "customerKey": schedule.CustomerKey
+    },
+    "product": {
+      "name": schedule.Product.name,
+      "id": schedule.Product.id as Number default vars.productId
+    },
+    "order": {
+      // Como no viene ParentId en el origen, usamos "0" por defecto
+      "parentId": schedule.ParentId default "0",
+      "status": {
+        "name": schedule.Status.name,
+        "id": schedule.Status.id
+      },
+      "entity": {
+        "type": schedule.Entity.Type,
+        "id": schedule.Entity.ID
+      },
+      "description": schedule.Description,
+      "user": {
+        "name": schedule.User.name,
+        "id": schedule.User.id
+      },
+      "event": {
+        "name": schedule.Event.name,
+        "id": schedule.Event.id
+      },
+      "createDatetime": schedule.CreateDatetime,
+      "id": schedule.ID,
+      "reason": {
+        "name": schedule.Reason.name,
+        "id": schedule.Reason.id
+      },
+      "executeDatetime": schedule.ExecuteDatetime
+    }
+  },
+  "responseMetadata": {
+    "requestMetadata": {
+      "systemId": metadata.systemID,
+      "sender": {
+        "country": metadata.sender.country
+      },
+      "requestId": metadata.requestID,
+      "userId": metadata.userID
+    }
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="directv-reconection-Amazon-orchestratorSub_Flow" doc:id="5b390b18-96b5-4846-9e5e-b85cf2b5027a" >
+		<ee:transform doc:name="Set Variables Headers, UriParams" doc:id="62b44b55-0dcd-43cd-a93e-b9efaebc3612" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "actionType": "ReconnectCustomerProductsAmazon",
+  "DeleteOffer": payload.flags.deleteOffer as String,
+  "ActivateInAllDevices": payload.flags.activateInAllDevices as String, 
+  "ProductsCollection": [
+    {
+      "CustomerProductOffer": {
+        "Product": {
+          "productKey": payload.product.productKey as String,
+          "ID": payload.product.id as String,
+          "productCategory": {
+            "type": {
+              "code": payload.product.productCategory."type".code
+            }
+          }
+        }
+      }
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="productId" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.product.id default 0]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="call reconection customerAmazon client" doc:id="8c99a1ef-2773-40ce-866a-847891a24127" name="productsAmazon-directv-sapi-clientSub_Flow" />
+		<ee:transform doc:name="Set Resposne Transform" doc:id="9ac5c36e-92c8-46ad-a0ed-80d5c44a1fa9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Variables para apuntar limpiamente al nuevo origen
+var metadata = payload.ProductsCollection.responseMetadata.requestMetadata
+---
+{
+  "code": "200",
+  "message": "Reconnect processed successfully",
+  "result": {
+    "action": "reconnectAmazon"
+  },
+  "responseMetadata": {
+    "requestMetadata": {
+      "systemId": metadata.systemID,
+      "sender": {
+        "country": metadata.sender.country
+      },
+      "requestId": metadata.requestID as Number default 0, // Convierte "1234" a número
+      "userId": metadata.userID
+    },
+    "returnCode": 0,
+    "returnMessage": "SUCCESS"
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

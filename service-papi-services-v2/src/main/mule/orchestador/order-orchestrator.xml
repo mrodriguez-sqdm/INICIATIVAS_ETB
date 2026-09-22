@@ -1,0 +1,747 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<sub-flow name="order-create-orchestratorSub_Flow" doc:name="order-create-orchestratorSub_Flow">
+		<set-variable value="#[payload]" doc:name="omOriginal" variableName="omOriginal"/>
+		<choice doc:name="serviceType">
+			<when expression="#[upper(trim(vars.omOriginal.serviceType default '')) == 'TELEFONIA']">
+				<set-variable value="#[501]" doc:name="httpStatus" variableName="httpStatus"/>
+				<ee:transform doc:name="501 TELEFONIA">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: 501,
+  descripcion: "TELEFONIA flow is not implemented yet"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[upper(trim(vars.omOriginal.serviceType default '')) != 'LTE']">
+				<set-variable value="#[400]" doc:name="httpStatus" variableName="httpStatus"/>
+				<ee:transform doc:name="400 invalid serviceType">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: 400,
+  descripcion: "serviceType must be LTE (TELEFONIA not implemented)"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<choice doc:name="resource.type">
+					<when expression="#[upper(trim(vars.omOriginal.resource.'type' default '')) == 'TITULAR']">
+						<flow-ref doc:name="Flujo titular LTE" name="om-lte-titular-Sub_Flow"/>
+					</when>
+					<when expression="#[upper(trim(vars.omOriginal.resource.'type' default '')) == 'SIM']">
+						<flow-ref doc:name="Reemplazo SIM LTE" name="om-lte-sim-Sub_Flow"/>
+					</when>
+					<when expression="#[upper(trim(vars.omOriginal.resource.'type' default '')) == 'PLAN']">
+						<flow-ref doc:name="Cambio de plan LTE" name="om-lte-plan-Sub_Flow"/>
+					</when>
+					<when expression="#[upper(trim(vars.omOriginal.resource.'type' default '')) == 'MSISDN']">
+						<flow-ref doc:name="Cambio de MSISDN LTE" name="om-lte-msisdn-Sub_Flow"/>
+					</when>
+					<otherwise>
+						<set-variable value="#[400]" doc:name="httpStatus" variableName="httpStatus"/>
+						<ee:transform doc:name="400 unknown resource type">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: 400,
+  descripcion: "resource.type must be Titular, SIM, Plan or MSISDN"
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+
+	<!-- Titular: aligned with post-cambioSuscriptorLTECorp-orchestrator — subscription(MSISDN) → subscriber dest → BA dest → assign → PATCH subscription -->
+	<sub-flow name="om-lte-titular-Sub_Flow">
+		<choice doc:name="validate titular">
+			<when expression="#[isEmpty(vars.omOriginal.holder default {}) or isEmpty(vars.omOriginal.holder.documentType default '') or isEmpty(vars.omOriginal.holder.documentNumber default '') or isEmpty(vars.omOriginal.resource.msisdn default '')]">
+				<set-variable value="#[400]" variableName="httpStatus"/>
+				<ee:transform>
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ codigo: 400, descripcion: "Titular flow requires holder.documentType, holder.documentNumber and resource.msisdn" }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="inputPayload (JSC same as cambioSuscriptor)">
+					<ee:message/>
+					<ee:variables>
+						<ee:set-variable variableName="inputPayload"><![CDATA[%dw 2.0
+output application/java
+var h = vars.omOriginal.holder
+---
+{
+  msisdn: vars.omOriginal.resource.msisdn,
+  documentType: h.documentType,
+  documentNumber: h.documentNumber,
+  billingAccountNumber: h.billingAccountNumber default h.externalId default (h.documentType ++ h.documentNumber),
+  PAM: h.cycleDay default "15"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<set-variable value="#[vars.inputPayload.msisdn]" variableName="connectionNumber"/>
+				<flow-ref doc:name="Consultar suscripción por MSISDN" name="get-subscription-client-by-msisdn" target="subscriptionResp"/>
+				<choice doc:name="subscription exists?">
+					<when expression="#[isEmpty(vars.subscriptionResp.content default []) or (vars.subscriptionResp.content[0].id == null)]">
+						<set-variable value="#[404]" variableName="httpStatus"/>
+						<ee:transform doc:name="404 subscription">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: 404,
+  descripcion: "El subscription relacionado a la solicitud no existe."
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<flow-ref doc:name="Consultar suscriptor" name="get-subscriber-client"/>
+						<choice doc:name="create subscriber if absent">
+							<when expression="#[isEmpty(vars.subscriberObject.content default [])]">
+								<ee:transform doc:name="body post subscriber (legacy)">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  externalID: vars.inputPayload.documentType ++ vars.inputPayload.documentNumber,
+  subscriberType: "EXTERNAL",
+  document: {
+    documentType: "EXTERNAL",
+    fiscalID: vars.inputPayload.documentType ++ vars.inputPayload.documentNumber
+  }
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<flow-ref doc:name="Crear suscriptor" name="post-subscriber-client" target="postSubscriberResp"/>
+							</when>
+						</choice>
+						<flow-ref doc:name="Facturación, asignación y actualización suscripción" name="om-lte-titular-billing-and-assign-Sub_Flow"/>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+
+	<sub-flow name="om-lte-titular-billing-and-assign-Sub_Flow">
+		<flow-ref doc:name="Consultar cuenta de facturación" name="get-billingBA-client"/>
+		<choice doc:name="create BA if missing">
+			<when expression="#[vars.billingAccountInfo.content[0].id == null]">
+				<ee:transform doc:name="POST billing BA body">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  name: "Creating a new BillingAccount",
+  externalID: vars.inputPayload.billingAccountNumber,
+  subscriber: {
+    id: if (isEmpty(vars.subscriberObject.content default [])) vars.postSubscriberResp.externalID else vars.subscriberObject.content[0].id
+  },
+  cycleConfig: {
+    cycleDay: vars.inputPayload.PAM
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Crear cuenta de facturación" name="post-billingBA-client"/>
+			</when>
+		</choice>
+		<flow-ref doc:name="Asignar suscripción a suscriptor" name="post-assignSubscriptionToSubscriber-client"/>
+		<ee:transform doc:name="PATCH subscription body">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  defaultBillingAccount: {
+    id: if (vars.billingAccountInfo.content[0].id == null) vars.billingAccountObject.id else vars.billingAccountInfo.content[0].id,
+    name: "Moving subscription to billing account cycle"
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="orderObject subscription id">
+			<ee:message/>
+			<ee:variables>
+				<ee:set-variable variableName="orderObject"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  subscription: {
+    id: vars.subscriptionResp.content[0].id
+  }
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="subscriptionAction MODIFY">
+			<ee:message/>
+			<ee:variables>
+				<ee:set-variable variableName="subscriptionAction"><![CDATA[%dw 2.0
+output application/java
+---
+"MODIFY"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Actualizar suscripción (facturación)" name="patch-billingSubscription-client"/>
+		<set-variable value="#[200]" variableName="httpStatus"/>
+		<ee:transform doc:name="success titular">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: 0,
+  descripcion: "Titular actualizado (assignSubscription + movimiento a BA destino)",
+  subscriptionId: vars.subscriptionResp.content[0].id
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+
+	<!-- SIM: subscription → order → sim link → apply -->
+	<sub-flow name="om-lte-sim-Sub_Flow">
+		<choice doc:name="validate sim">
+			<when expression="#[isEmpty(vars.omOriginal.resource.msisdn default '') or isEmpty(vars.omOriginal.resource.iccid default '')]">
+				<set-variable value="#[400]" variableName="httpStatus"/>
+				<ee:transform>
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ codigo: 400, descripcion: "SIM flow requires resource.msisdn and resource.iccid" }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<set-variable value="#[vars.omOriginal.resource.msisdn]" variableName="connectionNumber"/>
+				<flow-ref doc:name="Consultar suscripción por MSISDN" name="get-subscription-client-by-msisdn"/>
+				<choice doc:name="subscription found sim">
+					<when expression="#[sizeOf(payload.content default []) &gt; 0]">
+						<set-variable value="#[payload.content[0].id]" variableName="subscriptionId"/>
+						<ee:transform doc:name="order SIM replace">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+fun addDChar(str: String): String =
+  if (str matches /^[0-9]+$/) "D" ++ str else str
+var pkg = vars.omOriginal.resource.simChangePackageId default p('global.renoRepo.packageId')
+---
+{
+  ("type"): p('jsc-sapi.order.type'),
+  salesChannel: p('jsc-sapi.order.salesChannel'),
+  status: p('jsc-sapi.order.status'),
+  packages: [{ id: addDChar(pkg) }],
+  subscription: { id: vars.subscriptionId }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Crear orden" name="post-order-client"/>
+						<set-variable value="#[vars.omOriginal.resource.iccid]" variableName="ICCID"/>
+						<flow-ref doc:name="Actualizar tarjeta SIM (ICCID)" name="patch-simCard-client"/>
+						<ee:transform doc:name="clean before apply">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Aplicar orden" name="patch-endOrder-client"/>
+						<ee:transform doc:name="success sim">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: 0,
+  descripcion: "SIM replacement order applied",
+  subscriptionId: vars.subscriptionId,
+  orderId: vars.orderObject.id
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<set-variable value="#[404]" variableName="httpStatus"/>
+						<ee:transform>
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ codigo: 404, descripcion: "Subscription not found for MSISDN" }]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+
+	<!-- Plan: aligned with post-replacement-plan-orchestrator — modality pospago*/prepago-prepago = order+apply; prepago-pospago = order + BA + patch subscription + apply -->
+	<sub-flow name="om-lte-plan-Sub_Flow">
+		<choice doc:name="validate plan">
+			<when expression="#[isEmpty(vars.omOriginal.resource.msisdn default '') or isEmpty(vars.omOriginal.plan.packageId default '')]">
+				<set-variable value="#[400]" variableName="httpStatus"/>
+				<ee:transform>
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ codigo: 400, descripcion: "Plan flow requires resource.msisdn and plan.packageId" }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<set-variable value="#[vars.omOriginal.resource.msisdn]" variableName="connectionNumber"/>
+				<flow-ref doc:name="Consultar suscripción por MSISDN" name="get-subscription-client-by-msisdn"/>
+				<choice doc:name="subscription found plan">
+					<when expression="#[sizeOf(payload.content default []) &gt; 0]">
+						<set-variable value="#[payload.content[0].id]" variableName="subscriptionId"/>
+						<set-variable value="#[payload.content[0].subscriber.id]" doc:name="subscriberId for prepago-pospago BA" variableName="subscriberIdForPlan"/>
+						<choice doc:name="plan.modality (legacy post-replacement-plan)">
+							<when expression='#[lower(trim(vars.omOriginal.plan.modality default "")) == "prepago-pospago"]'>
+								<ee:transform doc:name="order plan change (prepago-pospago)">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+fun addDChar(str: String): String =
+  if (str matches /^[0-9]+$/) "D" ++ str else str
+---
+{
+  ("type"): p('jsc-sapi.order.type'),
+  salesChannel: p('jsc-sapi.order.salesChannel'),
+  status: p('jsc-sapi.order.status'),
+  packages: [{ id: addDChar(vars.omOriginal.plan.packageId) }],
+  subscription: { id: vars.subscriptionId }
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<flow-ref doc:name="Crear orden" name="post-order-client"/>
+								<ee:transform doc:name="orderObject.subscription/subscriber for BA y PATCH (legacy)">
+									<ee:message/>
+									<ee:variables>
+										<ee:set-variable variableName="orderObject"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  (vars.orderObject),
+  subscription: (vars.orderObject.subscription default {}) ++ { id: vars.orderObject.subscription.id default vars.subscriptionId },
+  subscriber: (vars.orderObject.subscriber default {}) ++ { id: vars.orderObject.subscriber.id default vars.subscriberIdForPlan }
+}]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+								<set-variable value="#[vars.omOriginal.plan.billingCycleDay default vars.omOriginal.holder.cycleDay default &quot;15&quot;]" doc:name="billingCycleDay" variableName="pam"/>
+								<try doc:name="BA + move subscription (legacy swallows errors)">
+									<ee:transform doc:name="POST billing BA (sin externalID)">
+										<ee:message>
+											<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  name: "Creating a new BillingAccount",
+  subscriber: {
+    id: vars.orderObject.subscriber.id default vars.subscriberIdForPlan
+  },
+  cycleConfig: {
+    cycleDay: vars.pam
+  }
+}]]></ee:set-payload>
+										</ee:message>
+									</ee:transform>
+									<flow-ref doc:name="Crear cuenta de facturación" name="post-billingBA-client"/>
+									<ee:transform doc:name="PATCH subscription billingAccount">
+										<ee:message>
+											<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  billingAccount: {
+    id: vars.billingAccountObject.id,
+    name: "Moving subscription to billing account cycle"
+  }
+}]]></ee:set-payload>
+										</ee:message>
+										<ee:variables>
+											<ee:set-variable variableName="subscriptionAction"><![CDATA[%dw 2.0
+output application/java
+---
+p('jsc-sapi.createBillingAccount.subscription.action')]]></ee:set-variable>
+										</ee:variables>
+									</ee:transform>
+									<flow-ref doc:name="Actualizar suscripción (facturación)" name="patch-billingSubscription-client"/>
+									<error-handler>
+										<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue">
+											<logger level="INFO" doc:name="prepago-pospago BA move logged"/>
+										</on-error-continue>
+									</error-handler>
+								</try>
+								<ee:transform doc:name="clean before apply">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<flow-ref doc:name="Aplicar orden" name="patch-endOrder-client"/>
+								<ee:transform doc:name="success plan prepago-pospago">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: 0,
+  descripcion: "Plan change applied (prepago-pospago: order + BA + subscription move)",
+  subscriptionId: vars.subscriptionId,
+  orderId: vars.orderObject.id,
+  modality: "prepago-pospago"
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</when>
+							<when expression="#[isEmpty(trim(vars.omOriginal.plan.modality default &quot;&quot;)) or lower(trim(vars.omOriginal.plan.modality default &quot;&quot;)) == &quot;pospago-pospago&quot; or lower(trim(vars.omOriginal.plan.modality default &quot;&quot;)) == &quot;pospago-prepago&quot; or lower(trim(vars.omOriginal.plan.modality default &quot;&quot;)) == &quot;prepago-prepago&quot;]">
+								<ee:transform doc:name="order plan change (pospago*/prepago-prepago)">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+fun addDChar(str: String): String =
+  if (str matches /^[0-9]+$/) "D" ++ str else str
+---
+{
+  ("type"): p('jsc-sapi.order.type'),
+  salesChannel: p('jsc-sapi.order.salesChannel'),
+  status: p('jsc-sapi.order.status'),
+  packages: [{ id: addDChar(vars.omOriginal.plan.packageId) }],
+  subscription: { id: vars.subscriptionId }
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<flow-ref doc:name="Crear orden" name="post-order-client"/>
+								<ee:transform>
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+								<flow-ref doc:name="Aplicar orden" name="patch-endOrder-client"/>
+								<ee:transform doc:name="success plan simple modality">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var m = lower(trim(vars.omOriginal.plan.modality default ""))
+---
+{
+  codigo: 0,
+  descripcion: "Plan change order applied",
+  subscriptionId: vars.subscriptionId,
+  orderId: vars.orderObject.id,
+  modality: if (isEmpty(m)) "pospago-pospago" else m
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</when>
+							<otherwise>
+								<set-variable value="#[501]" variableName="httpStatus"/>
+								<ee:transform doc:name="501 modality not supported">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: 501,
+  descripcion: ("[modality] " ++ (vars.omOriginal.plan.modality default "") ++ " is not implemented")
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</otherwise>
+						</choice>
+					</when>
+					<otherwise>
+						<set-variable value="#[404]" variableName="httpStatus"/>
+						<ee:transform>
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ codigo: 404, descripcion: "Subscription not found for MSISDN" }]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+
+	<!-- MSISDN: BA create + move subscription → order → post msisdn → link → apply → delete old -->
+	<sub-flow name="om-lte-msisdn-Sub_Flow">
+		<choice doc:name="validate msisdn">
+			<when expression="#[isEmpty(vars.omOriginal.resource.oldMsisdn default '') or isEmpty(vars.omOriginal.resource.newMsisdn default '') or isEmpty(vars.omOriginal.holder.documentType default '') or isEmpty(vars.omOriginal.holder.documentNumber default '')]">
+				<set-variable value="#[400]" variableName="httpStatus"/>
+				<ee:transform>
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ codigo: 400, descripcion: "MSISDN flow requires resource.oldMsisdn, resource.newMsisdn and holder identifiers" }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<set-variable value="#[vars.omOriginal.resource.oldMsisdn]" variableName="connectionNumber"/>
+				<flow-ref doc:name="Consultar suscripción por MSISDN" name="get-subscription-client-by-msisdn"/>
+				<choice doc:name="subscription found msisdn">
+					<when expression="#[sizeOf(payload.content default []) &gt; 0]">
+						<set-variable value="#[payload.content[0].id]" variableName="subscriptionId"/>
+						<set-variable value="#[payload.content[0].subscriber.id]" variableName="subscriberLineId"/>
+						<ee:transform doc:name="POST billing BA">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var ext = vars.omOriginal.holder.externalId default (vars.omOriginal.holder.documentType ++ vars.omOriginal.holder.documentNumber)
+---
+{
+  name: p('jsc-sapi.createBillingAccount.ba.name'),
+  externalID: ext,
+  subscriber: { id: vars.subscriberLineId },
+  cycleConfig: { cycleDay: (vars.omOriginal.holder.cycleDay default "15") }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Crear cuenta de facturación" name="post-billingBA-client"/>
+						<set-variable value="#[vars.billingAccountObject.id]" variableName="newBillingAccountId"/>
+						<set-variable value="#[p('jsc-sapi.createBillingAccount.subscription.action')]" variableName="subscriptionPatchAction"/>
+						<ee:transform doc:name="move subscription to new BA">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  defaultBillingAccount: {
+    id: vars.newBillingAccountId,
+    name: p('jsc-sapi.createBillingAccount.subscription.nameMoveSubsc')
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Mover suscripción a nueva cuenta de facturación" name="patch-subscription-by-id-client"/>
+						<ee:transform doc:name="order msisdn change">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+fun addDChar(str: String): String =
+  if (str matches /^[0-9]+$/) "D" ++ str else str
+var pkg = p('jsc-sapi.order.msisdnChangePackageId')
+---
+{
+  ("type"): p('jsc-sapi.order.type'),
+  salesChannel: p('jsc-sapi.order.salesChannel'),
+  status: p('jsc-sapi.order.status'),
+  packages: [{ id: addDChar(pkg) }],
+  subscription: { id: vars.subscriptionId }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Crear orden" name="post-order-client"/>
+						<ee:transform doc:name="POST new MSISDN resource">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  id: vars.omOriginal.resource.newMsisdn,
+  name: p('jsc-sapi.createBillingAccount.ba.name'),
+  status: "FREE",
+  storeStatus: "UNDEFINED",
+  pool: { id: p('jsc-sapi.msisdn.pool.id'), name: p('jsc-sapi.msisdn.pool.name') },
+  sourcePool: { id: p('jsc-sapi.msisdn.sourcePool.id'), name: p('jsc-sapi.msisdn.sourcePool.name') }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Crear recurso MSISDN" name="post-msisdn-client"/>
+						<set-variable value="#[vars.omOriginal.resource.newMsisdn]" variableName="msisdnForLink"/>
+						<flow-ref doc:name="Vincular MSISDN a orden" name="patch-msisdn-link-order-client"/>
+						<ee:transform>
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Aplicar orden" name="patch-endOrder-client"/>
+						<set-variable value="#[vars.omOriginal.resource.oldMsisdn]" variableName="msisdnToDelete"/>
+						<flow-ref doc:name="Eliminar MSISDN anterior" name="delete-msisdn-by-id-client"/>
+						<ee:transform doc:name="success msisdn">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codigo: 0,
+  descripcion: "MSISDN change completed",
+  subscriptionId: vars.subscriptionId,
+  orderId: vars.orderObject.id
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<set-variable value="#[404]" variableName="httpStatus"/>
+						<ee:transform>
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ codigo: 404, descripcion: "Subscription not found for old MSISDN" }]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+
+	<!-- DELETE /order (SVAS): API pública DELETE con body; JSC vía terminate-subscription (PATCH /subscription/{id} action TERMINATE) -->
+	<sub-flow name="order-delete-orchestratorSub_Flow" doc:name="order-delete-orchestratorSub_Flow">
+		<set-variable value="#[payload]" doc:name="inputPayload delete order" variableName="inputPayload"/>
+		<choice doc:name="Route by productType">
+			<when expression="#[upper(trim(vars.inputPayload.productType default &quot;&quot;)) == &quot;SVAS&quot;]">
+				<choice doc:name="subscriptionId or connectionNumber">
+					<when expression="#[not isEmpty(trim(vars.inputPayload.subscriptionId default &quot;&quot;))]">
+						<set-variable value="#[trim(vars.inputPayload.subscriptionId)]" doc:name="subscription_id direct" variableName="subscription_id"/>
+						<flow-ref doc:name="JSC terminate subscription" name="terminate-subscription-client"/>
+						<ee:transform doc:name="200 SVAS direct id">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  responseCode: "200",
+  response: {
+    SVAS: {
+      origin: vars.inputPayload.origin,
+      order: vars.inputPayload.order,
+      orderType: vars.inputPayload.orderType,
+      connectionNumber: vars.inputPayload.connectionNumber,
+      subscriptionId: vars.subscription_id,
+      jscResponse: payload
+    }
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<when expression="#[not isEmpty(trim(vars.inputPayload.connectionNumber default &quot;&quot;))]">
+						<set-variable value="#[trim(vars.inputPayload.connectionNumber)]" doc:name="connectionNumber delete" variableName="connectionNumber"/>
+						<flow-ref doc:name="Get subscription by msisdn" name="get-subscription-client-by-msisdn"/>
+						<choice doc:name="Subscription found">
+							<when expression="#[!isEmpty(payload.content default []) and payload.content[0].id != null]">
+								<set-variable value="#[payload.content[0].id]" doc:name="subscription_id from msisdn" variableName="subscription_id"/>
+								<flow-ref doc:name="JSC terminate subscription" name="terminate-subscription-client"/>
+								<ee:transform doc:name="200 SVAS by msisdn">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  responseCode: "200",
+  response: {
+    SVAS: {
+      origin: vars.inputPayload.origin,
+      order: vars.inputPayload.order,
+      orderType: vars.inputPayload.orderType,
+      connectionNumber: vars.inputPayload.connectionNumber,
+      subscriptionId: vars.subscription_id,
+      jscResponse: payload
+    }
+  }
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</when>
+							<otherwise>
+								<set-variable value="#[404]" doc:name="httpStatus 404" variableName="httpStatus"/>
+								<ee:transform doc:name="404 subscription">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 404,
+  code: "NOT_FOUND",
+  message: { message: "No subscription found for the given MSISDN" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</otherwise>
+						</choice>
+					</when>
+					<otherwise>
+						<set-variable value="#[400]" doc:name="httpStatus 400" variableName="httpStatus"/>
+						<ee:transform doc:name="400 missing subscriptionId or connectionNumber">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "VALIDATION_ERROR",
+  message: { message: "For productType SVAS, subscriptionId or connectionNumber is required" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<set-variable value="#[400]" doc:name="httpStatus 400 productType" variableName="httpStatus"/>
+				<ee:transform doc:name="400 unsupported productType">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "UNSUPPORTED_PRODUCT_TYPE",
+  message: { message: "productType not implemented. Supported: SVAS" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
