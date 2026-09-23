@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="validation-request-reposition-ruleSub_Flow" doc:id="1db5e755-d734-462d-838b-2a6df238ea89" >
+		<ee:transform doc:name="Validaciones Data Request" doc:id="527bdd0a-617e-4357-a044-98e29ffdb5e4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+import modules::GlobalFunctions as global
+
+var record = vars.requestOrder
+
+// Wrapper común: empaqueta el resultado de cualquier validación
+fun resultado(id: String, condicionValida: Boolean, mensajeValido: String, mensajeInvalido: String) = {
+	evaluateId: id,
+	isValid: condicionValida,
+	detail: if (condicionValida) mensajeValido else mensajeInvalido
+}
+
+---
+[
+
+
+	resultado("Campo_stateOrProvinceCode",
+		(record.through.delivery.geographicAddress.stateOrProvinceCode != null)
+			and global::poblado(record.through.delivery.geographicAddress.stateOrProvinceCode),
+		"stateOrProvinceCode poblado",
+		"stateOrProvinceCode ausente o incompleto"),
+
+	resultado("Campo_cityCode",
+		(record.through.delivery.geographicAddress.cityCode != null)
+			and global::poblado(record.through.delivery.geographicAddress.cityCode),
+		"cityCode poblado",
+		"cityCode ausente o incompleto"),
+    resultado("Campo_formattedAddress",
+		(record.through.delivery.geographicAddress.formattedAddress != null)
+			and global::poblado(record.through.delivery.geographicAddress.formattedAddress),
+		"formattedAddress poblado",
+		"formattedAddress ausente o incompleto"),
+
+]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Validate Rules TRUE" doc:id="8869142d-6b7a-4f38-a078-c6133f74c772" >
+			<when expression="#[sizeOf(payload filter (e) -&gt; e.isValid == false) &gt; 0]" >
+				<ee:transform doc:name="Datos de Request Invalidos" doc:id="aead3341-2837-4233-ac4e-46c5aebd620f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-request'),
+	isValid: false,
+	detailEvaluated: payload
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set Response" doc:id="4a1dff92-3224-4ff6-866d-7c62a36da997" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	ruleId: p('rules-id.data-request'),
+	isValid: true,
+	detailEvaluated: payload
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

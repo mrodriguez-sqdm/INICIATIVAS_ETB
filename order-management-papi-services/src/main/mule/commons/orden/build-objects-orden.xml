@@ -16,7 +16,7 @@ import modules::GlobalFunctions as global
 
 ---
 {
-		  "pqrType": "TESR",
+		  "pqrType": global::homologarTipo(vars.requestOrder.through.throughType,vars.requestOrder.through.subThroughType),
 		  "pqrDate": global::fechaActual(),
 		  "system": "MDM",
 		  "orderNumber": vars.orderNumber,
@@ -392,5 +392,76 @@ vars.objectCliente_Tramite update {
 			</ee:variables>
 		</ee:transform>
 		<logger level="INFO" doc:name="Logger" doc:id="f850e999-4ca7-47d5-b837-231dc9ff50ea" message='#["Data Dir up" ++ write(payload, "application/json")]' />
+	</sub-flow>
+	<sub-flow name="build-cmp-oferta-producto-objects-ordenSub_Flow" doc:id="bc1b4493-a4a5-45ca-8598-a8f4c6a2a6ff" >
+		<ee:transform doc:name="request CMD_OFERTA_PRODUCTO" doc:id="34d2151c-cfea-4e4e-98d2-34803b09f454" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+    "aggregate": p('mongo-db-sapi.collections.productos'),
+    "pipeline": [
+      {
+        // Envolvemos el resultado en un $match para que Mongo filtre
+        "\$match": {
+        	producto: "CARGO REPOSICION SIM",
+        	subtipo_servicio: upper(vars.objectvars.objectServicioActivoActivo.Tipo_Linea)
+        }
+      }
+    ],
+    "cursor": {}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to Mongo" doc:id="3ea8bd89-22ce-4e7a-8b3b-d74a059d51da" name="mongo-dynamic-query-subFlow" target="responseMongo"/>
+		<ee:transform doc:name="Response Mongo" doc:id="e39e4d4d-e83f-4452-b817-89875ae837d7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var record = if (vars.responseMongo.result is Array) vars.responseMongo.result[0] else vars.responseMongo.result
+
+---
+record]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-departments-ordenSub_Flow" doc:id="a813e1bd-2cff-4c6a-bf61-cca2ade6fbb3" >
+		<ee:transform doc:name="request PAR_DEPARTAMENTOS" doc:id="7c464eea-75be-4727-95ce-804ddff39d55" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+    "aggregate": p('mongo-db-sapi.collections.departamentos'),
+    "pipeline": [
+      {
+        // Envolvemos el resultado en un $match para que Mongo filtre
+        "\$match": {
+        	codigo_departamento: vars.requestOrder.through.delivery.geographicAddress.stateOrProvinceCode
+        }
+      }
+    ],
+    "cursor": {}
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to Mongo" doc:id="7ead2025-7947-43ba-bc3f-dc22f1c6b7f7" name="mongo-dynamic-query-subFlow" target="responseMongo" />
+		<ee:transform doc:name="Response Mongo" doc:id="bc7f6d6b-75cc-4d42-bf35-70f5cdc3e293" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var record = if (vars.responseMongo.result is Array) vars.responseMongo.result[0] else vars.responseMongo.result
+
+---
+record]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 	</sub-flow>
 </mule>

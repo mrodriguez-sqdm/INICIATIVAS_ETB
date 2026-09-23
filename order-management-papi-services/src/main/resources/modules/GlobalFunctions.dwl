@@ -108,3 +108,23 @@ fun homologarDireccion(direccion: Object): Object = {
 
 fun homologarDirecciones(direcciones: Array): Array =
     direcciones map (direccion) -> homologarDireccion(direccion)
+    
+fun normalize(value) =
+    upper(trim(value default "") replace /\s+/ with " ")
+        replace /[ÁÀ]/ with "A"
+        replace /[ÉÈ]/ with "E"
+        replace /[ÍÌ]/ with "I"
+        replace /[ÓÒ]/ with "O"
+        replace /[ÚÙÜ]/ with "U"
+
+fun homologarTipo(typeValue, subTypeValue) =
+    normalize(typeValue) match {
+        case "TESR" -> "TESR"
+        case "TRAMITE LTE" ->
+            normalize(subTypeValue) match {
+                case "CANCELACION VOLUNTARIA" -> "TESR"
+                case "REPOSICION SIM" -> "VTA"
+                else -> "VTA"
+            }
+        else -> "VTA"
+    }

@@ -120,6 +120,9 @@ output application/json
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+
+var subType = upper(trim(vars.requestOrder.through.subThroughType default "") replace /\s+/ with " ")
+
 ---
 {
 	"query": {
@@ -127,9 +130,15 @@ output application/json
     "pipeline": [
       {
         // Envolvemos el resultado en un $match para que Mongo filtre
-        "\$match": {
-        	"Integration_Id": vars.requestOrder.service.serviceAccountId
-        }
+        "\$match": subType match {
+				    case "REPOSICION SIM" -> {
+				        "Numero_Conexion": vars.requestOrder.through.connectionNumber
+				    }
+				    case "CANCELACION VOLUNTARIA" -> {
+				        "Integration_Id": vars.requestOrder.service.serviceAccountId
+				    }
+				    else -> {}
+				}
       }
     ],
     "cursor": {}
@@ -140,33 +149,14 @@ output application/json
 		<flow-ref doc:name="call to Mongo" doc:id="9ee9bed8-c87d-4d1c-9c25-2a2ba628e5cd" name="mongo-dynamic-query-subFlow" target="responseMongo" />
 		<choice doc:name="Validate Query Result Mongo" doc:id="81826d77-73ce-4ce5-add6-4e1b94fe0a67" >
 			<when expression="#[(typeOf(vars.responseMongo.result) == Array) and sizeOf(vars.responseMongo.result) &gt; 0]" >
-				<ee:transform doc:name="Validate Data Service" doc:id="64d32ac0-4404-4669-b4ae-df0acdec7d8c" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-
-var record = vars.responseMongo.result[0]
-
-
-fun resultado(id: String, condicionValida: Boolean, mensajeValido: String, mensajeInvalido: String) = {
-	evaluateId: id,
-	isValid: condicionValida,
-	detail: if (condicionValida) mensajeValido else mensajeInvalido
-}
----
-[
-	resultado("Campo_Estado_Principal_Activo",
-		upper(record.Estado default "") != "INACTIVO",
-		"El servicio no esta inactivo, se puede continuar con la cancelacion",
-		"El servicio a cancelar ya esta inactivo"),
-	
-    resultado("Relacion_Cliente_Servicio",
-		record.Numero_Identificacion == vars.requestOrder.customer.documentNumber and record.Tipo_Documento == vars.requestOrder.customer.documentType,
-		"El cliente si esta asociado al servicio enviado",
-		"El cliente no esta asociado al servicio enviado")
-]]]></ee:set-payload>
-					</ee:message>
-				</ee:transform>
+			
+			
+			
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;var subType = upper(trim(vars.requestOrder.through.subThroughType default "") replace /\s+/ with " ")&#10;var scripts = {&#10;    "REPOSICION SIM": "reposicion-sim",&#10;    "CANCELACION VOLUNTARIA": "cancelacion-voluntaria"&#10;}&#10;---&#10;scripts[subType] default "default"]' doc:name="Set Variable dwScriptName" doc:id="472a928e-c6ee-495c-9df1-8d20f08725ac" variableName="dwScriptName"/>
+				<set-variable value='#[readUrl("classpath://dwl/" ++ vars.dwScriptName ++ ".dwl", "text/plain")]' doc:name="Set Variable dwScript" doc:id="cde82c39-bd0b-4830-88b8-bac2f29729ca" variableName="dwScript"/>
+				<ee:dynamic-evaluate doc:name="Validate Data Service" doc:id="0e62c121-1115-4d12-af6f-1dd90dc6a4aa" expression="#[vars.dwScript]">
+					<ee:parameters >#[{record: vars.responseMongo.result[0],requestOrder: vars.requestOrder}]</ee:parameters>
+				</ee:dynamic-evaluate>
 				<choice doc:name="Validate Rules TRUE" doc:id="aba8880b-755b-424c-9bcb-30f8e9c2d6a9" >
 					<when expression="#[sizeOf(payload filter (e) -&gt; e.isValid == false) &gt; 0]" >
 						<ee:transform doc:name="Validacion Servicios Invalida" doc:id="3ccd9e81-129c-479b-8acd-eb2d7e03ec20" >
@@ -215,9 +205,9 @@ output application/json
 	isValid: false,
 	detailEvaluated: [
 		{
-	    "evaluateId": "Integration_Id",
+	    "evaluateId": "Service_Active",
 	    "isValid": false,
-	    "detail": "Numero integration id: "++ (vars.requestOrder.service.serviceAccountId default "") ++" no existe"
+	    "detail": "No existen datos del servicio"
   		}
 	]
 }]]></ee:set-payload>

@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="reposition-order-orchestratorSub_Flow" doc:id="c4d56c2f-c811-4ea5-80b1-0fd184aa05a2" >
+		<ee:transform doc:name="Set Variables" doc:id="0c71d514-f863-4279-993a-0625b6ee81b1" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="fechas" ><![CDATA[%dw 2.0
+output application/json
+
+var fechaActual = (now() >> "UTC-5") as String {format: "dd/MM/yyyy HH:mm:ss"}
+
+var fechaMongo = {
+        "\$date": (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+    }
+---
+{
+	actual: fechaActual,
+	mongo: fechaMongo
+}]]></ee:set-variable>
+				<ee:set-variable variableName="requestOrder" ><![CDATA[payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<scatter-gather doc:name="Parallel Validation Rules" doc:id="a00f9a4d-b144-49e9-aee1-dedfbb5ed31d" >
+			<route >
+				<flow-ref doc:name="call to rule client" doc:id="74305c5b-0f01-4dd4-aedf-73d1a318861b" name="validate-data-client-ruleSub_Flow" />
+			</route>
+			<route >
+				<flow-ref doc:name="call to rule Validate Identity" doc:id="66cab2ad-5e59-40ad-afa4-a9f1dc0f68d7" name="validate-identity-ruleSub_Flow" />
+			</route>
+			<route >
+				<flow-ref doc:name="call to rule data-service" doc:id="a74b0da1-f844-46a0-ae49-c075b07730ca" name="data-services-movil-ruleSub_Flow" />
+			</route>
+			<route >
+				<flow-ref doc:name="call to rule request validate" doc:id="0010ab16-57f1-402f-8cc1-643eaa7022a5" name="validation-request-reposition-ruleSub_Flow"/>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="set Variable cumulativeRules" doc:id="849facd5-af78-4571-8ec6-799ea240035e" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="cumulativeRules" ><![CDATA[%dw 2.0
+output application/json
+
+// pluck extrae los valores del objeto payload ("0","1","2" -> sus payloads), sin importar cuántas rutas tenga el scatter-gather
+var resultadosRutas = payload pluck ((value, key) -> value.payload)
+
+var todasLasValidaciones = resultadosRutas flatMap (regla) -> regla.detailEvaluated
+var reglasInvalidas = todasLasValidaciones filter (v) -> v.isValid == false
+---
+{
+	isValid: sizeOf(reglasInvalidas) == 0,
+	reglas: resultadosRutas,
+	camposInvalidos: reglasInvalidas
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="b9ee7b86-c23f-41b6-b690-9d12e3e6088d" >
+			<when expression="#[vars.cumulativeRules.isValid]" >
+				<flow-ref doc:name="Generate Order Number" doc:id="8afdae13-2ae7-47fe-9b2d-ac087b613f41" name="generate-OrderNumber-Sub_Flow" target="orderNumber" />
+				<flow-ref doc:name="call to create MDM_ORDEN" doc:id="795558ac-eb03-4b98-a0c6-878f66e5ce69" name="reposition-sim-order-orchestratorSub_Flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Response Failed" doc:id="388f539d-b9ea-47a3-b413-0ce7063bb4a5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "400",
+	messageResponse: "Error Created Order",
+	message: vars.cumulativeRules.reglas
+	
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable httpStatus" doc:id="2d1a7d94-ccd6-4415-9399-a141019805c7" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="reposition-sim-order-orchestratorSub_Flow" doc:id="29cd2346-abc5-4b2c-9fbd-6c04f1dbd81c" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="e33d2abe-bf01-4f78-9282-cfcd406c29f7" >
+			<route >
+				<flow-ref doc:name="Build CUN Number" doc:id="ba9efc30-1358-4dd3-8306-f05b55c61c99" name="build-CUN-orderSub_Flow" target="cunNumber" />
+			</route>
+			<route >
+				<flow-ref doc:name="Build Cuenta Facturacion" doc:id="4e043978-c49e-4ba9-a088-94ca89695b70" name="build-cuentaFacturacion-ordenSub_Flow" target="responseCuentaFacturacion" />
+			</route>
+			<route >
+				<flow-ref doc:name="Build CMP_OFERTA_PRODUCTO" doc:id="7ba5d2c7-103d-4c53-879d-31f53266bf02" name="build-cmp-oferta-producto-objects-ordenSub_Flow" target="responseOfertaProducto"/>
+			</route>
+			<route >
+				<flow-ref doc:name="Get Department" doc:id="4d3f6d12-0bf7-45c6-81e6-1837919dd7c2" name="get-departments-ordenSub_Flow" target="responseDepartment"/>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="objeto MDM_ORDEN" doc:id="f13b9fe9-aa6e-4842-b4d1-1247c3dfa532" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+import modules::GlobalFunctions as global
+
+var idCatalogo = vars.objectServicioActivo.Bundles[0].id_catalogo
+var bundlesConstantesNull = ["opcionales", "caracteristicas_bundle", "estados_bundle", "bundle_auxiliar"]
+
+var precioReposicion = ((vars.responseOfertaProducto.precio_oferta default [])
+    filter ((p) -> upper(trim(p.canal_venta default "")) == "DISTRIBUIDOR"))[0].precio_con_iva
+
+fun crearFase(fase, estado, resultado = null, causal = null) = {
+    Fase: fase,
+    Fecha_Ejecucion: global::fechaMongo(),
+    Resultado: resultado,
+    Causal_Fase: causal,
+    Usuario_Creo: "PortalLTE",
+    Estado: estado,
+    Detalle_Fase: [
+        {
+            Fecha_Registro: global::fechaMongo(),
+            Codigo: null,
+            Detalle: null
+        }
+    ],
+    Reintentos: 0,
+    actualizacion_extractor: "1"
+}
+
+---
+{
+  "query" : {
+    "insert": p('mongo-db-sapi.collections.orden-movil'),
+    "documents": [
+		{
+        Tipo_Documento: vars.requestOrder.customer.documentType,
+        Numero_Identificacion: vars.requestOrder.customer.documentNumber,
+        CUN: vars.cunNumber.cun,
+        Id_Distribuidor: 0,
+        Tipo_Orden: "Tramite LTE",
+        Subtipo_Orden: "Reposicion Sim",
+        Estado_Orden: "PENDIENTE",
+        Causal_Estado_Orden: null,
+        Numero_Orden: vars.orderNumber,
+        Fecha_Creacion_Orden: global::fechaMongo(),
+        Usuario_Creador: "PortalLTE",
+        Usuario_Modificador: "PortalLTE",
+        Usuario_Vendedor: "PortalLTE",
+        Fecha_Actualizacion_Orden: global::fechaMongo(),
+        Canal: vars.requestOrder.channel,
+        Subcanal: "PORTAL LTE",
+        Causal_Retiro_Cliente: null,
+        Forma_Entrega_Contrato: null,
+        Fecha_Inicio_Contrato: null,
+        Id_Orden_Sistema_Origen: vars.orderNumber,
+        Sistema_Origen: "MDM-MOV",
+        IMEI: "",
+        num_agrupacion: if (idCatalogo != null) idCatalogo as Number else null,
+        tipo_entrega_factura: null,
+        tipo_plan: vars.objectServicioActivo.Tipo_Linea,
+        Flag_Envio_Recibo: false,
+        codigo_operador: null,
+        celular_portabilidad: null,
+        tipo_plan_donante: null,
+        Caracteristicas_Orden: [
+          {
+            Caracteristica: "integration_id",
+            Valor: vars.objectServicioActivo.Integration_Id,
+            Accion: "",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "Tipo Reno / Repo",
+            Valor: "Reposicion SIM",
+            Accion: "",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "MSISDN",
+            Valor: vars.requestOrder.through.connectionNumber,
+            Accion: "",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "PERFIL",
+            Valor: "CALL",
+            Accion: "",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "iccid_anterior",
+            Valor: vars.objectServicioActivo.ICCID,
+            Accion: "",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "PART_NUMBER",
+            Valor: "110-00007",
+            Accion: "",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "OL_Depto_CodDANE",
+            Valor: vars.requestOrder.through.delivery.geographicAddress.stateOrProvinceCode,          
+            Accion: "OL_Depto_CodDANE",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "OL_Depto",
+            Valor: vars.responseDepartment."_id"."\$oid",   
+            Accion: "OL_Depto",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "OL_Ciudad_CodDANE",
+            Valor: vars.requestOrder.through.delivery.geographicAddress.cityCode,                
+            Accion: "OL_Ciudad_CodDANE",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "OL_Direccion",
+            Valor: vars.requestOrder.through.delivery.geographicAddress.formattedAddress,                 
+            Accion: "OL_Direccion",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "OL_Barrio",
+            Valor: vars.requestOrder.through.delivery.geographicAddress.locality,            
+            Accion: "OL_Barrio",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "OL_Email",
+            Valor: vars.requestOrder.through.delivery.geographicAddress.contactEmail,                  
+            Accion: "OL_Email",
+            actualizacion_extractor: "1"
+          },
+          {
+            Caracteristica: "TIPO_ENTREGA",
+            Valor: vars.requestOrder.through.delivery."type",            
+            Accion: "TIPO_ENTREGA",
+            actualizacion_extractor: "1"
+          }
+        ],
+        Pago: [
+          {
+            Tipo_Recaudo: "Equipo",
+            Forma_Pago: null,
+            Recibo_Pago: "",
+            Valor_Pagado: (precioReposicion default "0") as String,
+            Valor_Facturado: (precioReposicion default "0") as String,
+            Valor_Sin_Iva: "0",
+            Fecha_Pago: global::fechaMongo(),
+            Banco: vars.requestOrder.through.payment.bankCode,                     
+            Canal_Pago: vars.requestOrder.through.payment.paymentChannel,     
+            Fecha_Limite_Pago: null,
+            Numero_Confirmacion: "",
+            Estado: null,
+            Codigo_Respuesta: null,
+            Mensaje_Respuesta: null,
+            pago_online: null,
+            actualizacion_extractor: "1"
+          }
+        ],
+        Validacion: null,
+        Fase_Orden: [
+		    crearFase("ORDEN CREADA", "CLIENTE CARGADO"),
+		    crearFase("FACTURA", "EXITOSO"),
+		    crearFase("PAGO", "EXITOSO"),
+		    crearFase("COBRO SIM", "EXITOSO"),
+		    crearFase("DESPACHO OL", "EXITOSO", "", "OK")
+		],
+        Cuenta_Facturacion: vars.objectServicioActivo.Cuenta_Facturacion,
+        Cuenta_Facturacion_Equipo: null,
+        Pago_Anticipado: if (upper(trim(vars.objectServicioActivo.Tipo_Linea default "")) == "POSPAGO") "SI" else null,
+        Valor_Recaudo: "0",
+        Reportado_Pago: null,
+        Bundle_activo: (vars.objectServicioActivo.Bundles default []) map ((bundle) ->
+            (bundle -- bundlesConstantesNull) ++ {
+                opcionales: null,
+                caracteristicas_bundle: null,
+                estados_bundle: null,
+                bundle_auxiliar: null
+            }
+        ),
+        Bundle_orden: vars.objectServicioActivo.Bundles,
+        Direccion: null,
+        actualizacion_extractor: "1",
+        Promociones: null,
+        ciclo_facturacion: vars.responseCuentaFacturacion.objectCuentaFacturacion.Ciclo_Facturacion,
+        iccid: null,
+        producto_seleccionado: null
+      }
+]
+}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to mongo Sapi" doc:id="b0f948af-348c-4d53-8065-2cae6c11effd" name="mongo-dynamic-query-subFlow" target="resultadoOrden" />
+		<ee:transform doc:name="Set Response" doc:id="62c6c060-8069-4e52-8102-4e702ea948d1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: if(vars.resultadoOrden.result.ok > 0) "200" else "500",
+    messageResponse: if(vars.resultadoOrden.result.ok > 0) "Order Created" else "Error Created Order",
+    order: {
+        orderNumber: vars.orderNumber default "",
+        cun: vars.cunNumber.cun,
+        rulesApplied: vars.cumulativeRules.reglas
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
