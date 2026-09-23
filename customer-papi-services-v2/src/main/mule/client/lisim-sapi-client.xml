@@ -4,10 +4,12 @@
 	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
 	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="lisim-sapi-identity-clientSub_Flow" doc:id="1850d1d1-5b59-4d66-a3a3-041e3b2c34bf" >
-		<http:request method="POST" doc:name="Request lisim-sapi client" doc:id="abfe9f60-fcd9-4fcd-bcf5-5345b84fa66b" config-ref="HTTP_Request_configuration_lisim_sapi" path="${lisim-sapi.identity-validation.path}">
-			<http:headers ><![CDATA[#[%dw 2.0
+		<try doc:name="Try" doc:id="d32e4efb-ae79-4564-8a4a-b2764db1a35c" >
+			<http:request method="POST" doc:name="Request lisim-sapi client" doc:id="abfe9f60-fcd9-4fcd-bcf5-5345b84fa66b" config-ref="HTTP_Request_configuration_lisim_sapi" path="${lisim-sapi.identity-validation.path}">
+			<http:headers><![CDATA[#[%dw 2.0
 output application/java
 ---
 {
@@ -19,6 +21,23 @@ output application/java
 	"systemId": vars.headers.systemId
 }]]]></http:headers>
 		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="d481d6ea-3123-4b9d-8f11-123de700b76e" type="ANY">
+					<ee:transform doc:name="Transform Message" doc:id="b44c3325-d06d-4cab-9eac-f04c0d0d5f2e">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": error.errorMessage.payload.status,
+  "message": "Error en la disponibildiad del servicio LISIM.",
+  "cause": error.errorMessage.payload.cause[0].message
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+				</error-handler>
+		</try>
 	</sub-flow>
 	<sub-flow name="lisim-sapi-score-clientSub_Flow" doc:id="89320cd1-a339-44d2-b3af-df1e10784d1c" >
 		<http:request method="POST" doc:name="Request lisim-sapi client" doc:id="fda40720-8642-4613-88ee-c6620c7f8b74" config-ref="HTTP_Request_configuration_lisim_sapi" path="${lisim-sapi.score.path}" sendCorrelationId="AUTO">
