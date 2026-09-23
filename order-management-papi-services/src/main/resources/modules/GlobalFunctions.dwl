@@ -28,7 +28,7 @@ fun esTrue(valor: Any) =
 fun scoreVigente(scoreObj) =
     do {
         var fechaHoy = (now() >> "UTC-5") as Date
-        var fechaScore = scoreObj.Fecha as Date {format: "yyyy-MM-dd"}
+        var fechaScore = scoreObj.Fecha as Date {format: "yyyy-MM-dd"} default "0001-01-01"
         ---
         (fechaHoy - fechaScore) as Number {unit: "days"} <= 30
     }
