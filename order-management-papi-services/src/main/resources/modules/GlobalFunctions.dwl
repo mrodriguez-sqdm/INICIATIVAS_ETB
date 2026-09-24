@@ -128,3 +128,6 @@ fun homologarTipo(typeValue, subTypeValue) =
             }
         else -> "VTA"
     }
+
+fun valorCaracteristica(lista, nombre) =
+    ((lista default []) filter ((c) -> c.Caracteristica == nombre))[0].Valor

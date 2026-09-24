@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="insert-record-journeySub_Flow" doc:id="6840215d-6c84-44a4-9d0c-f2504af13aa6" >
+		<ee:transform doc:name="objeto MDM_JOURNEY_COMERCIAL_CLIENTE" doc:id="b1498427-be33-43c3-86d0-ef99ddd0a9a0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+import modules::GlobalFunctions as global
+import fail from dw::Runtime
+
+var idIntento = uuid()
+
+var ahora = global::fechaMongo()
+
+var caracteristicasOrden =
+    if (vars.requestOrder.category == "LTE") vars.objectOrden.Caracteristicas_Orden
+    else vars.objectOrden.Caracteristica_Orden
+
+var emailNotificacion = global::valorCaracteristica(caracteristicasOrden, "CORREO_NOTIFICACION_CANCELACION")
+
+var cli   = vars.objectCliente_Tramite.Cliente_Tramite
+
+// ---------- FTTH ----------
+fun datosFTTH(src) = 
+   { srv: {
+	    fechaActivacion: src.Fecha_Activacion,          
+	    ctaServicio:     src.Id_Cuenta_Servicio,          
+	    ctaFacturacion:  src.Id_Cuenta_Facturacion,  
+	    estado: src.Estado.Principal.Descripcion,     
+	    producto: [{
+	        idBundle:   src.Bundle.Numero_Agrupacion,
+	        idAuxiliar: (src.Servicios_Auxiliares default []) map (aux) -> { id: aux.Bundle.Numero_Agrupacion },
+	        svaOtt:     (src.Opcionales default []) map (o) -> { id: o.Codigo_Configuracion }
+	    }]
+    },
+    canc: {
+        idBundle:        vars.objectOrden.Servicio_Tramite.Bundle.Numero_Agrupacion,        
+        idAuxiliar: (vars.objectOrden.Servicio_Tramite.Servicios_Auxiliares default []) map (aux) -> { id: aux.Bundle.Numero_Agrupacion },
+        svaOtt:     (vars.objectOrden.Servicio_Tramite.Opcionales default []) map (o) -> { id: o.Codigo_Configuracion },              
+        numeroOrden:     vars.objectOrden.Numero_Orden,                  
+        cuentaServicio:  src.Id_Cuenta_Servicio,         
+        fechaProgramada: vars.objectOrden.Tramite.Fecha_Ejecucion,        
+        tecnologia:      "FTTH"
+    }
+}
+
+// ---------- LTE ----------
+fun datosLTE(src) = 
+   { srv: {
+    fechaActivacion: src.Fecha_Activacion,                
+    ctaServicio:     "",                   
+    ctaFacturacion:  src.Cuenta_Facturacion,
+    estado: src.Estado,                         
+    producto: (src.Bundles default []) map (pl) -> {
+        idBundle:   pl.id_catalogo,                     
+        idAuxiliar: null,
+        svaOtt:     []
+      }
+    },
+    canc: {
+        idBundle:        vars.objectOrden.Bundle_activo[0].id_catalogo,        
+        idAuxiliar: (vars.objectOrden.Bundle_activo[0].bundle_auxiliar default []) map (aux) -> { id: aux.id_catalogo },
+        svaOtt:     (vars.objectOrden.Bundle_activo[0].opcionales default []) map (o) -> { id: o.id_opcional },              
+        numeroOrden:     vars.objectOrden.Numero_Orden,                  
+        cuentaServicio:  "",         
+        fechaProgramada: global::parseFechaFlexible(global::valorCaracteristica(vars.objectOrden.Caracteristicas_Orden, "Fecha Vencimiento")),        
+        tecnologia:      "LTE"
+    }
+}
+
+
+var datos = vars.requestOrder.category match {
+    case "FTTH" -> datosFTTH(vars.objectServicio_Tramite)         
+    case "LTE"  -> datosLTE(vars.objectServicioActivo)           
+    else        -> fail("Categoria no soportada para journey: " ++ vars.requestOrder.category)
+}
+
+var srv  = datos.srv
+var canc = datos.canc
+
+var canal = vars.requestOrder.channel
+var filtro = {
+        "cliente.tipoDocumento":   cli.Tipo_Documento,
+        "cliente.numeroDocumento": cli.Numero_Documento as String,
+        "tramitesComerciales.cancelacion.idIntento": { "\$ne": idIntento }
+}
+
+var update = {
+        "\$setOnInsert": {
+            "cliente.correoUsuario": cli.Email,
+            
+            fechaRegistro: ahora,
+            "tramitesComerciales.activacion":   [],
+            "tramitesComerciales.cambioPlan":   [],
+            "tramitesComerciales.fidelizacion": [],
+            "tramitesComerciales.retencion":    []
+        },
+
+        "\$set": {
+            fechaModificacion: ahora,
+            "cliente.correoNotificacion": emailNotificacion,
+		    ("servicioVigente.fechaActivacion": { "\$date": srv.fechaActivacion }) if (srv.fechaActivacion != null),
+		    ("servicioVigente.cuentaServicio":     srv.ctaServicio)                   if (srv.ctaServicio != null),
+		    ("servicioVigente.cuentaFacturacion":  srv.ctaFacturacion)                if (srv.ctaFacturacion != null),
+		    "servicioVigente.ultimoTramite":    "",
+		    "servicioVigente.estado":           srv.estado
+        },
+
+        
+        "\$push": {
+            "servicioVigente.producto": {
+                "\$each": (srv.producto default []) map (prod) -> {
+                    idBundle:   prod.idBundle as Number,
+                    idAuxiliar: (prod.idAuxiliar default []) map (sva) -> { id: sva.id as Number },
+                    svaOtt:     (prod.svaOtt default []) map (sva) -> { id: sva.id as Number }
+                }
+            },
+            "tramitesComerciales.cancelacion": {
+			    idIntento:          idIntento,
+			    (idBundle:          canc.idBundle)       if (canc.idBundle != null),
+			    idAuxiliar: (canc.idAuxiliar default []) map (sva) -> { id: sva.id as Number },
+                svaOtt:     (canc.svaOtt default []) map (sva) -> { id: sva.id as Number },
+			    numeroOrden:        canc.numeroOrden,
+			    (cuentaServicio:    canc.cuentaServicio) if (canc.cuentaServicio != null),
+			    fechaRegistro:      ahora,
+			    fechaProgramada:    canc.fechaProgramada,
+			    fechaEjecucion:     null,
+			    fechaDesactivacion: null,
+			    estado:             "PENDIENTE",
+			    tecnologia:         canc.tecnologia,
+			    canal:              canal,
+			    resultado:          "PENDIENTE"
+			},
+            interacciones: {
+                tipoInteraccion:    "REGISTRO ORDEN CANCELACION",
+                detalleInteraccion: "Se crea orden cancelacion cuenta servicio: " ++ (canc.cuentaServicio default ""),
+                canal:              canal,
+                correlationId:      vars.headers."X-CORRELATION-ID",
+                fechaInteraccion:   ahora
+            },
+            auditoria: {
+                tramite:           "CANCELACION SERVICIO",
+                fechaRegistro:     ahora,
+                fechaModificacion: ahora,
+                aplicacion:        canal
+            }
+        }
+    }
+---
+{
+    query: {
+        update:  p('mongo-db-sapi.collections.journey'),
+        updates: [
+            {
+                q:      filtro,
+                u:      update,
+                upsert: true,
+                multi:  false
+            }
+        ]
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call VM" doc:id="e107626f-3848-4936-b091-1123d0d80eb0" name="journey-publicar-insert-subflow"/>
+	</sub-flow>
+	
+	    <sub-flow name="journey-publicar-insert-subflow" doc:name="journey-publicar-insert-subflow" doc:id="231d7394-1f21-4810-b01c-8410f6a25816">
+        <ee:transform doc:name="Armar sobre (envelope)">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    correlationId:      vars.headers."X-CORRELATION-ID",
+    headers: {
+	    "client_id":        vars.headers."client_id",
+	    "client_secret":    vars.headers."client_secret",
+	    "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	    "systemId":         vars.headers."systemId",
+	    "name":             vars.headers."name",
+	    "source":           vars.headers."source"
+	},
+    ciclosDlq:          0,
+    fechaPrimerIntento: (now() >> "UTC") as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+    ultimoError:        null,
+    documento:          payload
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+		<vm:publish config-ref="VM_Journey_Config" queueName="${journey.queue.insert}" doc:name="Publicar en cola insert">
+            <vm:content><![CDATA[#[write(payload, "application/json")]]]></vm:content>
+        </vm:publish>
+ 
+        <logger level="INFO" doc:name="Log publicado"
+                message='#["[JOURNEY] Publicado en cola insert. correlationId=" ++ correlationId]'/>
+    </sub-flow>
+    
+  <flow name="journey-insert-consumer-flow" doc:name="journey-insert-consumer-flow">
+        <vm:listener config-ref="VM_Journey_Config"
+                     queueName="${journey.queue.insert}"
+                     transactionalAction="ALWAYS_BEGIN"
+                     numberOfConsumers="${journey.consumers}"
+                     doc:name="Escuchar cola insert">
+            <redelivery-policy maxRedeliveryCount="${journey.redelivery.max}" useSecureHash="true"/>
+        </vm:listener>
+ 
+        <ee:transform doc:name="Leer envelope y preparar body">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+var env = if (payload is String) read(payload, "application/json") else payload
+---
+env.documento   // body del comando que espera la SAPI]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="envelope"><![CDATA[%dw 2.0
+output application/java
+---
+if (payload is String) read(payload, "application/json") else payload]]></ee:set-variable>
+                <ee:set-variable variableName="resultadoInsert"><![CDATA[%dw 2.0
+output application/java
+---
+"PENDIENTE"]]></ee:set-variable>
+                <ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/java
+var env = if (payload is String) read(payload, "application/json") else payload
+---
+env.headers default {}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+ 
+        <!-- Se guarda el body: se puede necesitar un segundo envío ante un 11000 -->
+        <set-variable variableName="bodySapi" value="#[payload]" doc:name="bodySapi"/>
+ 
+        <!-- Reintento inline para errores transitorios -->
+        <until-successful maxRetries="${journey.retry.inline.max}"
+                          millisBetweenRetries="${journey.retry.inline.millis}"
+                          doc:name="Reintento inline">
+            <try doc:name="Llamado SAPI">
+                <flow-ref name="journey-llamar-sapi-subflow" doc:name="Llamar SAPI" doc:id="cffe158d-d125-43aa-b86d-91c574ac3896"/>
+ 
+                <choice doc:name="Evaluar resultado">
+                    <when expression='#[vars.sapiEval.estado == "OK"]'>
+                        <set-variable variableName="resultadoInsert" value="OK"/>
+                    </when>
+ 
+                    <!-- 11000: o es un reintento técnico ya aplicado, o la carrera
+                         de dos intentos creando al mismo cliente nuevo.
+                         Un segundo envío inmediato lo resuelve:
+                         - si vuelve 11000 => ya estaba aplicado
+                         - si pasa         => era la carrera y ahora sí se aplicó -->
+                    <when expression='#[vars.sapiEval.estado == "DUPLICADO_POSIBLE"]'>
+                        <logger level="INFO"
+                                message='#["[JOURNEY] 11000 recibido, se confirma con un segundo envío. correlationId=" ++ correlationId]'/>
+                        <flow-ref name="journey-llamar-sapi-subflow" doc:name="Confirmar 11000"/>
+                        <choice doc:name="Resultado confirmación">
+                            <when expression='#[vars.sapiEval.estado == "OK"]'>
+                                <set-variable variableName="resultadoInsert" value="OK"/>
+                            </when>
+                            <when expression='#[vars.sapiEval.estado == "DUPLICADO_POSIBLE"]'>
+                                <set-variable variableName="resultadoInsert" value="DUPLICADO"/>
+                            </when>
+                            <when expression='#[vars.sapiEval.estado == "INVALIDO"]'>
+                                <set-variable variableName="resultadoInsert" value="INVALIDO"/>
+                                <set-variable variableName="errorDetalle" value="#[vars.sapiEval.detalle]"/>
+                            </when>
+                            <otherwise>
+                                <raise-error type="JOURNEY:SAPI_WRITE_ERROR" description="#[vars.sapiEval.detalle]"/>
+                            </otherwise>
+                        </choice>
+                    </when>
+ 
+                    <when expression='#[vars.sapiEval.estado == "INVALIDO"]'>
+                        <set-variable variableName="resultadoInsert" value="INVALIDO"/>
+                        <set-variable variableName="errorDetalle" value="#[vars.sapiEval.detalle]"/>
+                    </when>
+ 
+                    <!-- Otro writeError u ok != 1 => reintentar -->
+                    <otherwise>
+                        <raise-error type="JOURNEY:SAPI_WRITE_ERROR" description="#[vars.sapiEval.detalle]"/>
+                    </otherwise>
+                </choice>
+ 
+                <error-handler>
+                    <!-- Transitorios: 5xx, 429, timeout, conectividad, writeError reintentable -->
+                    <on-error-propagate doc:name="Transitorio"
+                                        type="JOURNEY:SAPI_WRITE_ERROR, HTTP:INTERNAL_SERVER_ERROR, HTTP:BAD_GATEWAY, HTTP:SERVICE_UNAVAILABLE, HTTP:GATEWAY_TIMEOUT, HTTP:TOO_MANY_REQUESTS, HTTP:TIMEOUT, HTTP:CONNECTIVITY, HTTP:RETRY_EXHAUSTED">
+                        <logger level="WARN"
+                                message='#["[JOURNEY] Error transitorio. correlationId=" ++ correlationId ++ " error=" ++ (error.errorType.identifier default "") ++ " detalle=" ++ (error.description default "")]'/>
+                    </on-error-propagate>
+ 
+                    <!-- 4xx u otros: no se arregla reintentando -->
+                    <on-error-continue type="ANY" doc:name="No reintentable">
+                        <set-variable variableName="resultadoInsert" value="INVALIDO"/>
+                        <set-variable variableName="errorDetalle"
+                                      value='#[(error.errorType.identifier default "") ++ ": " ++ (error.description default "")]'/>
+                    </on-error-continue>
+                </error-handler>
+            </try>
+        </until-successful>
+ 
+        <choice doc:name="Resultado final">
+            <when expression='#[vars.resultadoInsert == "INVALIDO"]'>
+                <set-variable variableName="motivoError" value="ERROR_NO_REINTENTABLE"/>
+                <flow-ref name="journey-registrar-error-subflow" doc:name="Registrar error"/>
+            </when>
+            <when expression='#[vars.resultadoInsert == "DUPLICADO"]'>
+                <logger level="INFO"
+                        message='#["[JOURNEY] Intento ya registrado (11000 confirmado), no se duplica. correlationId=" ++ correlationId]'/>
+            </when>
+            <otherwise>
+                <logger level="INFO"
+                        message='#["[JOURNEY] SAPI OK. correlationId=" ++ correlationId]'/>
+            </otherwise>
+        </choice>
+ 
+        <error-handler>
+            <!-- Se agotaron las reentregas: mover a DLQ (commit atómico con la publicación) -->
+            <on-error-continue type="MULE:REDELIVERY_EXHAUSTED" doc:name="Redelivery agotado">
+                <ee:transform doc:name="Actualizar envelope">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var env = if (payload is String) read(payload, "application/json") else payload
+---
+(env - "ciclosDlq" - "ultimoError") ++ {
+    ciclosDlq:   (env.ciclosDlq default 0) + 1,
+    ultimoError: "REDELIVERY_EXHAUSTED"
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+                <vm:publish config-ref="VM_Journey_Config" queueName="${journey.queue.dlq}" doc:name="Publicar en DLQ">
+                    <vm:content><![CDATA[#[write(payload, "application/json")]]]></vm:content>
+                </vm:publish>
+                <logger level="WARN"
+                        message='#["[JOURNEY] Reentregas agotadas, enviado a DLQ. correlationId=" ++ correlationId]'/>
+            </on-error-continue>
+ 
+            <!-- Resto (incluye MULE:RETRY_EXHAUSTED): rollback => el mensaje vuelve a la cola -->
+            <on-error-propagate type="ANY" doc:name="Rollback">
+                <logger level="WARN"
+                        message='#["[JOURNEY] Rollback, el mensaje será reentregado. correlationId=" ++ correlationId ++ " error=" ++ (error.errorType.identifier default "")]'/>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+ 
+ 
+    <!-- =============================================================
+         LLAMADO A LA SAPI (mongo-dynamic-query-subFlow) + CLASIFICACIÓN
+         La SAPI responde codigo 200 aunque haya writeErrors, por eso se evalúa el body.
+         Deja vars.sapiEval = { estado, detalle } con estado:
+           OK | DUPLICADO_POSIBLE | INVALIDO | REINTENTAR
+         ============================================================= -->
+    <sub-flow name="journey-llamar-sapi-subflow" doc:name="journey-llamar-sapi-subflow" doc:id="657a9ce8-96e6-4c35-aac6-87b73c7a306b">
+        <!-- Tu sub-flow existente que llama a la Mongo SAPI -->
+        <ee:transform doc:name="Transform Message" doc:id="5660766f-ce32-46ef-b28f-3de60e90e736" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.bodySapi]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="725e5200-7793-43fc-826f-bd7466138286" message="#[payload]"/>
+		<flow-ref name="mongo-dynamic-query-subFlow" doc:name="call To Mongo Sapi"/>
+ 
+        <ee:transform doc:name="Clasificar respuesta">
+            <ee:variables>
+                <ee:set-variable variableName="sapiEval"><![CDATA[%dw 2.0
+output application/java
+var body = if (payload is String) read(payload, "application/json") else payload
+var res  = body.result default {}
+var we   = (res.writeErrors default [])[0]
+var cod  = (body.codigo default "200") as String
+---
+if (cod startsWith "5")
+    { estado: "REINTENTAR", detalle: "SAPI codigo " ++ cod ++ ": " ++ (body.mensaje default "") }
+else if (not (cod startsWith "2"))
+    { estado: "INVALIDO", detalle: "SAPI codigo " ++ cod ++ ": " ++ (body.mensaje default "") }
+else if (we == null and (res.ok default 0) == 1)
+    { estado: "OK", detalle: null }
+else if (we != null and we.code == 11000 and ((we.errmsg default "") contains p('journey.mongo.uniqueIndex')))
+    { estado: "DUPLICADO_POSIBLE", detalle: we.errmsg }
+else if (we != null and we.code == 121)
+    { estado: "INVALIDO", detalle: "121: " ++ (we.errmsg default "") ++ " | errInfo: " ++ write(we.errInfo default {}, "application/json", { indent: false }) }
+else
+    { estado: "REINTENTAR", detalle: if (we != null) ((we.code default "") as String ++ ": " ++ (we.errmsg default "")) else "Respuesta sin ok=1" }]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+    </sub-flow>
+    
+ <flow name="journey-dlq-reintento-flow" maxConcurrency="1" doc:name="journey-dlq-reintento-flow">
+        <scheduler doc:name="Scheduler DLQ">
+            <scheduling-strategy>
+                <fixed-frequency frequency="${journey.dlq.frequencyMinutes}" timeUnit="MINUTES"/>
+            </scheduling-strategy>
+        </scheduler>
+ 
+        <set-variable variableName="dlqVacia" value="#[false]" doc:name="dlqVacia=false"/>
+ 
+        <foreach collection="#[1 to (p('journey.dlq.batch') as Number)]" doc:name="Lote DLQ">
+            <choice doc:name="¿Quedan mensajes?">
+                <when expression="#[not vars.dlqVacia]">
+                    <try transactionalAction="ALWAYS_BEGIN" doc:name="Mover mensaje">
+                        <vm:consume config-ref="VM_Journey_Config"
+                                    queueName="${journey.queue.dlq}"
+                                    timeout="${journey.dlq.consumeTimeoutMs}"
+                                    timeoutUnit="MILLISECONDS"
+                                    doc:name="Consumir DLQ"/>
+ 
+                        <set-variable variableName="envelope" doc:name="envelope"
+                                      value='#[if (payload is String) read(payload, "application/json") else payload]'/>
+ 
+                        <choice doc:name="¿Superó ciclos máximos?">
+                            <when expression="#[(vars.envelope.ciclosDlq default 0) >= (p('journey.dlq.maxCiclos') as Number)]">
+                                <set-variable variableName="motivoError" value="REINTENTOS_AGOTADOS"/>
+                                <set-variable variableName="errorDetalle" value="#[vars.envelope.ultimoError]"/>
+                                <flow-ref name="journey-registrar-error-subflow" doc:name="Registrar error"/>
+                            </when>
+                            <otherwise>
+                                <vm:publish config-ref="VM_Journey_Config" queueName="${journey.queue.insert}" doc:name="Reencolar">
+                                    <vm:content><![CDATA[#[write(vars.envelope, "application/json")]]]></vm:content>
+                                </vm:publish>
+                                <logger level="INFO"
+                                        message='#["[JOURNEY] Reencolado desde DLQ. correlationId=" ++ (vars.envelope.correlationId default "") ++ " ciclo=" ++ ((vars.envelope.ciclosDlq default 0) as String)]'/>
+                            </otherwise>
+                        </choice>
+ 
+                        <error-handler>
+                            <on-error-continue type="VM:QUEUE_TIMEOUT, VM:QUEUE_TIMEOUT" doc:name="DLQ vacía">
+                                <set-variable variableName="dlqVacia" value="#[true]"/>
+                            </on-error-continue>
+                            <on-error-propagate type="ANY" doc:name="Rollback DLQ">
+                                <logger level="ERROR"
+                                        message='#["[JOURNEY] Error moviendo mensaje de DLQ: " ++ (error.description default "")]'/>
+                            </on-error-propagate>
+                        </error-handler>
+                    </try>
+                </when>
+            </choice>
+        </foreach>
+    </flow>
+ 
+ 
+    <!-- =============================================================
+         REGISTRO DE ERRORES DEFINITIVOS (solo log)
+         Deja el documento completo en el log para poder recuperarlo
+         manualmente. Espera vars.envelope, vars.motivoError y vars.errorDetalle.
+         ============================================================= -->
+    <sub-flow name="journey-registrar-error-subflow" doc:name="journey-registrar-error-subflow">
+        <logger level="ERROR" doc:name="Log error definitivo"
+                message='#[output application/json indent=false --- {
+                    evento:             "JOURNEY_INSERT_FALLIDO",
+                    correlationId:      vars.envelope.correlationId default correlationId,
+                    motivo:             vars.motivoError,
+                    detalle:            vars.errorDetalle default null,
+                    ciclosDlq:          vars.envelope.ciclosDlq default 0,
+                    fechaPrimerIntento: vars.envelope.fechaPrimerIntento,
+                    documento:          vars.envelope.documento
+                }]'/>
+    </sub-flow>    
+    
+    
+    
+</mule>
