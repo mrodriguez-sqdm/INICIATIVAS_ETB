@@ -4,7 +4,7 @@ output application/json
 {
     "host": p("dataLogicSapi.host"),
     "port": p("dataLogicSapi.port"),
-    "basepath": p("dataLogicSapi.basepath"),
+    "basepath": p("dataLogicSapi.basePath"),
     "method": p("dataLogicSapi.paymentsOnline.post.method"),
     "path": p("dataLogicSapi.paymentsOnline.path"),
     "headers": {
