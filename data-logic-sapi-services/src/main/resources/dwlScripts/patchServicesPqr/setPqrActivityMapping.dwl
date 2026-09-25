@@ -3,7 +3,7 @@ ns mdm http://www.etb.com.co/Gateway/MDM_Data_Services
 output application/xml  skipNullOn="everywhere", writeDeclaredNamespaces="All"
 ---
 {
-  mdm#Set_PQR_Actividades: {
+  mdm#Set_PQR_Actividades_PQR: {
     mdm#WSRequestHeader: {
       mdm#system: {
         mdm#name: "SISTEMA",
@@ -12,20 +12,34 @@ output application/xml  skipNullOn="everywhere", writeDeclaredNamespaces="All"
       }
     },
     mdm#WSRequestBody: {
-      mdm#id: vars.pqrId,
-      mdm#activity: payload.activity.name,
-      mdm#management_group: payload.activity.managementGroup,
-      mdm#activity_class: payload.activity.activityClass,
-      mdm#reason: payload.activity.reason,
-      mdm#description: payload.activity.description,
-      mdm#observations: payload.activity.observations,
-      mdm#activity_type: payload.activity.activityType,
-      mdm#lets_close_pqr: payload.activity.closePqr,
-      mdm#status: payload.activity.status,
-      mdm#set_type: payload.activity.setType default "U",
-      mdm#start_date: payload.activity.startDate,
-      mdm#end_date: payload.activity.endDate,
-      mdm#version: payload.activity.version default "1"
+      mdm#id_pqr: vars.pqrId,
+      mdm#nombre_actividad: payload.activity.activityName,
+      mdm#estado_actividad: payload.activity.activityStatus,
+      mdm#comentarios: payload.activity.comments,
+      mdm#descripcion: payload.activity.description,
+      mdm#gestion: payload.activity.management,
+      mdm#descripcion_gestion: payload.activity.managementDescription,
+      mdm#grupo_actividad: payload.activity.activityGroup,
+      mdm#usuario_asignado: payload.activity.assignedUser,
+      mdm#usuario_creador_actividad: payload.activity.activityCreatedByUser,
+      mdm#fecha_inicio_actividad: payload.activity.activityStartDate,
+      mdm#fecha_estado_actual: payload.activity.currentStatusDate,
+      mdm#fecha_vencimiento_actividad: payload.activity.activityDueDate,
+      mdm#final: payload.activity.isFinal,
+      mdm#prioridad: payload.activity.priority,
+      mdm#fecha_desconexion: payload.activity.disconnectionDate,
+      mdm#fecha_reconexion: payload.activity.reconnectionDate,
+      mdm#duracion: payload.activity.duration,
+      mdm#cuenta: payload.activity.account,
+      mdm#notificacion: payload.activity.notification,
+      mdm#semaforo: payload.activity.statusLight,
+      mdm#dias_habiles: payload.activity.businessDays,
+      mdm#actividades_adjuntas: 
+        mdm#PQR_ADJUNTOS_ACTIVIDAD: payload.activity.activityAttachments map ((item) -> {
+          mdm#adjuntos_actividades: item.activityAttachment
+        }),
+      mdm#set_type: "U",
+      mdm#gestion2: payload.activity.secondaryManagement
     }
   }
 }
