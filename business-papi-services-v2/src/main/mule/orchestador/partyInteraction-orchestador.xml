@@ -6,9 +6,266 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="partyInteraction-create-orchestadorSub_Flow" doc:id="0ad57bf5-1bee-47da-b920-1ad9f2a883a3" >
 		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="667c2204-6491-4c9e-999e-6d493beaafa5" variableName="headers" />
-		<ee:transform doc:name="Transform Message" doc:id="4ee89ec5-dafb-4ab3-8995-c0136cb83822" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<choice doc:name="Choice" doc:id="c9cb6ecc-53c9-46cb-98bb-07c8ea0fb546" >
+			<when expression='#[payload.interactionType == "RESUMEN"]'>
+				<ee:transform doc:name="Transform Message"
+			doc:id="9b443959-26fe-42b6-8976-340ccd4d0a29">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "insert": "MDM_INTERACCIONES",
+    "documents": [
+      {
+        "Fecha_Interaccion": {
+          "\$date": payload.interaction.interactionDate
+        },
+        "Tipo_Documento": payload.retentionCustomer.documentType,
+        "Numero_Identificacion": payload.retentionCustomer.documentNumber,
+        "Nombre_Cliente": payload.retentionCustomer.names,
+        "Tipo_Interaccion": payload.interaction.interactionType,
+        "SubTipo_Interaccion": payload.interaction.interactionSubType,
+        "Agente": payload.interaction.agent,
+        "Nombre_Agente": payload.interaction.agentName,
+        "Canal": payload.interaction.channel,
+        "Observacion": payload.interaction.observation,
+        "Reincidente": payload.interaction.recurrent,
+        "NumeroConexion": payload.interaction.connectionNumber,
+        "Portal_Origen": payload.interaction.sourcePortal
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+						<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+						<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output application/json
+---
+Mule::p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="2b8fd5dd-9950-44f0-8ea4-9814e29f2b3c"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="9c4afb08-ea9c-4d1a-b9e1-935bd6086c6b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    (status: "OK") if (payload.codigo? and payload.codigo == 200),
+    (code: payload.codigo as Number) if (payload.codigo?),
+    (message: {
+        (message: payload.mensaje) if (payload.mensaje?)
+    }) if (payload.mensaje?)
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression='#[payload.interactionType == "ALL"]'>
+				<scatter-gather doc:name="Scatter-Gather" doc:id="2f6ac370-cc03-4a06-9611-9f1acf0dfcf6" >
+					<route >
+						<ee:transform doc:name="Transform Message" doc:id="590ce4f5-2420-4659-872a-e4b0631d3790" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "insert": "MDM_INTERACCIONES",
+    "documents": [
+      {
+        "Fecha_Interaccion": {
+          "\$date": payload.interaction.interactionDate
+        },
+        "Tipo_Documento": payload.retentionCustomer.documentType,
+        "Numero_Identificacion": payload.retentionCustomer.documentNumber,
+        "Nombre_Cliente": payload.retentionCustomer.names,
+        "Tipo_Interaccion": payload.interaction.interactionType,
+        "SubTipo_Interaccion": payload.interaction.interactionSubType,
+        "Agente": payload.interaction.agent,
+        "Nombre_Agente": payload.interaction.agentName,
+        "Canal": payload.interaction.channel,
+        "Observacion": payload.interaction.observation,
+        "Reincidente": payload.interaction.recurrent,
+        "NumeroConexion": payload.interaction.connectionNumber,
+        "Portal_Origen": payload.interaction.sourcePortal
+      }
+    ]
+  }
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+								<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output application/json
+---
+Mule::p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="7816f0ca-4d72-4117-9133-f1ebebd5388c" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+						<ee:transform doc:name="Transform Message" doc:id="00594608-5c74-4c47-8dd2-00bc5828a60e" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    (status: "OK") if (payload.codigo? and payload.codigo == 200),
+    (code: payload.codigo as Number) if (payload.codigo?),
+    (message: {
+        (message: payload.mensaje) if (payload.mensaje?)
+    }) if (payload.mensaje?)
+}
+]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</route>
+					<route >
+						<ee:transform doc:name="Transform Message" doc:id="1deda7cb-0f33-4710-9eb5-59f0390603b7">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "insert": "MDM_JOURNEY_COMERCIAL_CLIENTE",
+    "documents": [
+      {
+        "cliente": {
+          "tipoDocumento": payload.retentionCustomer.documentType,
+          "numeroDocumento": payload.retentionCustomer.documentNumber,
+          "correoUsuario": payload.retentionCustomer.email,
+          "correoNotificacion": payload.journey.notificationEmail
+        },
+        "servicioVigente": {
+          "producto": (payload.journey.currentService.products default []) map (item) -> {
+            "idBundle": item.bundleId,
+            "idAuxiliar": item.auxiliaryId,
+            "svaOtt": (item.svaOtt default []) map (sva) -> {
+              "id": sva.id
+            }
+          },
+          "fechaActivacion": payload.retentionService.serviceStartDate,
+          "ctaServicio": payload.retentionService.serviceAccountId,
+          "ctaFacturacion": payload.retentionService.billingAccount,
+          "ultimoTramite": payload.journey.currentService.lastTransaction,
+          "estado": payload.journey.currentService.status
+        },
+        "tramitesComerciales": {
+          "activacion": payload.journey.commercialTransactions.activation default [],
+          "cambioPlan": payload.journey.commercialTransactions.planChange default [],
+          "fidelizacion": payload.journey.commercialTransactions.loyalty default [],
+          "retencion": payload.journey.commercialTransactions.retention default [],
+          "cancelacion": (payload.journey.commercialTransactions.cancellation default []) map (item) -> {
+            "idBundle": item.bundleId,
+            "idAuxiliar": item.auxiliaryId,
+            "svaOtt": item.svaOtt,
+            "numeroOrden": item.orderNumber,
+            "cuentaServicio": item.serviceAccountId,
+            "fechaRegistro": item.registrationDate,
+            "fechaProgramada": item.scheduledDate,
+            "fechaEjecucion": item.executionDate,
+            "fechaDesactivacion": item.deactivationDate,
+            "estado": item.status,
+            "tecnologia": item.technology,
+            "canal": item.channel,
+            "resultado": item.result
+          }
+        },
+        "interacciones": (payload.journey.interactions default []) map (item) -> {
+          "tipoInteraccion": item.interactionType,
+          "detalleInteraccion": item.interactionDetail,
+          "canal": item.channel,
+          "correlationId": item.correlationId,
+          "fechaInteraccion": item.interactionDate
+        },
+        "auditoria": (payload.journey.audit default []) map (item) -> {
+          "tramite": item.transaction,
+          "fechaRegistro": item.registrationDate,
+          "fechaModificacion": item.modificationDate,
+          "aplicacion": item.application
+        },
+        "fechaRegistro": payload.creationDate,
+        "fechaModificacion": payload.modificationDate
+      }
+    ]
+  }
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+								<ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+Mule::p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="7bc93a98-e1ff-40d1-88bd-3f1ca9f0194c" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+						<ee:transform doc:name="Transform Message" doc:id="9c9d34d4-a30d-4e83-84ee-d6ea34923572" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    (status: "OK") if (payload.codigo? and payload.codigo == 200),
+    (code: payload.codigo as Number) if (payload.codigo?),
+    (message: {
+        (message: payload.mensaje) if (payload.mensaje?)
+    }) if (payload.mensaje?)
+}
+]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</route>
+				</scatter-gather>
+				<ee:transform doc:name="Transform Message" doc:id="d4bb128c-a0f4-4897-b9f0-a46ddea3b8cb">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var response1 = payload."0".payload default {}
+var response2 = payload."1".payload default {}
+var success1 = (response1.code default 500) as Number == 200
+var success2 = (response2.code default 500) as Number == 200
+---
+{
+	code: if ( success1 and success2 ) 200
+        else
+            400,
+	message: if ( success1 and success2 ) "Success"
+        else
+            "Error processing Mongo operations",
+	results: {
+		interaction: {
+			code: response1.code,
+			message: response1.message
+		},
+		journey: {
+			code: response2.code,
+			message: response2.message
+		}
+	}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="050ab62a-a798-4d9e-9589-4e4de6ea2681" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 
 fun removeNulls(value: Any): Any =
@@ -207,12 +464,12 @@ removeNulls({
     Numero_Orden: payload.orderNumber
 })
 ]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
-		<flow-ref doc:name="Flow Reference" doc:id="eb349ccd-cdc9-4b35-a2c9-3a43bc503ff0" name="create-retention-mongo-db-sapi-clientSub_Flow" />
-		<ee:transform doc:name="Transform Message" doc:id="75cc947d-985a-4283-8f07-60b5fbe23e23" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="9264ad61-88b2-44cd-8354-546265cf1584" name="create-retention-mongo-db-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message1" doc:id="e63733db-cfe9-493f-8270-e0e027226f70" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -224,8 +481,10 @@ output application/json
     }) if (payload.mensaje? or payload.numeroRetencion?)
 }
 ]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 	<sub-flow name="partyInteraction-update-orchestadorSub_Flow" doc:id="d49d950a-34ec-495b-b663-c83ff6d218b5" >
 		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="d3bc4239-b152-4dfb-94f0-8ef450793367" variableName="headers" />

@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
-	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="
-http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="get-billingAccount-mongo-db-sapi-clientSub_Flow" doc:id="900202ad-cc99-40c3-bdc8-b12a4eadf6f6" >
 		<http:request method="GET" doc:name="Request" doc:id="56050274-0baa-4a42-a055-39f98947dda2" config-ref="HTTP_Request_configuration_mongo-db-sapi" path="${mongo-db-sapi.resources.billingAccount.base-path}${mongo-db-sapi.resources.billingAccount.get.path}" >
 			<http:headers ><![CDATA[#[output application/java
@@ -105,5 +106,28 @@ else {}]]]></http:query-params>
 }]]]></http:headers>
 		</http:request>
 	</sub-flow>
-
+	<sub-flow name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="cc5d7c80-2abc-456a-a282-627d1375cfb4" >
+		<try doc:name="Try" doc:id="3a9019c1-2fca-48a2-a28b-908152a8c8d2" >
+			<http:request method="#[vars.method]" doc:name="Request" doc:id="5284bb7b-2683-4eb0-a68f-aeb85ffba4cb" config-ref="HTTP_Request_configuration_mongo-db-sapi" path="#[vars.path]">
+			<http:headers><![CDATA[#[vars.headers default {}]]]></http:headers>
+			<http:uri-params><![CDATA[#[vars.uriParams default{}]]]></http:uri-params>
+			<http:query-params><![CDATA[#[vars.queryParameters default {}]]]></http:query-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="63d81051-9700-4b2b-8573-72ed584f29e4" >
+					<ee:transform doc:name="Transform Message" doc:id="c8203577-dbb4-49cf-8bbd-58f34295c3bd" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"codigo": error.errorMessage.payload.status,
+	"mensaje": error.errorMessage.payload.message
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
 </mule>
