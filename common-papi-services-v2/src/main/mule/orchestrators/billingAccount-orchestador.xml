@@ -142,6 +142,85 @@ var businessDays =
 					</ee:message>
 				</ee:transform>
 			</when>
+			<when expression="#[vars.parameters.OPERATION == 'ACTIVIDADES_PQR']">
+				<ee:transform doc:name="set filtersPqr" doc:id="4153a3de-12c8-4b37-94b1-b203a748694d">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="filtersPqr" ><![CDATA[%dw 2.0
+import try, fail from dw::Runtime
+fun getPqrParams(filters) =
+  filters splitBy ";" reduce ((item, acc = {}) -> acc ++ {
+      ((item splitBy ":")[0]): ((item splitBy ":")[1])
+    }) mapObject ((value, key, index) -> {
+    (actividad: value) if (key as String == 'activity'),
+    (grupo_gestion: value) if (key as String == 'managementGroup'),
+    (clase: value) if (key as String == 'class'),
+    (motivo: value) if (key as String == 'reason')
+  }) ++ { estado: "ACTIVO"}
+output application/json  
+---
+do {
+  var errorFun = try(() -> getPqrParams(payload)).error
+  var resultFun = try(() -> getPqrParams(payload)).result
+  ---
+  if (errorFun != null or isEmpty(resultFun))
+    fail("GET PQR ACTIVITIES Functional mapping error")
+  else
+    resultFun
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="set mongo dynamicQuery request" doc:id="72718b05-13d9-4546-ad53-ac11a994b629" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongoDbSapi.basePath"),
+	host: p("mongoDbSapi.host"),
+	port: p("mongoDbSapi.port"),
+	method: p('mongoDbSapi.dynamicQuery.post.method'),
+	path: p('mongoDbSapi.dynamicQuery.path'),
+	body: {
+		"query": {
+			"aggregate": "PQR_ACTIVIDAD",
+			"pipeline": [{
+				"\$match": vars.filtersPqr
+			}],
+			"cursor": {
+			}
+		}
+	},
+	headers: {
+		"client_secret": p('secure::api.clientSecret'),
+		"client_id": p('secure::api.clientId'),
+		"name": vars.headers.name,
+		"X-CORRELATION-ID": vars.headers."x-correlation-id",
+		"source": vars.headers.source,
+		"systemId": vars.headers.systemId
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-common-request (PQR_ACTIVIDAD)" doc:id="174b16d7-312c-4b13-87ec-dc3da72a9024" name="mongo-db-sapi-common-request"/>
+				<ee:transform doc:name="set pqr response" doc:id="4b9b75a8-ee9d-41eb-860f-7771af5d0e8b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+    codeResponse: "200",
+    messageResponse: "Consulta realizada exitosamente",
+    pqrActivities: payload.result
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
 			<otherwise>
 				<ee:transform doc:name="Transform Message" doc:id="b7bb2b7f-822b-445a-a70a-fe09249c7dcb">
 					<ee:message>
@@ -161,14 +240,15 @@ output application/json
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 var profile = upper((Mule::p('pagination.profile') default "Bajo") as String)
-var maxLimit = if (profile == "ALTO") ((Mule::p('pagination.profiles.alto.max') default 100) as Number) else if (profile == "MEDIO") ((Mule::p('pagination.profiles.medio.max') default 50) as Number) else ((Mule::p('pagination.profiles.bajo.max') default 25) as Number)
+var maxLimit = if ( profile == "ALTO" ) ((Mule::p('pagination.profiles.alto.max') default 100) as Number) else if ( profile == "MEDIO" ) ((Mule::p('pagination.profiles.medio.max') default 50) as Number) else ((Mule::p('pagination.profiles.bajo.max') default 25) as Number)
 var defaultLimit = maxLimit
 var defaultOffset = (Mule::p('pagination.default.offset') default 0) as Number
 var reqLimit = (vars.parameters.limit default defaultLimit) as Number
 var reqOffset = (vars.parameters.offset default defaultOffset) as Number
-var limit = if (reqLimit > maxLimit) maxLimit else if (reqLimit < 0) 0 else reqLimit
-var offset = if (reqOffset < 0) 0 else reqOffset
-var utilitys = payload.utilitys default {}
+var limit = if ( reqLimit > maxLimit ) maxLimit else if ( reqLimit < 0 ) 0 else reqLimit
+var offset = if ( reqOffset < 0 ) 0 else reqOffset
+var utilitys = payload.utilitys default {
+}
 var parameters = utilitys.parameters default []
 var parametersLastIndex = sizeOf(parameters) - 1
 var parametersToIndex = min([offset + limit - 1, parametersLastIndex])
@@ -178,28 +258,27 @@ var operatorsToIndex = min([offset + limit - 1, operatorsLastIndex])
 var businessDays = payload.businessDays default []
 var businessDaysLastIndex = sizeOf(businessDays) - 1
 var businessDaysToIndex = min([offset + limit - 1, businessDaysLastIndex])
+var pqrActivities = payload.pqractivities default []
+var pqrActivitiesDaysLastIndex = sizeOf(pqrActivities) - 1
+var pqrActivitiesDaysToIndex = min([offset + limit - 1, pqrActivitiesDaysLastIndex])
 ---
-if ((utilitys.parameters default null) != null)
-    ((payload - "utilitys")
-        ++ {
-          utilitys: utilitys ++ {
-            parameters: if (sizeOf(parameters) == 0 or offset > parametersLastIndex) [] else parameters[offset to parametersToIndex]
-          }
-        })
-else if ((utilitys.operators default null) != null)
-    ((payload - "utilitys")
-        ++ {
-          utilitys: utilitys ++ {
-            operators: if (sizeOf(operators) == 0 or offset > operatorsLastIndex) [] else operators[offset to operatorsToIndex]
-          }
-        })
-else if ((payload.businessDays default null) != null)
-    ((payload - "businessDays")
-        ++ {
-          businessDays: if (sizeOf(businessDays) == 0 or offset > businessDaysLastIndex) [] else businessDays[offset to businessDaysToIndex]
-        })
-else
-    payload
+if ( (utilitys.parameters default null) != null ) ((payload - "utilitys") ++ {
+	utilitys: utilitys ++ {
+		parameters: if ( sizeOf(parameters) == 0 or offset > parametersLastIndex ) [] else parameters[offset to parametersToIndex]
+	}
+})
+else if ( (utilitys.operators default null) != null ) ((payload - "utilitys") ++ {
+	utilitys: utilitys ++ {
+		operators: if ( sizeOf(operators) == 0 or offset > operatorsLastIndex ) [] else operators[offset to operatorsToIndex]
+	}
+})
+else if ( (payload.businessDays default null) != null ) ((payload - "businessDays") ++ {
+	businessDays: if ( sizeOf(businessDays) == 0 or offset > businessDaysLastIndex ) [] else businessDays[offset to businessDaysToIndex]
+})
+else if ( (payload.pqrActivities default null) != null ) ((payload - "pqrActivities") ++ {
+	pqrActivities: if ( sizeOf(pqrActivities) == 0 or offset > pqrActivitiesDaysLastIndex ) [] else pqrActivities[offset to pqrActivitiesDaysToIndex]
+})
+else payload
 ]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
