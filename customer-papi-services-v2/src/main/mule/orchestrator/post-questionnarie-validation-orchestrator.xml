@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-questionnaire-validation" doc:id="5e275161-0145-41cb-8564-b981c1fb0126" >
+		<ee:transform doc:name="set variables" doc:id="9aea3e0d-1130-4228-a009-1f73fa4c5cf4" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+	"name": attributes.headers.name,
+	"systemId": attributes.headers.systemId,
+	"source": attributes.headers.source
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="set lisim questionnarie sapi request" doc:id="f3fef94e-eb3a-4d80-aaec-1aed0e23031c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    IdentityValidationId: payload.identityValidationId,
+    Answers: payload.answers	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="lisim-sapi-questionnaire-validate-clientSub_Flow" doc:id="151627a9-4c42-4989-b656-483edd81b134" name="lisim-sapi-questionnaire-validate-clientSub_Flow" target="postLisimQuestionnarieResponse" />
+		<os:retrieve doc:name="retrieve validation details" doc:id="f1ea7dee-b85e-4307-bef7-cf5cd6795698" key="#[vars.initialPayload.identityValidationId]" objectStore="Validation_Object_Store" target="osValidationDetail" >
+			<os:default-value ><![CDATA[#[null]]]></os:default-value>
+		</os:retrieve>
+		<choice doc:name="Choice" doc:id="c0b521aa-eb8f-4b9c-8e7e-d2a395c8319d" >
+			<when expression="#[vars.osValidationDetail != null]" >
+				<ee:transform doc:name="set mongo patch identity request" doc:id="9737fb5e-e03f-4c94-aaca-95a7e25d0fa6" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"fecha_consulta": now() as Date,
+	"causal": p('causales.causalQuestionnaryValidation')
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"documentType": vars.osValidationDetail.documentType as String,
+	"documentNumber": vars.osValidationDetail.documentNumber
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="76170f6c-aa48-4298-8c20-5da4fb437ff5" name="mongo-db-sapi-patch-identity-validation-sub-flow" />
+			</when>
+			<otherwise >
+				<raise-error doc:name="SCORE_VALIDATION:DETAILS_NOT_FOUND" doc:id="ca68b2b8-c636-415d-9472-ff3eacffdcf5" type="SCORE_VALIDATION:DETAILS_NOT_FOUND" description="the validation details does not exist in OS" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="set questionnarie validation response" doc:id="94ad7825-983f-4f74-9cde-f533cc9d1edd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var hasMessageServer =
+  vars.postLisimQuestionnarieResponse.result is Object and vars.postLisimQuestionnarieResponse.result.messageServer != null
+
+---
+{
+  code: "200",
+  message:
+    if (hasMessageServer)
+      vars.postLisimQuestionnarieResponse.result.messageServer
+    else
+      vars.postLisimQuestionnarieResponse.result
+}
+++
+(
+  if (not hasMessageServer)
+    { result: vars.postLisimQuestionnarieResponse.result }
+  else
+    {}
+)
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

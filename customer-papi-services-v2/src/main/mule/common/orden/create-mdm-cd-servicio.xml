@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="create-mdm-cd-servicioSub_Flow" doc:id="19a84a7b-ca08-4728-a85a-0adf040795bf" >
+		<ee:transform doc:name="Transform Message" doc:id="9d7e397d-e5bf-4678-afe3-7f9257ae2c77" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"o": vars.ordenServicio,
+	"c": vars.clienteTramite,
+	"p": vars.resultadoProductos
+	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="7c2d1112-aa2f-43e4-90cb-93ff8e9483c3" >
+			<when expression="#[vars.ordenServicio.Factibilidad]">
+				<ee:transform doc:name="Transform Message" doc:id="ad29bf1a-47a0-4139-a82d-818a5553d72f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var fechaActual = {
+        "\$date": (now() >> "UTC") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+    }
+
+---
+
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: { 
+  "query" : {
+    "insert": "MDM_CD_SERVICIO",
+    "documents": [
+		      {
+		
+		  "Fecha_Creacion": fechaActual,
+		  "Usuario_Creacion": "",
+		  "Fecha_Modificacion": null,
+		  "Usuario_Modificacion":"",
+		  "Id_Cuenta_Servicio": vars.resultadoProductos.Servicio_Tramite.Id_Cuenta_Servicio,
+		  "Bundle": vars.resultadoProductos.Servicio_Tramite.Bundle,
+		  "Opcionales": [],
+		  "Promociones": [],
+		  "Cliente": {
+		    "_id": {
+		      "\$oid": vars.clienteTramite.Cliente_Tramite."_id"."\$oid"
+		    },
+		    "Fecha_Creacion": vars.clienteTramite.Cliente_Tramite.Fecha_Creacion,
+		    "Usuario_Creacion": vars.clienteTramite.Cliente_Tramite.Usuario_Creacion,
+		    "Fecha_Modificacion": vars.clienteTramite.Cliente_Tramite.Fecha_Actualizacion,
+		    "Id_Cuenta_Cliente": vars.clienteTramite.Cliente_Tramite.Id_Cuenta_Cliente,
+		    "Tipo_Documento": vars.clienteTramite.Cliente_Tramite.Tipo_Documento,
+		    "Numero_Documento": vars.clienteTramite.Cliente_Tramite.Numero_Documento
+		  },
+		  "Estado": {
+		    "Principal": {
+		      "Codigo": "2",
+		      "Descripcion": "Pendiente",
+		      "Fecha": fechaActual
+		    },
+		    "Pago": {
+		      "Codigo": "1",
+		      "Descripcion": "Activo",
+		      "Fecha": fechaActual
+		    },
+		    "Fraude": {
+		      "Codigo": "1",
+		      "Descripcion": "Activo",
+		      "Fecha": fechaActual
+		    },
+		    "Tramite": {
+		      "Codigo": "2",
+		      "Descripcion": "Pendiente",
+		      "Fecha": fechaActual
+		    },
+		    "Voluntaria": {
+		      "Codigo": "1",
+		      "Descripcion": "Activo",
+		      "Fecha": fechaActual
+		    },
+		    "RoboPerdida": {
+		      "Codigo": "1",
+		      "Descripcion": "Activo",
+		      "Fecha": fechaActual
+		    }
+		  },
+		  "Id_Cuenta_Facturacion": vars.resultadoProductos.Servicio_Tramite.Id_Cuenta_Facturacion,
+		  "Sistema_Origen": {
+		    "Id_Sistema_Origen": vars.resultadoProductos.Servicio_Tramite.Id_Cuenta_Servicio,
+		    "Sistema_Origen_Nombre": vars.resultadoProductos.Servicio_Tramite.Sistema_Origen
+		  },
+		  "Id_Direccion_Instalacion": vars.resultadoProductos.Servicio_Tramite.Id_Direccion_Instalacion,
+		  "Servicios_Auxiliares": vars.resultadoProductos.Servicio_Tramite.Servicios_Auxiliares,
+		  "Clausula_Permanencia": vars.resultadoProductos.Servicio_Tramite.Clausula_Permanencia,
+		  "Numero_Conexion_Anterior": vars.resultadoProductos.Servicio_Tramite.Numero_Conexion_Anterior,
+		  "Id_SalesForce": vars.resultadoProductos.Servicio_Tramite.Id_SalesForce,
+		  "Integration_Id": vars.resultadoProductos.Servicio_Tramite.Integration_Id,
+		  "Caracteristica_Servicio": vars.resultadoProductos.Servicio_Tramite.Caracteristica_Servicio,
+		  "Is_Pago_Recurrente": vars.resultadoProductos.Servicio_Tramite.Is_Pago_Recurrente,
+		  "Promociones_Condicionadas": vars.resultadoProductos.Servicio_Tramite.Promociones_Condicionadas,
+		  "Adjuntos": vars.resultadoProductos.Servicio_Tramite.Adjuntos
+		}
+    ]
+  }
+},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="3a769f42-79a6-45b4-ab8d-2f3303d7c1e2" message="#[payload]" />
+				<flow-ref doc:name="Flow Reference" doc:id="63ca91b7-c316-4457-9f7e-ec594c3e5445" name="generic-sapi-clientSub_Flow" />
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" doc:id="9ab2c707-2eff-47ca-8d69-0b600ef82d73" message="No se registra la orden de servicio" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
