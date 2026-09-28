@@ -28,225 +28,205 @@ var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
 		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.CUSTOMER_ID_TYPE != null and vars.parameters.CUSTOMER_ID_TYPE != "" &#10;	and vars.parameters.CUSTOMER_ID != null and vars.parameters.CUSTOMER_ID != ""&#10;)&#10; if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;  false&#10; else&#10;  true &#10;else&#10;	if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;	  true&#10;	else&#10;	  false]' doc:name="Set call" doc:id="80eaba17-5c6e-44e8-b56b-51d7350c5773" variableName="call" />
 		<choice doc:name="vars.call" doc:id="2bd08c83-dcee-477f-8f68-137902cdeb6d" >
 			<when expression="#[vars.call]">
-				<flow-ref doc:name="Flow Reference" doc:id="8bb8eee4-686a-49f6-b55a-7f62a1f7271d" name="mongo-db-sapi-get-customer-clientSub_Flow" />
+				<flow-ref doc:name="Flow Reference" doc:id="8bb8eee4-686a-49f6-b55a-7f62a1f7271d" name="mongo-db-sapi-get-customer-clientSub_Flow" target="rsCustomers"/>
+				<choice doc:name="Choice" doc:id="ec488c0f-a3bc-4245-8302-ee46c3348753">
+					<when expression="#[isEmpty(vars.rsCustomers.customers[0].Fecha_Expedicion_Documento)]">
+						<ee:transform doc:name="Transform Message" doc:id="18f7c846-0952-407b-8b16-4438263af39c" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "query": {
+    "find": "MDM_VALIDACION_CLIENTE",
+    "filter": {
+      "tipo_doc": vars.parameters.CUSTOMER_ID_TYPE,
+      "num_doc": vars.parameters.CUSTOMER_ID
+    },
+    "sort": {
+      "fecha": -1
+    },
+    "limit": 1
+  }
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+								<ee:set-variable resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="92d637eb-13b9-4c5d-ad68-30c6afb5fd31" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="rsAdditionalData"/>
+					</when>
+				</choice>
 				<ee:transform doc:name="Transform Message" doc:id="414488e9-cdc6-4c44-bba2-10ec4750fcf7">
 							<ee:message>
 								<ee:set-payload><![CDATA[%dw 2.0
 output application/json
+var additionalDate = vars.rsAdditionalData.result[0].fecha_exp default null
 ---
 {
-  codeResponse: (payload.codigo default 200) as String,
-  responseMessage: "La solicitud fue exitosa",
-  customer: (payload.customers default []) map (cust) -> {
-
-    id: cust."_id"."\$oid" default "",
-
-    extractorUpdate: cust.actualizacion_extractor default "",
-
-    atdp: if (cust.ATDP?) {
-      channel: cust.ATDP.CANAL default "",
-      date: { date: cust.ATDP.FECHA default "" },
-      habeasData: cust.ATDP.HABEAS_DATA default "",
-      associatedPqr: cust.ATDP.PQR_ASOCIADA default "",
-      user: cust.ATDP.USUARIO default ""
-    } else null,
-
-    datacreditoAuthorization: cust.Autorizacion_Datacredito default "",
-
-    neighborhood: cust.Barrio default "",
-
-    customerCharacteristic: sizeOf(cust.Caracteristica_Cliente default []) > 0,
-
-    category: cust.Categoria default "",
-
-    city: cust.Ciudad default "",
-
-    documentIssueCity: cust.Ciudad_Exp_Documento default "",
-
-    scoringClassification: cust.Clasificacion_Scoring default "",
-
-    customerValue: cust.Cliente_Valor default "",
-
-    coverage: cust.Cobertura default "",
-
-    contact: (cust.Contacto default []) map (c) -> {
-      id: c."_id"."\$oid" default "",
-      extractorUpdate: c.actualizacion_extractor default "",
-      authorized: c.Autorizado default false,
-      city: c.Ciudad default "",
-      daneCode: c.Codigo_DANE default "",
-      department: c.Departamento default "",
-      contactEmail: c.Email_Contacto default "",
-      status: c.Estado default false,
-      modificationDate: { date: c.Fecha_Modificacion default "" },
-      mobileContact: c.Movil_Contacto default "",
-      contactName: c.Nombre_Contacto default "",
-      individualName: c.Nombre_Individual default "",
-      documentNumber: c.Numero_Documento default "",
-      country: c.Pais default "",
-      firstSurname: c.Primer_Apellido default "",
-      secondSurname: c.Segundo_Apellido default "",
-      phoneContact: c.Telefono_Contacto default "",
-      documentType: c.Tipo_Documento default "",
-      atdp: if (c.ATDP?) {
-        channel: c.ATDP.CANAL default "",
-        date: { date: c.ATDP.FECHA default "" },
-        habeasData: c.ATDP.HABEAS_DATA default "",
-        associatedPqr: c.ATDP.PQR_ASOCIADA default "",
-        user: c.ATDP.USUARIO default ""
-      } else null,
-      neighborhood: c.Barrio default "",
-      associatedAddress: c.Direccion_Asociada default "",
-      stratum: c.Estrato default "",
-      issueDate: { date: c.Fecha_Modificacion default "" },
-      locality: c.Localidad default "",
-      mobileContact2: c.Movil_Contacto default ""
-    },
-
-    email: cust.Correo_Electronico default "",
-
-    billingAccountId: sizeOf(cust.Cuenta_Facturacion_Id default []) > 0,
-
-    serviceAccountId: sizeOf(cust.Cuenta_Servicio_Id default []) > 0,
-
-    companyData: cust.Datos_Empresa default "",
-
-    department: cust.Departamento default "",
-
-    documentIssueDept: cust.Depto_Exp_Documento default "",
-
-    address: cust.Direccion default "",
-
-    addresses: (cust.Direcciones default []) map (d) -> {
-      coverage: if (d.Cobertura?) {
-        lotCode: d.Cobertura.Codigo_Lote default "",
-        gisAddress: d.Cobertura.Direccion_GIS default "",
-        district: d.Cobertura.Distrito default "",
-        stratum: d.Cobertura.Estrato default 0,
-        latitude: d.Cobertura.Latitud default "",
-        locality: d.Cobertura.Localidad default "",
-        longitude: d.Cobertura.Longitud default "",
-        molecule: d.Cobertura.Molecula default "",
-        coverageName: d.Cobertura.NombreCobertura default "",
-        purpose: d.Cobertura.Proposito default "",
-        technology: d.Cobertura.Tecnologia default "",
-        coverageType: d.Cobertura.Tipo_Cobertura default "",
-        zone: d.Cobertura.Zona default "",
-        distanceType: d.Cobertura.TipoDistancia default "",
-        distanceType2: d.Cobertura.TipoDistancia2 default ""
-      } else null,
-      daneCode: d.Codigo_DANE default "",
-      departmentCode: d.Codigo_Departamento default "",
-      addressCode: d.Codigo_Direccion default "",
-      municipalityCode: d.Codigo_Municipio default "",
-      countryCode: d.Codigo_Pais default "",
-      department: d.Departamento default "",
-      normalizedAddress: d.Direccion_Normalizada default "",
-      status: d.Estado default "",
-      addressId: d.Id_Direccion default 0,
-      municipality: d.Municipio default "",
-      addressName: d.Nombre_Direccion default "",
-      selected: d.Seleccionada default false,
-      addressType: d.Tipo_Direccion default ""
-    },
-
-    experienceExecutive: cust.Ejecutivo_Experiencia default "",
-
-    status: cust.Estado default "",
-
-    maritalStatus: cust.Estado_Civil default "",
-
-    stratum: cust.Estrato default "",
-
-    extension: "",
-
-    updateDate: { date: cust.Fecha_Actualizacion default "" },
-
-    creationDate: { date: cust.Fecha_Creacion default "" },
-
-    documentIssueDate: cust.Fecha_Expedicion_Documento default "",
-
-    birthDate: cust.Fecha_Nacimiento default "",
-
-    scoringDate: cust.Fecha_Scoring default "",
-
-    gender: cust.Genero default "",
-
-    customerAccountId: cust.Id_Cuenta_Cliente default "",
-
-    billingAccountSalesforceId: cust.Id_Cuenta_Facturacion_Salesforce default "",
-
-    locality: cust.Localidad default "",
-
-    mdmModified: cust.Modificado_MDM default "",
-
-    customerName: cust.Nombre_Cliente default "",
-
-    companyShortName: cust.Datos_Empresa default "",
-
-    firstName: cust.Nombres default "",
-
-    identificationNumber: cust.Numero_Identificacion default "",
-
-    country: cust.Pais default "",
-
-    firstSurname: cust.Primer_Apellido default "",
-
-    ageRange: cust.Rango_Edad default "",
-
-    scoring: cust.Scoring default "",
-
-    segment: cust.Segmento default "",
-
-    uenSegment: cust.Segmento_UEN default "",
-
-    secondSurname: cust.Segundo_Apellido default "",
-
-    servicesPs: cust.ServiciosPS default "",
-
-    sourceSystem: (cust.Sistema_Origen default []) map (s) -> {
-      sourceSystemId: s.Id_Sistema_Origen default "",
-      sourceSystem: s.Sistema_Origen default ""
-    },
-
-    landlinePhone: cust.Telefono_Fijo default "",
-
-    mobilePhone: cust.Telefono_Movil default "",
-
-    mobilePhone2: cust.Telefono_Movil default "",
-
-    customerType: cust.Tipo_Cliente default "",
-
-    documentType: cust.Tipo_Documento default "",
-
-    scoringType: cust.Tipo_Scoring default "",
-
-    uen: cust.UEN default "",
-
-    createdByUser: cust.Usuario_Creador default "",
-
-    modifiedByUser: cust.Usuario_Modificador default "",
-
-    customerAttachments: [],
-
-    authorizeCreditCheck: cust.Autoriza_Consulta_Centrales default "",
-
-    authorizePersonalDataHandling: cust.Autoriza_Manejo_Datos_Personales default "",
-
-    serviceScheme: cust.EsquemaAtencion default "",
-
-    identityValidationDate: cust.Fecha_Validacion_Identidad default "",
-
-    fixedScoring: cust.Scoring_Fija default "",
-
-    validateLisimCode: cust.ValidaCodigoLISIM default "",
-    
-    customerAttribute: payload.Caracteristica_Cliente map (item, index) -> {
-        attribute: item.Caracteristica,
-        value: item.Valor
-    }
-    
-  }
+	codeResponse: (vars.rsCustomers.codigo default 200) as String,
+	responseMessage: "La solicitud fue exitosa",
+	customer: (vars.rsCustomers.customers default []) map (cust) -> {
+		id: cust."_id"."\$oid" default "",
+		extractorUpdate: cust.actualizacion_extractor default "",
+		atdp: if ( cust.ATDP? ) {
+			channel: cust.ATDP.CANAL default "",
+			date: {
+				date: cust.ATDP.FECHA default ""
+			},
+			habeasData: cust.ATDP.HABEAS_DATA default "",
+			associatedPqr: cust.ATDP.PQR_ASOCIADA default "",
+			user: cust.ATDP.USUARIO default ""
+		} else null,
+		datacreditoAuthorization: cust.Autorizacion_Datacredito default "",
+		neighborhood: cust.Barrio default "",
+		customerCharacteristic: sizeOf(cust.Caracteristica_Cliente default []) > 0,
+		category: cust.Categoria default "",
+		city: cust.Ciudad default "",
+		documentIssueCity: cust.Ciudad_Exp_Documento default "",
+		scoringClassification: cust.Clasificacion_Scoring default "",
+		customerValue: cust.Cliente_Valor default "",
+		coverage: cust.Cobertura default "",
+		contact: (cust.Contacto default []) map (c) -> {
+			id: c."_id"."\$oid" default "",
+			extractorUpdate: c.actualizacion_extractor default "",
+			authorized: c.Autorizado default false,
+			city: c.Ciudad default "",
+			daneCode: c.Codigo_DANE default "",
+			department: c.Departamento default "",
+			contactEmail: c.Email_Contacto default "",
+			status: c.Estado default false,
+			modificationDate: {
+				date: c.Fecha_Modificacion default ""
+			},
+			mobileContact: c.Movil_Contacto default "",
+			contactName: c.Nombre_Contacto default "",
+			individualName: c.Nombre_Individual default "",
+			documentNumber: c.Numero_Documento default "",
+			country: c.Pais default "",
+			firstSurname: c.Primer_Apellido default "",
+			secondSurname: c.Segundo_Apellido default "",
+			phoneContact: c.Telefono_Contacto default "",
+			documentType: c.Tipo_Documento default "",
+			atdp: if ( c.ATDP? ) {
+				channel: c.ATDP.CANAL default "",
+				date: {
+					date: c.ATDP.FECHA default ""
+				},
+				habeasData: c.ATDP.HABEAS_DATA default "",
+				associatedPqr: c.ATDP.PQR_ASOCIADA default "",
+				user: c.ATDP.USUARIO default ""
+			} else null,
+			neighborhood: c.Barrio default "",
+			associatedAddress: c.Direccion_Asociada default "",
+			stratum: c.Estrato default "",
+			issueDate: {
+				date: c.Fecha_Modificacion default ""
+			},
+			locality: c.Localidad default "",
+			mobileContact2: c.Movil_Contacto default ""
+		},
+		email: cust.Correo_Electronico default "",
+		billingAccountId: sizeOf(cust.Cuenta_Facturacion_Id default []) > 0,
+		serviceAccountId: sizeOf(cust.Cuenta_Servicio_Id default []) > 0,
+		companyData: cust.Datos_Empresa default "",
+		department: cust.Departamento default "",
+		documentIssueDept: cust.Depto_Exp_Documento default "",
+		address: cust.Direccion default "",
+		addresses: (cust.Direcciones default []) map (d) -> {
+			coverage: if ( d.Cobertura? ) {
+				lotCode: d.Cobertura.Codigo_Lote default "",
+				gisAddress: d.Cobertura.Direccion_GIS default "",
+				district: d.Cobertura.Distrito default "",
+				stratum: d.Cobertura.Estrato default 0,
+				latitude: d.Cobertura.Latitud default "",
+				locality: d.Cobertura.Localidad default "",
+				longitude: d.Cobertura.Longitud default "",
+				molecule: d.Cobertura.Molecula default "",
+				coverageName: d.Cobertura.NombreCobertura default "",
+				purpose: d.Cobertura.Proposito default "",
+				technology: d.Cobertura.Tecnologia default "",
+				coverageType: d.Cobertura.Tipo_Cobertura default "",
+				zone: d.Cobertura.Zona default "",
+				distanceType: d.Cobertura.TipoDistancia default "",
+				distanceType2: d.Cobertura.TipoDistancia2 default ""
+			} else null,
+			daneCode: d.Codigo_DANE default "",
+			departmentCode: d.Codigo_Departamento default "",
+			addressCode: d.Codigo_Direccion default "",
+			municipalityCode: d.Codigo_Municipio default "",
+			countryCode: d.Codigo_Pais default "",
+			department: d.Departamento default "",
+			normalizedAddress: d.Direccion_Normalizada default "",
+			status: d.Estado default "",
+			addressId: d.Id_Direccion default 0,
+			municipality: d.Municipio default "",
+			addressName: d.Nombre_Direccion default "",
+			selected: d.Seleccionada default false,
+			addressType: d.Tipo_Direccion default ""
+		},
+		experienceExecutive: cust.Ejecutivo_Experiencia default "",
+		status: cust.Estado default "",
+		maritalStatus: cust.Estado_Civil default "",
+		stratum: cust.Estrato default "",
+		extension: "",
+		updateDate: {
+			date: cust.Fecha_Actualizacion default ""
+		},
+		creationDate: {
+			date: cust.Fecha_Creacion default ""
+		},
+		documentIssueDate: if ( !isEmpty(cust.Fecha_Expedicion_Documento) ) cust.Fecha_Expedicion_Documento
+      else if ( !isEmpty(additionalDate) ) (additionalDate as DateTime) as String {
+			format: "dd/MM/yyyy"
+		}
+      else
+        "",
+		birthDate: cust.Fecha_Nacimiento default "",
+		scoringDate: cust.Fecha_Scoring default "",
+		gender: cust.Genero default "",
+		customerAccountId: cust.Id_Cuenta_Cliente default "",
+		billingAccountSalesforceId: cust.Id_Cuenta_Facturacion_Salesforce default "",
+		locality: cust.Localidad default "",
+		mdmModified: cust.Modificado_MDM default "",
+		customerName: cust.Nombre_Cliente default "",
+		companyShortName: cust.Datos_Empresa default "",
+		firstName: cust.Nombres default "",
+		identificationNumber: cust.Numero_Identificacion default "",
+		country: cust.Pais default "",
+		firstSurname: cust.Primer_Apellido default "",
+		ageRange: cust.Rango_Edad default "",
+		scoring: cust.Scoring default "",
+		segment: cust.Segmento default "",
+		uenSegment: cust.Segmento_UEN default "",
+		secondSurname: cust.Segundo_Apellido default "",
+		servicesPs: cust.ServiciosPS default "",
+		sourceSystem: (cust.Sistema_Origen default []) map (s) -> {
+			sourceSystemId: s.Id_Sistema_Origen default "",
+			sourceSystem: s.Sistema_Origen default ""
+		},
+		landlinePhone: cust.Telefono_Fijo default "",
+		mobilePhone: cust.Telefono_Movil default "",
+		mobilePhone2: cust.Telefono_Movil default "",
+		customerType: cust.Tipo_Cliente default "",
+		documentType: cust.Tipo_Documento default "",
+		scoringType: cust.Tipo_Scoring default "",
+		uen: cust.UEN default "",
+		createdByUser: cust.Usuario_Creador default "",
+		modifiedByUser: cust.Usuario_Modificador default "",
+		customerAttachments: [],
+		authorizeCreditCheck: cust.Autoriza_Consulta_Centrales default "",
+		authorizePersonalDataHandling: cust.Autoriza_Manejo_Datos_Personales default "",
+		serviceScheme: cust.EsquemaAtencion default "",
+		identityValidationDate: cust.Fecha_Validacion_Identidad default "",
+		fixedScoring: cust.Scoring_Fija default "",
+		validateLisimCode: cust.ValidaCodigoLISIM default "",
+		customerAttribute: vars.rsCustomers.Caracteristica_Cliente map (item, index) -> {
+			attribute: item.Caracteristica,
+			value: item.Valor
+		}
+	}
 }
 ]]></ee:set-payload>
 							</ee:message>
