@@ -15,10 +15,6 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 			<ee:message>
 			</ee:message>
 			<ee:variables>
-				<ee:set-variable variableName="transactionId"><![CDATA[%dw 2.0
-output application/java
----
-(now() as String {format: "YYYYMMddHHmmss"})]]></ee:set-variable>
 				<ee:set-variable variableName="requestHeaders"><![CDATA[%dw 2.0
 output application/java
 var requestHeaders = attributes.headers
@@ -51,7 +47,7 @@ var offerRelaMainOffer = vars.offerRelaSynchronizationResult default [] filter (
 
 ---
 {
-	transactionId: vars.transactionId,
+	synchronizationId: vars.inputPayload.synchronizationId,
 	results: {
 		(attributeSynchronization: vars.attributeSynchronizationResult map ((item) -> item.payload)) if vars.attributeSynchronizationResult?,
 		(productSynchronization: vars.productSynchronizationResult) if vars.productSynchronizationResult?,
@@ -104,6 +100,7 @@ output application/java
 			<when expression="#[vars.inputPayload.attributeSynchronization? and !isEmpty(vars.inputPayload.attributeSynchronization)]">
 				<parallel-foreach doc:name="Parallel For Each Attribute" doc:id="035117dd-b8f3-40d7-b261-df5f51c10157" collection="#[vars.inputPayload.attributeSynchronization]" maxConcurrency="10" target="attributeSynchronizationResult">
 					<try doc:name="Try" doc:id="014e0e8d-7201-4e55-a52a-1369039b9a99">
+						<flow-ref doc:name="build-zsmart-set-sync-variables" doc:id="9b73200d-65dd-4bf9-bad5-c0235fe949db" name="build-zsmart-set-sync-variables"/>
 						<ee:transform doc:name="set attributes sync zsmart request" doc:id="b6570df7-a3f9-41a2-9572-3bc8fdb121cc">
 							<ee:message>
 								<ee:set-payload><![CDATA[%dw 2.0
@@ -111,7 +108,7 @@ output application/json skipNullOn = "everywhere"
 ---
 {
 	transactionId: vars.transactionId,
-	createDate: vars.inputPayload.createDate,
+	createDate: vars.syncDate,
 	message: payload
 }]]></ee:set-payload>
 							</ee:message>
@@ -155,6 +152,7 @@ output application/java
 		<choice doc:name="Validar productSynchronization" doc:id="56556dfc-d306-45fc-9237-234fa127aa52" >
 			<when expression="#[vars.inputPayload.productSynchronization? and !isEmpty(vars.inputPayload.productSynchronization)]" >
 				<try doc:name="Procesar Product Synchronization" doc:id="25ffe93a-186d-4a43-b297-97e4352ce3d0" >
+					<flow-ref doc:name="build-zsmart-set-sync-variables" doc:id="7bc29c98-74f9-479c-bbb2-96676ce3ca98" name="build-zsmart-set-sync-variables"/>
 					<ee:transform doc:name="set products sync zsmart request" doc:id="426fb2d1-cbc0-4c8c-a442-339aa5870560" >
 						<ee:message >
 							<ee:set-payload ><![CDATA[%dw 2.0
@@ -162,7 +160,7 @@ output application/json skipNullOn = "everywhere"
 ---
 {
 	transactionId: vars.transactionId,
-	createDate: vars.inputPayload.createDate,
+	createDate: vars.syncDate,
 	message: {
 		prodList: (vars.inputPayload.productSynchronization default []) map (product) -> {
 			prodType: product.prodType,
@@ -222,6 +220,7 @@ output application/java
 		<choice doc:name="Validar offerSynchronization" doc:id="58128436-04e0-40bf-8744-b62ac5366baa" >
 			<when expression="#[vars.inputPayload.offerSynchronization? and !isEmpty(vars.inputPayload.offerSynchronization)]" >
 				<try doc:name="Procesar Offer Synchronization" doc:id="009ac98a-b881-4679-a64f-0cb35d9a4203" >
+					<flow-ref doc:name="build-zsmart-set-sync-variables" doc:id="2fc50af3-8fad-4c71-98ac-dbdf6b7daa81" name="build-zsmart-set-sync-variables"/>
 					<ee:transform doc:name="set offer sync zsmart request" doc:id="56ad4cc1-cdb0-46c6-bb75-baed25994dbe" >
 						<ee:message >
 							<ee:set-payload ><![CDATA[%dw 2.0
@@ -229,7 +228,7 @@ output application/json skipNullOn = "everywhere"
 ---
 {
 	transactionId: vars.transactionId,
-	createDate: vars.inputPayload.createDate,
+	createDate: vars.syncDate,
 	message: {
 		offerList: (vars.inputPayload.offerSynchronization default []) map (offer) -> {
 			id: offer.id,
@@ -329,7 +328,8 @@ do {
 					</ee:transform>
 				<parallel-foreach doc:name="Parallel For Each OfferRela" doc:id="9a1fddff-6bd8-4fe8-9871-066995863ae9" collection="#[vars.offerRelaRecords]" maxConcurrency="10" target="offerRelaSynchronizationResult">
 					<try doc:name="Procesar Offer Relation Synchronization" doc:id="30dfa613-95e8-4871-94ba-1a4d7b53cc53">
-					<ee:transform doc:name="set offerRela syncType" doc:id="55d88b2a-a6c9-4b74-9246-5dace4574c43" >
+					<flow-ref doc:name="build-zsmart-set-sync-variables" doc:id="8cc9ef26-fbfd-4eac-aece-646a07fca9ab" name="build-zsmart-set-sync-variables"/>
+						<ee:transform doc:name="set offerRela syncType" doc:id="55d88b2a-a6c9-4b74-9246-5dace4574c43" >
 							<ee:message >
 							</ee:message>
 							<ee:variables >
@@ -347,7 +347,7 @@ var zsmartContent = [payload - "syncType"]
 ---
 {
 	transactionId: vars.transactionId,
-	createDate: vars.inputPayload.createDate,
+	createDate: vars.syncDate,
 	message: {
 		(bundleMemberList: zsmartContent) if (vars.syncType == "bundleMember"),
 		(mainOfferMemberList: zsmartContent) if (vars.syncType == "mainOffer")
@@ -391,6 +391,21 @@ output application/java
 			</otherwise>
 		</choice>
 	</sub-flow>
+	<sub-flow name="build-zsmart-set-sync-variables" doc:id="4afab033-5135-4ff6-9223-892b7acb04fa" >
+		<ee:transform doc:name="set transactionId and syncDate" doc:id="bfe1e5ee-98e0-438d-992a-f4b8db8d0fea" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="transactionId" ><![CDATA[%dw 2.0
+output application/java
+---
+uuid()]]></ee:set-variable>
+				<ee:set-variable variableName="syncDate" ><![CDATA[%dw 2.0
+output application/java
+---
+now() as String {format: "YYYY-MM-dd HH:mm:ss"}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
 	<sub-flow name="build-zsmart-success-result" doc:id="74a9e6a5-8a42-4c52-b3b6-b3b8fa0c96ef" >
 		<ee:transform doc:name="set synchronization success result" doc:id="732f43ee-b2a3-447b-8c7f-d6598013b125" >
 			<ee:message >
@@ -398,6 +413,8 @@ output application/java
 output application/java
 ---
 {
+	transactionId: vars.transactionId,
+	synchronizationDate: vars.syncDate,
     responseCode: payload.result.result.responseCode,
     responseMessage: payload.result.result.responseMessage,
     (syncType: vars.syncType) if !isEmpty(vars.syncType)
@@ -412,6 +429,8 @@ output application/java
 output application/java
 ---
 {
+	transactionId: vars.transactionId,
+	synchronizationDate: vars.syncDate,
 	responseCode: (error.errorMessage.payload.status) default "9999",
 	responseMessage: (error.errorMessage.payload.message) default (error.description) default ('Error processing ' ++ (vars.syncTypeLabel default "sync")),
 	(syncType: vars.syncType) if !isEmpty(vars.syncType)
