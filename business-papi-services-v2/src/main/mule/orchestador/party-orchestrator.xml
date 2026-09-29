@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-party-orchestratorSub_Flow" doc:id="1d0fdbf1-b4ba-459a-bdeb-34be2f443a0a">
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Params" doc:id="32ea20e1-36d6-4c0d-8f42-873ec2c85edc" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Set headers" doc:id="3a050a6e-c51f-4275-af44-ad339cf5e19e" variableName="headers" />
+		<set-variable value="#[[]]" doc:name="Set Variable" doc:id="481da76a-7cb2-47c5-a900-91a0d861edb9" variableName="bodyResponse" />
+		<flow-ref doc:name="Flow Reference" doc:id="6bb40cd9-051c-4eb9-9f1f-a8822686daca" name="get-party-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="4adba65e-d24b-4197-a14c-60bed2d7af5d">
+			<when expression="#[payload.totalResults &gt; 0]">
+				<foreach doc:name="For Each" doc:id="3628c4be-cc4d-4de8-a18e-8366f8ec3f57" collection="#[payload.items]">
+					<set-variable value="#[payload.resourceId]" doc:name="Set Id Employee" doc:id="887c3714-3147-48df-bd5d-274abb5e3917" variableName="numeroIdentificacion" />
+					<flow-ref doc:name="Flow Reference" doc:id="65169a7c-081a-4d04-a0f4-efc7e7b731f7" name="get-employee-ofsc-Sub_Flow" />
+					<set-variable value="#[%dw 2.0&#10;output application/json&#10;---&#10;if(payload.id != null)(&#10;	(vars.bodyResponse default []) ++ [payload]&#10;)else {}]" doc:name="Set Variable" doc:id="d6d12875-b867-4226-8046-c83fb922d66c" variableName="bodyResponse" />
+				</foreach>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set Payload Response Fail" doc:id="1a11d3d4-ef26-41c0-b702-9295c076bdd3">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 200,
+  "code": "NO_DATA",
+  "message": {
+    "message": "No se obtuvieron datos de cuadrillas"
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Transform Message" doc:id="ee5a0c36-367a-4a7a-b854-f4f8042c721f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if(vars.bodyResponse != [])
+ vars.bodyResponse
+ else
+  payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Apply Pagination Party" doc:id="4423fd35-f3e0-454e-b760-bd9d2ac1ea6b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var profile = upper((Mule::p('pagination.profile') default "Bajo") as String)
+var maxLimit = if (profile == "ALTO") ((Mule::p('pagination.profiles.alto.max') default 100) as Number) else if (profile == "MEDIO") ((Mule::p('pagination.profiles.medio.max') default 50) as Number) else ((Mule::p('pagination.profiles.bajo.max') default 25) as Number)
+var defaultLimit = maxLimit
+var defaultOffset = (Mule::p('pagination.default.offset') default 0) as Number
+var reqLimit = (vars.parameters.limit default defaultLimit) as Number
+var reqOffset = (vars.parameters.offset default defaultOffset) as Number
+var limit = if (reqLimit > maxLimit) maxLimit else if (reqLimit < 0) 0 else reqLimit
+var offset = if (reqOffset < 0) 0 else reqOffset
+var payloadArr = if (payload is Array) payload else null
+var lastIndex = if (payloadArr is Array) sizeOf(payloadArr) - 1 else -1
+var toIndex = if (payloadArr is Array) min([offset + limit - 1, lastIndex]) else -1
+---
+if (payload is Array)
+    if (sizeOf(payloadArr) == 0 or offset > lastIndex)
+      []
+    else
+      payloadArr[offset to toIndex]
+else
+    payload
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

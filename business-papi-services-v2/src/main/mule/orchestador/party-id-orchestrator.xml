@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="party-orchestratorSub_Flow" doc:id="eca4f0b7-7fa3-4e22-900a-7f4e24bc1414" >
+		<set-variable value="#[attributes.uriParams.id]" doc:name="Set Variable" doc:id="05639d91-15c3-43e8-84ca-8b0fcae838e1" variableName="numeroIdentificacion" />
+		<set-variable value="#[attributes.headers]" doc:name="set headers" doc:id="1f6e5091-5088-4b4e-9707-9448b8358ce1" variableName="headers" />
+		<choice doc:name="Choice" doc:id="fe807b22-1920-4ca8-b91f-9c40b52d813b" >
+			<when expression="#[upper(vars.headers.'x-employee-source' default &quot;&quot;) == &quot;KACTUS&quot;]">
+				<flow-ref doc:name="Flow Reference" doc:id="a8690fc6-f291-4bf6-89cc-d382f5370ce5" name="party-id-oracle-kactus-orchestratorSub_Flow"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="get-party-id-orchestratorSub_Flow" doc:id="c8dce3b9-6076-4381-abab-ec5b4edcacb6" name="get-party-id-ldap-orchestratorSub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="party-id-oracle-kactus-orchestratorSub_Flow" doc:id="accb2d01-919a-4ef2-ac75-f0c89c4c276e" >
+		<flow-ref doc:name="get-party-id-kactus-clientSub_Flow" doc:id="3bb44242-4fbb-40d0-aefe-c06a7258dcb3" name="get-party-id-kactus-clientSub_Flow"/>
+		<ee:transform doc:name="Transform Message" doc:id="5cfb946b-308a-4af1-a7e1-738ef8628937" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    idNumber: payload.CEDULA,
+    firstName: payload.NOMBRES,
+    lastName: payload.APELLIDOS,
+    jobTitle: payload.CARGO,
+    email: payload.CORREO,
+    costCenter: payload.CENTRO_COSTO,
+    managerCode: payload.COD_FREP,
+    vicePresidency: payload.VICEPRESIDENCIA,
+    payrollClass: payload.CLASE_DE_NOMINA,
+    startDate: (payload.FECHA_INICIO as DateTime) as String {
+        format: "yyyy-MM-dd"
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-party-id-ldap-orchestratorSub_Flow" doc:id="cb090fff-7bab-4a0d-bc8b-d79471895a96" >
+		<flow-ref doc:name="Flow Reference" doc:id="e88f3949-e3f2-4cb0-865b-18acd56de98d" name="get-employee-sapi-clientSub_Flow"/>
+		<choice doc:name="Validacion de respuesta de LDAP" doc:id="3562d8e4-8b63-4957-8264-e34e7a3fd372">
+			<when expression='#[payload.employee? and (payload.employee != {})]'>
+				<choice doc:name="Choice" doc:id="abf565b4-e2f7-48e8-9f60-9fd767dfa93c" >
+					<when expression='#[payload.employee.status == "ACTIVO"]'>
+						<ee:transform doc:name="Set Payload Response Success" doc:id="f64c1da5-1398-4601-8487-43a49bdc0696">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	id: payload.employee.workforceID,
+	fullName: upper(payload.employee.fullName),
+	status:
+        (upper(payload.employee.status) default null) match {
+            case "ACTIVO" -> "ACTIVE"
+            else          -> upper(payload.employee.status)
+        },
+    contactMedium: (
+    []
+    ++ (if (!isEmpty(payload.employee.email)) [{ mediumType: "email", value: payload.employee.email }] else [])
+    ++ (if (!isEmpty(payload.employee.telephoneNumber)) [{ mediumType: "mobile", value: payload.employee.telephoneNumber }] else [])
+  )
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Set Payload Response Fail" doc:id="6b1e1da1-25ab-4029-a408-f44181b55fa8" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 200,
+  "code": "NO_ACTIVE",
+  "message": {
+    "message": "the employee is not active"
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Flow Reference" doc:id="c01228f8-a4e1-4447-a9eb-e3f70d72d314" name="get-employee-ofsc-Sub_Flow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-employee-ofsc-Sub_Flow" doc:id="d88513d2-a2a2-4f15-b83d-e0c026328cbd" >
+		<flow-ref doc:name="Flow Reference" doc:id="1543d22e-76b8-4f0a-8b37-78cbdab5bc71" name="get-party-id-clientSub_Flow" />
+		<choice doc:name="Validacion de estado Empleado" doc:id="6c173e74-9096-4f20-9f46-09b8dd51b681" >
+			<when expression='#[payload.status == "active"]' >
+				<ee:transform doc:name="Set Payload Response Success" doc:id="659099a0-86a8-41f7-a844-e023a7b12383" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	id: payload.resourceId,
+	fullName: upper(payload.name),
+	status: upper(payload.status),
+    contactMedium: (
+    []
+    ++ (if (!isEmpty(payload.email)) [{ mediumType: "email", value: payload.email }] else [])
+    ++ (if (!isEmpty(payload.phone)) [{ mediumType: "mobile", value: payload.phone }] else [])
+  )
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set Payload Response Fail" doc:id="d8c80e1f-fa9b-499c-b047-607b5703fc6e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 200,
+  "code": "NO_ACTIVE",
+  "message": {
+    "message": "the employee is not active"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

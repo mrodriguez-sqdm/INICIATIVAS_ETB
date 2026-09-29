@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-identityValidation" doc:id="d1b3a304-34b0-4d5f-8698-1bc580a32fa0" >
+		<ee:transform doc:name="set variables" doc:id="00f4fd78-ffaf-4714-92ca-08431a145181" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+	"name": attributes.headers.name,
+	"systemId": attributes.headers.systemId,
+	"source": attributes.headers.source
+}]]></ee:set-variable>
+				<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"documentNumber": payload.documentNumber,
+	"documentType": payload.documentType as String,
+	"firstLastName": payload.firstLastName,
+	"dateOfIssuance": payload.dateExpedition
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-get-identity-validation-sub-flow" doc:id="f08d6308-0dac-464e-9335-f8b535de6273" name="mongo-db-sapi-get-identity-validation-sub-flow" target="getIdentityResponse" />
+		<ee:transform doc:name="set validation scenario" doc:id="88b9fd11-65f3-4d8c-9d37-5a615857633c" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="validationScenario" ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+var identity = vars.getIdentityResponse.identity[0]
+var model = vars.initialPaylad.model.technology
+var startDate = now() as Date {format: "yyyy-MM-dd"}
+
+var endDate =
+  if (identity != null and identity.fecha_consulta != null and identity.fecha_consulta != "")
+    (identity.fecha_consulta as Date {format: "yyyy-MM-dd"})
+  else
+    startDate
+---
+identity match {
+  case i if isEmpty(i) -> "NUEVO_REGISTRO_DE_VALIDACION"
+  case i if i.estado != "VIGENTE" -> "ACTUALIZACION_NO_VIGENTE"
+  case i if i.estado == "VIGENTE" and (daysBetween(endDate, startDate) > 30) -> "ACTUALIZACION_VIGENCIA_CADUCADA"
+  else -> "VALIDACION_EXITOSA"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="validation scenario" doc:id="cfa24764-bbca-4172-b099-bbc3dc3c15f9" message='#["Validacion a procesar: " ++ vars.validationScenario]' />
+		<choice doc:name="identity validation" doc:id="72d0907d-1d7a-4bbe-9b5b-d5c48577bc59" >
+			<when expression='#[vars.validationScenario == "NUEVO_REGISTRO_DE_VALIDACION"]' >
+				<flow-ref doc:name="post-identity-lisim-sub-flow" doc:id="6746ac1d-a3d5-45a7-be56-f5ba8d31a19d" name="post-identity-lisim-sub-flow"/>
+				<ee:transform doc:name="set mongo post identity request" doc:id="c36ce46b-7499-4d39-834e-f7f8b6682e51">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"nombres": vars.initialPayload.names,
+	"apellido": vars.initialPayload.firstLastName,
+	"segundo_apellido": vars.initialPayload.secondLastName,
+	"fecha_exp": vars.initialPayload.dateExpedition,
+	"num_doc": vars.initialPayload.documentNumber,
+	"tipo_doc": vars.initialPayload.documentType,
+	"fecha_consulta": now() as Date,
+	"estado": "NO VIGENTE",
+	"causal": ""
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-post-identity-validation-sub-flow" doc:id="60a76c71-099c-4efc-b354-08c42a4287d6" name="mongo-db-sapi-post-identity-validation-sub-flow" />
+				<flow-ref doc:name="os-store-validation-sub-flow" doc:id="cd7de029-e718-4464-b4e7-f8950d27da40" name="os-store-validation-sub-flow" />
+			</when>
+			<when expression='#[vars.validationScenario == "ACTUALIZACION_NO_VIGENTE"]' >
+				<flow-ref doc:name="post-identity-lisim-sub-flow" doc:id="3d711052-a0b9-491b-9736-05a382c2dcd8" name="post-identity-lisim-sub-flow" />
+				<flow-ref doc:name="patch-identity-mongo-sub-flow" doc:id="49928b20-be10-4b55-9fa7-cc23e8eaebd6" name="patch-identity-mongo-sub-flow" />
+				<flow-ref doc:name="os-store-validation-sub-flow" doc:id="abe5ca21-6539-4970-9c04-56918adc46e6" name="os-store-validation-sub-flow" />
+			</when>
+			<when expression='#[vars.validationScenario == "ACTUALIZACION_VIGENCIA_CADUCADA"]' >
+				<flow-ref doc:name="post-identity-lisim-sub-flow" doc:id="d73a6fd1-f4cc-412b-8fd2-1a6b6a4d19af" name="post-identity-lisim-sub-flow" />
+				<flow-ref doc:name="patch-identity-mongo-sub-flow" doc:id="14eb7945-fc93-4a15-9a9a-3b4ed60fd666" name="patch-identity-mongo-sub-flow"/>
+				<flow-ref doc:name="os-store-validation-sub-flow" doc:id="cd3270a2-bd65-48df-ae71-83ae8edd30c6" name="os-store-validation-sub-flow" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="set mongo get variables params" doc:id="b5deb6d6-c468-4601-b171-01c04ef0f1be">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="queryParams"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"technology": vars.initialPayload.model.technology,
+	"segment": vars.initialPayload.model.segment
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-get-score-variables-sub-flow" doc:id="4165a7e4-4320-4f6a-b85b-7c58eb23fb98" name="mongo-db-sapi-get-score-variables-sub-flow" target="getVariablesResponse" />
+				<ee:transform doc:name="set mongo get georeference params" doc:id="959b2fe5-98c7-4a90-abb3-5cff6bb570b7">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="queryParams"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"tableNumber": vars.getVariablesResponse.variables[0].'Tabla_Asignada'
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-get-score-georeference-sub-flow" doc:id="25d284fb-a0e1-4694-9a47-41c86af3d13c" name="mongo-db-sapi-get-score-georeference-sub-flow" target="getGeoreferenceResponse" />
+				<choice doc:name="technology validation" doc:id="5c01d000-75d4-4e1b-8c5e-06e14ba91ba2">
+					<when expression='#[vars.initialPayload.model.technology == "LTE"]'>
+						<ee:transform doc:name="set lte validation response" doc:id="29038736-ad0c-4b17-ba17-31d015d961ce">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var scoreToCheck = vars.getIdentityResponse.identity[0].'score_movil'.Valor default 0
+var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
+
+var matchedRange = rangos filter (rango) -> do {
+	var parts = rango.Codigo splitBy "_"
+	var low   = parts[0] as Number
+	var high  = parts[1] as Number
+	---
+	scoreToCheck >= low and scoreToCheck <= high
+}
+
+var lteScore = (matchedRange[0].Detalle map ((item, index) -> {
+	"Status Score": item.Nombre,
+	"Valor Maximo": item.Valor as Number,
+	"Oferta": vars.initialPayload.model.technology,
+    "Segmento": vars.initialPayload.model.segment
+}))[0]
+---
+{
+  code: "200",
+  message: "cliente validado exitosamente",
+  result: lteScore
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="set fixed validation response" doc:id="20fce671-3f56-4929-a45d-865f1ccd360f">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+var numberToCheck = vars.getIdentityResponse.identity[0].'score_fija'.Valor default 0
+var estrato = vars.getIdentityResponse.identity[0].'score_fija'.Estrato default 0
+var rangos = vars.getGeoreferenceResponse.georeference[0].Rangos
+
+var matchedRange = rangos filter (rango) -> do {
+    var parts = rango.Codigo splitBy "_"
+    var low = parts[0] as Number
+    var high = parts[1] as Number
+    ---
+    numberToCheck >= low and numberToCheck <= high
+  }
+
+var matchedDetalle = (matchedRange[0].Detalle default []) filter (d) -> d.Nombre == ("ESTRATO " ++ (estrato as String))
+
+var fixedScore = (matchedDetalle map ((item, index) -> {
+    "Status Score": item.Nombre,
+    "Valor Maximo": item.Valor as Number,
+	"Oferta": vars.initialPayload.model.technology,
+    "Segmento": vars.initialPayload.model.segment
+}))[0]
+
+output application/json  
+---
+{
+    code: "200",
+    message: "cliente validado exitosamente",
+    result: fixedScore
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-identity-lisim-sub-flow" doc:id="a7df9a23-3e46-409a-ba6c-faf3690433cd" >
+		<ee:transform doc:name="set lisim post identity request" doc:id="cdf54576-fefc-40b9-8128-a4c3eeeafce5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"DocumentType": vars.initialPayload.documentType match {
+		case "CC"  -> 1
+        case "CE" -> 2
+        else   -> "Invalid input"
+	},
+	"DocumentNumber": vars.initialPayload.documentNumber,
+	"DateExpedition": (vars.initialPayload.dateExpedition as Date) as String {
+		format: "yyyy-MM-dd"
+	},
+	"Surname": vars.initialPayload.firstLastName,
+	"Cellphone": vars.initialPayload.cellphone,
+	"Adviser": vars.initialPayload.adviser,
+	"Channel": vars.initialPayload.channel,
+	"Provider": vars.initialPayload.provider,
+	"Portal": vars.initialPayload.portal
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="lisim-sapi-identity-clientSub_Flow" doc:id="83e1eebf-64dd-412b-bc34-6e6ae710aaa2" name="lisim-sapi-identity-clientSub_Flow" target="postLisimResponse" />
+	</sub-flow>
+	<sub-flow name="patch-identity-mongo-sub-flow" doc:id="bd4c5ac5-d561-4587-bc08-338827e7c343" >
+		<ee:transform doc:name="set mongo patch identity request" doc:id="7b0020c6-92f5-44a2-bdc9-7bdc55cbf541" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"fecha_consulta": "",
+	"fecha_confronta": "",
+	"estado": "NO VIGENTE",
+	"causal": "",
+	"score_fija": {},
+	"score_movil": {},
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"documentType": vars.initialPayload.documentType as String,
+	"documentNumber": vars.initialPayload.documentNumber
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="b1074a90-0711-4082-bb01-d24df3025b46" name="mongo-db-sapi-patch-identity-validation-sub-flow" />
+	</sub-flow>
+	<sub-flow name="os-store-validation-sub-flow" doc:id="2daa4ed3-0541-4846-ba91-76211208a2a4" >
+		<os:store doc:name="store validation values" doc:id="c1c5dece-db56-48a8-8915-b76e87559a7d" key="#[vars.postLisimResponse.id]" objectStore="Validation_Object_Store" >
+			<os:value ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+	identityId: vars.postLisimResponse.id,
+	documentNumber: vars.initialPayload.documentNumber,
+	documentType: vars.initialPayload.documentType,
+	technology: vars.initialPayload.model.technology,
+	segment: vars.initialPayload.model.segment
+}]]]></os:value>
+		</os:store>
+		<ee:transform doc:name="set validation response" doc:id="573ee036-f818-49d0-b2f5-c0683a4f16a1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  code: "200",
+  message: vars.postLisimResponse.messageServer default "validacion exitosa",
+  result: {
+      "id": vars.postLisimResponse.id,
+      "type": vars.postLisimResponse."type",
+      "questions": vars.postLisimResponse.questions,
+      "otpCode": vars.postLisimResponse.otpCode,
+      "matchType": vars.postLisimResponse.matchType
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
