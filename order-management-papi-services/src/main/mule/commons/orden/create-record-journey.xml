@@ -30,6 +30,7 @@ var cli   = vars.objectCliente_Tramite.Cliente_Tramite
 // ---------- FTTH ----------
 fun datosFTTH(src) = 
    { srv: {
+   	    idServicio:      src."_id"."\$oid",
 	    fechaActivacion: src.Fecha_Activacion,          
 	    ctaServicio:     src.Id_Cuenta_Servicio,          
 	    ctaFacturacion:  src.Id_Cuenta_Facturacion,  
@@ -54,22 +55,23 @@ fun datosFTTH(src) =
 // ---------- LTE ----------
 fun datosLTE(src) = 
    { srv: {
+   	idServicio:      src."_id"."\$oid",
     fechaActivacion: src.Fecha_Activacion,                
-    ctaServicio:     "",                   
+    ctaServicio:     src.Integration_Id,                   
     ctaFacturacion:  src.Cuenta_Facturacion,
     estado: src.Estado,                         
     producto: (src.Bundles default []) map (pl) -> {
         idBundle:   pl.id_catalogo,                     
-        idAuxiliar: null,
-        svaOtt:     []
+        idAuxiliar: (pl.bundle_auxiliar default []) map (aux) -> { id: aux.id_catalogo },
+        svaOtt:     (pl.opcionales default []) map (o) -> { id: o.id_opcional }
       }
     },
     canc: {
-        idBundle:        vars.objectOrden.Bundle_activo[0].id_catalogo,        
+        idBundle:        vars.objectOrden.Bundle_activo[0].id_catalogo as Number,        
         idAuxiliar: (vars.objectOrden.Bundle_activo[0].bundle_auxiliar default []) map (aux) -> { id: aux.id_catalogo },
         svaOtt:     (vars.objectOrden.Bundle_activo[0].opcionales default []) map (o) -> { id: o.id_opcional },              
         numeroOrden:     vars.objectOrden.Numero_Orden,                  
-        cuentaServicio:  "",         
+        cuentaServicio:  src.Integration_Id,         
         fechaProgramada: global::parseFechaFlexible(global::valorCaracteristica(vars.objectOrden.Caracteristicas_Orden, "Fecha Vencimiento")),        
         tecnologia:      "LTE"
     }
@@ -105,23 +107,11 @@ var update = {
 
         "\$set": {
             fechaModificacion: ahora,
-            "cliente.correoNotificacion": emailNotificacion,
-		    ("servicioVigente.fechaActivacion": { "\$date": srv.fechaActivacion }) if (srv.fechaActivacion != null),
-		    ("servicioVigente.cuentaServicio":     srv.ctaServicio)                   if (srv.ctaServicio != null),
-		    ("servicioVigente.cuentaFacturacion":  srv.ctaFacturacion)                if (srv.ctaFacturacion != null),
-		    "servicioVigente.ultimoTramite":    "",
-		    "servicioVigente.estado":           srv.estado
+            "cliente.correoNotificacion": emailNotificacion
         },
 
         
         "\$push": {
-            "servicioVigente.producto": {
-                "\$each": (srv.producto default []) map (prod) -> {
-                    idBundle:   prod.idBundle as Number,
-                    idAuxiliar: (prod.idAuxiliar default []) map (sva) -> { id: sva.id as Number },
-                    svaOtt:     (prod.svaOtt default []) map (sva) -> { id: sva.id as Number }
-                }
-            },
             "tramitesComerciales.cancelacion": {
 			    idIntento:          idIntento,
 			    (idBundle:          canc.idBundle)       if (canc.idBundle != null),
@@ -138,18 +128,24 @@ var update = {
 			    canal:              canal,
 			    resultado:          "PENDIENTE"
 			},
-            interacciones: {
-                tipoInteraccion:    "REGISTRO ORDEN CANCELACION",
-                detalleInteraccion: "Se crea orden cancelacion cuenta servicio: " ++ (canc.cuentaServicio default ""),
-                canal:              canal,
-                correlationId:      vars.headers."X-CORRELATION-ID",
-                fechaInteraccion:   ahora
+            interacciones: {                                         
+                "\$each": [{
+                    tipoInteraccion:    "REGISTRO ORDEN CANCELACION",
+                    detalleInteraccion: "Se crea orden cancelacion cuenta servicio: " ++ (canc.cuentaServicio default ""),
+                    canal:              canal,
+                    correlationId:      vars.headers."X-CORRELATION-ID",
+                    fechaInteraccion:   ahora
+                }],
+                "\$slice": -100
             },
-            auditoria: {
-                tramite:           "CANCELACION SERVICIO",
-                fechaRegistro:     ahora,
-                fechaModificacion: ahora,
-                aplicacion:        canal
+            auditoria: {                                            
+                "\$each": [{
+                    tramite:           "CANCELACION SERVICIO",
+                    fechaRegistro:     ahora,
+                    fechaModificacion: ahora,
+                    aplicacion:        canal
+                }],
+                "\$slice": -100
             }
         }
     }
@@ -162,6 +158,40 @@ var update = {
                 q:      filtro,
                 u:      update,
                 upsert: true,
+                multi:  false
+            },
+            {
+                q: {
+                    "cliente.tipoDocumento":   cli.Tipo_Documento,
+                    "cliente.numeroDocumento": cli.Numero_Documento as String
+                },
+                u: { "\$pull": { servicioVigente: { "_id": { "\$oid": srv.idServicio } } } },
+                upsert: false,
+                multi:  false
+            },
+            {
+                q: {
+                    "cliente.tipoDocumento":   cli.Tipo_Documento,
+                    "cliente.numeroDocumento": cli.Numero_Documento as String
+                },
+                u: {
+                    "\$push": {
+                        servicioVigente: {
+                            "_id": { "\$oid": srv.idServicio },
+                            producto: (srv.producto default []) map (prod) -> {
+                                (idBundle: prod.idBundle as Number) if (prod.idBundle != null),
+                                idAuxiliar: (prod.idAuxiliar default []) map (aux) -> { id: aux.id as Number },
+                                svaOtt:     (prod.svaOtt default []) map (sva) -> { id: sva.id as Number }
+                            },
+                            (fechaActivacion:   { "\$date": srv.fechaActivacion }) if (srv.fechaActivacion != null),
+                            (cuentaServicio:    srv.ctaServicio)    if (srv.ctaServicio != null),
+                            (cuentaFacturacion: srv.ctaFacturacion) if (srv.ctaFacturacion != null),
+                            ultimoTramite:      "CANCELACION",
+                            estado:             srv.estado
+                        }
+                    }
+                },
+                upsert: false,
                 multi:  false
             }
         ]
