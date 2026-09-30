@@ -29,11 +29,9 @@ var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
 		<choice doc:name="vars.call" doc:id="2bd08c83-dcee-477f-8f68-137902cdeb6d" >
 			<when expression="#[vars.call]">
 				<flow-ref doc:name="Flow Reference" doc:id="8bb8eee4-686a-49f6-b55a-7f62a1f7271d" name="mongo-db-sapi-get-customer-clientSub_Flow" target="rsCustomers"/>
-				<choice doc:name="Choice" doc:id="ec488c0f-a3bc-4245-8302-ee46c3348753">
-					<when expression="#[isEmpty(vars.rsCustomers.customers[0].Fecha_Expedicion_Documento)]">
-						<ee:transform doc:name="Transform Message" doc:id="18f7c846-0952-407b-8b16-4438263af39c" >
-							<ee:message >
-								<ee:set-payload ><![CDATA[%dw 2.0
+				<ee:transform doc:name="Transform Message" doc:id="18f7c846-0952-407b-8b16-4438263af39c">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -50,48 +48,12 @@ output application/json
 	}
 }]]></ee:set-payload>
 							</ee:message>
-							<ee:variables >
+							<ee:variables>
 								<ee:set-variable resource="dw/call-dynamic-query-method.dwl" variableName="method" />
 								<ee:set-variable resource="dw/call-dynamic-query-path.dwl" variableName="path" />
 							</ee:variables>
 						</ee:transform>
-						<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="92d637eb-13b9-4c5d-ad68-30c6afb5fd31" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="rsAdditionalData"/>
-						<async doc:name="Async" doc:id="dae6cde9-5010-4943-a863-53297638173a" >
-							<ee:transform doc:name="UPDATE" doc:id="25da8130-fc4c-437b-bda0-a09f60edbf1b">
-								<ee:message>
-									<ee:set-payload><![CDATA[%dw 2.0
-output application/json
-var additionalDate = vars.rsAdditionalData.result[0].fecha_exp default null
----
-{
-	"query": {
-		"update": "MDM_CLIENTE",
-		"updates": [{
-			"q": {
-				"Tipo_Documento": vars.parameters.CUSTOMER_ID_TYPE,
-				"Numero_Identificacion": vars.parameters.CUSTOMER_ID
-			},
-			"u": {
-				"\$set": {
-					"Fecha_Expedicion_Documento": (additionalDate as DateTime) as String {
-						format: "dd/MM/yyyy"
-					}
-				}
-			},
-			"multi": false
-		}]
-	}
-}]]></ee:set-payload>
-								</ee:message>
-								<ee:variables>
-									<ee:set-variable resource="dw/call-dynamic-query-method.dwl" variableName="method" />
-									<ee:set-variable resource="dw/call-dynamic-query-path.dwl" variableName="path" />
-								</ee:variables>
-							</ee:transform>
-							<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="f2fa6f2f-4369-4925-8ebc-447d6a021559" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="rsAdditionalData" />
-						</async>
-					</when>
-				</choice>
+				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="92d637eb-13b9-4c5d-ad68-30c6afb5fd31" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="rsAdditionalData" />
 				<ee:transform doc:name="Transform Message" doc:id="414488e9-cdc6-4c44-bba2-10ec4750fcf7">
 							<ee:message>
 								<ee:set-payload><![CDATA[%dw 2.0
@@ -211,12 +173,9 @@ var additionalDate = vars.rsAdditionalData.result[0].fecha_exp default null
 		creationDate: {
 			date: cust.Fecha_Creacion default ""
 		},
-		documentIssueDate: if ( !isEmpty(cust.Fecha_Expedicion_Documento) ) cust.Fecha_Expedicion_Documento
-      else if ( !isEmpty(additionalDate) ) (additionalDate as DateTime) as String {
+		documentIssueDate: (additionalDate as DateTime) as String {
 			format: "dd/MM/yyyy"
-		}
-      else
-        "",
+		},
 		birthDate: cust.Fecha_Nacimiento default "",
 		scoringDate: cust.Fecha_Scoring default "",
 		gender: cust.Genero default "",
@@ -295,6 +254,40 @@ var toIndex = if (customerArr is Array) min([offset + limit - 1, lastIndex]) els
 ]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
+				<async doc:name="Async" doc:id="dae6cde9-5010-4943-a863-53297638173a">
+							<ee:transform doc:name="UPDATE" doc:id="25da8130-fc4c-437b-bda0-a09f60edbf1b">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var additionalDate = vars.rsAdditionalData.result[0].fecha_exp default null
+---
+{
+	"query": {
+		"update": "MDM_CLIENTE",
+		"updates": [{
+			"q": {
+				"Tipo_Documento": vars.parameters.CUSTOMER_ID_TYPE,
+				"Numero_Identificacion": vars.parameters.CUSTOMER_ID
+			},
+			"u": {
+				"\$set": {
+					"Fecha_Expedicion_Documento": (additionalDate as DateTime) as String {
+						format: "dd/MM/yyyy"
+					}
+				}
+			},
+			"multi": false
+		}]
+	}
+}]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+									<ee:set-variable resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+								</ee:variables>
+							</ee:transform>
+							<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="f2fa6f2f-4369-4925-8ebc-447d6a021559" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="rsAdditionalData" />
+						</async>
 			</when>
 						<otherwise >
 				<ee:transform doc:name="Transform Message" doc:id="a881f5ac-838a-489b-ab74-d0c6aecb7980" >
