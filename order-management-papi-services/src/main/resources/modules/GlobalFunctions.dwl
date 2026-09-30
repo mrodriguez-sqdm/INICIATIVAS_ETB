@@ -56,6 +56,14 @@ fun homologarAccion(tipoTramite) =
         else -> null
     }
 
+fun aBoolean(valor) = do {
+    var v = upper(trim((valor default "") as String))
+    ---
+    if (v == "T") true
+    else if (v == "F") false
+    else null
+}
+
 fun enriquecerAtributos(atributos: Array, catalogo: Array): Array =
     atributos map (attr) -> {
         Nombre: attr.Nombre,
