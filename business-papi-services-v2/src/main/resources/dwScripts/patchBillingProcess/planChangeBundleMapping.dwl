@@ -47,7 +47,7 @@ output application/json  skipNullOn = "everywhere"
 		("bundleMemberList": service.bundleMembers map ((bundleMember) -> {
 			"operate": bundleMember.operate,
 			"serviceNumber": bundleMember.serviceNumber
-		})) if (!isEmpty(service.bundleMembers default [])),
+		})),
 		("contactDtoList": service.contacts map ((serviceContact) -> {
 			"contactType": serviceContact.contactType,
 			"operate": serviceContact.operate,
@@ -84,7 +84,7 @@ output application/json  skipNullOn = "everywhere"
 		"offerCode": offer.offerCode,
 		"effDate": offer.effectiveDate,
 		"expDate": offer.expirationDate,
-		"instanceIdCRM": boi.serviceNumber
+		"instanceIdCRM": offer.instanceIdCRM default boi.serviceNumber
 	})) if (!isEmpty(flatten(services.offers default []))),
 	// Service Offers Attributes Mapping
 	("billOfferInstAttrList": services flatMap (boi) -> boi.offers default [] flatMap (o) -> o.attributes default [] map ((offerAttr) -> {
