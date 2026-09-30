@@ -98,13 +98,15 @@ output application/json
 
 import modules::GlobalFunctions as global
 
-var TESR = vars.requestOrder.through.throughType
+var tramite = upper(trim(vars.requestOrder.through.throughType default ""))
 
+var UMBRAL_DIAS = 3
+var DIA_CORTE_FIN_MES = 30
 
 fun aNumero(v, porDefecto = 0) = do {
     var s = trim((v default "") as String)
     ---
-    if (s matches /^-?\d+(\.\d+)?$/) s as Number else porDefecto
+    if (s matches /^-?\d+$/) s as Number else porDefecto
 }
 
 var fecha_corte = aNumero(vars.responseMongo.result[0].Fecha_Corte_Facturacion)
@@ -113,42 +115,40 @@ var fecha_corte = aNumero(vars.responseMongo.result[0].Fecha_Corte_Facturacion)
 fun pad2(n: Number): String = if (n < 10) "0" ++ (n as String) else (n as String)
 
 fun crearFecha(anno: Number, mes: Number, dia: Number): Date =
-	((anno as String) ++ "-" ++ pad2(mes) ++ "-" ++ pad2(dia)) as Date {format: "yyyy-MM-dd"}
+    ((anno as String) ++ "-" ++ pad2(mes) ++ "-" ++ pad2(dia)) as Date {format: "yyyy-MM-dd"}
 
 fun primerDiaMes(fecha: Date): Date = crearFecha(fecha.year, fecha.month, 1)
 
 fun ultimoDiaMes(fecha: Date): Date = (primerDiaMes(fecha) + |P1M|) - |P1D|
 
-var UMBRAL_DIAS = 3
+// Si el mes no tiene ese día (ej. 30 de febrero), usa el último día del mes
+fun fechaEnMes(base: Date, dia: Number): Date = do {
+    var ultimo = ultimoDiaMes(base).day
+    ---
+    crearFecha(base.year, base.month, if (dia > ultimo) ultimo else dia)
+}
 
 fun fechaEjecucionCancelacionVoluntaria(fechaCorteFacturacion: Number): Date = do {
-	var hoy = now() as Date
-	var intDiaCorte = fechaCorteFacturacion default 0
-	var corteEsFinDeMes = (intDiaCorte == 0) or (intDiaCorte > 31)
-	---
-	if (corteEsFinDeMes)
-		ultimoDiaMes(hoy)
-	else do {
-		var fechaCorteMesActual = crearFecha(hoy.year, hoy.month, intDiaCorte)
-		var diasParaCorte = (fechaCorteMesActual - hoy) as Number {unit: "days"}
-		---
-		if (diasParaCorte >= UMBRAL_DIAS)
-			fechaCorteMesActual
-		else
-			fechaCorteMesActual + |P1M|
-	}
+    var hoy = (now() >> "UTC-5") as Date
+    var intDiaCorte = fechaCorteFacturacion default 0
+    var corteEsFinDeMes = (intDiaCorte <= 0) or (intDiaCorte > 31)
+    var diaCorte = if (corteEsFinDeMes) DIA_CORTE_FIN_MES else intDiaCorte
+    var fechaCorteMesActual = fechaEnMes(hoy, diaCorte)
+    var diasParaCorte = daysBetween(hoy, fechaCorteMesActual)
+    ---
+    if (diasParaCorte >= UMBRAL_DIAS)
+        fechaCorteMesActual
+    else
+        fechaEnMes(primerDiaMes(hoy) + |P1M|, diaCorte)
 }
 
 fun generarFechaEjecucionPorCiclo(tramite: String, fechaCorteFacturacion: Number): Date | Null =
-	tramite match {
-		case t if (t == TESR or t == "Tramite LTE") -> fechaEjecucionCancelacionVoluntaria(fechaCorteFacturacion)
-		else -> null
-	}
+    tramite match {
+        case t if (t == "TESR" or t == "TRAMITE LTE") -> fechaEjecucionCancelacionVoluntaria(fechaCorteFacturacion)
+        else -> null
+    }
 
-var fecha = generarFechaEjecucionPorCiclo(
-	TESR default "TESR",
-	fecha_corte default "0"
-)
+var fecha = generarFechaEjecucionPorCiclo(tramite, fecha_corte)
 
 var cf = vars.responseMongo.result[0]
 ---
