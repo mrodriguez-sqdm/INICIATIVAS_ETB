@@ -37,17 +37,17 @@ var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
 output application/json
 ---
 {
-  "query": {
-    "find": "MDM_VALIDACION_CLIENTE",
-    "filter": {
-      "tipo_doc": vars.parameters.CUSTOMER_ID_TYPE,
-      "num_doc": vars.parameters.CUSTOMER_ID
-    },
-    "sort": {
-      "fecha": -1
-    },
-    "limit": 1
-  }
+	"query": {
+		"find": "MDM_VALIDACION_CLIENTE",
+		"filter": {
+			"tipo_doc": vars.parameters.CUSTOMER_ID_TYPE,
+			"num_doc": vars.parameters.CUSTOMER_ID
+		},
+		"sort": {
+			"fecha_consulta": -1
+		},
+		"limit": 1
+	}
 }]]></ee:set-payload>
 							</ee:message>
 							<ee:variables >
@@ -56,6 +56,40 @@ output application/json
 							</ee:variables>
 						</ee:transform>
 						<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="92d637eb-13b9-4c5d-ad68-30c6afb5fd31" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="rsAdditionalData"/>
+						<async doc:name="Async" doc:id="dae6cde9-5010-4943-a863-53297638173a" >
+							<ee:transform doc:name="UPDATE" doc:id="25da8130-fc4c-437b-bda0-a09f60edbf1b">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var additionalDate = vars.rsAdditionalData.result[0].fecha_exp default null
+---
+{
+	"query": {
+		"update": "MDM_CLIENTE",
+		"updates": [{
+			"q": {
+				"Tipo_Documento": vars.parameters.CUSTOMER_ID_TYPE,
+				"Numero_Identificacion": vars.parameters.CUSTOMER_ID
+			},
+			"u": {
+				"\$set": {
+					"Fecha_Expedicion_Documento": (additionalDate as DateTime) as String {
+						format: "dd/MM/yyyy"
+					}
+				}
+			},
+			"multi": false
+		}]
+	}
+}]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+									<ee:set-variable resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+								</ee:variables>
+							</ee:transform>
+							<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="f2fa6f2f-4369-4925-8ebc-447d6a021559" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="rsAdditionalData" />
+						</async>
 					</when>
 				</choice>
 				<ee:transform doc:name="Transform Message" doc:id="414488e9-cdc6-4c44-bba2-10ec4750fcf7">
