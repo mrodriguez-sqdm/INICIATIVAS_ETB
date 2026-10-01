@@ -12,6 +12,14 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+
+var clausula = payload.clausula default {}
+var servicios = clausula filterObject ((v, k) ->
+    v is Object and (v.CargoInicial? or v.SaldoActual?)
+)
+fun num(v) =
+    if (v == null or v == "") 0
+    else v as Number
 ---
 {
   codeResponse: if (upper(payload.descError) == "OK") "200" else payload.resultado,
@@ -34,8 +42,8 @@ output application/json
           parentAccount: payload.clausula.cuenta_padre default null,
           integrationId: payload.clausula.integration_id default null,
           internet: {
-            initialCharge: (payload.clausula.Internet.CargoInicial default 0) as Number,
-            currentBalance: (payload.clausula.Internet.SaldoActual default 0) as Number,
+            initialCharge: (sum(valuesOf(servicios) map ((s) -> num(s.CargoInicial))) default 0) as Number,
+            currentBalance: (sum(valuesOf(servicios) map ((s) -> num(s.SaldoActual))) default 0) as Number,
             initialInstallments: (payload.clausula.Internet.CuotasInicial default 0) as Number,
             currentInstallments: (payload.clausula.Internet.CuotasActual default 0) as Number,
             startDate:
@@ -55,8 +63,7 @@ output application/json
     }
   }
   else {}
-)
-]]></ee:set-payload>
+)]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
 	</sub-flow>
