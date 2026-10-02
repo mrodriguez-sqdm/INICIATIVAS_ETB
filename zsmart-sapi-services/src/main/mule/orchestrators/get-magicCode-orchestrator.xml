@@ -49,31 +49,19 @@ output application/json skipNullOn="everywhere"
 			</ee:transform>
 			<flow-ref doc:name="billing-zsmart-client" doc:id="b5d5206f-5d73-4135-8797-aa015a4183e9" name="billing-zsmart-client" />
 			<choice doc:name="validate zsmart response" doc:id="b79b86f9-8533-4541-bdf2-0035b0fb2109" >
-				<when expression='(payload.res_code != "00000" or payload.result.resultCode != "0000")' >
+				<when expression='(payload.resultCode != "0000")' >
 					<ee:transform doc:name="set zsmartError" doc:id="b402b134-d436-4c52-ab23-ef9eab841bfb" >
 						<ee:message />
 						<ee:variables >
 							<ee:set-variable variableName="zsmartError" ><![CDATA[%dw 2.0
 output application/json
 var resCode = payload.res_code default "99999"
-var resultResCode = payload.result.responseCode default "99999"
 var resMessage = payload.res_message default "System Unexpected Error"
-var resultResMessage = payload.result.responseMessage  default "Business Unexpected Error"
 ---
-if(payload.result?)
-    resultResCode ++ ": " ++ resultResMessage
-else
-    resCode ++ ": " ++ resMessage]]></ee:set-variable>
+resCode ++ ": " ++ resMessage]]></ee:set-variable>
 						</ee:variables>
 					</ee:transform>
-					<choice doc:name="error type" doc:id="8e967372-b03f-4387-a80c-12df3d649abe" >
-						<when expression="payload.result?" >
-							<raise-error doc:name="ZSMART:BUSINESS_ERROR" doc:id="3a3bce08-8413-46bb-825c-89c9baf9e347" type="ZSMART:BUSINESS_ERROR" description="#[vars.zsmartError]" />
-						</when>
-						<otherwise >
-							<raise-error doc:name="ZSMART:SYSTEM_ERROR" doc:id="eb306efa-b30f-4df2-9b76-943326ae9fad" type="ZSMART:SYSTEM_ERROR" description="#[vars.zsmartError]" />
-						</otherwise>
-					</choice>
+					<raise-error doc:name="ZSMART:BUSINESS_ERROR" doc:id="3a3bce08-8413-46bb-825c-89c9baf9e347" type="ZSMART:BUSINESS_ERROR" description="#[vars.zsmartError]" />
 				</when>
 				<otherwise >
 					<ee:transform doc:name="set response" doc:id="e47099fe-b0b4-4617-8294-c6fac8fc1121" >
@@ -116,33 +104,6 @@ output application/json
 output application/java
 ---
 400]]></ee:set-variable>
-						</ee:variables>
-					</ee:transform>
-				</on-error-continue>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="3fedb068-2a87-4c8a-9881-9d58e456d2cc" type="ZSMART:SYSTEM_ERROR" >
-					<ee:transform doc:name="set system error" doc:id="4bfd69fa-264a-40d5-a7f7-bae3042686ff" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
----
-{
-    "status": "500",
-    "code": "ZSMART:SYSTEM_ERROR",
-    "message": error.description,
-    "messageServer": error.description,
-    "cause": [
-        {
-            "origin": "zsmart-sapi-services",
-            "message": error.description
-        }
-    ]
-}]]></ee:set-payload>
-						</ee:message>
-						<ee:variables >
-							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
-output application/java
----
-500]]></ee:set-variable>
 						</ee:variables>
 					</ee:transform>
 				</on-error-continue>
