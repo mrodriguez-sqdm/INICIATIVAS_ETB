@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:java="http://www.mulesoft.org/schema/mule/java"
-	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
-	xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
 http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
-http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
 	<sub-flow name="parametersRetention-get-orchestadorSub_Flow" doc:id="2fddc350-f580-4434-9c14-965acde11e8a" >
-		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="33a66b6e-0f2f-489d-8b64-d877934adec5" variableName="parameters" />
-		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="2cdd8db1-e28b-4385-823b-d9406d91742f" variableName="headers" />
-		<choice doc:name="Choice" doc:id="446f3a7d-e860-45f4-b25d-bb4dee0a6c67">
+		<try doc:name="Try" doc:id="87bcb063-6e1c-4464-bd45-f28bfd6beabd" >
+			<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="33a66b6e-0f2f-489d-8b64-d877934adec5" variableName="parameters" />
+			<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="2cdd8db1-e28b-4385-823b-d9406d91742f" variableName="headers" />
+			<choice doc:name="Choice" doc:id="446f3a7d-e860-45f4-b25d-bb4dee0a6c67">
 			<when expression="vars.parameters.OPERATION == 'PARAMETROS_RETENCION'">
 				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if (vars.parameters.FILTERS == "TypeParameter:Motivos;") 35&#10;else if (vars.parameters.FILTERS == "TypeParameter:SubMotivos;") 36&#10;else if (vars.parameters.FILTERS == "TypeParameter:Motivos_SubMotivos;") 37&#10;else null]' doc:name="Set Variable" doc:id="39ce9c2f-229d-45b0-bb1f-124d3ecf0e1a" variableName="parameterType" />
 				<flow-ref doc:name="Flow Reference" doc:id="e3a8baf7-970e-44d7-b625-2150340d478e" name="get-parametersRetention-mongo-db-sapi-clientSub_Flow" />
@@ -88,7 +90,7 @@ output application/json
 				</ee:transform>
 			</when>
 			<when expression="vars.parameters.OPERATION == 'DIAS_HABILES'">
-				<flow-ref doc:name="Flow Reference" doc:id="eb651b76-6574-4f3e-9723-1dca0c2d2e33" name="get-bussinessDays-mongo-db-sapi-clientSub_Flow"/>
+				<flow-ref doc:name="Flow Reference" doc:id="eb651b76-6574-4f3e-9723-1dca0c2d2e33" name="get-bussinessDays-mongo-db-sapi-clientSub_Flow" />
 				<ee:transform doc:name="Transform Message" doc:id="7b5c74f5-166d-494a-9571-d6f5f1c37fd7">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
@@ -143,83 +145,7 @@ var businessDays =
 				</ee:transform>
 			</when>
 			<when expression="#[vars.parameters.OPERATION == 'ACTIVIDADES_PQR']">
-				<ee:transform doc:name="set filtersPqr" doc:id="4153a3de-12c8-4b37-94b1-b203a748694d">
-					<ee:message>
-					</ee:message>
-					<ee:variables >
-						<ee:set-variable variableName="filtersPqr" ><![CDATA[%dw 2.0
-import try, fail from dw::Runtime
-fun getPqrParams(filters) =
-  filters splitBy ";" reduce ((item, acc = {}) -> acc ++ {
-      ((item splitBy ":")[0]): ((item splitBy ":")[1])
-    }) mapObject ((value, key, index) -> {
-    (actividad: value) if (key as String == 'activity'),
-    (grupo_gestion: value) if (key as String == 'managementGroup'),
-    (clase: value) if (key as String == 'class'),
-    (motivo: value) if (key as String == 'reason')
-  }) ++ { estado: "ACTIVO"}
-output application/json  
----
-do {
-  var errorFun = try(() -> getPqrParams(vars.parameters.FILTERS)).error
-  var resultFun = try(() -> getPqrParams(vars.parameters.FILTERS)).result
-  ---
-  if (errorFun != null or isEmpty(resultFun))
-    fail("GET PQR ACTIVITIES Functional mapping error")
-  else
-    resultFun
-}]]></ee:set-variable>
-					</ee:variables>
-				</ee:transform>
-				<ee:transform doc:name="set mongo dynamicQuery request" doc:id="72718b05-13d9-4546-ad53-ac11a994b629" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
----
-{
-	basePath: p("mongoDbSapi.basePath"),
-	host: p("mongoDbSapi.host"),
-	port: p("mongoDbSapi.port"),
-	method: p('mongoDbSapi.dynamicQuery.post.method'),
-	path: p('mongoDbSapi.dynamicQuery.path'),
-	body: {
-		"query": {
-			"aggregate": "PQR_ACTIVIDAD",
-			"pipeline": [{
-				"\$match": vars.filtersPqr
-			}],
-			"cursor": {
-			}
-		}
-	},
-	headers: {
-		"client_secret": p('secure::api.clientSecret'),
-		"client_id": p('secure::api.clientId'),
-		"name": vars.headers.name,
-		"X-CORRELATION-ID": vars.headers."x-correlation-id",
-		"source": vars.headers.source,
-		"systemId": vars.headers.systemId
-	},
-	queryParameters: {
-	},
-	uriParameters: {
-	}
-}]]></ee:set-payload>
-					</ee:message>
-				</ee:transform>
-				<flow-ref doc:name="mongo-db-sapi-common-request (PQR_ACTIVIDAD)" doc:id="174b16d7-312c-4b13-87ec-dc3da72a9024" name="mongo-db-sapi-common-request"/>
-				<ee:transform doc:name="set pqr response" doc:id="4b9b75a8-ee9d-41eb-860f-7771af5d0e8b" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
-output application/java
----
-{
-    codeResponse: "200",
-    messageResponse: "Consulta realizada exitosamente",
-    pqrActivities: payload.result
-}]]></ee:set-payload>
-					</ee:message>
-				</ee:transform>
+				<flow-ref doc:name="get-pqr-activites-sub-flow" doc:id="9403aa61-8574-4ff4-aea3-9794fad6bd8e" name="get-pqr-activites-sub-flow" />
 			</when>
 			<otherwise>
 				<ee:transform doc:name="Transform Message" doc:id="b7bb2b7f-822b-445a-a70a-fe09249c7dcb">
@@ -235,7 +161,7 @@ output application/json
 				</ee:transform>
 			</otherwise>
 		</choice>
-		<ee:transform doc:name="Apply Pagination Parameters" doc:id="35f54c94-2ed0-4a2d-818c-e7f80f3d1d4f">
+			<ee:transform doc:name="Apply Pagination Parameters" doc:id="35f54c94-2ed0-4a2d-818c-e7f80f3d1d4f">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -282,6 +208,121 @@ else payload
 ]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="72d4e315-cde8-4bc5-a13d-5c529eb448b0" type="VALIDATION:INVALID_BOOLEAN">
+					<ee:transform doc:name="set pqr activity error" doc:id="19a4c56e-fee6-413e-a876-1b1be0923d6f" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "HTTP:BAD_REQUEST",
+    "message": error.description,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-pqr-activites-sub-flow" doc:id="c5dee6a1-2b26-4c7e-9c52-312a6837d247" >
+		<validation:is-false doc:name="validate filters size" doc:id="2a45163c-8cae-4652-bba4-85de2f4f9bad" expression="#[isEmpty(vars.parameters.FILTERS default {})]" message="The query parameter filters is empty, search cannot be completed. At least one of (activity, managementGroup, class, reason) must be included."/>
+		<ee:transform doc:name="set filtersPqr" doc:id="4153a3de-12c8-4b37-94b1-b203a748694d">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="filtersPqr"><![CDATA[%dw 2.0
+fun getPqrParams(filters) =
+  filters splitBy ";" reduce ((item, acc = {}) -> acc ++ {
+      ((item splitBy ":")[0]): ((item splitBy ":")[1])
+    }) mapObject ((value, key, index) -> {
+    (actividad: value) if (key as String == 'activity'),
+    (grupo_gestion: value) if (key as String == 'managementGroup'),
+    (clase: value) if (key as String == 'class'),
+    (motivo: value) if (key as String == 'reason')
+  })
+output application/json  
+---
+getPqrParams(vars.parameters.FILTERS)]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<validation:is-false doc:name="validate filters mapping" doc:id="c48db79c-8c27-47cc-81ec-787d5f0eb3d0" expression="#[isEmpty(vars.filtersPqr default {})]" message='#["The query parameter filters " ++ vars.parameters.FILTERS default "" ++ " is not valid, search cannot be completed. At least one of (activity, managementGroup, class, reason) must be included."]' />
+		<ee:transform doc:name="set mongo dynamicQuery request" doc:id="72718b05-13d9-4546-ad53-ac11a994b629">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongoDbSapi.basePath"),
+	host: p("mongoDbSapi.host"),
+	port: p("mongoDbSapi.port"),
+	method: p('mongoDbSapi.dynamicQuery.post.method'),
+	path: p('mongoDbSapi.dynamicQuery.path'),
+	body: {
+		"query": {
+			"aggregate": "PQR_ACTIVIDAD",
+			"pipeline": [{
+				"\$match": vars.filtersPqr ++ { estado: "ACTIVO"}
+			}],
+			"cursor": {
+			}
+		}
+	},
+	headers: {
+		"client_secret": p('secure::api.clientSecret'),
+		"client_id": p('secure::api.clientId'),
+		"name": vars.headers.name,
+		"X-CORRELATION-ID": vars.headers."x-correlation-id",
+		"source": vars.headers.source,
+		"systemId": vars.headers.systemId
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-common-request (PQR_ACTIVIDAD)" doc:id="174b16d7-312c-4b13-87ec-dc3da72a9024" name="mongo-db-sapi-common-request" />
+		<ee:transform doc:name="set pqr response" doc:id="4b9b75a8-ee9d-41eb-860f-7771af5d0e8b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	codeResponse: "200",
+	messageResponse: "Consulta realizada exitosamente",
+	pqrActivities: payload.result map ((item, index) -> {
+		id: item.'_id'.'\$oid',
+		activity: item.actividad,
+		managementGroup: item.'grupo_gestion',
+		class: item.clase,
+		reason: item.motivo,
+		description: item.descripcion,
+		observations: item.observaciones,
+		activityType: item.'tipo_actividad',
+		allowClosePqr: item.'permite_cerrar_pqr',
+		status: item.estado,
+		updateDate: item.'fecha_modificacion',
+		startDate: item.'fecha_inicio',
+		endDate: item.'fecha_fin',
+		version: item.version
+	})
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
 	</sub-flow>
 	
+
 </mule>

@@ -38,7 +38,7 @@ output application/xml  skipNullOn="everywhere", writeDeclaredNamespaces="All"
         mdm#PQR_ADJUNTOS_ACTIVIDAD: payload.activity.activityAttachments map ((item) -> {
           mdm#adjuntos_actividades: item.activityAttachment
         }),
-      mdm#set_type: "U",
+      mdm#set_type: "I",
       mdm#gestion2: payload.activity.secondaryManagement
     }
   }
