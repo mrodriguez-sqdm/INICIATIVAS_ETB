@@ -79,9 +79,22 @@ fun deepClean(o) =
         }
     else o
 
-var cargoInicial = (innerXml.replies.reply.response.portalfija_data.clausula.Internet.CargoInicial default "0") as Number
-var cuotasInicial = (innerXml.replies.reply.response.portalfija_data.clausula.Internet.CuotasInicial default "0") as Number
-var cuotasActual = (innerXml.replies.reply.response.portalfija_data.clausula.Internet.CuotasActual default "0") as Number
+var clausulaXml = innerXml.replies.reply.response.portalfija_data.clausula default {}
+var servicios = clausulaXml filterObject ((v, k) ->
+    v is Object and (v.CargoInicial? or v.SaldoActual?)
+)
+var referencia =
+    if (servicios.Internet?) servicios.Internet
+    else (valuesOf(servicios)[0] default {})
+
+fun num(v) =
+    if (v == null or v == "") 0
+    else v as Number
+
+var cargoInicial = (sum(valuesOf(servicios) map ((s) -> num(s.CargoInicial))) default 0) as Number
+var saldoActual = (sum(valuesOf(servicios) map ((s) -> num(s.SaldoActual))) default 0) as Number
+var cuotasInicial = num(referencia.CuotasInicial)
+var cuotasActual = num(referencia.CuotasActual)
 var valorPenalidad = 
     if (cuotasInicial > 0) 
         (cargoInicial * ((cuotasInicial - cuotasActual) / cuotasInicial)) as Number
@@ -90,15 +103,15 @@ var valorPenalidad =
 ---
 deepClean({
     clausula: {
-        cuenta_padre: innerXml.replies.reply.response.portalfija_data.clausula.cuenta_padre default null,
-        integration_id: innerXml.replies.reply.response.portalfija_data.clausula.integration_id default null,
+        cuenta_padre: clausulaXml.cuenta_padre default null,
+        integration_id: clausulaXml.integration_id default null,
         Internet: {
-            CargoInicial: innerXml.replies.reply.response.portalfija_data.clausula.Internet.CargoInicial default null,
-            SaldoActual: innerXml.replies.reply.response.portalfija_data.clausula.Internet.SaldoActual default null,
-            CuotasInicial: innerXml.replies.reply.response.portalfija_data.clausula.Internet.CuotasInicial default null,
-            CuotasActual: innerXml.replies.reply.response.portalfija_data.clausula.Internet.CuotasActual default null,
-            fecha_inicio: innerXml.replies.reply.response.portalfija_data.clausula.Internet.fecha_inicio default null,
-            fecha_fin: innerXml.replies.reply.response.portalfija_data.clausula.Internet.fecha_fin default null
+            CargoInicial: cargoInicial,
+            SaldoActual: saldoActual,
+            CuotasInicial: referencia.CuotasInicial default null,
+            CuotasActual: referencia.CuotasActual default null,
+            fecha_inicio: referencia.fecha_inicio default null,
+            fecha_fin: referencia.fecha_fin default null
         },
         valor_penalidad: valorPenalidad
     },
