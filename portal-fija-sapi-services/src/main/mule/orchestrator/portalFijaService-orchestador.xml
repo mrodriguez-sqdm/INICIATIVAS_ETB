@@ -83,42 +83,36 @@ var clausulaXml = innerXml.replies.reply.response.portalfija_data.clausula defau
 var servicios = clausulaXml filterObject ((v, k) ->
     v is Object and (v.CargoInicial? or v.SaldoActual?)
 )
-var referencia =
-    if (servicios.Internet?) servicios.Internet
-    else (valuesOf(servicios)[0] default {})
 
 fun num(v) =
     if (v == null or v == "") 0
     else v as Number
 
-var cargoInicial = (sum(valuesOf(servicios) map ((s) -> num(s.CargoInicial))) default 0) as Number
-var saldoActual = (sum(valuesOf(servicios) map ((s) -> num(s.SaldoActual))) default 0) as Number
-var cuotasInicial = num(referencia.CuotasInicial)
-var cuotasActual = num(referencia.CuotasActual)
-var valorPenalidad = 
-    if (cuotasInicial > 0) 
-        (cargoInicial * ((cuotasInicial - cuotasActual) / cuotasInicial)) as Number
-    else 0
+fun penalidadServicio(servicio) = do {
+    var cargoInicial = num(servicio.CargoInicial)
+    var cuotasInicial = num(servicio.CuotasInicial)
+    var cuotasActual = num(servicio.CuotasActual)
+    var valorPenalidad =
+        if (cuotasInicial > 0)
+            (cargoInicial * ((cuotasInicial - cuotasActual) / cuotasInicial)) as Number
+        else 0
+    ---
+    valorPenalidad
+}
+
+var valorPenalidad = (sum(valuesOf(servicios) map ((servicio) -> penalidadServicio(servicio))) default 0) as Number
 
 ---
 deepClean({
     clausula: {
         cuenta_padre: clausulaXml.cuenta_padre default null,
         integration_id: clausulaXml.integration_id default null,
-        Internet: {
-            CargoInicial: cargoInicial,
-            SaldoActual: saldoActual,
-            CuotasInicial: referencia.CuotasInicial default null,
-            CuotasActual: referencia.CuotasActual default null,
-            fecha_inicio: referencia.fecha_inicio default null,
-            fecha_fin: referencia.fecha_fin default null
-        },
+        (servicios),
         valor_penalidad: valorPenalidad
     },
     resultado: innerXml.replies.reply.response.portalfija_data.resultado,
     descError: innerXml.replies.reply.response.portalfija_data.descError
-})
-]]></ee:set-payload>
+})]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
 
