@@ -16,29 +16,44 @@ payload]]></ee:set-variable>
 				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
 output application/json
 ---
-{
-	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
-	"name": attributes.headers.name,
-	"systemId": attributes.headers.systemId,
-	"source": attributes.headers.source
-}]]></ee:set-variable>
+attributes.headers]]></ee:set-variable>
 				<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
 output application/json
 ---
 {
 	"documentNumber": payload.documentNumber,
-	"documentType": payload.documentType as String,
-	"firstLastName": payload.firstLastName,
-	"dateOfIssuance": payload.dateExpedition 
+	"documentType": payload.documentType as String
 }]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
 		<flow-ref doc:name="post-identity-lisim-sub-flow" doc:id="f816204b-d395-4143-9f10-ee5c995b7a33" name="post-identity-lisim-sub-flow" target="rsLisim"/>
-		<until-successful maxRetries="#[Mule::p('retries.customer.amount')]" doc:name="Until Successful" doc:id="d72ea9b1-9b73-4b51-bc7b-dc362b94b5ce" millisBetweenRetries="#[Mule::p('retries.customer.msTime')]">
-			<flow-ref doc:name="mongo-db-sapi-get-identity-validation-sub-flow" doc:id="f08d6308-0dac-464e-9335-f8b535de6273" name="mongo-db-sapi-get-identity-validation-sub-flow" target="getIdentityResponse" />
-		</until-successful>
+		<ee:transform doc:name="Transform Message" doc:id="73ac9d5e-f449-4db8-b005-3a6634f3b384">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+		"find": "MDM_VALIDACION_CLIENTE",
+		"filter": {
+			"tipo_doc": vars.queryParams.documentType,
+			"num_doc": vars.queryParams.documentNumber
+		},
+		"sort": {
+			"fecha_consulta": -1
+		},
+		"limit": 1
+	}
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+								<ee:set-variable resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+							</ee:variables>
+						</ee:transform>
+				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="59da8b5a-02b1-46ca-b046-c577e3fea58f" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="getIdentityResponse" />
 		<choice doc:name="Choice" doc:id="514f9a83-0c55-4906-a992-0c97b04714ca" >
-			<when expression="#[!isEmpty(vars.getIdentityResponse.identity)]">
+			<when expression="#[!isEmpty(vars.getIdentityResponse.result)]">
 				<flow-ref doc:name="patch-identity-mongo-sub-flow" doc:id="49928b20-be10-4b55-9fa7-cc23e8eaebd6" name="patch-identity-mongo-sub-flow" />
 				<choice doc:name="Choice" doc:id="d51aa585-b573-4613-ab22-ea03f53ee68f" >
 					<when expression='#[isEmpty(vars.rsLisim.code)]'>
@@ -65,12 +80,13 @@ output application/json
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
+import modules::GlobalFunctions as global
 ---
 {
     nombres: vars.initialPayload.names,
     apellido: vars.initialPayload.firstLastName,
     segundo_apellido: vars.initialPayload.secondLastName,
-    fecha_exp: vars.initialPayload.dateExpedition,
+    fecha_exp: global::formatDate(vars.initialPayload.dateExpedition),
     num_doc: vars.initialPayload.documentNumber,
     tipo_doc: vars.initialPayload.documentType,
     fecha_consulta: now() as Date,
@@ -134,9 +150,12 @@ output application/json
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+import modules::GlobalFunctions as global
+var additionalDate = vars.getIdentityResponse.result[0].fecha_exp default null
 ---
 {
-    causal: vars.rsLisim.cause default vars.rsLisim.message default "",
+	"fecha_exp": global::formatDate(additionalDate),
+    "causal": vars.rsLisim.cause default vars.rsLisim.message default "",
 }]]></ee:set-payload>
 			</ee:message>
 			<ee:variables >
