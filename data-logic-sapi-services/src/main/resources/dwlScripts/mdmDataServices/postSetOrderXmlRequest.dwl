@@ -53,14 +53,17 @@ var body = payload.requestBody
 			mdm#Portabilidad_Codigo_Operador: body.portabilityOperatorCode,
 			mdm#Celular_Porabilidad: body.portabilityPhoneNumber,
 			mdm#Tipo_Plan_Donante: body.donorPlanType,
-			mdm#Caracteristicas_Orden: {
-				mdm#MDM_Caracteristica_Accion: body.orderCharacteristics map (item) -> {
-					mdm#Caracteristica: item.characteristic,
-					mdm#Valor: item.value,
-					mdm#Accion: item.action,
-					mdm#actualizacion_extractor: item.extractorUpdate
+			mdm#Caracteristicas_Orden: if ((body.orderCharacteristics default []) != [])
+				{
+					mdm#MDM_Caracteristica_Accion: body.orderCharacteristics map (item) -> {
+						mdm#Caracteristica: item.characteristic,
+						mdm#Valor: item.value,
+						mdm#Accion: item.action,
+						mdm#actualizacion_extractor: item.extractorUpdate
+					}
 				}
-			},
+			else
+				null,
 			mdm#Pago: {
 				mdm#MDM_Orden_Pago: body.payments map (item) -> {
 					mdm#Tipo_Recaudo: item.collectionType,
