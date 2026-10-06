@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-receivablesInquiryBasicAuth-orchestratorSub_Flow"
+		doc:id="3c655650-7cfd-46fa-bff2-99c43ce27a62">
+		<try doc:name="Try" doc:id="9230f925-15aa-4fa0-b90d-7615b92a5a6c">
+			<ee:transform doc:name="set billing params"
+				doc:id="e8b7fa5d-a51e-40b5-8d60-354ddf910788">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="billingParams"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+					<ee:set-variable variableName="billingHeaders"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<choice doc:name="Choice Billing Params" doc:id="394b9efb-26de-4605-ad93-7e1315c3fd3c" >
+				<when expression="#[!isEmpty(trim(vars.billingParams.connectionNumber)) or !isEmpty(trim(vars.billingParams.billingAccount))]">
+					<flow-ref doc:name="post-billingHistory-zsmart-request" doc:id="0adf5011-2c21-47a7-8c44-b39a4010c7bf" name="post-billingHistory-zsmart-request"/>
+				</when>
+				<when expression="#[!isEmpty(trim(vars.billingParams.customerIdType)) and !isEmpty(trim(vars.billingParams.customerId))]">
+					<flow-ref doc:name="post-billingHistory-request-by-customer" doc:id="b046d2df-398d-43d1-b6f5-c92b30827748" name="post-billingHistory-request-by-customer"/>
+				</when>
+				<otherwise >
+					<raise-error doc:name="RECEIVABLES_INQUIRY:INVALID_PARAMS" doc:id="bed226cc-d633-4c4e-8281-328993c38dd6" type="RECEIVABLES_INQUIRY:INVALID_PARAMS" description="There was an error trying to retrieve receivablesInquiry information" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c5ee9b96-e078-4134-a1e3-1738569178f9" type="RECEIVABLES_INQUIRY:INVALID_PARAMS">
+					<ee:transform doc:name="set receivablesInquiry error" doc:id="3b9ad068-9b8e-4b5f-88c7-d8656c438c1d">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "RECEIVABLES_INQUIRY:INVALID_PARAMS",
+    "message": "connectionNumber, billingAccount and (customerTypeId - customerId) combination cant be empty at the same time.",
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": "connectionNumber, billingAccount and (customerTypeId - customerId) combination cant be empty at the same time."
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="post-receivablesInquiryBasicAuth-zsmart-request" doc:id="25dd6e53-dca4-4e1b-b66a-116158a704a2">
+		<ee:transform doc:name="set Zsmart Request" doc:id="320b082f-481a-4c8c-9395-bbe01d3fb6e3">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+	basePath: p("zsmart-sapi.base-path"),
+	host: p("zsmart-sapi.host"),
+	port: p("zsmart-sapi.port"),
+	method: "GET",
+	path: p('zsmart-sapi.resources.billingHistory.path'),
+	body: {
+	},
+	headers: vars.billingHeaders default {
+	},
+	queryParameters: {
+		"msisdn": vars.billingParams.connectionNumber,
+		"accountNumber": vars.billingParams.billingAccount,
+		"currencyCode": "COP",
+		"channelCode": vars.billingParams.channelCode
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+vars.billingParams.billingAccount]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart Billing History)" doc:id="3253dc95-ed1d-4aba-abbe-d5a45cb0874d" name="generic-zsmart-sapi-clientSub_Flow" />
+		<ee:transform doc:name="set receivablesInquiry response" doc:id="b1ceb43a-b4e1-484b-b8c1-69b5b355eaa5">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var bills = payload.result.result.billExParamList default []
+fun formatAmount(amount) = {
+	value: amount as String,
+	formatted: amount as String {
+		format: "\$ #,##0"
+	}
+}
+fun sumField(field) =
+  sum(bills map ((b) -> (b[field] default "0") as Number))
+var totalDue = sumField("due")
+var totalPaid = sumField("paidCharge")
+var totalOpenAmount = sumField("openAmount")
+var totalAdjustCharge = sumField("adjustCharge")
+var totalSettleCharge = sumField("settleCharge")
+var pendingBills = bills filter ((bill) -> ((bill.due default "0") as Number) > 0)
+var lastPending = (pendingBills orderBy ((bill) ->
+    bill.dueDate as LocalDateTime {
+	format: "yyyy-MM-dd HH:mm"
+}
+))[-1]
+---
+{
+	codeResponse: "200",
+	messageResponse: "OK",
+	result: [{
+		accountNumber: vars.billingAccount,
+		lastInvoice: lastPending.billNumber,
+		nextDueDate: lastPending.dueDate,
+		totalOpenAmount: formatAmount(totalOpenAmount),
+	}]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-receivablesInquiryBasicAuth-request-by-customer" doc:id="63975cc9-f627-41e5-8ef2-459ef8dcc03a" >
+		<ee:transform doc:name="set mongo dynamicQuery request" doc:id="5dbd7ff9-bc99-4665-8fc4-d6ddcb482afa">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: p('mongo-db-sapi.resources.dynamicQuery.base-path'),
+	body: {
+		"query": {
+			"aggregate": "MDM_CUENTA_FACTURACION",
+			"pipeline": [{
+				"\$match": {
+					"Tipo_Documento": vars.billingParams.customerIdType,
+					"Numero_Identificacion": vars.billingParams.customerId
+				}
+			}],
+			"cursor": {
+			}
+		}
+	},
+	headers: vars.billingHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+		<flow-ref doc:name="System Generic (MDM_CUENTA_FACTURACION)" doc:id="a65cdf89-ec8b-4594-b1dd-4477b4067bae" name="generic-sapi-clientSub_Flow" target="mdmCuentaFact" />
+		<ee:transform doc:name="set billingAccounts" doc:id="10957ce4-c253-4d19-a332-057af2af14d6" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="billingAccounts" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.mdmCuentaFact.result.*"Cuenta_Facturacion"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<parallel-foreach doc:name="Parallel For Each Billing Account" doc:id="4c212812-68ff-4a48-8052-02ea8a04eec1" collection="#[vars.billingAccounts]" maxConcurrency="10" target="billingHistoryAcc">
+			<try doc:name="Try" doc:id="0b85680a-a8cd-4cff-bc25-de810706b3df">
+				<logger level="INFO" doc:name="billing loop value" doc:id="b36ccc5e-c83d-4fb4-9739-81dede0915c2" message='#["billing account processing: " ++ payload default ""]' />
+				<ee:transform doc:name="set billingAccount" doc:id="022d2cca-8b38-47b4-aca5-67ab6a796c61">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+				<ee:transform doc:name="set Zsmart Request" doc:id="f9c0143b-55f3-4097-bda4-e1297bd4a0a8">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+	basePath: p("zsmart-sapi.base-path"),
+	host: p("zsmart-sapi.host"),
+	port: p("zsmart-sapi.port"),
+	method: "GET",
+	path: p('zsmart-sapi.resources.billingHistory.path'),
+	body: {
+	},
+	headers: vars.billingHeaders default {
+	},
+	queryParameters: {
+		"msisdn": vars.billingParams.connectionNumber,
+		"accountNumber": vars.billingAccount,
+		"currencyCode": "COP",
+		"channelCode": vars.billingParams.origin,
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+						</ee:variables>
+					</ee:transform>
+				<flow-ref doc:name="System Generic (Zsmart Billing History)" doc:id="032f2105-a0b6-4905-8f67-c681730026f7" name="generic-zsmart-sapi-clientSub_Flow" />
+				<ee:transform doc:name="set billingHistoryAcc value" doc:id="25d9428d-69d3-47f0-817d-dad93e55b42d">
+						<ee:message>
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java skipNullOn = "everywhere"
+var bills = payload.result.result.billExParamList default []
+fun formatAmount(amount) = {
+	value: amount as String,
+	formatted: amount as String {
+		format: "\$ #,##0"
+	}
+}
+fun sumField(field) =
+  sum(bills map ((b) -> (b[field] default "0") as Number))
+var totalDue = sumField("due")
+var totalPaid = sumField("paidCharge")
+var totalOpenAmount = sumField("openAmount")
+var totalAdjustCharge = sumField("adjustCharge")
+var totalSettleCharge = sumField("settleCharge")
+var pendingBills = bills filter ((bill) -> ((bill.due default "0") as Number) > 0)
+var lastPending = (pendingBills orderBy ((bill) ->
+    bill.dueDate as LocalDateTime {
+	format: "yyyy-MM-dd HH:mm"
+}
+))[-1]
+---
+{
+	"status": "success",
+	accountNumber: vars.billingAccount,
+	lastInvoice: lastPending.billNumber,
+	nextDueDate: lastPending.dueDate,
+	totalOpenAmount: formatAmount(totalOpenAmount)
+}
+]]></ee:set-payload>
+						</ee:message>
+				<ee:variables>
+				</ee:variables>
+					</ee:transform>
+				<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="62cc4b7c-a313-462a-8382-a3e671ff9c36">
+						<ee:transform doc:name="set billingHistoryAcc value" doc:id="618dd6bb-a988-4a82-8ac7-47c08482429f">
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"status": "failed",
+	"accountNumber": vars.billingAccount,
+	"billingError": error.description
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+							</ee:variables>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</parallel-foreach>
+		<ee:transform doc:name="set receivablesInquiry response" doc:id="f389437c-5973-498c-8fd7-2981ff53d244" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var totalCount = sizeOf(vars.billingHistoryAcc default []) default 0
+var successCount = sizeOf(vars.billingHistoryAcc default [] filter ($.payload.status == "success")) default 0
+var failedCount = sizeOf(vars.billingHistoryAcc default [] filter ($.payload.status == "failed")) default 0
+var successAccounts = vars.billingHistoryAcc default [] filter ($.payload.status == "success") default []
+var failedAccounts = vars.billingHistoryAcc default [] filter ($.payload.status == "failed") default []
+---
+{
+	"codeResponse": if ( failedCount == 0 ) "200" 
+          else if ( failedCount < totalCount ) "207" 
+          else "500",
+	"messageResponse": if ( failedCount == 0 ) "OK" 
+          else if ( failedCount < totalCount ) "PARTIAL_SUCCESS" 
+          else "FAILED",
+	"result": successAccounts map $ - "status"
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+var totalCount = sizeOf(vars.billingHistoryAcc default []) default 0
+var failedCount = sizeOf(vars.billingHistoryAcc default [] filter ($.payload.status == "failed")) default 0
+---
+if ( failedCount == 0 ) 200 
+          else if ( failedCount < totalCount ) 207
+          else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>
