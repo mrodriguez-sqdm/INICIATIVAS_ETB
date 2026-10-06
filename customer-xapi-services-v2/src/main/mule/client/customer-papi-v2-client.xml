@@ -693,4 +693,64 @@ attributes.queryParams]]]></http:query-params>
 attributes.queryParams]]]></http:query-params>
 		</http:request>
 	</sub-flow>
+	<sub-flow name="post-receivablesInquiryBasicAuth-customer-papi-v2-clientSub_Flow" doc:id="ab42c47c-16a1-40c3-b989-8a46b237321c" >
+		<try doc:name="Try" doc:id="75063e29-66aa-4d50-8f05-b8c0dfb0b9df" >
+			<validation:is-true doc:name="validate credentials" doc:id="78c4f7fa-5a11-401d-ad54-d7067d44d328" expression="#[(payload.username  == p('secure::banks.username')) and (payload.password == p('secure::banks.password'))]" message="Unauthorized: Invalid username or password, please check you credentials." />
+			<http:request method="PATCH" doc:name="customer-papi-v2 POST receivablesInquiryBasicAuth" doc:id="37259a6e-6435-4cda-8df1-9c436e9f9b88" config-ref="HTTP_Request_configuration_customer-papi-services-v2" path="${customer-papi-v2.resources.receivablesInquiryBasicAuth.path}" sendCorrelationId="AUTO" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('customer-papi-v2.security.client_secret'),
+	"client_id" : p('customer-papi-v2.security.client_id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId default "MIGRACION"
+}]]]></http:headers>
+			</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="89e68342-8ab0-49b7-8344-481cca18937f" type="VALIDATION:INVALID_BOOLEAN" >
+					<ee:transform doc:name="set validation error" doc:id="52d78bc1-bd75-487f-9ec3-99312a212844" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "401",
+    "code": "HTTP:UNAUTHORIZED",
+    "message": "Invalid User Credentials",
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "customer-xapi-services-v2",
+            "message": "Invalid User Credentials"
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[401]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-receivablesInquiry-customer-papi-v2-clientSub_Flow" doc:id="5aa70889-2cfc-47a6-baf3-f50cd6513588" >
+		<http:request method="GET" doc:name="customer-papi-v2 GET receivablesInquiry" doc:id="69a92322-dae7-47ac-a5b4-a31935aaf38d" config-ref="HTTP_Request_configuration_customer-papi-services-v2" path="${customer-papi-v2.resources.receivablesInquiry.path}" sendCorrelationId="AUTO" >
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('customer-papi-v2.security.client_secret'),
+	"client_id" : p('customer-papi-v2.security.client_id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+attributes.queryParams]]]></http:query-params>
+		</http:request>
+	</sub-flow>
 </mule>
