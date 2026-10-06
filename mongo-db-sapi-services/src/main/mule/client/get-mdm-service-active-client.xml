@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-mdm-service-active-clientSub_Flow" doc:id="7911ac7d-3dca-47ec-b951-74cf74637a06" >
+		<try doc:name="Try" doc:id="e8f2dde3-1ddb-4f6a-b9be-a58530aa18ed" >
+			<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="b422bd06-60bd-4896-9605-d32c78a1a309" variableName="parameters" />
+			<choice doc:name="Choice" doc:id="1dfc4ec6-ca7f-48e5-a786-80ac05a8b5c2">
+				<when expression="#[(vars.parameters.ConnectionNumber != null) or (vars.parameters.CustomerId != null)]">
+					<mongo:find-documents collectionName="${mongoDb-mdm.servicios.collection-service-active}" fields="," doc:name="Find documents" doc:id="18e89e46-522c-4461-92c9-694b0a203738" config-ref="mdm_db_Config">
+						<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+if (!isEmpty(vars.parameters.ConnectionNumber)) 
+    { 
+      "Numero_Conexion": vars.parameters.ConnectionNumber,
+      "Tecnologia": vars.parameters.Tecnology
+    }
+else 
+    { "Tipo_Documento": vars.parameters.CustomerIdType,
+    	 "Numero_Identificacion": vars.parameters.CustomerId,
+    	 "Tecnologia": vars.parameters.Tecnology
+    }]]]></mongo:query>
+					</mongo:find-documents>
+					<ee:transform doc:name="Set Response Body" doc:id="44b0e4f3-e951-47d2-81c0-6498ff724241">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: if(!isEmpty(payload)) "200" else "404",
+	message: if(!isEmpty(payload)) "Operacion exitosa" else "No se obtuvieron resultados",
+	services: payload
+}
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</when>
+				<otherwise>
+					<ee:transform doc:name="Response Fail Parameters" doc:id="98a74731-bf5f-4b95-8063-414eebebd0b8">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 400,
+	code: "BAD REQUEST",
+	message: "indicar un parametro de consulta"
+	
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="400" doc:name="Set status code" doc:id="110c1a9d-b716-40ee-9278-e6205569bed4" variableName="httpStatus" />
+				</otherwise>
+			</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4dad161b-78df-43eb-bb31-a9027d1ae153" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="daed1fc1-23a7-457c-a626-b5d3258d334f" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 500,
+	code: "INTERNAL SERVER ERROR",
+	message: error.description,
+	messageServer: error.detailedDescription
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="145dbf48-bbad-42e0-b8e5-2a7934fbad4a" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

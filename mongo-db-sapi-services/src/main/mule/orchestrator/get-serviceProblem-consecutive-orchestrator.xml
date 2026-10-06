@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-serviceProblem-consecutive-orchestadorSub_Flow" doc:id="656b3c25-b41c-49a6-b51b-751cbe6e77be" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Params" doc:id="178ae544-639a-41ae-a545-57907ef0efa3" variableName="parameters" />
+		<flow-ref doc:name="Flow Reference Get Consecutive by series" doc:id="c0eb0b5d-21b2-4dbe-a614-fbebdf9a6d9c" name="get-serviceProblem-consecutive-find-clientSub_Flow"/>
+		<choice doc:name="validate consecutive" doc:id="db1dfa90-a693-4597-9d5b-b10ceef06cab" >
+			<when expression="#[!isEmpty(payload[0].Valor)]">
+				<set-variable value="#[%dw 2.0&#10;output application/json&#10;---&#10;(payload[0].Valor as Number) + 1]" doc:name="Set Variable" doc:id="18fd2f36-d9b0-4243-9738-e25203b0daa1" variableName="consecutive" />
+				<flow-ref doc:name="Flow Reference Update Consecutive" doc:id="fa8bf5fd-3556-41f3-8f65-2b41a6c634ae" name="get-serviceProblem-consecutive-update-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="f1b79011-9fbb-4eca-8944-dbfaac4baef2">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "serie": vars.parameters.series,
+  "valor": vars.consecutive
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="404" doc:name="Set Status Code" doc:id="9ff905aa-696d-4f9c-b0cb-ad8d12737bc6" variableName="httpStatus" />
+				<ee:transform doc:name="Transform Message" doc:id="c8869def-8f6e-4f10-9e0d-ee7a159dcf01" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_DATA_FOUND",
+    "message": {
+        "message": "Not SERIES were found"
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

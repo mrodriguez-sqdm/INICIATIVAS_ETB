@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-beneficios-promocion-clientSub_Flow" doc:id="b7214c73-3b68-4e07-8df6-91c356ce7957" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="c01d6153-84d3-4b6a-b880-951281e52396" variableName="queryParameters"/>
+		<try doc:name="Try" doc:id="054bd85d-6c26-426d-868a-f7ab9711ce31" >
+			<mongo:find-documents collectionName="${mongoDb-mdm.collection-beneficiosPromocion}" fields="," doc:name="Find documents" doc:id="970cb692-6749-4018-b447-875e768dfd31" config-ref="mdm_db_Config" >
+				<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{ "ID_Promocion": vars.queryParameters.IdPromotion }]]]></mongo:query>
+			</mongo:find-documents>
+			<ee:transform doc:name="Transform Message" doc:id="4f02deb4-cccd-49df-870e-b902f3b2cc21" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "200",
+    mensaje: if(payload != []) "Consulta realizada con exito" else "No se encontraron resultados con los parametros de busqueda enviados",
+    beneficiosPromocion: payload
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7d51714c-837d-4c80-8c55-fd30c832ab70" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="be4b0a08-26a0-4624-8206-9a8122018a5a" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL SERVER ERROR",
+  "message": error.description,
+  "messageServer": ""
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="9fdb4d25-96c1-4e55-be8e-a7526cb60536" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

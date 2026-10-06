@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd">
+	<sub-flow name="get-account-billing-clientSub_Flow" doc:id="00a5a551-36e7-4482-a53d-fc7c8e37438c" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Variable" doc:id="8fec66e2-7f49-4caa-bc72-eaf2b40e54de" variableName="parameters" />
+		<choice doc:name="Choice" doc:id="e66b01c7-465f-4427-b2e9-8b12490ffaf0" >
+			<when expression="#[(vars.parameters.BillingAccountId != null) or (vars.parameters.CustomerId != null)]" >
+				<try doc:name="Try" doc:id="1f07a7a2-d322-4dac-8e7c-df6c48119f74" >
+					<ee:transform doc:name="Set Query Payload" doc:id="1b920f1d-94b9-4b8a-ba48-b2d2c1125cef" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(!isEmpty(vars.parameters.CustomerIdType) and !isEmpty(vars.parameters.CustomerId)){ 
+ "Numero_Identificacion": vars.parameters.CustomerId,
+ "Tipo_Documento": vars.parameters.CustomerIdType
+}else 
+{ "Cuenta_Facturacion": vars.parameters.BillingAccountId }
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<mongo:find-documents collectionName="${mongoDb-mdm.facturas.collection-facturacion}" fields="," doc:name="Find documents" doc:id="91d56b9b-c557-4046-9179-1e8eccfabd22" config-ref="mdm_db_Config" >
+						<mongo:query ><![CDATA[#[payload]]]></mongo:query>
+						<mongo:sort-by ><![CDATA[#[%dw 2.0
+output application/json
+---
+{ "_id": -1 }]]]></mongo:sort-by>
+					</mongo:find-documents>
+					<ee:transform doc:name="Set Body Response" doc:id="2bb034ee-d55f-45eb-8efa-ae283338743a" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: if(!isEmpty(payload)) "200" else "404",
+	datos_facturacion: payload
+}
+]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6e48ab69-03fd-4796-a58f-51f8f220d906" type="ANY" >
+							<ee:transform doc:name="Set Response Fail Body" doc:id="0273a434-b304-46aa-97c1-78c6a7a465c8" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	mensaje: error.description
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+							<set-variable value="500" doc:name="Set http status code" doc:id="3c06c527-8403-421c-89aa-cdadedcb672c" variableName="httpStatus" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Response Fail Parameters" doc:id="7057c5f6-7512-4fc9-a744-6f07f1c791b3" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 400,
+	code: "BAD REQUEST",
+	message: "debe enviar al menos un parametro para la consulta"
+	
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set status code" doc:id="3faa401a-0fea-485d-a22f-247087fc6c6d" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

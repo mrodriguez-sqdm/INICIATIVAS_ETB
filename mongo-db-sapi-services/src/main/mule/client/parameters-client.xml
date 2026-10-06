@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd">
+	<sub-flow name="get-parameters-clientSub_Flow" doc:id="dd6c740d-c431-4a4e-b5db-e14ea48e41f3" >
+		<try doc:name="Try" doc:id="898e7c6f-dc4e-443d-9fd8-e6a43734b25b" >
+			<mongo:find-documents doc:name="Find documents" doc:id="da703a03-d143-4a3d-a626-91a8f505d691" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.parametros.collection-parametro}" fields=",">
+				<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{ "Tipo_Parametro": attributes.queryParams.parameterType }]]]></mongo:query>
+				<mongo:sort-by ><![CDATA[#[%dw 2.0
+output application/json
+---
+{ "_id": -1 }]]]></mongo:sort-by>
+			</mongo:find-documents>
+			<ee:transform doc:name="Set Body Response" doc:id="0603f46f-fc6e-420d-b2b1-2c478684598d" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "_id": payload[0]."_id"["\$oid"] default "",
+    Tipo_Parametro: payload[0].Tipo_Parametro default "",
+    Fecha_Creacion: payload[0].Fecha_Creacion default "",
+    Fecha_Modificacion: payload[0].Fecha_Modificacion default "",
+    Usuario_Creacion: payload[0].Usuario_Creacion default "",
+    Usuario_Modificacion: payload[0].Usuario_Modificacion default "",
+    Actualizacion_Extractor: payload[0].Actualizacion_Extractor default "",
+    Valores: (payload[0].Valores default []) map (v) -> {
+        Codigo: v.Codigo default "",
+        Nombre: v.Nombre default "",
+        Descripcion: v.Descripcion default ""
+    }
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7950959c-1a2f-49d1-81be-ad04f4dd3241" type="ANY">
+					<ee:transform doc:name="Set Response Fail Body" doc:id="a8d7a1f9-65c7-40ba-bda8-fa8e7123ea18" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	mensaje: error.description
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="84c8a5c8-822e-4b94-be1a-5f81e7eb7276" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-cardinalExpansion-parameters-clientSub_Flow" doc:id="get-cardinal-expansion-params-flow">
+		<try doc:name="Try" doc:id="try-cardinal-expansion-params">
+			<mongo:find-documents doc:name="Find cardinal expansion parameters" doc:id="find-cardinal-expansion-docs" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.parametros.collection-parametro}" fields=",">
+				<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+{ 
+  "Tipo_Parametro": "ADDRESS_CARDINAL_EXPANSION"
+}]]]></mongo:query>
+				<mongo:sort-by><![CDATA[#[%dw 2.0
+output application/json
+---
+{ "_id": -1 }]]]></mongo:sort-by>
+			</mongo:find-documents>
+			<ee:transform doc:name="Format cardinal expansion rules" doc:id="format-cardinal-expansion-rules">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if (sizeOf(payload) > 0)
+  (payload[0].Valores default []) 
+    map (valor) -> do {
+      var nombreParts = valor.Nombre splitBy "|"
+      var pattern = nombreParts[0] default ""
+      var replacement = nombreParts[1] default ""
+      var codigoParts = valor.Codigo splitBy "_"
+      var cardinal = codigoParts[0] default ""
+      var orden = if (codigoParts[1] == "INICIO") 1 
+                  else if (codigoParts[1] == "MEDIO") 2 
+                  else if (codigoParts[1] == "FIN") 3 
+                  else 999
+      ---
+      {
+        Cardinal: cardinal,
+        Pattern: pattern,
+        Replacement: replacement,
+        Descripcion: valor.Descripcion,
+        Orden: orden
+      }
+    }
+    orderBy $.Orden
+else
+  []]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="on-error-cardinal-expansion" type="ANY">
+					<logger level="ERROR" doc:name="Log Error" doc:id="log-cardinal-expansion-error" message="#['Error getting cardinal expansion parameters: ' ++ error.description]" />
+					<ee:transform doc:name="Return empty array on error" doc:id="return-empty-array-on-error">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-parameters-retention-clientSub_Flow" doc:id="a278c0fb-5ed5-4d96-bd4b-7def6dc93799" >
+		<choice doc:name="Choice" doc:id="904db25f-e37b-4eab-812c-ce77fe70bdbf" >
+			<when expression="#[attributes.queryParams.parameterType != null]">
+				<try doc:name="Try" doc:id="69290b31-1574-470c-882d-2c833bd916b7">
+			<mongo:find-documents collectionName="${mongoDb-mdm.parametros.collection-parametros-retencion}" fields="," doc:name="Find documents" doc:id="8d29a608-0227-4eb1-aa00-78f2c71124a7" config-ref="mdm_db_Config">
+				<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+{ "Tipo_Parametro": (attributes.queryParams.parameterType as Number) }]]]></mongo:query>
+				<mongo:sort-by><![CDATA[#[%dw 2.0
+output application/json
+---
+{ "_id": -1 }]]]></mongo:sort-by>
+			</mongo:find-documents>
+					<ee:transform doc:name="Set Body Response" doc:id="f808fdd5-6904-4e9c-b5af-cd2043e59613">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: if(!isEmpty(payload)) "200" else "404",
+	parametros_retencion: payload
+}
+]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="38653de7-004d-4ee8-b661-bf529610889f" type="ANY">
+							<ee:transform doc:name="Set Response Fail Body" doc:id="d9d7e0e2-d5d0-4d68-bbe4-dab8c418d29d">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	mensaje: error.description
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+							<set-variable value="500" doc:name="Set http status code" doc:id="c99d5aaa-93ee-40cc-9746-f15c977e4f1c" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Response Fail Parameters" doc:id="2134c770-1b8a-4aa0-af27-92a69e8f510b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "400",
+	message: "debe enviar al menos un parametro para la consulta"
+	
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set status code" doc:id="a65727a2-b077-46c3-82d8-34620d1626e6" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

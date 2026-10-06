@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<sub-flow name="get-serviceProblem-ordersSub_Flow" doc:id="9884e7fb-3cde-4c5f-97c8-763e325c9dfb" >
+		
+		
+		<mongo:find-documents doc:name="Find documents" doc:id="cc703217-a368-4ca1-bd37-267aa7f8f84e" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-order}" fields="," limit="5">
+			<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+ {
+   "Numero_Orden": attributes.queryParams.orderNumber,
+    "Agendamiento.IdActividad": {
+    "\$exists": true,
+    "\$ne": null,
+    "\$nin": ["", 0]
+  }
+ }]]]></mongo:query>
+		</mongo:find-documents>
+		<choice doc:name="Verificar Agendamiento">
+  			<when expression="#[!isEmpty(payload.Numero_Orden)]">
+				<ee:transform doc:name="Transform Message" doc:id="a9d0bb59-122f-4fbd-ad80-7a9c607b88b7" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+  			
+</when>
+			<otherwise>
+				<set-variable value="404" doc:name="Set Variable" doc:id="fb53c76d-2b39-4fa8-9819-5d8d5b3d876e" variableName="httpStatus" />
+				<ee:transform doc:name="Transform Message" doc:id="a9438132-2353-464b-aa53-9e459855c5e1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_DATA_FOUND",
+    "message": {
+        "message": "Not appointments were found for this order"
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+
+			 </otherwise>
+		
+</choice>
+	</sub-flow>
+</mule>

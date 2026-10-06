@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-score-georeference-client-sub-flow" doc:id="f89dfe08-e3c1-4733-8506-597e0d0e9654" >
+		<try doc:name="Try" doc:id="9d2ccb5a-cbed-4336-a3db-a3d539835b99" >
+			<mongo:find-documents collectionName="${mongoDb-mdm.collection-score-georeferenciacion}" fields="," doc:name="find document MDM_SCORE_GEOREFERENCIACION" doc:id="296e7df4-39ab-4771-97c8-4b312fea8519" config-ref="mdm_db_Config">
+			<mongo:query><![CDATA[#[output application/json 
+---
+{
+	Numero_Tabla: attributes.queryParams.tableNumber as Number
+}]]]></mongo:query>
+		</mongo:find-documents>
+			<ee:transform doc:name="set response" doc:id="7268b10c-8bb1-40cc-a3be-67c20b8a7c40" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Data not found",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}
+else
+{
+	"code": "200",
+	"message": "Operacion exitosa",
+	"georeference": payload
+}]]></ee:set-payload>
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload)) 404 else 200
+]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="47334d48-c7cd-478c-bccd-9b42e8b4f528" type="ANY" >
+					<ee:transform doc:name="Set Response Fail Body" doc:id="573c79a3-a07f-486f-aadc-e15b0be885a5" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 500,
+	code: "INTERNAL SERVER ERROR",
+	message: error.description,
+	messageServer: error.detailedDescription
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="f6079fcf-400b-47fa-93bf-eb2a61d1a738" variableName="httpStatus" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

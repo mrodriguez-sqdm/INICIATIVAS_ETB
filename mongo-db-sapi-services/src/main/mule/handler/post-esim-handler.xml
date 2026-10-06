@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-esim-handlerSub_Flow" doc:id="e8b3a1c2-45d6-4789-9012-abcdef123456">
+		<ee:transform doc:name="Set defaults and required fields" doc:id="f9c4b2d3-56e7-4890-a123-bcdef1234567">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var req = payload default {}
+---
+req ++ {
+	Fecha_Creacion: req.Fecha_Creacion default now(),
+	Fecha_Modificacion: req.Fecha_Modificacion default now(),
+	Estado: req.Estado default "RESERVADO",
+	EnvioResponsys: req.EnvioResponsys default true,
+	Reenvio: req.Reenvio default [],
+	Fecha_Activacion: req.Fecha_Activacion default null
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="ICCID"><![CDATA[%dw 2.0
+output application/java
+var req = payload default {}
+---
+req.ICCID default ""]]></ee:set-variable>
+				<ee:set-variable variableName="Numero_Orden"><![CDATA[%dw 2.0
+output application/java
+var req = payload default {}
+---
+req.Numero_Orden default ""]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice - Validate Input" doc:id="a0d5c3e4-67f8-4901-b234-cdef12345678">
+			<when expression="#[(vars.ICCID default '') != '' and (vars.Numero_Orden default '') != '']">
+				<flow-ref doc:name="Go to orchestrator" doc:id="b1e6d4f5-7809-4a12-c345-def123456789" name="post-esim-orchestratorSub_Flow" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Error Response" doc:id="c2f7e5a6-8910-4b23-d456-ef1234567890">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 400,
+	"code": "BAD_REQUEST",
+	"message": {
+		"message": "ICCID y Numero_Orden son requeridos"
+	},
+	"messageServer": "Bad Request - Missing required parameters",
+	"cause": [
+		{
+			"origin": app.name,
+			"message": "ICCID y Numero_Orden son requeridos"
+		}
+	]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus">400</ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
