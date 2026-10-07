@@ -107,9 +107,6 @@ fun generateEventId() =
 			<when expression="#[vars.solicitudEvento.event_type == 'account_provision']">
 				<flow-ref doc:name="wbd-orchestrator-send-mdm-cd-inventarioSub_Flow" doc:id="c6da3a1b-f71d-426e-b6f5-fe42f8f0bf16" name="wbd-orchestrator-send-mdm-cd-inventarioSub_Flow" target="mdmCdInventarioResponse"/>
 			</when>
-			<otherwise >
-				<logger level="INFO" doc:name="Logger" doc:id="2330a841-3745-4cfd-9bf5-9fa1d7127800" message="payload"/>
-			</otherwise>
 		</choice>
 		<async doc:name="Async" doc:id="dc97ba78-3d44-4f79-be28-47297eb0d9e7" >
 			<ee:transform doc:name="Transform Message" doc:id="3062d93c-f750-4563-a9f2-c35b5b852e28">
@@ -117,18 +114,23 @@ fun generateEventId() =
 					<ee:set-payload><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
 
+fun fechaColombia() =
+    (now() >> "America/Bogota") as String {
+        format: "yyyy-MM-dd'T'HH:mm:ssXXX"
+    }
+
 ---
 {
   query: {
     insert: "MDM_TRAZABILIDAD_EVENTOS_THIRDPARTY",
     documents: [
       {
-      	idEvento: vars.solicitudEvento.id,
+        idEvento: vars.solicitudEvento.id,
         proveedor: "HBO",
 
         estado:
           if ((attributes.statusCode default 0) == 202)
-            "EXITOSO"
+            "ACEPTADO"
           else
             "FALLIDO",
 
@@ -141,24 +143,19 @@ output application/json skipNullOn="everywhere"
             idEvento: vars.solicitudEvento.id,
             event_type: vars.solicitudEvento.event_type,
             httpStatus: attributes.statusCode,
-            fechaRespuesta:
-              now() as String {
-                format: "yyyy-MM-dd'T'HH:mm:ssXXX"
-              }
+            estadoRespuesta:
+              if ((attributes.statusCode default 0) == 202)
+                "ACEPTADO"
+              else
+                "FALLIDO",
+            fechaRespuesta: fechaColombia()
           }
         ],
 
         notificacionesEventos: [],
 
-        fechaCreacion:
-          now() as String {
-            format: "yyyy-MM-dd'T'HH:mm:ssXXX"
-          },
-
-        fechaActualizacion:
-          now() as String {
-            format: "yyyy-MM-dd'T'HH:mm:ssXXX"
-          }
+        fechaCreacion: fechaColombia(),
+        fechaActualizacion: fechaColombia()
       }
     ]
   }
@@ -291,6 +288,20 @@ output application/json skipNullOn="everywhere"
 
 var notification = vars.notificacionEvento
 
+fun fechaColombia() =
+    (now() >> "America/Bogota") as String {
+        format: "yyyy-MM-dd'T'HH:mm:ssXXX"
+    }
+
+fun estadoEvento(eventType) =
+    eventType match {
+        case "user_registered"    -> "REGISTRADO"
+        case "product_added"      -> "ACTIVO"
+        case "product_terminated" -> "TERMINADO"
+        case "error_notification" -> "FALLIDO"
+        else                      -> "RECIBIDO"
+    }
+
 ---
 {
   query: {
@@ -308,16 +319,9 @@ var notification = vars.notificacionEvento
           },
 
           "\$set": {
-            estado:
-              if (notification.event_type == "error_notification")
-                "FALLIDO"
-              else
-                "EXITOSO",
+            estado: estadoEvento(notification.event_type),
 
-            fechaActualizacion:
-              now() as String {
-                format: "yyyy-MM-dd'T'HH:mm:ssXXX"
-              }
+            fechaActualizacion: fechaColombia()
           }
         },
 
