@@ -3,8 +3,8 @@ output application/java
 ---
 (vars.pqrUpdateType) match {
 	case "activity" -> {
-		result: (payload.body.Set_PQR_ActividadesResponse.Set_PQR_ActividadesResult.WSResponseBody.OperationResult default 9999) as Number,
-		resultDesc: (payload.body.Set_PQR_ActividadesResponse.Set_PQR_ActividadesResult.WSResponseBody.OperationResultDesc default "Web Service Error Set_PQR_Actividades") as String
+		result: (payload.body.Set_PQR_Actividades_PQRResponse.Set_PQR_Actividades_PQRResult.WSResponseBody.OperationResult default 9999) as Number,
+		resultDesc: (payload.body.Set_PQR_Actividades_PQRResponse.Set_PQR_Actividades_PQRResult.WSResponseBody.OperationResultDesc default "Web Service Error Set_PQR_Actividades") as String
 	}
 	case "characteristics" -> {
 		result: (payload.body.Set_PQR_CaracteristicasResponse.Set_PQR_CaracteristicasResult.WSResponseBody.OperationResult default 9999) as Number,
