@@ -45,7 +45,7 @@ output application/json  skipNullOn = "everywhere"
 		"offerCode": offer.offerCode,
 		"effDate": offer.effectiveDate,
 		"expDate": offer.expirationDate,
-		"instanceIdCRM": serviceNumber
+		"instanceIdCRM": offer.instanceIdCRM default serviceNumber
 	})) if (!isEmpty(flatten(offers default []))),
 	// Service Offers Attributes Mapping
 	("billOfferInstAttrList": offers default [] flatMap (o) -> o.attributes default [] map ((offerAttr) -> {
