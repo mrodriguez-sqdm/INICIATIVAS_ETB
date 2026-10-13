@@ -109,7 +109,33 @@ fun generateEventId() =
 			</when>
 		</choice>
 		<async doc:name="Async" doc:id="dc97ba78-3d44-4f79-be28-47297eb0d9e7" >
-			<ee:transform doc:name="Transform Message" doc:id="3062d93c-f750-4563-a9f2-c35b5b852e28">
+			<ee:transform doc:name="Transform Message" doc:id="a9156b45-2ed3-4352-9793-f12ea41b451a">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var evento = vars.solicitudEvento
+var subId = evento.event_data.products[0].sub_id
+
+---
+{
+  query: {
+    find: "MDM_TRAZABILIDAD_EVENTOS_THIRDPARTY",
+    filter: {
+      partnerUserId: evento.partner_user_id,
+      subscriptionId: subId
+    }
+  }
+}]]></ee:set-payload>
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="statusCodeWbd" ><![CDATA[attributes.statusCode]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="mongo-db-sapi-dynamicQuery-clientSub_Flow" doc:id="00d789cf-e483-4405-99dd-1150ba9ce85e" name="mongo-db-sapi-dynamicQuery-clientSub_Flow" />
+			<choice doc:name="Choice" doc:id="6908d397-63bb-4ac3-ac69-4589d92eccfd" >
+				<when expression="#[sizeOf(payload.result default []) &gt; 0]">
+					<ee:transform doc:name="Transform Message" doc:id="3062d93c-f750-4563-a9f2-c35b5b852e28">
 				<ee:message>
 					<ee:set-payload><![CDATA[%dw 2.0
 output application/json skipNullOn="everywhere"
@@ -119,50 +145,120 @@ fun fechaColombia() =
         format: "yyyy-MM-dd'T'HH:mm:ssXXX"
     }
 
+var evento = vars.solicitudEvento
+var subId = evento.event_data.products[0].sub_id
+var statusCode = vars.statusCodeWbd
+
+var idTrazabilidad =
+    evento.partner_user_id ++ "_" ++ subId
+
+var estadoRespuesta =
+    if ((statusCode default 0) == 202)
+        "ACEPTADO"
+    else
+        "FALLIDO"
+
 ---
 {
-  query: {
-    insert: "MDM_TRAZABILIDAD_EVENTOS_THIRDPARTY",
-    documents: [
-      {
-        idEvento: vars.solicitudEvento.id,
-        proveedor: "HBO",
+    query: {
+        update: "MDM_TRAZABILIDAD_EVENTOS_THIRDPARTY",
+        updates: [
+            {
+                q: {
+                    idEvento: idTrazabilidad
+                },
 
-        estado:
-          if ((attributes.statusCode default 0) == 202)
-            "ACEPTADO"
-          else
-            "FALLIDO",
+                u: {
+                    "\$push": {
+                        solicitudesEventos: evento,
 
-        solicitudesEventos: [
-          vars.solicitudEvento
-        ],
+                        respuestasEventos: {
+                            idEvento: evento.id,
+                            event_type: evento.event_type,
+                            httpStatus: statusCode,
+                            estadoRespuesta: estadoRespuesta,
+                            fechaRespuesta: fechaColombia()
+                        }
+                    },
 
-        respuestasEventos: [
-          {
-            idEvento: vars.solicitudEvento.id,
-            event_type: vars.solicitudEvento.event_type,
-            httpStatus: attributes.statusCode,
-            estadoRespuesta:
-              if ((attributes.statusCode default 0) == 202)
-                "ACEPTADO"
-              else
-                "FALLIDO",
-            fechaRespuesta: fechaColombia()
-          }
-        ],
+                    "\$set": {
+                        estado: estadoRespuesta,
+                        fechaActualizacion: fechaColombia()
+                    }
+                },
 
-        notificacionesEventos: [],
-
-        fechaCreacion: fechaColombia(),
-        fechaActualizacion: fechaColombia()
-      }
-    ]
-  }
+                multi: false,
+                upsert: false
+            }
+        ]
+    }
 }]]></ee:set-payload>
 				</ee:message>
 			</ee:transform>
-			<flow-ref doc:name="mongo-db-sapi-dynamicQuery-clientSub_Flow" doc:id="00f3bec5-6ff7-43cf-b7eb-e8da96512e97" name="mongo-db-sapi-dynamicQuery-clientSub_Flow" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Transform Message" doc:id="c82576a8-e3ce-47f2-8807-648cea3b830e">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+fun fechaColombia() =
+    (now() >> "America/Bogota") as String {
+        format: "yyyy-MM-dd'T'HH:mm:ssXXX"
+    }
+
+var evento = vars.solicitudEvento
+var subId = evento.event_data.products[0].sub_id
+var statusCode = vars.statusCodeWbd
+
+var idTrazabilidad =
+    evento.partner_user_id ++ "_" ++ subId
+
+var estadoRespuesta =
+    if ((statusCode default 0) == 202)
+        "ACEPTADO"
+    else
+        "FALLIDO"
+
+---
+{
+    query: {
+        insert: "MDM_TRAZABILIDAD_EVENTOS_THIRDPARTY",
+        documents: [
+            {
+                idEvento: idTrazabilidad,
+                proveedor: "HBO",
+                estado: estadoRespuesta,
+                partnerUserId: evento.partner_user_id,
+                subscriptionId: subId,
+
+                solicitudesEventos: [
+                    evento
+                ],
+
+                respuestasEventos: [
+                    {
+                        idEvento: evento.id,
+                        event_type: evento.event_type,
+                        httpStatus: statusCode,
+                        estadoRespuesta: estadoRespuesta,
+                        fechaRespuesta: fechaColombia()
+                    }
+                ],
+
+                notificacionesEventos: [],
+
+                fechaCreacion: fechaColombia(),
+                fechaActualizacion: fechaColombia()
+            }
+        ]
+    }
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+				</otherwise>
+			</choice>
+			<flow-ref doc:name="mongo-db-sapi-dynamicQuery-clientSub_Flow" doc:id="ed23598d-8e4b-4823-82b0-fbb228f94118" name="mongo-db-sapi-dynamicQuery-clientSub_Flow" />
 		</async>
 	</sub-flow>
 	<sub-flow name="wbd-orchestrator-send-mdm-cd-inventarioSub_Flow" doc:id="91aa44d1-f1f6-44d2-84e7-4c24977122e9" >
@@ -177,7 +273,7 @@ output application/json
         updates: [
             {
                 q: {
-                    Id_Cuenta_Servicio: vars.solicitudEvento.event_data.products[0].sub_id
+                    Id_Cuenta_Servicio: vars.solicitudEvento.partner_user_id
                 },
                 u: {
                     "\$push": {
@@ -259,9 +355,10 @@ fun unixToIso(timestamp) =
 		<ee:transform doc:name="Transform Message" doc:id="23532742-63c5-4c1b-8acf-fe0d083d44f7" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
+output application/json skipNullOn="everywhere"
 
-var product = payload.Result.products[0]
+var product =
+    (payload.Result.products filter ((item) -> upper(item.status default "") == "PENDING"))[0] default {}
 
 ---
 {
