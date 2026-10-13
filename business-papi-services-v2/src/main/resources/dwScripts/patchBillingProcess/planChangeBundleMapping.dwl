@@ -32,7 +32,6 @@ output application/json  skipNullOn = "everywhere"
 		"operate": service.operate,
 		"areaCode": service.areaCode,
 		"serviceNumber": service.serviceNumber,
-		"socialLevel": service.socialLevel,
 		"effDate": service.effectiveDate,
 		"offerCode": service.offerCode,
 		"department": service.department,
