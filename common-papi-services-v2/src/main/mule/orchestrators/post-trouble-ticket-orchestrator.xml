@@ -9,7 +9,7 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
 	<sub-flow name="post-trouble-ticket-orchestrator-sub-flow"
 		doc:id="9fed4b65-6426-4d22-b388-a5401c2d73d1">
-		<ee:transform doc:name="set variables" doc:id="dc03b0f4-83e7-47d9-9e12-f63b6ff2a54a">
+		<ee:transform doc:name="set initialPayload - userIp - headers" doc:id="dc03b0f4-83e7-47d9-9e12-f63b6ff2a54a">
 			<ee:message>
 			</ee:message>
 			<ee:variables>
@@ -34,38 +34,16 @@ output application/java
 attributes.headers['x-forwarded-for'] default attributes.remoteAddress]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<choice doc:name="validate cun flag" doc:id="9e9b7174-ea75-4f72-8d96-4fdb7a999c57">
-			<when expression="#[payload.ticket.cun == true]">
-				<ee:transform doc:name="set common sapi request" doc:id="170a1d54-3f8e-4152-9601-b6ade6a8c924">
+		<flow-ref doc:name="step-03-resolve-origin" doc:id="588c9b73-be8f-4d22-8180-cd9f0998eab8" name="step-03-resolve-origin" />
+		<flow-ref doc:name="step-04-get-service" doc:id="896705e5-648a-4456-ab29-004c429c4f3d" name="step-04-get-service" />
+		<flow-ref doc:name="step-05-get-customer" doc:id="2f4d461f-8589-4541-9675-d11b38150e62" name="step-05-get-customer" />
+		<flow-ref doc:name="step-06-get-tipology" doc:id="c037e72a-d89d-4b24-bbdf-806d6aebe8cc" name="step-06-get-tipology" />
+		<flow-ref doc:name="step-07-check-history" doc:id="9f744cd5-424f-4614-b2a1-5ad88a29be52" name="step-07-check-history" />
+		<flow-ref doc:name="step-08-create-ticket" doc:id="3b7b6fb9-57bb-4349-ac46-3c28e1ff8234" name="step-08-create-ticket" />
+		<flow-ref doc:name="step-09-async-updload" doc:id="b3a43928-0c17-49df-8a26-caa33964a951" name="step-09-async-updload" />
+		<ee:transform doc:name="set pqr response" doc:id="932fac2a-2403-4705-a92e-6539b14f4135">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-  "pqrType": payload.ticket.pqr.pqrType,
-  "pqrDate": payload.ticket.pqr.pqrDate,
-  "system": attributes.headers.'x-system-id',
-  "orderNumber": payload.ticket.service.orderNumber,
-  "connectionNumber": payload.ticket.service.connectionNumber,
-  "identification": payload.ticket.customer.documentType,
-  "identificationType": payload.ticket.customer.documentNumber,
-  "user": attributes.headers.'x-system-id'
-}]]></ee:set-payload>
-					</ee:message>
-				</ee:transform>
-				<flow-ref doc:name="common-sapi-client-sub-flow" doc:id="7c74995d-dc5b-4340-b410-bcabb50dd0d0" name="common-sapi-client-sub-flow" />
-			</when>
-			<otherwise>
-				<flow-ref doc:name="step-03-resolve-origin" doc:id="588c9b73-be8f-4d22-8180-cd9f0998eab8" name="step-03-resolve-origin"/>
-				<flow-ref doc:name="step-04-get-service" doc:id="896705e5-648a-4456-ab29-004c429c4f3d" name="step-04-get-service" />
-				<flow-ref doc:name="step-05-get-customer" doc:id="2f4d461f-8589-4541-9675-d11b38150e62" name="step-05-get-customer"/>
-				<flow-ref doc:name="step-06-get-tipology" doc:id="c037e72a-d89d-4b24-bbdf-806d6aebe8cc" name="step-06-get-tipology"/>
-				<flow-ref doc:name="step-07-check-history" doc:id="9f744cd5-424f-4614-b2a1-5ad88a29be52" name="step-07-check-history" />
-				<flow-ref doc:name="step-08-create-ticket" doc:id="3b7b6fb9-57bb-4349-ac46-3c28e1ff8234" name="step-08-create-ticket"/>
-				<flow-ref doc:name="step-09-async-updload" doc:id="b3a43928-0c17-49df-8a26-caa33964a951" name="step-09-async-updload"/>
-				<ee:transform doc:name="set pqr response" doc:id="932fac2a-2403-4705-a92e-6539b14f4135" >
-					<ee:message >
-						<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
 var fechaHoraColombia = (now() >> "America/Bogota") as String {
 	format: "YYYY-MM-dd HH:mm:ss"
@@ -90,8 +68,6 @@ var fechaHoraColombia = (now() >> "America/Bogota") as String {
 }]]></ee:set-payload>
 					</ee:message>
 				</ee:transform>
-			</otherwise>
-		</choice>
 	</sub-flow>
 	<sub-flow name="step-03-resolve-origin" doc:id="01748187-e8ef-4087-aae0-ac16fec9ebc4" >
 		<ee:transform doc:name="set system and channel variables" doc:id="f43302bf-6b80-4fbd-b892-017447265087" >
@@ -101,11 +77,11 @@ var fechaHoraColombia = (now() >> "America/Bogota") as String {
 				<ee:set-variable variableName="systemId" ><![CDATA[%dw 2.0
 output application/java
 ---
-attributes.headers.'x-system-id' default "unknown"]]></ee:set-variable>
+vars.initialPayload.ticket.pqr.sourceSystem default "unknown"]]></ee:set-variable>
 				<ee:set-variable variableName="channelId" ><![CDATA[%dw 2.0
 output application/java
 ---
-attributes.headers.'x-channel-id' default "unknown"]]></ee:set-variable>
+vars.initialPayload.ticket.pqr.sourceChannel default "unknown"]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
 		<ee:transform doc:name="set BOT_SISTEMA parameters" doc:id="016910e9-870e-4360-8157-9e0ffd2a7cae" >
@@ -174,7 +150,7 @@ output application/json
 			<ee:variables >
 				<ee:set-variable variableName="origin" ><![CDATA[%dw 2.0
 output application/json
-var botSystem = (vars.botSystemResponse.botSystem[0]- "_id")
+var botSystem = (vars.botSystemResponse.botSystem[0] - "_id")
 var botChannel = (vars.botChannelResponse.botChannel[0] - "_id")
 ---
 {
@@ -286,7 +262,7 @@ false]]></ee:set-variable>
 						<ee:set-variable variableName="botOriginalRequest" ><![CDATA[%dw 2.0
 output application/java
 ---
-vars.initialPayload.ticket.pqr.failure.botRequest default null]]></ee:set-variable>
+vars.initialPayload.ticket.pqr.botRequest default null]]></ee:set-variable>
 					</ee:variables>
 				</ee:transform>
 				<choice doc:name="validate  botRequest homologation" doc:id="f5a5b902-1a6f-489b-82cd-435e3b084f44" >
@@ -480,10 +456,10 @@ if ( !isEmpty(vars.botHomologatedRequest) ) {
 }
 else
 {
-	causal: vars.initialPayload.ticket.pqr.failure.causal,
-	clase: vars.initialPayload.ticket.pqr.failure.class,
-	motivo: vars.initialPayload.ticket.pqr.failure.reason,
-	sintoma: vars.initialPayload.ticket.pqr.failure.symptom,
+	causal: vars.initialPayload.ticket.pqr.tipology.causal,
+	clase: vars.initialPayload.ticket.pqr.tipology.class,
+	motivo: vars.initialPayload.ticket.pqr.tipology.reason,
+	sintoma: vars.initialPayload.ticket.pqr.tipology.symptom,
 	producto: vars.initialPayload.ticket.service.product,
 	//estado: vars.initialPayload.ticket.pqr.state,
 	//tecnologia: vars.service.technology
@@ -544,7 +520,7 @@ var pqrTypology = vars.pqrTypologyResponse.result[0]
 	reason: pqrTypology.motivo,
 	symptom: pqrTypology.'sintoma',
 	product: pqrTypology.producto,
-	description: vars.initialPayload.ticket.pqr.failure.description default "NO_DESCRIPTION",
+	description: vars.initialPayload.ticket.pqr.tipology.description default "NO_DESCRIPTION",
 	requiresCun: pqrTypology.'requiere_cun',
 	requiresRemedy: pqrTypology.'requiere_remedy',
 	remedyStatus: pqrTypology.remedy
@@ -811,7 +787,7 @@ var fechaHoraColombia = (now() >> "America/Bogota") as String {
 	"pqrVersion": "1.0",
 	"notificationFlag": "false",
 	"earlyFailureFlagField": "false",
-	"secondLevelStatus": (if ( vars.childPqr == true ) { // VALIDAR ESTRUCTURA PQR_PQR PARA MAPEAR ESTOS CAMPOS DESDE parentPqr default ""
+	"secondLevelStatus": (if ( vars.childPqr == true ) {
 		"id": vars.parentPqr.'numero_pqr',
 		"code": vars.parentPqr.'codigo_resolucion',
 		"description": vars.parentPqr.'descripcion_pqr',
@@ -848,154 +824,10 @@ var fechaHoraColombia = (now() >> "America/Bogota") as String {
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<logger level="DEBUG" doc:name="pqr request" doc:id="d417d818-7896-4d86-a236-2cc17b1dad5f" message="#[payload default {}]" />
 		<flow-ref doc:name="post-pqr-datalogic-sapi-client-sub-flow" doc:id="e61d7905-9bf2-4022-bb30-400965a35ada" name="post-pqr-datalogic-sapi-client-sub-flow" target="pqrResponse"/>
 	</sub-flow>
 	<sub-flow name="step-09-async-updload" doc:id="07ea0954-05e7-42c4-b74c-041d2c5451a0" >
 		<async doc:name="Async" doc:id="7038ad53-c22d-4888-b3a7-08544ccc79f5" >
-			<ee:transform doc:name="set mongo dynamicQuery request" doc:id="94010e17-8fb9-4819-87df-8fbbee613ee2">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-var fechaHoraColombia = (now() >> "America/Bogota") as String {
-	format: "YYYY-MM-dd HH:mm:ss"
-}
-output application/json
----
-{
-	basePath: p("mongoDbSapi.basePath"),
-	host: p("mongoDbSapi.host"),
-	port: p("mongoDbSapi.port"),
-	method: "POST",
-	path: p('mongoDbSapi.dynamicQuery.path'),
-	body: {
-		"query": {
-			"insert": "PQR_PQR",
-			"documents": [{
-				"actualizacion_extractor": "",
-				"row_id_pqr": vars.pqrResponse.pqr.databaseId,
-				"numero_pqr": vars.pqrResponse.pqr.databaseId,
-				"tipo_documento": vars.customer.'Tipo_Documento',
-				"numero_identificacion": vars.customer.'Numero_Identificacion',
-				"contacto_tipo_documento": vars.contact.docType,
-				"contacto_numero_documento": vars.contact.docNumber,
-				"id_servicio": vars.service.account,
-				"numero_conexion": vars.contact.phone,
-				"cuenta_servicio": vars.service.account,
-				"cuenta_facturacion": "",
-				"producto": vars.initialPayload.ticket.service.product,
-				"numnumero_pedido": vars.initialPayload.ticket.service.orderNumber,
-				"pqr_reclamo_pqr": "",
-				"tipo_pqr_reclamo": "",
-				"cun": vars.initialPayload.ticket.pqr.cunRelated,
-				"servicio": vars.service.name,
-				"tecnologia": vars.service.technology,
-				"tipo_pqr": vars.initialPayload.ticket.pqr.pqrType,
-				"clase_pqr": vars.pqr.class,
-				"motivo_pqr": vars.pqr.reason,
-				"causal_pqr": vars.pqr.causal,
-				"urgencia_pqr": "",
-				"impacto": "",
-				"sintoma_pqr": vars.pqr.symptom,
-				"valor_reclamado": "",
-				"valor_ajustado": "",
-				"fecha_creacion": fechaHoraColombia,
-				"fecha_radicacion": fechaHoraColombia,
-				"fecha_solucion": fechaHoraColombia,
-				"solucion": vars.initialPayload.ticket.pqr.solution,
-				"imputabilidad": "",
-				"estado_pqr": "ABIERTO",
-				"estado_envio_remedy": vars.pqr.remedyStatus,
-				"Tipo_cierre": "",
-				"medio_notificacion_pqr": "",
-				"medio_recepcion": "",
-				"descripcion_pqr": vars.pqr.description,
-				"respuesta_pqr": "",
-				"num_incidendia_remedy": "",
-				"respuesta_remedy": "",
-				"id_sistema_origen": vars.origin.system.'Sistema_Destino',
-				"sistema_origen": vars.origin.system.'Sistema_Origen',
-				"lsp_origen_llamada": "",
-				"lsp_tercer_destino": "",
-				"indicador_pqr_completa": "",
-				"correo_electronico": vars.contact.email,
-				"cun_falla_masiva": vars.initialPayload.ticket.pqr.cunMassiveFailure,
-				"direccion_notificacion_escrita": null,
-				"radicado_externo": "",
-				"flag_recurso_apelacion": false,
-				"flag_traslado_gobierno": false,
-				"flag_reapertura": false,
-				"caracteristicas_pqr": null,
-				"prioridad": "",
-				"usuario_creador": vars.origin.user,
-				"usuario_asignado": "",
-				"comentarios": "",
-				"nombre_cliente": "",
-				"segmento_cliente": "",
-				"codigo_resolucion": null,
-				"descripcion_resolucion": null,
-				"subcanal": vars.origin.channel.Canal_Origen,
-				"punto": "",
-				"proveedor": "ETB",
-				"gerencia": "",
-				"semaforo": "",
-				"dias_habiles": "",
-				"Fecha_Inicio_Espera": null,
-				"Fecha_Fin_Espera": null,
-				"cun_relacionado": vars.initialPayload.ticket.pqr.cunRelated,
-				"nombre_contacto": "",
-				"canal_recepcion": "",
-				"pqr_extensiones": [],
-				"pqr_actividades_pqr": [],
-				"pqr_archivos_adjuntos": vars.initialPayload.ticket.pqr.attachment map (attachment, idx) -> {
-					"archivo_adjunto": attachment.name
-				},
-				"pqr_caracteristicas": [],
-				"pqr_detalle_suspension": null,
-				"version_pqr": "1",
-				"flag_notificacion": false,
-				"flag_fallaJoven": false,
-				"fecha_modificacion": null,
-				"sub_estado": "Normal",
-				"excepcion": "",
-				"tipo_excepcion": "",
-				"familia": "SOPORTE",
-				"tipoContacto": "",
-				"EsMultidetalle": false,
-				"EnvioComunicaciones": {
-				},
-				"bloqueo_permanencia": null,
-				"codigo_back": null,
-				"firma": null,
-				"numero_retencion": null,
-				"reincidente": "N",
-				"tipo_falla": vars.botHomologatedRequest,
-				(if ( vars.childPqr == true ) "Estado_Segundo_Nivel": [{
-					"id": vars.parentPqr.'numero_pqr',
-					"code": vars.parentPqr.'codigo_resolucion',
-					"description": vars.parentPqr.'descripcion_pqr',
-					"date": vars.parentPqr.'fecha_creacion' as DateTime as String {
-						format: "YYYY-MM-dd HH:mm:ss"
-					} default fechaHoraColombia,
-					"retries": sum(vars.parentPqr.'Estado_Segundo_Nivel'.Reintentos default []),
-					"exceptionCode": 0
-				}]
-
-          else
-            "Estado_Segundo_Nivel": [])
-			}]
-		}
-	},
-	headers: vars.headers default {
-	},
-	queryParameters: {
-	},
-	uriParameters: {
-	}
-}]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
-			<flow-ref doc:name="mongo-db-sapi-common-request" doc:id="e00cf2f6-0892-4b11-9cd1-c13ed1df70b7" name="mongo-db-sapi-common-request" target="mongoPqrResponse" />
-			<logger level="DEBUG" doc:name="mongo status" doc:id="ab146f50-7842-45d1-ad69-d493ed7ff486" message="#[vars.mongoPqrResponse default {}]"/>
 			<ee:transform doc:name="set pqr attachment azure request" doc:id="66029fcb-3f01-47ec-a5d4-ec39fb2d3dd7" >
 				<ee:message >
 					<ee:set-payload ><![CDATA[%dw 2.0
