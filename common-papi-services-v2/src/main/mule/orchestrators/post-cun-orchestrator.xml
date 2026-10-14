@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-cun-orchestrator-sub-flow" doc:id="db4bb8fe-6970-4ccc-941d-6cac31c1632b" >
+		<ee:transform doc:name="set headers" doc:id="d2a1a09e-01e0-43aa-8af7-323ce1189b66">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."x-correlation-id",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="421795aa-a579-4773-b1f6-3ac95d2dacc4" >
+			<when expression='#[payload.cunAction == "ASIGNAR"]'>
+				<ee:transform doc:name="set json request" doc:id="fbe897ba-8e32-40cd-820f-af58f4a957b3" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    pqrType: payload.cunType,
+    pqrDate: payload.date,
+    system: payload.system,
+    orderNumber: payload.service.orderNumber,
+    connectionNumber: payload.service.connectionNumber,
+    identification: payload.customer.identification,
+    identificationType: payload.customer.identificationType,
+    user: payload.user
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="common-sapi-client-sub-flow" doc:id="45aceae2-57e0-4000-9bad-eebc80652eef" name="common-sapi-client-sub-flow"/>
+				<ee:transform doc:name="set json response" doc:id="5de6e8f6-6722-4cda-b1fc-239ec3915272" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    code: payload.code,
+    message: payload.message,
+    cun: {
+        cunNumber: payload.cun.cunNumber,
+        cunDate: payload.cun.cunDate,
+        cunType: payload.cun.pqrType,
+        date: payload.cun.pqrDate,
+        system: payload.cun.system,
+        orderNumber: payload.cun.orderNumber,
+        identificationType: payload.cun.identificationType,
+        identification: payload.cun.identification,
+        connectionNumber: payload.cun.connectionNumber
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression='#[payload.cunAction == "RASTRO"]'>
+				<ee:transform doc:name="set json request" doc:id="4f2b6173-ca6f-4c1f-916a-ed1d5afe9a98" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    cunNumber: payload.cunNumber,
+    pqrType: payload.cunType,
+    pqrDate: payload.date,
+    system: payload.system,
+    orderNumber: payload.service.orderNumber,
+    connectionNumber: payload.service.connectionNumber,
+    identification: payload.customer.identification,
+    identificationType: payload.customer.identificationType,
+    user: payload.user
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="post-traces-common-sapi-clientSub_Flow" doc:id="0b788f35-f63c-4c4c-b341-81263393b8ca" name="post-traces-common-sapi-clientSub_Flow"/>
+				<ee:transform doc:name="set json response" doc:id="d48499f3-c3ae-45f8-9557-80d0c09b91af" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    code: payload.code,
+    message: payload.message
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="COMMON_PAPI:CUN_ACTION_NOT_FOUND" doc:id="400bb432-2c88-43a8-abf3-5f5904b584f9" type="COMMON_PAPI:CUN_ACTION_NOT_FOUND" description="The cunAction does not match any of the requested ones (ASIGNAR, RASTRO)"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

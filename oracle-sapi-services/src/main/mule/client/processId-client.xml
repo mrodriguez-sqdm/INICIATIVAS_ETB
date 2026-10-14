@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-processId-clientSub_Flow" doc:id="8e32286f-ca02-4910-8e24-68daa1f1ad1b" >
+		<async doc:name="Async" doc:id="7705b450-0e4d-4435-8d90-0e28ed7a16ca" >
+			<flow-ref doc:name="Call logger before" doc:id="0db27b92-b2bc-4ed5-9f00-cf4ebb995c7e" name="loggin-client-call"/>
+		</async>
+		<db:insert doc:name="Insert" doc:id="41508972-70df-4210-9341-39a7d5785a3a" config-ref="Database_Config">
+			<db:sql ><![CDATA[INSERT INTO PORTABILIDADCORP (IDPROCESO,IDSALESFORCE,TIPO) VALUES (:processId,:salesforceId,'ENTRANTE')]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{"processId":payload.processId,"salesforceId":payload.salesforceId}]]]></db:input-parameters>
+		</db:insert>
+		<async doc:name="Async" doc:id="b2ffdcff-3baa-47da-9af9-4624aec9af56" >
+			<flow-ref doc:name="Call logger after" doc:id="c61e1c74-04ac-49cc-83af-99adc8a5e271" name="loggin-client-call"/>
+		</async>
+		<ee:transform doc:name="Transform Message" doc:id="9f126023-bcf9-4d72-828e-03ed63928fbe" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "process":"sucess",
+    "message":"Insertion completed successfully"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="patch-processId-clientSub_Flow" doc:id="e754ea7a-b403-476d-8bf4-c02e12df2953" >
+		<async doc:name="Async" doc:id="7ec0ff3f-ea28-4334-a53a-275807d6795f" >
+			<flow-ref doc:name="Call logger before" doc:id="a17fd358-5ed0-459f-8759-0b24f7fd0662" name="loggin-client-call"/>
+		</async>
+		<db:update doc:name="Update" doc:id="0b30f139-2029-48dd-9f9e-ce128f067b9e" config-ref="Database_Config">
+			<db:sql><![CDATA[UPDATE PORTABILIDADCORP SET IDPROCESO = :processId  WHERE IDSALESFORCE = :salesforceId]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	processId:payload.processId,
+	salesforceId:payload.salesforceId
+}]]]></db:input-parameters>
+		</db:update>
+		<async doc:name="Async" doc:id="4569e87e-10ff-49ca-b422-d10fabf36a6e" >
+			<flow-ref doc:name="Call logger after" doc:id="370533fe-663f-4bf6-b7ce-5dc4c7e5bf7a" name="loggin-client-call"/>
+		</async>
+		<ee:transform doc:name="Transform Message" doc:id="85026d43-88c6-4105-a83c-f3be6400dceb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "process":"sucess",
+    "message":"Update completed successfully"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-processId-clientSub_Flow" doc:id="4b32ace2-3cdc-4a0c-a970-cb44cb1dd8ef" >
+		<async doc:name="Async" doc:id="ee53e39b-9bea-4d18-a971-aa8e5cfe655b" >
+			<flow-ref doc:name="Call logger before" doc:id="f42a5f96-aebd-4b72-8aa3-518db3ba1a2d" name="loggin-client-call"/>
+		</async>
+		<db:select doc:name="Select" doc:id="bdc26d4c-eccc-4464-88a0-a2ca572ba112" config-ref="Database_Config" >
+			<db:sql ><![CDATA[SELECT * FROM PORTABILIDADCORP WHERE IDSALESFORCE = :salesforceId and rownum=1]]></db:sql>
+			<db:input-parameters ><![CDATA[#["salesforceId": attributes.queryParams."salesforce-id"]]]></db:input-parameters>
+		</db:select>
+		<async doc:name="Async" doc:id="a9e28338-d007-47a3-9d72-922b6277773a" >
+			<flow-ref doc:name="Call logger after" doc:id="80302f25-c701-4acd-afcb-81b54aa0c6e2" name="loggin-client-call"/>
+		</async>
+		<ee:transform doc:name="Transform Message" doc:id="689774f1-fc83-4b67-9fc8-53daa76f590a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var processId= if (sizeOf(payload)>0) payload[0].IDPROCESO else ""
+---
+{
+	"processId": processId
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

@@ -1,0 +1,493 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="appointment-get-orchestadorSub_Flow" doc:id="427b5c2f-e8aa-4d8f-a5a8-519c230c1fff" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="108eaeac-96f5-4751-9d7c-707ef156ec5b" variableName="parameters"/>
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="39e54839-4daf-442c-852d-23e7c4d845d3" variableName="headers"/>
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="64c20116-c72c-4d12-83c5-75710030eefb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.CUSTOMER_ID_TYPE != null and vars.parameters.CUSTOMER_ID_TYPE != "" &#10;	and vars.parameters.CUSTOMER_ID != null and vars.parameters.CUSTOMER_ID != ""&#10;)&#10;  true &#10;else&#10;	if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;	  true&#10;	else&#10;	  false]' doc:name="Set isValidRequestParams" doc:id="f4928e0a-690a-49f5-a52d-88b6dc3ac114" variableName="isValidRequestParams"/>
+		<choice doc:name="Choice" doc:id="dbe30739-6710-4037-ad9d-317e85fe4df6" >
+			<when expression="#[vars.isValidRequestParams]">
+				<scatter-gather doc:name="Scatter-Gather" doc:id="1a03db69-e1fa-4d32-b61f-a9a27f819ec0" >
+					<route >
+						<flow-ref doc:name="Flow Reference Call mongo-db-sapi-get-pqrAgendaTmr" doc:id="dc3af746-6eb6-4c4b-b6a7-9dc9f37d250a" name="mongo-db-sapi-get-pqrAgendaTmr-clientSub_Flow" />
+					</route>
+					<route >
+						<flow-ref doc:name="Flow Reference" doc:id="b46cfb5c-16d5-4bef-83a7-acedf53767f9" name="mongo-db-sapi-get-franjas-clientSub_Flow"/>
+					</route>
+				</scatter-gather>
+				<set-variable value='#[payload."1"."payload".portal_unificado_conf[0].Parametros default []]' doc:name="Set Variable" doc:id="0e26cfb3-2e46-4084-9109-6f1e4ad4d181" variableName="timeslot_user" />
+				<ee:transform doc:name="Transform Message" doc:id="77d05a1f-bdbf-44c2-b450-5e66b3f1140c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var pay = payload."0"."payload"
+
+fun obtenerValor(llave) =
+    (vars.timeslot_user filter ($.Llave == llave))[0].Valor default ""
+
+---
+{
+    codeResponse: payload."0"."payload".code,
+    responseMessage: payload."0"."payload".message,
+    appointments: payload."0"."payload".agendas map (item) -> {
+        id: item."_id"."\$oid",
+        actionType: item.action_type,
+        address: item.address,
+        tmrSchedules: item.agendas_tmr map (tmr) -> {
+            id: tmr."_id"."\$oid",
+            scheduleStatus: tmr.estado_agenda,
+            creationDate: tmr.fecha_creacion."\$date",
+            scheduleStartDate: tmr.fecha_inicio_agenda default [],
+            etaId: tmr.id_eta default "",
+            requestedByCustomer: tmr.solicitado_cliente,
+            timeSlot: tmr.timeslot,
+            timeSlotUser: obtenerValor((tmr.timeslot) as String),
+            channel: tmr.canal default "",
+            scheduleEndDate: tmr.fecha_fin_agenda,
+            osmId: tmr.id_osm default "",
+            rescheduleReason: tmr.motivo_reagendamiento default "",
+            scheduleOpportunity:
+                tmr.oportunidad_agenda match {
+                    case arr is Array -> arr
+                    else -> [tmr.oportunidad_agenda]
+                },
+            createdByUser: tmr.usuario_creador,
+            modifiedByUser: tmr.usuario_modificador
+        },
+        connectionNumber: item.connection_number,
+        cun: item.cun,
+        customerDocumentNumber: item.customer_document_number,
+        customerDocumentType: item.customer_document_type,
+        duration: item.duration,
+        updateDate: item.fecha_actualizacion."\$date",
+        orderNumber: item.order_number,
+        orderType: item.order_type,
+        originSystem: item.origin_system,
+        serviceType: item.service_type,
+        skill: item.skill,
+        technicianDocumentNumber: item.technician_document_number,
+        technicianDocumentType: item.technician_document_type,
+        technology: item.technology,
+        createdBy: item.usuario_creo,
+        zone: item.zone
+    }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<ee:transform doc:name="Apply Pagination Appointment" doc:id="f89a6f33-0abf-42fb-8933-3f85da44b7d2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var profile = upper((Mule::p('pagination.profile') default "Bajo") as String)
+var maxLimit = if (profile == "ALTO") ((Mule::p('pagination.profiles.alto.max') default 100) as Number) else if (profile == "MEDIO") ((Mule::p('pagination.profiles.medio.max') default 50) as Number) else ((Mule::p('pagination.profiles.bajo.max') default 25) as Number)
+var defaultLimit = maxLimit
+var defaultOffset = (Mule::p('pagination.default.offset') default 0) as Number
+var reqLimit = (vars.parameters.limit default defaultLimit) as Number
+var reqOffset = (vars.parameters.offset default defaultOffset) as Number
+var limit = if (reqLimit > maxLimit) maxLimit else if (reqLimit < 0) 0 else reqLimit
+var offset = if (reqOffset < 0) 0 else reqOffset
+var appointments = payload.appointments default null
+var appointmentsArr = if (appointments is Array) appointments else null
+var lastIndex = if (appointmentsArr is Array) sizeOf(appointmentsArr) - 1 else -1
+var toIndex = if (appointmentsArr is Array) min([offset + limit - 1, lastIndex]) else -1
+---
+((payload - "appointments")
+    ++ {
+      appointments:
+        if (!(appointmentsArr is Array))
+          null
+        else if (sizeOf(appointmentsArr) == 0 or offset > lastIndex)
+          []
+        else
+          appointmentsArr[offset to toIndex]
+    })
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message" doc:id="fa051fbd-681f-4c58-8e40-87d438598b08" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD REQUEST",
+  "message": {
+    "message": "Error processing your consultation request"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable" doc:id="20792db7-5d58-47e9-bc28-2bd82172ea2a" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="appointments-get-orchestadorSub_Flow" doc:id="267b41a2-a7f9-4a1e-9a81-02f70735362d" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="fb4dbb09-f6ae-47ff-908b-5994e6e6bc69" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="aeb53c91-37a6-46f7-98d3-c81b07d7ef3a" variableName="headers" />
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="cd660835-f56e-4908-a703-5bc5386bd209" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+
+var pares =
+  lista
+    filter ($ != "")
+    map (item) -> do {
+      var parts = item splitBy ":"
+      ---
+      {
+        key: parts[0],
+        value: parts[1 to -1] joinBy ":"
+      }
+    }
+
+var resultado =
+  pares reduce (pair, acc = {}) ->
+    acc ++ {
+      (pair.key as String { lowerFirst: true }): pair.value
+    }
+
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.CUSTOMER_ID_TYPE != null and vars.parameters.CUSTOMER_ID_TYPE != "" &#10;	and vars.parameters.CUSTOMER_ID != null and vars.parameters.CUSTOMER_ID != ""&#10;)&#10;  true &#10;else&#10;	if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;	  true&#10;	else&#10;	  false]' doc:name="Set isValidRequestParams" doc:id="49816251-def4-4790-9f59-d37245747f6b" variableName="isValidRequestParams" />
+		<choice doc:name="Choice" doc:id="2b3d52ab-dd63-49d4-9720-f73a1055eaa1" >
+			<when expression="#[vars.isValidRequestParams]" >
+				<scatter-gather doc:name="Scatter-Gather" doc:id="ecf78cea-4c05-4fe3-a6f3-9899459cddf4">
+					<route>
+						<flow-ref doc:name="Flow Reference Call mongo-db-sapi-get-pqrAgendaTmr" doc:id="a8cc9c1d-261b-4073-aea1-7fed30314e0c" name="mongo-db-sapi-get-pqrAgendaTmr-clientSub_Flow" />
+					</route>
+					<route >
+						<flow-ref doc:name="mongo-db-sapi-get-franjas-clientSub_Flow" doc:id="8b6cadeb-1313-4107-a2c9-b83b6c46caa7" name="mongo-db-sapi-get-franjas-clientSub_Flow" />
+					</route>
+					<route >
+						<flow-ref doc:name="mongo-db-sapi-get-orders-clientSub_Flow" doc:id="f2badf1f-ee6f-4dad-9978-0c2454bc9cf4" name="mongo-db-sapi-get-orders-clientSub_Flow" targetValue="#[payload[2].payload.agendas[0].Agendamiento]" />
+						<set-payload value="#[(payload.agendas default []) map $.Agendamiento]" doc:name="Set Payload" doc:id="834874e2-025a-4d8a-a18a-056debdefaeb" />
+					</route>
+				</scatter-gather>
+				<ee:transform doc:name="Transform Message" doc:id="9967e2fe-1f09-4747-8f99-6d30b64e89a9" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Salida directa del Scatter-Gather
+var route0 = payload[0].payload   // assurance
+var route1 = payload[1].payload   // franjas
+var route2 = payload[2].payload   // provisioning
+
+// Parámetros de franjas horarias
+var timeslotParams =
+    (route1.portal_unificado_conf default [])
+        filter $.Nombre == "FRANJA_AGENDA"
+        flatMap $.Parametros
+
+fun obtenerValor(llave) =
+    (timeslotParams filter ($.Llave == llave))[0].Valor default ""
+
+---
+{
+    codeResponse: route0.code,
+    responseMessage: "La solicitud fue exitosa",
+    appointments: {
+
+        assurance:
+            (route0.orden default []) map (item) -> {
+                id: item."_id"."\$oid",
+                actionType: item.action_type,
+                address: item.address,
+
+                tmrSchedules:
+                    (item.agendas_tmr default []) map (tmr) -> {
+                        id: tmr."_id"."\$oid",
+                        scheduleStatus: tmr.estado_agenda,
+                        creationDate: tmr.fecha_creacion,
+                        scheduleStartDate: tmr.fecha_inicio_agenda default [],
+                        etaId: tmr.id_eta default "",
+                        requestedByCustomer: tmr.solicitado_cliente,
+                        timeSlot: tmr.timeslot,
+                        timeSlotUser: obtenerValor(tmr.timeslot),
+                        channel: tmr.canal default "",
+                        scheduleEndDate: tmr.fecha_fin_agenda,
+                        osmId: tmr.id_osm default "",
+                        rescheduleReason: tmr.motivo_reagendamiento default "",
+                        scheduleOpportunity:
+                            tmr.oportunidad_agenda match {
+                                case arr is Array -> arr
+                                else -> [tmr.oportunidad_agenda]
+                            },
+                        createdByUser: tmr.usuario_creador,
+                        modifiedByUser: tmr.usuario_modificador
+                    },
+
+                connectionNumber: item.connection_number,
+                cun: item.cun,
+                customerDocumentNumber: item.customer_document_number,
+                customerDocumentType: item.customer_document_type,
+                duration: item.duration,
+                updateDate: item.fecha_actualizacion,
+                orderNumber: item.order_number,
+                orderType: item.order_type,
+                originSystem: item.origin_system,
+                serviceType: item.service_type,
+                skill: item.skill,
+                technicianDocumentNumber: item.technician_document_number,
+                technicianDocumentType: item.technician_document_type,
+                technology: item.technology,
+                createdBy: item.usuario_creo,
+                zone: item.zone
+            },
+
+        provisioning:
+            (route2 default [])
+                map (prov) -> {
+                    scheduling: {
+                        scheduledDate: prov.Fecha_Agenda,
+                        timeSlot: prov.Franja_Agenda,
+                        timeSlotUser: obtenerValor(prov.Franja_Agenda),
+                        workType: prov.Tipo_Actuacion default null,
+                        workSkill: prov.Habilidad_Trabajo default null,
+                        durationMinutes: prov.Duracion default null,
+                        installerCode: prov.Codigo_Instalador default "",
+                        isEnriched: prov.Enriquecida default false,
+                        isScheduled: prov.Agenda default false,
+                        activityId: prov.IdActividad,
+                        installmentList: prov.ListaCuotas default []
+                    }
+                }
+    }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<ee:transform doc:name="Apply Pagination Appointments" doc:id="ce261ee6-7e3e-4147-a648-fa65aa0ba4d2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var profile = upper((Mule::p('pagination.profile') default "Bajo") as String)
+var maxLimit = if (profile == "ALTO") ((Mule::p('pagination.profiles.alto.max') default 100) as Number) else if (profile == "MEDIO") ((Mule::p('pagination.profiles.medio.max') default 50) as Number) else ((Mule::p('pagination.profiles.bajo.max') default 25) as Number)
+var defaultLimit = maxLimit
+var defaultOffset = (Mule::p('pagination.default.offset') default 0) as Number
+var reqLimit = (vars.parameters.limit default defaultLimit) as Number
+var reqOffset = (vars.parameters.offset default defaultOffset) as Number
+var limit = if (reqLimit > maxLimit) maxLimit else if (reqLimit < 0) 0 else reqLimit
+var offset = if (reqOffset < 0) 0 else reqOffset
+var appointments = payload.appointments default {}
+var assurance = appointments.assurance default []
+var provisioning = appointments.provisioning default []
+var assuranceLastIndex = sizeOf(assurance) - 1
+var assuranceToIndex = min([offset + limit - 1, assuranceLastIndex])
+var provisioningLastIndex = sizeOf(provisioning) - 1
+var provisioningToIndex = min([offset + limit - 1, provisioningLastIndex])
+---
+((payload - "appointments")
+    ++ {
+      appointments: appointments ++ {
+        assurance: if (sizeOf(assurance) == 0 or offset > assuranceLastIndex) [] else assurance[offset to assuranceToIndex],
+        provisioning: if (sizeOf(provisioning) == 0 or offset > provisioningLastIndex) [] else provisioning[offset to provisioningToIndex]
+      }
+    })
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="8f67b460-8f5d-45c0-86ab-7100613aea93" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD REQUEST",
+  "message": {
+    "message": "Error processing your consultation request"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable" doc:id="989ebe87-1214-4b8c-acae-e2c0e684fc48" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="appointment-post-appointments-orchestadorSub_Flow" doc:id="429252ad-ac84-4a9a-8daa-d2e45e6d7b6e" >
+		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="f3d2d8a2-3bcc-4c38-b23d-3af44258fa1c" variableName="payloadRequest"/>
+		<ee:transform doc:name="Transform Message" doc:id="294d7844-39ef-4b00-8711-06395d3ff3c0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"query": {
+		"find": "MDM_CD_ORDEN",
+		"filter": {
+			"Numero_Orden": vars.payloadRequest.orderData.orderId
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+				<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output application/json
+---
+Mule::p('mongo-db-sapi.resources.dynamicQuery.base-path')
+ ]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="d07d9ebf-4fd5-4b50-a3f2-90da824bf6f5" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="orderSchedule"/>
+		<set-variable value="#[%dw 2.0&#10;output application/json&#10;var bndl = vars.orderSchedule.result[0].Servicio_Tramite.Bundle&#10;var pri = (bndl.Primarios filter ($.Agendamiento is true))[0]&#10;---&#10;bndl.Agendamiento is true or pri.Agendamiento is true default false]" doc:name="Set Variable" doc:id="40371a11-6ab6-4bc3-a8b0-dc85eb7c746f" variableName="flagSchedule"/>
+		<choice doc:name="Choice" doc:id="b4605b1c-2afe-4b55-bc00-0ba981d30521" >
+			<when expression="#[vars.flagSchedule == true]">
+				<ee:transform doc:name="Transform Message" doc:id="81c9e235-9454-4b53-a7f7-6ee0e706423d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var request = vars.payloadRequest default {
+}
+var order = vars.orderSchedule.result[0] default {
+}
+// 1. MAPEO ACTIVITY TYPE
+var activityTypeMap = {
+	Aprovisionamiento: "INS",
+	Aseguramiento: "AS",
+	Agenda: "INS",
+	Reagenda: "MOD",
+	Cancelacion: "RET",
+	Suspension: "DES"
+}
+var activityType =
+    activityTypeMap[request.scheduleData.visitType]
+    default request.scheduleData.visitType
+// 2. MAPEO TECNOLOGÍA
+var techMap = {
+	FTTH: "F.O.",
+	COBRE: "CU",
+	FWA: "FWA"
+}
+var techPrefix =
+    techMap[request.scheduleData.technology]
+    default "GEN"
+// 3. OBTENER Y LIMPIAR FAMILIAS
+var familiasRaw =
+    request.orderData.services map (s) -> s.family
+var familiasClean =
+    (familiasRaw filter ($ != null)) distinctBy $
+// 4. CONSTRUIR ACTION TYPE
+var actionType =
+    techPrefix ++ " (" ++ (familiasClean joinBy "/") ++ ")"
+// 5. CALCULAR WORKSKILL
+var workSkill =
+    if ( techPrefix == "F.O." ) "INST_FO"
+    else if ( techPrefix == "CU" ) "INST_CU"
+    else if ( techPrefix == "FWA" ) "INST_FWA"
+    else "GENERIC"
+// aun no se ha mapeado actionType
+// "aworktype": actionType
+---
+{
+	"id_tarea_remedy": request.orderData.orderId,
+	"cedula": if (order.result.Cliente_Tramite.Numero_Identificacion != null and order.Cliente_Tramite.Numero_Identificacion != "") order.Cliente_Tramite.Numero_Identificacion else order.Cliente_Tramite.Numero_Documento,
+	"franja": request.scheduleData.timeSlot,
+	"nombre_cliente": request.customerData.name,
+	"direccion": request.customerData.address,
+	"ciudad": request.customerData.city,
+	"departamento": request.customerData.state,
+	"zip": null,
+	"cord_x": request.scheduleData.longitude as String,
+	"cord_y": request.scheduleData.latitude as String,
+	"telefono": request.customerData.phone,
+	"email": request.customerData.email,
+	"fecha_agendamiento": request.scheduleData.date,
+	"zona": request.scheduleData.resourceId,
+	"nombre_orden": workSkill,
+	"tipo_actividad": activityType,
+	"Anillo": "",
+	"nemonico_equipo": "",
+	"cable": "",
+	"hilo": 0,
+	"producto": "",
+	"tipo_solicitud": "",
+	"distancia": "",
+	"topologia": "",
+	"zona_agenda": request.scheduleData.zone
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="oracle-sapi-services" doc:id="46b61329-16ea-488c-83ae-d8ce1b0e5a04" name="oracle-sapi-servicesSub_Flow"/>
+				<ee:transform doc:name="Transform Message" doc:id="56d2c219-3c0f-4fb8-9e3f-d1d8b5782461" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "201",
+	"code": "OK",
+	"message": {
+		"message": "Transacción exitosa."
+	}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[201]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="d799f51f-3611-49c9-b1bc-6c4ef203a99f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 400,
+	"code": "BAD REQUEST",
+	"message": {
+		"message": "Esta solicitud no requiere agendamiento."
+	}
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

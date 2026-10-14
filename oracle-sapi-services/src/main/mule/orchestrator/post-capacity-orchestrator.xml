@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-capacity-orchestrator.xml" doc:id="0c879be0-f3c4-4eeb-9d8d-0d9a2016dc8a" >
+		<flow-ref doc:name="Go shaPass" doc:id="89105cc0-88c6-48c7-9c14-fd7d085dbe8e" name="get-shaPass-orchestrator.xml" />
+		<ee:transform doc:name="dateArray" doc:id="3d22074b-42e3-4d61-b047-561be53fa49a">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="dateArray"><![CDATA[%dw 2.0
+output application/json
+import isNumeric from dw::core::Strings
+
+var numDays = if(isNumeric(payload.numDays) == false)"3"else payload.numDays
+var date = payload.date as Date
+var dateFinal = payload.date as Date + "P$(numDays)D"
+fun getDates (
+    startDate: Date, 
+    endDate: Date, 
+    datesArray = []
+) = do {
+        var newArray = datesArray + startDate
+    ---
+    if (startDate > endDate) []
+    else if (startDate == endDate) (
+        newArray
+    )
+    else getDates (
+        startDate + |P1D|, 
+        endDate,
+        newArray
+    )
+}
+---
+getDates(date, dateFinal)]]></ee:set-variable>
+				<ee:set-variable variableName="skill" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.skill]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="setBody" doc:id="15cc2fab-8098-4e40-bd5d-6331e1337a82" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/ 
+---
+soapenv#Envelope @("xmlns:urn" : "urn:toa:capacity") : {
+    soapenv#Header : {
+    },
+    soapenv#Body : {
+        "urn:get_capacity" : {
+            "user" : {
+		"now" : vars.shaPass.now,
+		"login" : p('oracle-ocs.shalogin'),
+		"company" : p('oracle-ocs.company'),
+		"auth_string" : vars.shaPass.shaPass,
+		},
+            "date" : vars.dateArray,
+            "location" : payload.location,
+            "calculate_duration" : "false",
+            "calculate_travel_time" : "false",
+            "calculate_work_skill" : "true",          
+            "work_skill" : payload.skill,          
+            }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-capacity-client" doc:id="10d11e4f-3a3f-4f07-a233-dd9448e8d97c" name="post-capacity-client" />
+		<ee:transform doc:name="responseToJson" doc:id="b911a5a0-d90c-4020-9137-94157f57a00b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var error = payload.Envelope.Body.get_capacity_response.*capacity == null
+---
+{
+    "status": if (error) "FAIL" else "PASS",
+    "description":  if (error) "No Capacities" else "SUCCESS",
+    "capacities": payload.Envelope.Body.get_capacity_response.*capacity filter ($.work_skill == vars.skill)
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+var error = payload.Envelope.Body.get_capacity_response.*capacity == null
+---
+if (error) 500 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

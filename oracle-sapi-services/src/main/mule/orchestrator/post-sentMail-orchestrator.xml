@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-sendMessage-orchestratorSub_Flow" doc:id="3801f771-a724-43e3-9b71-d2803f0fba97" >
+		<ee:transform doc:name="Prepare auth body" doc:id="ae25323e-1690-4491-8dc7-73bdd106f6d6" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="authBody" ><![CDATA[%dw 2.0
+output application/x-www-form-urlencoded
+---
+{
+	user_name: p('responsys.auth.user'),
+	password: p('responsys.auth.password'),
+	auth_type: p('responsys.auth.type')
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Authenticate" doc:id="a54d9529-a434-48d4-88fa-36bb535cb961" name="Authenticate_responsys" target="authResponse"/>
+		<choice doc:name="Registro?" doc:id="ff84660f-5a4d-46c4-9ecb-529be28bfd24" >
+			<when expression="#[vars.inputPayload.flagRegistro? and vars.inputPayload.flagRegistro]">
+				<flow-ref doc:name="Generate Url" doc:id="30248ec7-3cf7-4c92-add1-f5fcc365e585" name="get-generate-url-bot-sapi-clientSub_Flow" target="generatedUrl" />
+				<ee:transform doc:name="Prepare input" doc:id="35dd96f9-6c02-4828-afc6-77d53f311146" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="registerInput" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"recordData": {
+        "fieldNames": vars.inputPayload.fields,
+        "records": [
+            vars.inputPayload.records ++ [vars.generatedUrl.WSResponseBody.Url, ""]
+        ]
+    },
+    "mergeRule": {
+        "htmlValue": "H",
+    	"optoutValue": "I",
+    	"defaultPermissionStatus": "OPTIN",
+    	"rejectRecordIfChannelEmpty": "E",
+    	"optinValue": "I",
+    	"textValue": "T",
+    	"matchOperator": "NONE",
+        "insertOnNoMatch": p('responsys.registerPetition.rules.insert'),
+        "updateOnMatch": p('responsys.registerPetition.rules.update'),
+        "matchColumnName1": if (vars.inputPayload.tipo_canal == "EMAIL") p('responsys.registerPetition.rules.matchEmail') else p('responsys.registerPetition.rules.matchSMS')
+    }
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Prepare input" doc:id="8b26cdb2-10da-4ee2-96b1-e5944292d055">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="registerInput"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"recordData": {
+        "fieldNames": vars.inputPayload.fields,
+        "records": [
+            vars.inputPayload.records
+        ]
+    },
+    "mergeRule": {
+        "insertOnNoMatch": p('responsys.registerPetition.rules.insert'),
+        "updateOnMatch": p('responsys.registerPetition.rules.update'),
+        "matchColumnName1": if (vars.inputPayload.tipo_canal == "EMAIL") p('responsys.registerPetition.rules.matchEmail') else p('responsys.registerPetition.rules.matchSMS')
+    }
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+		<flow-ref doc:name="Register for mail" doc:id="452db5b3-5fcf-4df1-b1e8-9a5ddd4dbe99" name="responsys-registerMember" target="registerOutput" />
+		<ee:transform doc:name="Prepare input trigger" doc:id="3dd5fe92-deef-417a-9683-3627d34450cd">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var lista = (payload.addId splitBy "/")[2]
+---
+{
+    "customEvent": {},
+    "recipientData": [
+        {
+            "recipient": {
+                "listName": {
+                    "folderName": lista,
+                    "objectName": lista
+                },
+                "recipientId": vars.registerOutput.recordData.records[0][0] as Number
+            }
+        }
+    ]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Fire trigger" doc:id="607a9320-1c4e-4545-b2fc-847e5ad13c26" name="responsys-fireTrigger" />
+		<ee:transform doc:name="Prepare output" doc:id="58c42786-423c-4efe-a4be-199c82437152">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "SUCCESS",
+    "description": "Mensaje enviado exitosamente"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
+
