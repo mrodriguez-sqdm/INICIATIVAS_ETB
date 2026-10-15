@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="post-comm-message-orchestrator"
+		doc:id="34961647-b2a3-49ff-ad3a-3aa778f29b92">
+		<logger level="INFO" doc:name="Log Orchestration Start"
+			doc:id="e9c9f501-eb82-4869-93ab-9886f93d7959"
+			message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /communications/message"]' />
+		<ee:transform doc:name="set initial variables"
+			doc:id="295eb254-735f-449e-9c23-2a6f1644dc95">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="provider"><![CDATA[%dw 2.0
+output application/json
+---
+lower(attributes.headers.'x-provider-id')]]></ee:set-variable>
+				<ee:set-variable variableName="headers"><![CDATA[attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="messageChannel"><![CDATA[%dw 2.0
+output application/json
+---
+payload.messageChannel]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="validate provider and message channel"
+			doc:id="44f6de6b-a8a5-48f5-b08a-a0fd35e7a3d6">
+			<when
+				expression="#[upper(vars.provider default '') == 'PAU' and upper(vars.messageChannel default '') == 'WHATSAPP']">
+				<flow-ref doc:name="pau-send-notification"
+					doc:id="223db3b6-04e3-49b8-b7d8-935c3885cba4"
+					name="pau-send-notification" />
+			</when>
+			<when
+				expression="#[upper(vars.provider default '') == 'RESPONSYS' and (upper(vars.messageChannel default '') == 'EMAIL' or upper(vars.messageChannel default '') == 'SMS')]">
+				<flow-ref doc:name="responsys-send-notification"
+					doc:id="1af93d85-d069-49fc-8192-f81a02f6a8ff"
+					name="responsys-send-notification" />
+			</when>
+			<otherwise>
+				<raise-error
+					doc:name="NOTIFICATION_API:UNSUPPORTED_COMBINATION"
+					doc:id="e14cabf6-a346-41e7-b1e1-d301f0bca048"
+					type="NOTIFICATION_API:UNSUPPORTED_COMBINATION"
+					description="Unsupported Provider - MessageChannel combination: #[vars.provider] - #[vars.messageChannel]" />
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Log Orchestration End"
+			doc:id="ff3d01d5-c284-432f-a050-08677ec127d7"
+			message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /communications/message | status=201"]' />
+	</sub-flow>
+	<sub-flow name="pau-send-notification"
+		doc:id="7437653a-1ac9-480c-8952-862114eee17c">
+		<ee:transform doc:name="set silice notifications request"
+			doc:id="b8bfba44-cb93-4c90-8860-3e7fa32858c7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"notification": {
+		"messageChannel": vars.initialPayload.messageChannel,
+		"templateName": vars.initialPayload.template.id,
+		"receiverPhoneNumber": vars.initialPayload.receiver.phoneNumber,
+		"templateVariables": vars.initialPayload.templateVariables map $.value
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-notification-silice-sapi-client"
+			doc:id="d2c6db4a-d5ad-4729-a596-dfc623aef851"
+			name="post-notification-silice-sapi-client" />
+		<ee:transform doc:name="set response"
+			doc:id="973cc33e-dbe7-4e4c-9efb-512e0152ba9c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": "201",
+  "message": "Notification Sent Successfully",
+  "result": {
+    "state": payload.result.notificationStatus,
+    "messageChannel": vars.initialPayload.messageChannel,
+    "provider": vars.provider,
+    "notificationSendingDate": (now() >> "America/Bogota") as String {format: "YYYY-MM-dd'T'HH:mm:ss"},
+    "notificationId": payload.result.notificationId
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="save-message-audit"
+			doc:id="8e1f3526-cd1b-4835-94c7-1ce25620b14d"
+			name="save-message-audit" />
+	</sub-flow>
+	<sub-flow name="responsys-send-notification"
+		doc:id="6f41b7eb-e3ed-4256-b89f-35be6b29e936">
+		<ee:transform doc:name="set oracle notifications request"
+			doc:id="d5da953d-b905-4278-b140-12b5e2ecd0a3">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+  "correlationId": correlationId,
+  "channel": vars.initialPayload.messageChannel,
+  "campaignName": vars.initialPayload.template.id,
+  "recipients": [
+    {
+      "customerId": vars.initialPayload.receiver.documentNumber,
+      ("emailAddress": vars.initialPayload.receiver.email) if (vars.initialPayload.messageChannel == "EMAIL"),
+      ("mobileNumber": vars.initialPayload.receiver.phoneNumber) if (vars.initialPayload.messageChannel == "SMS"),
+      "listFolderName": vars.initialPayload.template.listFolderName,
+      "listObjectName": vars.initialPayload.template.listObjectName,
+      ("emailFormat": vars.initialPayload.template.emailFormat) if (vars.initialPayload.messageChannel == "EMAIL"),
+      "recipientId": vars.initialPayload.receiver.recipientId,
+      "optionalData": vars.initialPayload.templateVariables
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="post-notification-oracle-sapi-client"
+			doc:id="7768cf6d-9ba7-44eb-9548-e193ec75ded5"
+			name="post-notification-oracle-sapi-client" />
+		<ee:transform doc:name="set response"
+			doc:id="0040a3dc-2eab-4781-90e5-ce14699421bc">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": "201",
+  "message": "Notification Sent Successfully",
+  "result": {
+    "state": "ok",
+    "messageChannel": vars.initialPayload.messageChannel,
+    "provider": vars.provider,
+    "notificationSendingDate": (now() >> "America/Bogota") as String {format: "YYYY-MM-dd'T'HH:mm:ss"},
+    "notificationId": payload.result.recipientId[0]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="save-message-audit"
+			doc:id="6cb4e06d-bd26-499b-a4fd-f6ee77faa608"
+			name="save-message-audit" />
+	</sub-flow>
+	<sub-flow name="save-message-audit"
+		doc:id="7ce1facc-b7f1-49a9-97a0-b9a8cacd8c59">
+		<async doc:name="Async"
+			doc:id="e4d543b2-4f97-4e1a-b7e0-f40e0568862b">
+			<ee:transform
+				doc:name="set mongo sapi comm message request"
+				doc:id="b178da0a-0360-4d6c-a2db-84c98d192200">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var initialRequest = vars.initialPayload
+var response = payload
+var fechaHoraColombia = (now() >> "America/Bogota") as String {
+	format: "YYYY-MM-dd'T'HH:mm:ss"
+}
+var concept= (initialRequest.messageType default "NOTIFICATION VIA ") ++ " - " ++ (initialRequest.messageChannel default "UNKNOWN") ++ ". MESSAGE TYPE: " ++ (initialRequest.messageType default "NO TYPE")
+---
+{
+	"transactionId": "TRX-" ++ uuid(),
+	"notificationId": response.result.notificationId as String,
+	"provider": response.result.provider,
+	"state": "completed",
+	"priority": initialRequest.priority,
+	"messageChannel": initialRequest.messageChannel,
+	"messageType": initialRequest.messageType,
+	"templateSubject": initialRequest.template.id,
+	"templateId": initialRequest.template.id,
+	"templateName": initialRequest.template.id,
+	"templateVariables": initialRequest.templateVariables map $.value,
+	"receiver": {
+		"documentNumber": initialRequest.receiver.documentNumber default "N/A",
+		"documentType": initialRequest.receiver.documentType default "N/A",
+		"name": initialRequest.receiver.name default "N/A",
+		"phoneNumber": initialRequest.receiver.phoneNumber default "N/A",
+		"email": initialRequest.receiver.email default "N/A"
+	},
+	"concept": concept,
+	"creationDate": fechaHoraColombia,
+	"providerCreationDate": response.result.notificationSendingDate,
+	"updatedDate": fechaHoraColombia
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref
+				doc:name="post-message-audit-mongo-db-sapi-clientSub_Flow"
+				doc:id="b305c451-7bf0-47cc-9b3d-a61fc001d680"
+				name="post-message-audit-mongo-db-sapi-clientSub_Flow" />
+		</async>
+	</sub-flow>
+</mule>

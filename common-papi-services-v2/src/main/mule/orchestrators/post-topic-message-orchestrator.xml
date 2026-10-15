@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:azure-storage="http://www.mulesoft.org/schema/mule/azure-storage"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/azure-storage http://www.mulesoft.org/schema/mule/azure-storage/current/mule-azure-storage.xsd">
+	<sub-flow name="post-topic-message-orchestrator-sub-flow"
+		doc:id="e7d1d635-6044-4d83-aa2e-9c6c658e323d">
+		<ee:transform doc:name="Resolve process flow"
+			doc:id="a1a303a3-1fce-46a1-9415-b78c535fb0cb">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="tipoProceso"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams.command default ""]]></ee:set-variable>
+				<ee:set-variable variableName="flowName"><![CDATA[%dw 2.0
+output application/java
+import * from dw::Runtime
+var command = attributes.uriParams.command default ""
+---
+try(() -> p("procesos." ++ command)) orElse ""]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Validate process mapping"
+			doc:id="42bf2b18-6790-4cd6-9e30-eff766113c78">
+			<when expression="#[!isEmpty(vars.flowName)]">
+				<flow-ref doc:name="Dynamic process flow"
+					doc:id="4e241e29-2ef9-4807-9b17-1c9e017b9c3e"
+					name="#[vars.flowName]" />
+			</when>
+			<otherwise>
+				<set-variable value="#[404]" doc:name="httpStatus 404"
+					doc:id="2238596b-5236-4aec-9e9e-bf6a5d839500"
+					variableName="httpStatus" />
+				<ee:transform doc:name="Process not found response"
+					doc:id="f4b2579a-a0cc-4e9a-aea3-573aa83fe8c2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 404,
+	code: "NOT_FOUND",
+	message: {
+		message: "Process not found for command: " ++ (vars.tipoProceso default "")
+	},
+	messageServer: "",
+	cause: [{
+		origin: "common-papi-services-v2",
+		message: "No process mapped for uriParameter command='" ++ (vars.tipoProceso default "") ++ "'"
+	}]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-topic-commands-message-subFlow"
+		doc:id="dc482834-b06d-4ef1-b7dd-b997a6ae366e">
+		<logger level="INFO" doc:name="Log commands process"
+			doc:id="cb040252-307f-416e-b010-1d6d252692d3"
+			message='#[%dw 2.0&#10;output text/plain&#10;---&#10;"Processing topic command: " ++ (vars.tipoProceso default "commands")]' />
+		<ee:transform doc:name="Validate commands body"
+			doc:id="c2fbdc8e-b844-4ca3-ae53-d4545cf1d247">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="validationErrors"><![CDATA[%dw 2.0
+output application/java
+var body = payload default {}
+var nonEmptyRequired = ["orderNumber", "procedure", "serviceAccountId", "serviceId", "crm", "technology"]
+var missingNonEmpty = nonEmptyRequired filter ((f) -> isEmpty(body[f] default ""))
+var crmOk = isEmpty(body.crm default "") or (["SUMA", "SALESFORCE"] contains body.crm)
+var techOk = isEmpty(body.technology default "") or (["1", "2", "3"] contains (body.technology as String))
+var procOk = isEmpty(body.procedure default "") or (["Suspend", "Resume", "Disconnect", "Reconnect", "Terminate"] contains body.procedure)
+---
+(missingNonEmpty map ((f) -> "Required field " ++ f ++ " not specified"))
+++ (if (!crmOk) ["Invalid value for crm. Expected: SUMA, SALESFORCE"] else [])
+++ (if (!techOk) ["Invalid value for technology. Expected: 1, 2, 3"] else [])
+++ (if (!procOk) ["Invalid value for procedure. Expected: Suspend, Resume, Disconnect"] else [])]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Validate required fields"
+			doc:id="b51632f3-4e83-427b-b90d-a0835cbfde83">
+			<when expression="#[isEmpty(vars.validationErrors)]">
+				<ee:transform doc:name="Resolve queue and message"
+					doc:id="5e4020f0-4eab-4e67-9e7e-87e7a09a00f3">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="inputPayload"><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+						<ee:set-variable variableName="queueName"><![CDATA[%dw 2.0
+output application/java
+import * from dw::Runtime
+var procedure = payload.procedure default ""
+var queueKey = procedure match {
+	case "Suspend" -> "suspend"
+	case "Resume" -> "reconnect"
+	case "Reconnect" -> "reconnect"
+	case "Disconnect" -> "terminate"
+	case "Terminate" -> "terminate"
+	else -> ""
+}
+---
+if (isEmpty(queueKey)) ""
+else (try(() -> p("azureStorage.collection.queue." ++ queueKey)) orElse "")]]></ee:set-variable>
+						<ee:set-variable variableName="queueMessage"><![CDATA[%dw 2.0
+output application/java
+---
+write(payload, "application/json")]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Queue mapped?"
+					doc:id="68b62c95-9d92-413c-9eb7-8c857cc7698b">
+					<when expression="#[!isEmpty(vars.queueName)]">
+						<logger level="INFO" doc:name="Log queue target"
+							doc:id="b272a59c-8fcc-4e15-9401-3bd6e0af6578"
+							message='#[%dw 2.0&#10;output text/plain&#10;---&#10;"Enqueue procedure=" ++ ((vars.inputPayload.procedure default "") as String) ++ " queue=" ++ (vars.queueName default "")]' />
+						<azure-storage:add-message-to-queue
+							doc:name="Add message to Azure queue"
+							doc:id="85062b0f-55cb-425a-a80e-41098daf4d41"
+							config-ref="Azure_Storage_Queue_Config">
+							<azure-storage:message
+								queueMessage="#[vars.queueMessage]"
+								queueName="#[vars.queueName]" />
+						</azure-storage:add-message-to-queue>
+						<ee:transform doc:name="Success response"
+							doc:id="78736aeb-b837-4051-b38b-3a1cb0249419">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": "202",
+	"message": "The message has been saved in the queue",
+	"x-correlation-id": attributes.headers."X-CORRELATION-ID" default attributes.headers."x-correlation-id" default vars.inputPayload.orderNumber
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+202]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<set-variable value="#[400]" doc:name="httpStatus 400"
+							doc:id="bf20bbd3-0775-40bd-921b-652ca6185c90"
+							variableName="httpStatus" />
+						<ee:transform doc:name="Queue not mapped response"
+							doc:id="5e5a4795-e27f-426a-8411-ec542cda3a61">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 400,
+	code: "REQUEST_ERROR",
+	message: {
+		message: "No Azure queue mapped for procedure: " ++ (vars.inputPayload.procedure default payload.procedure default "")
+	},
+	messageServer: "",
+	cause: [{
+		origin: "common-papi-services-v2",
+		message: "Expected procedure Suspend|Resume|Disconnect mapped to collection-command-process-* queues"
+	}]
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<set-variable value="#[400]" doc:name="httpStatus 400"
+					doc:id="19a2cbb2-b5ee-4044-8a8c-fb8537780699"
+					variableName="httpStatus" />
+				<ee:transform doc:name="Validation error response"
+					doc:id="837f926e-acab-4ede-9ff5-07eeb9e97c92">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 400,
+	code: "REQUEST_ERROR",
+	message: {
+		message: vars.validationErrors joinBy "; "
+	},
+	messageServer: "",
+	cause: [{
+		origin: "common-papi-services-v2",
+		message: "Topic commands body validation failed"
+	}]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
