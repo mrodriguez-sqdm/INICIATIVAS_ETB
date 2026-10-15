@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+	<sub-flow name="parametersRetention-get-orchestadorSub_Flow" doc:id="2fddc350-f580-4434-9c14-965acde11e8a" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Parameters" doc:id="33a66b6e-0f2f-489d-8b64-d877934adec5" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save headers" doc:id="2cdd8db1-e28b-4385-823b-d9406d91742f" variableName="headers" />
+		<choice doc:name="Choice" doc:id="446f3a7d-e860-45f4-b25d-bb4dee0a6c67">
+			<when expression="vars.parameters.OPERATION == 'PARAMETROS_RETENCION'">
+				<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if (vars.parameters.FILTERS == "TypeParameter:Motivos;") 35&#10;else if (vars.parameters.FILTERS == "TypeParameter:SubMotivos;") 36&#10;else if (vars.parameters.FILTERS == "TypeParameter:Motivos_SubMotivos;") 37&#10;else null]' doc:name="Set Variable" doc:id="39ce9c2f-229d-45b0-bb1f-124d3ecf0e1a" variableName="parameterType" />
+				<flow-ref doc:name="Flow Reference" doc:id="e3a8baf7-970e-44d7-b625-2150340d478e" name="get-parametersRetention-mongo-db-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="0976b065-b017-40b7-9212-c80064a20461">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: payload.codigo,
+    messageResponse: "consulta realizadaexitosamente",
+    utilitys: {
+        parameters: payload.parametros_retencion map (p) -> {
+            id: p."_id"."\$oid",
+            creationDate: p."Fecha_Creacion"."\$date",
+            modificationDate: p."Fecha_Modificacion"."\$date",
+            modifiedByUser: p."Usuario_Modificacion",
+            createdByUser: p."Usuario_Creacion",
+            extractorUpdate: p."Actualizacion_Extractor",
+            parameterType: p."Tipo_Parametro",
+            name: p."Nombre",
+            values: p."Valores" map (v) -> {
+                code: v."Codigo",
+                status: v."Estado",
+                value: v."Valor",
+                attributeClass: v."ClaseAtributo",
+                attributeType: v."TipoAtributo",
+                relations: v."Relacion" map (r) -> {
+                    code: r."Codigo",
+                    status: r."Estado",
+                    name: r."Nombre" default null,
+                    value: r."Valor",
+                    attributeClass: r."ClaseAtributo",
+                    attributeType: r."TipoAtributo",
+                    relations: r."Relacion",
+                    rules: r."Reglas",
+                    levels: r."Niveles"
+                },
+                rules: v."Reglas",
+                levels: v."Niveles"
+            },
+            steps: p."Pasos",
+            actions: p."Acciones",
+            reasonSteps: p."MotivosPasos",
+            ruleSteps: p."ReglasPasos"
+        },
+        operators: [],
+        bussinesdays: []
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<when expression="vars.parameters.OPERATION == 'OPERADORES'">
+				<flow-ref doc:name="Flow Reference" doc:id="74f3fc8b-4156-4494-b133-a004ad393473" name="get-operators-mongo-db-sapi-clientSub_Flow" />
+				<ee:transform doc:name="Transform Message" doc:id="130e33ae-51bf-4eab-8184-230360bd3b2d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codeResponse: "200",
+    messageResponse: "consulta realizada exitosamente",
+    utilitys: {
+        operators: payload map (item) -> {
+            code: item.Codigo,
+            operator: upper(item.Operador),
+            nrn: item.NRN
+        }
+    }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="vars.parameters.OPERATION == 'DIAS_HABILES'">
+				<flow-ref doc:name="Flow Reference" doc:id="eb651b76-6574-4f3e-9723-1dca0c2d2e33" name="get-bussinessDays-mongo-db-sapi-clientSub_Flow"/>
+				<ee:transform doc:name="Transform Message" doc:id="7b5c74f5-166d-494a-9571-d6f5f1c37fd7">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Dates
+output application/json
+
+// Fecha actual
+var today = now() as Date
+
+// Último día del año actual
+var endOfYear = ((today.year as String) ++ "-12-31") as Date {format: "yyyy-MM-dd"}
+
+// Extraer los festivos activos del payload en formato "yyyy-MM-dd"
+var holidays =
+    payload
+        filter ((item) -> item.activo == true)
+        map ((item) ->
+            (item.dia_festivo as DateTime {format: "yyyy-MM-dd'T'HH:mm:ssXXX"})
+                as String {format: "yyyy-MM-dd"}
+        )
+
+// Generar rango de fechas día a día
+fun buildDays(start: Date, end: Date, acc = []) =
+    if (start > end) acc
+    else buildDays(start + |P1D|, end, acc ++ [start])
+
+var allDays = buildDays(today, endOfYear)
+
+// Filtrar solo lunes a viernes y excluir los festivos
+var businessDays =
+    allDays
+        filter ((d) ->
+            d.dayOfWeek >= 1 and d.dayOfWeek <= 5 and
+            !(holidays contains (d as String {format: "yyyy-MM-dd"}))
+        )
+        map ((d) -> {
+            date: (d as String {format: "yyyy-MM-dd"}) ++ "T00:00:00",
+            day: d.day as String,
+            month: d.month as String,
+            monthNameShort: ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"][d.month - 1],
+            year: d.year as String
+        })
+
+---
+{
+    codeResponse: "200",
+    messageResponse: "Consulta realizada exitosamente",
+    businessDays: businessDays
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message" doc:id="b7bb2b7f-822b-445a-a70a-fe09249c7dcb">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codeResponse: 500 ,
+  messageResponse: "Operación no definida"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Apply Pagination Parameters" doc:id="35f54c94-2ed0-4a2d-818c-e7f80f3d1d4f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var profile = upper((Mule::p('pagination.profile') default "Bajo") as String)
+var maxLimit = if (profile == "ALTO") ((Mule::p('pagination.profiles.alto.max') default 100) as Number) else if (profile == "MEDIO") ((Mule::p('pagination.profiles.medio.max') default 50) as Number) else ((Mule::p('pagination.profiles.bajo.max') default 25) as Number)
+var defaultLimit = maxLimit
+var defaultOffset = (Mule::p('pagination.default.offset') default 0) as Number
+var reqLimit = (vars.parameters.limit default defaultLimit) as Number
+var reqOffset = (vars.parameters.offset default defaultOffset) as Number
+var limit = if (reqLimit > maxLimit) maxLimit else if (reqLimit < 0) 0 else reqLimit
+var offset = if (reqOffset < 0) 0 else reqOffset
+var utilitys = payload.utilitys default {}
+var parameters = utilitys.parameters default []
+var parametersLastIndex = sizeOf(parameters) - 1
+var parametersToIndex = min([offset + limit - 1, parametersLastIndex])
+var operators = utilitys.operators default []
+var operatorsLastIndex = sizeOf(operators) - 1
+var operatorsToIndex = min([offset + limit - 1, operatorsLastIndex])
+var businessDays = payload.businessDays default []
+var businessDaysLastIndex = sizeOf(businessDays) - 1
+var businessDaysToIndex = min([offset + limit - 1, businessDaysLastIndex])
+---
+if ((utilitys.parameters default null) != null)
+    ((payload - "utilitys")
+        ++ {
+          utilitys: utilitys ++ {
+            parameters: if (sizeOf(parameters) == 0 or offset > parametersLastIndex) [] else parameters[offset to parametersToIndex]
+          }
+        })
+else if ((utilitys.operators default null) != null)
+    ((payload - "utilitys")
+        ++ {
+          utilitys: utilitys ++ {
+            operators: if (sizeOf(operators) == 0 or offset > operatorsLastIndex) [] else operators[offset to operatorsToIndex]
+          }
+        })
+else if ((payload.businessDays default null) != null)
+    ((payload - "businessDays")
+        ++ {
+          businessDays: if (sizeOf(businessDays) == 0 or offset > businessDaysLastIndex) [] else businessDays[offset to businessDaysToIndex]
+        })
+else
+    payload
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	
+</mule>
