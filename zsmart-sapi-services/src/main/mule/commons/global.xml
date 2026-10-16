@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<!-- ================================================================== -->
+	<!-- APIKIT CONFIG -->
+	<!-- ================================================================== -->
+	<apikit:config name="zsmart-sapi-services-config"
+		api="resource::35a39a92-efa9-49b6-8f13-d66508fd2f35:zsmart-sapi-services:1.0.45:raml:zip:zsmart-sapi-services.raml"
+		outboundHeadersMapName="outboundHeaders"
+		httpStatusVarName="httpStatus" />
+		
+	<!-- ================================================================== -->
+	<!-- HTTP LISTENER -->
+	<!-- ================================================================== -->
+	<http:listener-config name="HTTP_Listener_Config"
+		doc:name="HTTP Listener Config">
+		<http:listener-connection
+			host="${http.private.host}" port="${http.private.port}"
+			readTimeout="${http.private.readTimeout}" />
+	</http:listener-config>
+
+	<!-- ================================================================== -->
+	<!-- PROPERTY SOURCES -->
+	<!-- order: secure props → environment → common -->
+	<!-- ================================================================== -->
+
+	<!-- Secure Properties (Blowfish/CBC encrypted) -->
+	<secure-properties:config
+		name="Secure_Properties_Config" doc:name="Secure Properties"
+		doc:id="9f71883f-8f1c-464c-b025-34fd47ab4119"
+		file="secureProperties/${env}-secure-properties.yaml"
+		key="${secure.key}">
+		<secure-properties:encrypt
+			algorithm="Blowfish" />
+	</secure-properties:config>
+
+	<!-- Environment-specific properties -->
+	<configuration-properties
+		doc:name="Environment properties"
+		doc:id="a24ed7fa-9fec-44f3-bbac-abae74f702ce"
+		file="properties/${env}-properties.yaml" />
+
+	<!-- Common properties (shared across all environments) -->
+	<configuration-properties
+		doc:name="Configuration properties"
+		doc:id="26a8eed0-dd9b-45df-8d7c-8acccdad1bee"
+		file="properties/common-properties.yaml" />
+
+	<!-- ================================================================== -->
+	<!-- API AUTODISCOVERY -->
+	<!-- ================================================================== -->
+	<api-gateway:autodiscovery apiId="${api.id}"
+		ignoreBasePath="true" doc:name="API Autodiscovery"
+		doc:id="7f319fd7-669a-430b-b3c5-c6532abd2593"
+		flowRef="zsmart-sapi-services-main" />
+
+	<!-- ================================================================== -->
+	<!-- ETB COMMON LIB Imports -->
+	<!-- ================================================================== -->
+	<import doc:name="Import"
+		doc:id="e7771a35-e793-4b41-a368-13f8719dd1f9"
+		file="error-handler-v2.xml" />
+	<import doc:name="Import"
+		doc:id="bddd4b9a-e381-4e05-9c81-1281d102226c" file="loggin.xml" />
+	<import doc:name="Import"
+		doc:id="9c75aed4-8e22-46d3-bf5b-7f80d25d4be2"
+		file="audits-sapi-client.xml" />
+	<import doc:name="Import"
+		doc:id="89cae738-9f11-4c27-86e3-3b6e2ceb10d6"
+		file="etb-common-lib.xml" />
+	<import doc:name="Import"
+		doc:id="58568cc9-9f6b-4282-b9af-43b3bc7ec0bf" file="insert-audit.xml" />
+
+	<!-- ================================================================== -->
+	<!-- HTTP REQUESTER -->
+	<!-- ================================================================== -->
+	<http:request-config
+		name="HTTP_Zsmart_Request_Config"
+		doc:name="HTTP Zsmart Request Config" basePath="${zsmart.basePath}"
+		responseTimeout="${zsmart.responseTimeout}">
+		<http:request-connection host="${zsmart.host}"
+			connectionIdleTimeout="${zsmart.connectionIdleTimeout}"
+			port="${zsmart.port}">
+			<reconnection>
+				<reconnect frequency="${zsmart.reconnection.frequency}"
+					count="${zsmart.reconnection.count}" />
+			</reconnection>
+		</http:request-connection>
+	</http:request-config>
+	<http:request-config
+		name="HTTPS_Zsmart_Auth_Request_Config"
+		doc:name="HTTPS Zsmart Request Config" basePath="${zsmart.basePath}"
+		responseTimeout="${zsmart.responseTimeout}">
+		<http:request-connection
+			host="${zsmartToken.host}"
+			connectionIdleTimeout="${zsmart.connectionIdleTimeout}"
+			port="${zsmartToken.port}">
+			<reconnection>
+				<reconnect frequency="${zsmart.reconnection.frequency}"
+					count="${zsmart.reconnection.count}" />
+			</reconnection>
+		</http:request-connection>
+	</http:request-config>
+</mule>

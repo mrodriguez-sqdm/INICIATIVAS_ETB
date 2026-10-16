@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="receiveProvisioningCommand-zsmart-orchestrator"
+		doc:id="37a9ec3c-f14e-4bf4-9b6d-0c75a22ee836">
+		<try doc:name="Try" doc:id="a8f44ee8-7ff0-4a4e-bc87-aa2f52c823cd">
+			<async doc:name="Async log start" doc:id="ac33da63-7f5a-46c9-86f7-feb69ec3d92a">
+				<logger level="INFO" doc:name="Log Orchestration Start" doc:id="e9ee008b-e215-4eca-a979-e33dd18de486"
+					message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /receive-provisioning-command"]' />
+			</async>
+			<ee:transform doc:name="set initialPayload" doc:id="addd1695-774a-4f1a-af0d-71df53463deb">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="set subscriberProfile auth parameters" doc:id="8fc5c500-3370-4a1f-abb1-81eebef1258e">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	appCode: p('zsmartToken.auth.subscriberProfile.appCode'),
+	appSecret: p('secure::zsmartToken.auth.subscriberProfile.appSecret'),
+	privateKey: p('secure::zsmartToken.auth.subscriberProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token" doc:id="668d4555-9a67-431e-9ff6-e854b4e770f5" name="zsmart-auth-get-token" />
+			<ee:transform doc:name="set zsmart receiveProvisioningCommand request" doc:id="2c76685b-f380-4e55-98b6-589c1f465086">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+var req = vars.initialPayload
+---
+{
+	access_token: vars.zsmartToken,
+	method: "receiveProvisionCommand",
+	version: "1.0",
+	content: {
+		workOrderId: req.orderNumber,
+		primaryCode: req.configurationCode default "",
+		serviceAccountId: req.serviceAccountId default "",
+		serviceId: req.serviceId,
+		comments: req.comments default "",
+		commandList: (req.commandList default []) map ((cmd) -> {
+			(action: cmd.action) if (!isEmpty(cmd.action)),
+			platformName: cmd.platformName,
+			(endpoint: cmd.endpoint) if (cmd.endpoint != null),
+			command: cmd.command default "",
+			sequence: cmd.sequence default "",
+			parameters: (cmd.parameters default []) map ((p) -> {
+				name: p.name,
+				value: p.value default "",
+				scalarType: p.scalarType default ""
+			})
+		})
+	}
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<async doc:name="Async log zsmart request" doc:id="f1474e0f-545c-420a-8f66-4cf189ed9af5">
+				<logger level="INFO" doc:name="Log zsmart request detail" doc:id="1b019373-a1ce-4d94-984c-db2df6992994"
+					message='#[%dw 2.0
+output application/java
+---
+"ZSMART REQUEST | cid=" ++ correlationId ++ " | operation=receiveProvisionCommand | body=" ++ write(payload, "application/json", {indent: true})]' />
+			</async>
+			<flow-ref doc:name="billing-zsmart-client" doc:id="f0e9061a-221a-41be-ab69-3eb26813ec21" name="billing-zsmart-client" />
+			<async doc:name="Async log zsmart response" doc:id="5f54162f-d87e-42c1-8b3f-df1fc9432bdf">
+				<logger level="INFO" doc:name="Log zsmart response detail" doc:id="ee8a900c-32c9-461b-9e24-5775b22ff878"
+					message='#[%dw 2.0
+output application/java
+---
+"ZSMART RESPONSE | cid=" ++ correlationId ++ " | operation=receiveProvisionCommand | body=" ++ write(payload, "application/json", {indent: true})]' />
+			</async>
+			<choice doc:name="validate zsmart response" doc:id="4d2e23bc-cde8-4259-af7f-d2450b31263f">
+				<when expression='#[(payload.res_code default "") as String != "00000"]'>
+					<ee:transform doc:name="set zsmartError system" doc:id="51e6cf1a-29f9-4825-9054-7981761873e7">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="zsmartError"><![CDATA[%dw 2.0
+output application/java
+---
+(payload.res_code default "99999") ++ ": " ++ (payload.res_message default "System Unexpected Error")]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<raise-error doc:name="ZSMART:SYSTEM_ERROR" doc:id="b14a5828-f9de-4523-bdd1-1970f4776d86" type="ZSMART:SYSTEM_ERROR" description="#[vars.zsmartError]" />
+				</when>
+				<when expression='#[((payload.result.resultCode default payload.result.responseCode default "") as String) != "0000"]'>
+					<ee:transform doc:name="set zsmartError business" doc:id="e3f58762-6ccc-403d-9566-8842027177fa">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="zsmartError"><![CDATA[%dw 2.0
+output application/java
+var result = payload.result default {}
+---
+(result.resultCode default result.responseCode default "99999") ++ ": " ++ (result.resultMsg default result.responseMessage default "Business Unexpected Error")]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<raise-error doc:name="ZSMART:BUSINESS_ERROR" doc:id="e3ad1816-abc4-401d-b378-665bd2c918db" type="ZSMART:BUSINESS_ERROR" description="#[vars.zsmartError]" />
+				</when>
+				<otherwise>
+					<ee:transform doc:name="set success response" doc:id="85dc2169-d723-4f46-95e0-c47766fc0c89">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var result = payload.result default {}
+---
+{
+	statusCode: "OK",
+	statusDetail: payload.res_message default "Success",
+	result: {
+		resultCode: result.resultCode default result.responseCode default "0000",
+		resultMessage: result.resultMsg default result.responseMessage default "success",
+		orderNumber: result.workOrderId default vars.initialPayload.orderNumber
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[200]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</otherwise>
+			</choice>
+			<async doc:name="Async log end" doc:id="8ae4db79-6b94-4231-82c3-1e084f0e56eb">
+				<logger level="INFO" doc:name="Log Orchestration End" doc:id="d43cabfe-933b-4912-9e21-096292120b1b"
+					message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /receive-provisioning-command"]' />
+			</async>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue Business" doc:id="3743c3a6-7dea-4f24-ba5b-2dc8ef80944e" type="ZSMART:BUSINESS_ERROR">
+					<ee:transform doc:name="set business error" doc:id="27afb034-7bf1-49e7-a686-470128f42ca3">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	statusCode: "NOK",
+	statusDetail: error.description,
+	result: {
+		resultCode: "9999",
+		resultMessage: error.description,
+		orderNumber: vars.initialPayload.orderNumber default ""
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue System" doc:id="255e0e0b-985d-46d9-83a4-572f98a03ddd" type="ZSMART:SYSTEM_ERROR">
+					<ee:transform doc:name="set system error" doc:id="4ae39fa9-d9c7-4eae-87ab-3489202a2ffd">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	statusCode: "NOK",
+	statusDetail: error.description,
+	result: {
+		resultCode: "9999",
+		resultMessage: error.description,
+		orderNumber: vars.initialPayload.orderNumber default ""
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue HTTP" doc:id="99d7b00f-89ee-48e5-9344-85b864256d54" type="HTTP:*">
+					<async doc:name="Async log HTTP error" doc:id="fc4be7bc-0cc6-4057-8750-21b6b40687b2">
+						<logger level="ERROR" doc:name="Log zsmart HTTP error body" doc:id="45ccc758-1ee4-405b-9d1b-6b7b82e4b111"
+							message='#[%dw 2.0
+output application/java
+var status = (error.errorMessage.attributes.statusCode default "") as String
+var body = error.errorMessage.payload default error.description
+var bodyStr = if (body is Object or body is Array) write(body, "application/json", {indent: true})
+	else (body as String default write(error.errorMessage default {}, "application/json", {indent: true}))
+---
+"ZSMART HTTP ERROR | cid=" ++ correlationId ++ " | operation=receiveProvisionCommand | httpStatus=" ++ status ++ " | body=" ++ bodyStr]' />
+					</async>
+					<ee:transform doc:name="set http error" doc:id="aaf619cb-929d-40ce-a93d-49c41ba75ea8">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var status = (error.errorMessage.attributes.statusCode default "500") as String
+var body = error.errorMessage.payload default {}
+var detail = if (body is Object) write(body, "application/json")
+	else (body as String default error.description)
+---
+{
+	statusCode: "NOK",
+	statusDetail: "HTTP " ++ status ++ " from ZSmart: " ++ detail,
+	result: {
+		resultCode: "9999",
+		resultMessage: detail,
+		orderNumber: vars.initialPayload.orderNumber default ""
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>
