@@ -1,0 +1,514 @@
+#%RAML 1.0 DataType
+# TMF622 Product Order Management API - Response
+type: object
+description: |
+  Response de ProductOrder TMF622 con estados y resultado de orquestación.
+
+  Esta respuesta incluye:
+  - Datos completos de la orden creada/actualizada
+  - Estados resultantes después de la orquestación
+  - Información de procesos ejecutados
+  - Historial de transiciones de estado
+
+properties:
+  orderId:
+    type: string
+    required: true
+    description: Identificador único de la orden (generado por el sistema)
+    example: "PO-000123"
+
+  href:
+    type: string
+    required: false
+    description: URL para consultar la orden
+    example: "/tmf/productOrder/PO-000123"
+
+  cun:
+    type: string
+    required: false
+    description: |
+      Código Único de Negocio (CUN) asociado a la orden.
+      Puede venir vacío o null en la creación y podrá ser actualizado
+      posteriormente mediante PATCH.
+    example: "4347190002507473"
+
+  priority:
+    type: string
+    required: false
+    description: Prioridad de la orden
+    example: "1"
+
+  description:
+    type: string
+    required: false
+    description: Descripción de la orden
+    example: "Orden de servicio FTTH para cliente residencial"
+
+  category:
+    type: string
+    required: true
+    description: Categoría del producto/servicio
+    enum: [ FIXED_SERVICE, MOBILE_SERVICE, FIXED_MOBILE, DTH, VALUE_ADDED ]
+    example: "FIXED_SERVICE"
+
+  state:
+    type: string
+    required: true
+    description: |
+      Estado general TMF622 de la orden.
+
+      VALORES TMF622:
+      - acknowledged: Orden recibida y validada
+      - inProgress: Orden en proceso de ejecución
+      - pending: Orden pendiente de acción
+      - held: Orden retenida
+      - completed: Orden completada exitosamente
+      - failed: Orden fallida
+      - cancelled: Orden cancelada
+      - rejected: Orden rechazada
+      - partial: Orden parcialmente completada
+    enum: [ acknowledged, inProgress, pending, held, completed, failed, cancelled, rejected, partial ]
+    example: "inProgress"
+
+  orderDate:
+    type: datetime
+    required: true
+    description: Fecha de creación de la orden
+    example: 2025-11-20T10:30:00Z
+
+  completionDate:
+    type: datetime
+    required: false
+    description: Fecha de completación de la orden
+    example: 2025-11-20T15:45:00Z
+
+  expectedCompletionDate:
+    type: datetime
+    required: false
+    description: Fecha esperada de completación
+    example: 2025-11-25T18:00:00Z
+
+  orderState:
+    type: object
+    required: true
+    description: |
+      Estados específicos de ETB (comercial, servicio, activación).
+
+      Estos estados controlan la orquestación automática.
+    properties:
+      commercialState:
+        type: string
+        required: false
+        enum: [ I10, I30, I40, I50, I60, I61, I62, I70, "005", I90, C10, R10 ]
+        description: Estado comercial actual
+        example: "I70"
+
+      serviceState:
+        type: string
+        required: false
+        enum: [ "000", "010", "020", "030", "035", "040", "050", "055", "060", "061", "070", "100" ]
+        description: Estado de servicio/aprovisionamiento actual
+        example: "050"
+
+      activationState:
+        type: string
+        required: false
+        enum: [ EN_PROCESO, APROBADA, RECHAZADA, EN_EVALUACION ]
+        description: Estado de activación actual
+        example: "APROBADA"
+
+  orchestrationInfo:
+    type: object
+    required: false
+    description: Información sobre la orquestación ejecutada
+    properties:
+      orchestrationId:
+        type: string
+        description: ID de la ejecución de orquestación
+        example: "ORCH-2025-11-20-001"
+
+      processesExecuted:
+        type: array
+        description: Procesos ejecutados durante la orquestación
+        items:
+          type: object
+          properties:
+            processId:
+              type: string
+              example: "PROC-001"
+
+            processName:
+              type: string
+              example: "validateCustomer"
+
+            status:
+              type: string
+              enum: [ SUCCESS, FAILED, SKIPPED, PENDING ]
+              example: "SUCCESS"
+
+            executionTime:
+              type: integer
+              description: Tiempo de ejecución en milisegundos
+              example: 245
+
+            result:
+              type: object
+              required: false
+              description: Resultado del proceso (estructura variable)
+              example:
+                customerId: "123456789"
+                validationResult: "APPROVED"
+
+            error:
+              type: string
+              required: false
+              description: Mensaje de error si el proceso falló
+              example: "Customer not found"
+
+      stateTransitions:
+        type: array
+        required: false
+        description: Historial de transiciones de estado ejecutadas
+        items:
+          type: object
+          properties:
+            fromState:
+              type: object
+              properties:
+                commercialState:
+                  type: string
+                  required: false
+                  example: "I50"
+                serviceState:
+                  type: string
+                  required: false
+                  example: "010"
+
+            toState:
+              type: object
+              properties:
+                commercialState:
+                  type: string
+                  required: false
+                  example: "I70"
+                serviceState:
+                  type: string
+                  required: false
+                  example: "050"
+
+            timestamp:
+              type: datetime
+              example: 2025-11-20T10:35:00Z
+
+            triggeredBy:
+              type: string
+              required: false
+              description: Proceso o acción que disparó la transición
+              example: "validateCustomer"
+
+  relatedParty:
+    type: array
+    required: false
+    description: Partes relacionadas con la orden
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "123456789"
+
+        role:
+          type: string
+          example: "Customer"
+
+        name:
+          type: string
+          required: false
+          example: "Juan Pérez"
+
+        documentType:
+          type: string
+          required: false
+          example: "CC"
+
+        documentNumber:
+          type: string
+          required: false
+          example: "123456789"
+
+  productOrderItem:
+    type: array
+    required: true
+    description: Items de la orden
+    items:
+      type: object
+      properties:
+        orderId:
+          type: string
+          description: Identificador del item
+          example: "ITEM-001"
+
+        action:
+          type: string
+          enum: [ add, modify, delete, noChange ]
+          example: "add"
+
+        state:
+          type: string
+          required: false
+          description: Estado TMF622 del item
+          enum: [ acknowledged, inProgress, pending, held, completed, failed, cancelled, rejected ]
+          example: "inProgress"
+
+        quantity:
+          type: integer
+          required: false
+          example: 1
+
+        product:
+          type: object
+          required: true
+          properties:
+            id:
+              type: string
+              required: false
+              description: ID del producto (generado si es nuevo)
+              example: "PROD-FTTH-100MB-001"
+
+            name:
+              type: string
+              required: false
+              example: "Internet FTTH 100 Mbps"
+
+            productSpecification:
+              type: object
+              required: false
+              properties:
+                id:
+                  type: string
+                  example: "SPEC-FTTH-100"
+
+                name:
+                  type: string
+                  required: false
+                  example: "FTTH 100 Mbps Residencial"
+
+            productCharacteristic:
+              type: array
+              required: false
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: "bandwidth"
+
+                  value:
+                    type: string
+                    example: "100"
+
+        itemState:
+          type: object
+          required: false
+          description: Estados específicos del item
+          properties:
+            commercialState:
+              type: string
+              required: false
+              example: "I70"
+
+            serviceState:
+              type: string
+              required: false
+              example: "050"
+
+        appointment:
+          type: object
+          required: false
+          description: Información de agendamiento si aplica
+          properties:
+            appointmentId:
+              type: string
+              example: "APT-2025-11-25-001"
+
+            appointmentDate:
+              type: datetime
+              example: 2025-11-25T09:00:00Z
+
+            status:
+              type: string
+              enum: [ SCHEDULED, CONFIRMED, CANCELLED, COMPLETED ]
+              example: "CONFIRMED"
+
+  note:
+    type: array
+    required: false
+    description: Notas y comentarios
+    items:
+      type: object
+      properties:
+        author:
+          type: string
+          required: false
+          example: "system"
+
+        date:
+          type: datetime
+          required: false
+          example: 2025-11-20T10:30:00Z
+
+        text:
+          type: string
+          example: "Orden creada exitosamente con estado I50"
+
+  channel:
+    type: object
+    required: false
+    description: Canal de origen
+    properties:
+      id:
+        type: string
+        example: "WEB"
+
+      name:
+        type: string
+        required: false
+        example: "WEB"
+
+  mongoDbInfo:
+    type: object
+    required: false
+    description: Información de persistencia en MongoDB MDM
+    properties:
+      orderNumber:
+        type: string
+        description: Número de orden en MongoDB (formato ETB)
+        example: "MDM-FIBRA-000636508"
+
+      collection:
+        type: string
+        description: Colección donde se persistió
+        enum: [ MDM_CD_ORDEN, MDM_ORDEN, MDM_ORDEN_SERVICIO ]
+        example: "MDM_CD_ORDEN"
+
+      documentId:
+        type: string
+        required: false
+        description: ID del documento en MongoDB
+        example: "507f1f77bcf86cd799439011"
+
+  errorDetails:
+    type: array
+    required: false
+    description: Detalles de errores si los hubo durante la orquestación
+    items:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Código del error
+          example: "VALIDATION_ERROR"
+
+        message:
+          type: string
+          description: Mensaje descriptivo del error
+          example: "Customer validation failed"
+
+        processId:
+          type: string
+          required: false
+          description: ID del proceso que generó el error
+          example: "PROC-001"
+
+        severity:
+          type: string
+          enum: [ CRITICAL, ERROR, WARNING, INFO ]
+          example: "ERROR"
+
+example:
+  orderId: "PO-000123"
+  href: "/tmf/productOrder/PO-000123"
+  category: "FIXED_SERVICE"
+  state: "inProgress"
+  orderDate: "2025-11-20T10:30:00Z"
+  expectedCompletionDate: "2025-11-25T18:00:00Z"
+  orderState:
+    commercialState: "I70"
+    serviceState: "050"
+    activationState: "APROBADA"
+  orchestrationInfo:
+    orchestrationId: "ORCH-2025-11-20-001"
+    processesExecuted:
+      - processId: "PROC-001"
+        processName: "validateCustomer"
+        status: "SUCCESS"
+        executionTime: 245
+        result:
+          customerId: "123456789"
+          validationResult: "APPROVED"
+      - processId: "PROC-002"
+        processName: "scoreCustomer"
+        status: "SUCCESS"
+        executionTime: 1023
+        result:
+          score: 750
+          classification: "LOW_RISK"
+      - processId: "PROC-003"
+        processName: "validateAvailability"
+        status: "SUCCESS"
+        executionTime: 567
+        result:
+          available: true
+          technology: "FTTH"
+    stateTransitions:
+      - fromState:
+          commercialState: "I10"
+        toState:
+          commercialState: "I50"
+          serviceState: "010"
+        timestamp: "2025-11-20T10:31:00Z"
+        triggeredBy: "createOrder"
+      - fromState:
+          commercialState: "I50"
+          serviceState: "010"
+        toState:
+          commercialState: "I70"
+          serviceState: "050"
+        timestamp: "2025-11-20T10:35:00Z"
+        triggeredBy: "validateCustomer"
+  relatedParty:
+    - id: "123456789"
+      role: "Customer"
+      name: "Juan Pérez"
+      documentType: "CC"
+      documentNumber: "123456789"
+  productOrderItem:
+    - orderId: "ITEM-001"
+      action: "add"
+      state: "inProgress"
+      quantity: 1
+      product:
+        id: "PROD-FTTH-100MB-001"
+        name: "Internet FTTH 100 Mbps"
+        productSpecification:
+          id: "SPEC-FTTH-100"
+          name: "FTTH 100 Mbps Residencial"
+        productCharacteristic:
+          - name: "bandwidth"
+            value: "100"
+          - name: "technology"
+            value: "FTTH"
+      itemState:
+        commercialState: "I70"
+        serviceState: "050"
+      appointment:
+        appointmentId: "APT-2025-11-25-001"
+        appointmentDate: "2025-11-25T09:00:00Z"
+        status: "CONFIRMED"
+  channel:
+    id: "WEB"
+    name: "WEB"
+  mongoDbInfo:
+    orderNumber: "MDM-FIBRA-000636508"
+    collection: "MDM_CD_ORDEN"
+    documentId: "507f1f77bcf86cd799439011"

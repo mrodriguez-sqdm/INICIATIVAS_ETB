@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+    xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+
+    <!-- ============================================================= -->
+    <!-- Scheduler: precarga diaria del catalogo a las 05:00 a.m.       -->
+    <!-- Deja la cache caliente antes del horario productivo.           -->
+    <!-- Ejecuta en CADA worker.                                        -->
+    <!-- ============================================================= -->
+    <flow name="scheduler-precarga-clase-servicio-Flow" doc:id="a1b2c3d4-0001-0001-0001-000000000013">
+        <scheduler doc:name="Scheduler 05:00 AM diario" doc:id="a1b2c3d4-0001-0001-0001-000000000014">
+            <scheduling-strategy>
+                <cron expression="${scheduler-clase-servicio.cron-expression}"
+                      timeZone="${scheduler-clase-servicio.time-zone}"/>
+            </scheduling-strategy>
+        </scheduler>
+
+        <try doc:name="Try - precarga protegida" doc:id="a1b2c3d4-0001-0001-0001-000000000015">
+
+            <!-- 1. Inicializar headers sinteticos (no hay request HTTP) -->
+            <ee:transform doc:name="Init headers sinteticos" doc:id="a1b2c3d4-0001-0001-0001-000000000016">
+                <ee:message/>
+                <ee:variables>
+                    <ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "name": "scheduler-precarga-clase-servicio",
+    "X-CORRELATION-ID": (uuid() default (now() as String)),
+    "source": "customer-papi-scheduler",
+    "systemId": "customer-papi-services-v2"
+}]]></ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+
+            <logger level="INFO" doc:name="Log inicio precarga"
+                doc:id="a1b2c3d4-0001-0001-0001-000000000017"
+                message='#["[CLASE_SERVICIO][PRECARGA] Inicio precarga diaria. CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default "N/A")]'/>
+
+			<!-- 2. Invalidar la entrada para forzar recarga fresca -->
+			<try doc:name="Try - invalidar (tolera KEY_NOT_FOUND)" doc:id="a1b2c3d4-0001-0001-0001-00000000001d">
+			    <os:remove doc:name="Invalidar entrada cache"
+			        doc:id="a1b2c3d4-0001-0001-0001-000000000018"
+			        key="clase_servicio_all"
+			        objectStore="Object_store_clase_servicio"/>
+			    <error-handler>
+			        <on-error-continue doc:name="Ignora clave inexistente"
+			            doc:id="a1b2c3d4-0001-0001-0001-00000000001e"
+			            type="OS:KEY_NOT_FOUND">
+			            <logger level="DEBUG" doc:name="Log clave no existia"
+			                doc:id="a1b2c3d4-0001-0001-0001-00000000001f"
+			                message='#["[CLASE_SERVICIO][PRECARGA] No habia entrada previa que invalidar, se procede a cargar."]'/>
+			        </on-error-continue>
+			    </error-handler>
+			</try>
+			
+            <!-- 3. Recargar: al estar invalidada, ee:cache va a la SAPI y repuebla -->
+            <flow-ref doc:name="Recargar catalogo (cache MISS forzado)"
+                doc:id="a1b2c3d4-0001-0001-0001-000000000019"
+                name="get-all-clase-servicio-cachingSub_Flow"/>
+
+            <!-- 4. Log de resultado con conteo -->
+            <logger level="INFO" doc:name="Log fin precarga"
+                doc:id="a1b2c3d4-0001-0001-0001-00000000001a"
+                message='#["[CLASE_SERVICIO][PRECARGA] Catalogo precargado. Clases: " ++ (sizeOf(payload default []) as String) ++ ". CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default "N/A")]'/>
+
+            <!-- Manejo de error: la precarga NUNCA debe tumbar la app.         -->
+            <!-- Si falla, se loguea; la cache quedara fria y la 1.ra orden       -->
+            <!-- del dia hara el cold-load normal (degradacion natural).          -->
+            <error-handler>
+                <on-error-continue doc:name="On Error Continue - precarga fallida"
+                    doc:id="a1b2c3d4-0001-0001-0001-00000000001b"
+                    type="ANY">
+                    <logger level="ERROR" doc:name="Log fallo precarga"
+                        doc:id="a1b2c3d4-0001-0001-0001-00000000001c"
+                        message='#["[CLASE_SERVICIO][PRECARGA][FALLO] No se pudo precargar el catalogo. La cache se poblara en el primer consumo. CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default "N/A") ++ " | Error: " ++ (error.description default "desconocido")]'/>
+                </on-error-continue>
+            </error-handler>
+        </try>
+    </flow>
+
+    <!-- ============================================================= -->
+    <!-- Object Store + Caching Strategy para el catálogo de clases    -->
+    <!-- Reutiliza las mismas propiedades de TTL del catálogo de reglas -->
+    <!-- ============================================================= -->
+    <ee:object-store-caching-strategy
+        name="CachingClaseServicio"
+        doc:name="Caching Strategy Clase Servicio"
+        doc:id="a1b2c3d4-0001-0001-0001-000000000001"
+        keyGenerationExpression="#['clase_servicio_all']"
+        objectStore="Object_store_clase_servicio"/>
+
+    <os:object-store
+        name="Object_store_clase_servicio"
+        doc:name="Object store Clase Servicio"
+        doc:id="a1b2c3d4-0001-0001-0001-000000000002"
+        entryTtl="${execution-context-cache-clase-servicio.entryTTL}"
+        expirationInterval="${execution-context-cache-clase-servicio.expirationInterval}"
+        entryTtlUnit="${execution-context-cache-clase-servicio.entryTtlUnit}"
+        expirationIntervalUnit="${execution-context-cache-clase-servicio.expirationIntervalUnit}"/>
+
+    <!-- ============================================================= -->
+    <!-- NUEVO: Sub-flow que trae TODO el catálogo y lo cachea         -->
+    <!-- A prueba de fallos: si la SAPI falla, devuelve [] sin romper   -->
+    <!-- ============================================================= -->
+    <sub-flow name="get-all-clase-servicio-cachingSub_Flow" doc:id="a1b2c3d4-0001-0001-0001-000000000003">
+        <try doc:name="Try - proteger la carga del catálogo" doc:id="a1b2c3d4-0001-0001-0001-000000000004">
+            <ee:transform doc:name="http request catalogo completo" doc:id="a1b2c3d4-0001-0001-0001-000000000005">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: {
+        "query": {
+            "aggregate": "MDM_CD_CLASE_SERVICIO",
+            "pipeline": [],
+            "cursor": {}
+        }
+    },
+    headers: {
+        "client_secret" : p('mongo-db-sapi.security.client-secret'),
+        "client_id" : p('mongo-db-sapi.security.client-id'),
+        "name": vars.headers.name,
+        "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+        "source": vars.headers.source,
+        "systemId": vars.headers.systemId
+    },
+    queryParameters: {},
+    uriParameters: {}
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="method"><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+                    <ee:set-variable variableName="path"><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.dynamicQuery.base-path')]]></ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+
+            <!-- La caché envuelve SOLO el llamado + normalización del catálogo -->
+            <ee:cache doc:name="Cache catalogo clase servicio"
+                doc:id="a1b2c3d4-0001-0001-0001-000000000006"
+                cachingStrategy-ref="CachingClaseServicio">
+                <flow-ref doc:name="System Generic (MDM_CD_CLASE_SERVICIO)"
+                    doc:id="a1b2c3d4-0001-0001-0001-000000000007"
+                    name="generic-sapi-clientSub_Flow"/>
+                <ee:transform doc:name="Normalizar a lista de clases" doc:id="a1b2c3d4-0001-0001-0001-000000000008">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.result default []]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </ee:cache>
+
+            <!-- Manejo de error: si la SAPI o la caché fallan, NO rompemos.   -->
+            <!-- Devolvemos lista vacía; la fachada aplicará su fallback.       -->
+            <error-handler>
+                <on-error-continue doc:name="On Error Continue - catalogo vacio"
+                    doc:id="a1b2c3d4-0001-0001-0001-000000000009"
+                    type="ANY">
+                    <logger level="ERROR" doc:name="Log fallo carga catalogo"
+                        doc:id="a1b2c3d4-0001-0001-0001-00000000000a"
+                        message='#["[CLASE_SERVICIO][FALLBACK] No se pudo cargar el catalogo MDM_CD_CLASE_SERVICIO. CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default "N/A") ++ " | Error: " ++ (error.description default "desconocido")]'/>
+                    <ee:transform doc:name="Catalogo vacio" doc:id="a1b2c3d4-0001-0001-0001-00000000000b">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+                        </ee:message>
+                    </ee:transform>
+                </on-error-continue>
+            </error-handler>
+        </try>
+    </sub-flow>
+
+    <!-- ============================================================= -->
+    <!-- FACHADA: mismo nombre y contrato que el sub-flow original     -->
+    <!-- build-OrdenServicio sigue llamando a este sin cambios          -->
+    <!-- ============================================================= -->
+    <sub-flow name="get-mdm-cd-clase-servicioSub_Flow" doc:id="c32a740f-38ac-413a-ad7d-7d92a5959323">
+
+        <!-- 1. Guardamos el Id solicitado ANTES de que el payload cambie -->
+        <set-variable variableName="idClaseServicioBuscado"
+            doc:name="Set Id solicitado"
+            doc:id="a1b2c3d4-0001-0001-0001-00000000000c"
+            value="#[payload.Id_Clase_Servicio default null]"/>
+
+        <!-- 2. Traemos el catalogo (cacheado). El payload pasa a ser la lista -->
+        <flow-ref doc:name="Get catalogo (cache)"
+            doc:id="a1b2c3d4-0001-0001-0001-00000000000d"
+            name="get-all-clase-servicio-cachingSub_Flow"/>
+
+        <!-- 3. Lookup en memoria + fallback seguro -->
+        <ee:transform doc:name="Resolver clase por Id (memoria)" doc:id="a1b2c3d4-0001-0001-0001-00000000000e">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// Catalogo cacheado (puede venir vacio si la SAPI fallo)
+var catalogo = payload default []
+
+// Id solicitado, normalizado a String para comparación robusta
+var idBuscado = vars.idClaseServicioBuscado
+
+// Buscamos la clase. Comparamos como Number para evitar
+// desajustes string/number entre el request y el catalogo.
+fun normId(v) = (v default "") as String
+
+var encontrada = (catalogo filter ((c) ->
+        normId(c.Id_Clase_Servicio) == normId(idBuscado)
+    ))[0] default null
+
+---
+encontrada]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- 4. Si NO se encontro, devolvemos fallback observable -->
+        <choice doc:name="Encontrada?" doc:id="a1b2c3d4-0001-0001-0001-00000000000f">
+            <when expression="#[payload != null]">
+                <!-- Camino feliz: devolvemos la clase tal cual (contrato intacto) -->
+                <logger level="DEBUG" doc:name="Log hit"
+                    doc:id="a1b2c3d4-0001-0001-0001-000000000010"
+                    message='#["[CLASE_SERVICIO][OK] Id " ++ (vars.idClaseServicioBuscado default "N/A") ++ " resuelto desde catalogo."]'/>
+            </when>
+            <otherwise>
+                <!-- Fallback: estructura minima compatible con el contrato.    -->
+                <!-- Nombre/Extendida/Acciones presentes para no romper el DW.   -->
+                <logger level="WARN" doc:name="Log clase no encontrada"
+                    doc:id="a1b2c3d4-0001-0001-0001-000000000011"
+                    message='#["[CLASE_SERVICIO][NOT_FOUND] Id_Clase_Servicio " ++ (vars.idClaseServicioBuscado default "N/A") ++ " no existe en catalogo. CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default "N/A")]'/>
+                <ee:transform doc:name="Fallback objeto seguro" doc:id="a1b2c3d4-0001-0001-0001-000000000012">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "Id_Clase_Servicio": vars.idClaseServicioBuscado,
+    "Nombre": null,
+    "Extendida": null,
+    "Acciones": []
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </otherwise>
+        </choice>
+    </sub-flow>
+</mule>

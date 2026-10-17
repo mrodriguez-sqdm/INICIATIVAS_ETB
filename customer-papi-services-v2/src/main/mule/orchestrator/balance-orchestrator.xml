@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<!-- Consulta de saldo: JSC GET /subscription?msisdn= — validación, errores y COD_RES / RES / balance -->
+	<sub-flow name="get-balance-orchestratorSub_Flow" doc:id="09924cbb-14ba-4c80-961b-3bb87cb159b7" >
+		<set-variable value="#[trim(attributes.queryParams.MSISDN default &quot;&quot;)]" doc:name="connectionNumber from MSISDN" doc:id="a1b2c3d4-msisdn" variableName="connectionNumber"/>
+		<choice doc:name="MSISDN present" doc:id="b2c3d4e5-ch-msisdn">
+			<when expression="#[not isEmpty(vars.connectionNumber)]">
+				<try doc:name="Try JSC subscription" doc:id="c3d4e5f6-try-jsc">
+					<flow-ref doc:name="JSC get subscription by msisdn" doc:id="fd2d44fc-5b72-4e40-9c7c-a95d7b5c8ad9" name="get-subscription-client-by-msisdn"/>
+					<choice doc:name="Subscription found" doc:id="d4e5f6a7-ch-sub">
+						<when expression="#[not isEmpty(payload.content default []) and payload.content[0].id != null]">
+							<ee:transform doc:name="COD_RES RES balance" doc:id="8b7f4404-a114-48be-a594-419c0f04b4b5" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var s = payload.content[0]
+var addr = s.address default {}
+var sd = s.salesData default {}
+var ms = s.msisdn default {}
+var ba = s.billingAccount default {}
+var sub = s.subscriber default {}
+var links = sub.links default []
+var pp = s.priceplan default {}
+---
+{
+  responseCode: "200",
+  response: "OK",
+  balance: {
+    id: s.id,
+    confirmationDate: s.lastUpdate,
+    requestedDate: s.creationDate,
+    amount: {
+      amount: s.balance
+    },
+    bucket: {
+      id: addr.externalID,
+      name: addr.description
+    },
+    channel: {
+      id: sd.salesChannel,
+      name: sd.salesChannel
+    },
+    logicalResource: [
+      {
+        id: ms.id,
+        name: ms.name
+      }
+    ],
+    partyAccount: {
+      id: ba.id,
+      name: ba.name,
+      status: s.status
+    },
+    receiver: {
+      id: sub.id,
+      href: if (sizeOf(links) > 0) links[0].href else null,
+      name: sub.name
+    },
+    receiverBucket: {
+      id: addr.externalID,
+      name: addr.description
+    },
+    receiverProduct: {
+      id: pp.id,
+      name: pp.pricePlanName default pp.name
+    },
+    requestor: {
+      id: sd.salesPerson,
+      name: sd.salesPerson
+    },
+    status: s.status,
+    validFor: {
+      startDateTime: s.creationDate,
+      endDateTime: s.lastUpdate
+    }
+  }
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+						</when>
+						<otherwise>
+							<set-variable value="#[404]" doc:name="httpStatus 404" doc:id="e5f6a7b8-404" variableName="httpStatus"/>
+							<ee:transform doc:name="Not found" doc:id="f6a7b8c9-404-body">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 404,
+  code: "NOT_FOUND",
+  message: { message: "No subscription found for the given MSISDN" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+						</otherwise>
+					</choice>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="JSC or mapping error" doc:id="a7b8c9d0-err-jsc">
+							<set-variable value="#[500]" doc:name="httpStatus 500" doc:id="b8c9d0e1-500" variableName="httpStatus"/>
+							<ee:transform doc:name="Error 500 balance" doc:id="c9d0e1f2-500-body">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 500,
+  code: "BALANCE_QUERY_ERROR",
+  message: { message: vars.errorMessageOutput default error.description default "Error obtaining subscription from JSC" },
+  messageServer: error.description default "",
+  cause: []
+}]]></ee:set-payload>
+								</ee:message>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise>
+				<set-variable value="#[400]" doc:name="httpStatus 400" doc:id="d0e1f2a3-400" variableName="httpStatus"/>
+				<ee:transform doc:name="Validation MSISDN" doc:id="e1f2a3b4-400-body">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  status: 400,
+  code: "VALIDATION_ERROR",
+  message: { message: "MSISDN query parameter is required" },
+  messageServer: "",
+  cause: []
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+
+	<!-- Transferencia de saldo entre líneas (POST /transferBalance) -->
+	<sub-flow name="post-transferbalance-orchestratorSub_Flow" doc:name="Transferencia de saldo">
+		<try doc:name="Try">
+			<set-variable value="#[vars.inputPayload.msisdnOrig]" doc:name="connectionNumber origen" variableName="connectionNumber"/>
+			<flow-ref doc:name="Buscar SID origen" name="get-subscription-client-by-msisdn"/>
+			<set-variable value="#[payload.content[0].id]" doc:name="sidOrigin" variableName="sidOrigin"/>
+			<set-variable value="#[vars.inputPayload.msisdnDest]" doc:name="connectionNumber destino" variableName="connectionNumber"/>
+			<flow-ref doc:name="Buscar SID destino" name="get-subscription-client-by-msisdn"/>
+			<set-variable value="#[payload.content[0].id]" doc:name="sidDestino" variableName="sidDestino"/>
+			<ee:transform doc:name="Set request body transfer">
+				<ee:message/>
+				<ee:variables>
+					<ee:set-variable variableName="request"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    amount: {
+        amount: vars.inputPayload.monto,
+        currency: p('jsc-sapi.transferbalance.currency')
+    },
+    subscription: vars.sidDestino,
+    msisdn: vars.inputPayload.msisdnDest,
+    channel: p('jsc-sapi.transferbalance.channel'),
+    comment: p('jsc-sapi.transferbalance.comment')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="Transferir saldo JSC" name="transferbalance-client"/>
+			<ee:transform doc:name="Set response">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "OK",
+	topupDonor: payload.topupDonor.id,
+    topupDonee: payload.topupDonee.id,
+    description: "Transferencia de saldo exitosa"
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue">
+					<ee:transform doc:name="Error output">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "TRANSFER_BALANCE",
+	"message": {
+	  "message": vars.errorMessageOutput
+	},
+	"messageServer": "Error transfering balance",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

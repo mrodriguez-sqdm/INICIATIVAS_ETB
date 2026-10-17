@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-identity-verification-orchestratorSub_Flow" doc:id="a1c4e8b2-7d3f-4f91-9b0e-6c5d2a18f047">
+		<ee:transform doc:name="set request variables" doc:id="b2d5f9c3-8e40-4a02-ac1f-7d6e3b291158">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"X-CORRELATION-ID": attributes.headers.'x-correlation-id' default correlationId,
+	"name": attributes.headers.name,
+	"systemId": attributes.headers.systemId,
+	"source": attributes.headers.source
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform payload to LISIM" doc:id="c3e6a0d4-9f51-4b13-bd20-8e7f4c302269">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+fun charItem(nombre, valor) = {
+	Nombre: nombre,
+	Valor: (valor default "") as String
+}
+
+fun formatExpeditionDate(d) =
+	if (d == null or d == "")
+		""
+	else if (d is Date)
+		d as String {format: "dd/MM/yyyy"}
+	else if ((d is DateTime) or (d is LocalDateTime))
+		(d as Date) as String {format: "dd/MM/yyyy"}
+	else do {
+		var s = d as String
+		---
+		if (s contains "/")
+			s[0 to 9]
+		else
+			(s[0 to 9] as Date {format: "yyyy-MM-dd"}) as String {format: "dd/MM/yyyy"}
+	}
+
+fun toCaracteristica(item) = {
+	Nombre: item.name default item.Nombre default "",
+	Valor: (item.value default item.Valor default "") as String
+}
+
+fun findChar(list, name) =
+	(list filter ((c) -> upper(c.Nombre default "") == upper(name)))[0]
+
+var customer = payload.customer default {}
+var context = (customer.characteristics default []) map (item) -> toCaracteristica(item)
+
+var catalog = [
+	"APELLIDO",
+	"NOMBRE",
+	"TRAMITE",
+	"USUARIO",
+	"CANAL",
+	"PROVEEDOR",
+	"CIUDAD",
+	"DEPARTAMENTO",
+	"SISTEMA ORIGEN",
+	"MODELO",
+	"PORTAL",
+	"NUMERO_CONTACTO",
+	"TIPO",
+	"ESTRATO",
+	"CALCULAR_SCORE"
+]
+
+fun fromField(name) =
+	name match {
+		case "APELLIDO" -> customer.firstLastName
+		case "MODELO" -> payload.adviser
+		case "PORTAL" -> payload.portal
+		else -> null
+	}
+
+fun resolveValue(name) = do {
+	var fieldValue = fromField(name)
+	var contextValue = findChar(context, name).Valor
+	---
+	if (fieldValue != null and fieldValue != "")
+		fieldValue as String
+	else if (contextValue != null)
+		contextValue as String
+	else if (name == "CALCULAR_SCORE")
+		"TRUE"
+	else
+		""
+}
+
+---
+{
+	Tipo_Documento: customer.documentType default "",
+	Numero_Documento: customer.documentNumber default "",
+	Primer_Apellido: customer.firstLastName default "",
+	Fecha_Expedicion: formatExpeditionDate(customer.dateExpedition),
+	Razon_Social: customer.businessName default "",
+	Caracteristicas: catalog map (name) -> charItem(name, resolveValue(name))
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log payload hacia LISIM" doc:id="f6b9d3a7-c284-4e46-e053-b1a27f635593" message='#[payload]' />
+		<flow-ref doc:name="lisim-sapi-identity-verification-client" doc:id="d4f7b1e5-a062-4c24-ce31-9f805d413370" name="lisim-sapi-identity-verification-clientSub_Flow" />
+		<ee:transform doc:name="map LISIM response" doc:id="e5a8c2f6-b173-4d35-df42-a0916e524481">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var lisim = payload default {}
+var code = (lisim.CodigoRespuesta default lisim.COD_RES default lisim.code default "200") as String
+var message = lisim.Respuesta default lisim.RES default lisim.message default "verificacion de identidad procesada"
+var result = lisim.OBJ_VERIFICACION default lisim.OBJ_VALIDACION default lisim.result default lisim
+---
+{
+	code: code,
+	message: message,
+	result: result
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

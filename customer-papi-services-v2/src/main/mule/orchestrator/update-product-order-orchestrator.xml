@@ -1,0 +1,669 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	
+	<sub-flow name="product-order-update-orchestratorSub_Flow" doc:id="c2f22f30-6af9-45ea-88c8-1fb1302a0930" >
+		<ee:transform doc:name="Set Varaibles Headers - RequestOrder" doc:id="2b039efd-91aa-45f0-8e0a-700b8b9f3893" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="requestOrder" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Set Request Get Order" doc:id="c2348cfb-2c35-4c94-bdf7-62eebab5c2ec" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var collection = if(payload.category == "LTE") "MDM_ORDEN" else "MDM_CD_ORDEN"
+
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: {
+		  "query": {
+		    "aggregate": collection,
+		    "pipeline": [
+		      {
+		        // Envolvemos el resultado en un $match para que Mongo filtre
+		        "\$match": {
+		        	"Numero_Orden" : vars.requestOrder.orderNumber
+		        }
+		      }
+		    ],
+		    "cursor": {}
+		  }
+		},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="6a457ece-236a-447e-a0cd-4a031ac4e2be" name="generic-sapi-clientSub_Flow" target="orderData"/>
+		<choice doc:name="Choice" doc:id="fbfd9bd1-feda-4b47-9055-3ef45e192dd3" >
+			<when expression="#[!isEmpty(vars.orderData.result)]">
+				<scatter-gather doc:name="Scatter-Gather" doc:id="366916f3-5389-474b-8c93-bdbd650095ce" >
+					<route >
+						<ee:transform doc:name="Body get MDM_REGLAS_ORDEN" doc:id="8e562974-331f-446f-9458-ade182930416">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var collection = "MDM_REGLAS_ORDEN"
+
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: "/dynamicQuery",
+	body: {
+		  "query": {
+		    "aggregate": collection,
+		    "pipeline": [
+		      {
+		        // Envolvemos el resultado en un $match para que Mongo filtre
+		        "\$match": {
+		        	"Numero_Orden" : vars.requestOrder.orderNumber
+		        }
+		      }
+		    ],
+		    "cursor": {}
+		  }
+		},
+	headers: {
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": vars.headers.name,
+	"X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+	"source": vars.headers.source,
+	"systemId": vars.headers.systemId
+},
+	queryParameters:{
+		
+	},
+	uriParameters:{
+		
+	}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+						<flow-ref doc:name="Flow Reference" doc:id="4bafca7f-f04b-4c21-ae69-83fa15cfd256" name="generic-sapi-clientSub_Flow" />
+						<ee:transform doc:name="Transform Message" doc:id="438fc3ad-0f52-4020-84f5-eb1f23555cef">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var reglas = payload.result[0].Reglas_Aplicadas
+
+---
+reglas filter ((regla) -> 
+    regla.esValido == false 
+)]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</route>
+					<route >
+						<flow-ref doc:name="Flow Reference" doc:id="3caae571-ebdb-44d2-942a-f2626d43bf4d" name="get-reglas-orden-mdm-cachingSub_Flow" />
+					</route>
+				</scatter-gather>
+			  <ee:transform doc:name="Relacion Data Reglas" doc:id="0b2635aa-57c6-48ab-ac7d-6a0a76f79155">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// 1. Extraemos las listas de reglas de ambas posiciones del payload
+var resultados = payload."0".payload default []
+var definiciones = payload."1".payload default []
+
+// 2. Realizamos el cruce (Join) entre resultados (0) y definiciones (1)
+var consolidado = resultados map (item0) -> {
+    // Buscamos en el catálogo (objeto 1) la regla que coincida con el ID del resultado (objeto 0)
+    (definiciones filter ($.idRegla == item0.idRegla) map (item1) -> {
+        // --- Datos provenientes de la definición (Posición 1) ---
+        idRegla: item1.idRegla,
+        nombre: item1.nombre,
+        descripcion: item1.descripcion,
+        habilitada: item1.habilitada,
+        obligatoria: item1.obligatoria,
+        aplicaA: item1.aplicaA,
+        accion: item1.accion,
+        siFalla: item1.siFalla,
+        siSeCumple: item1.siSeCumple,
+        estadoOrdenComercial: item1.estadoOrdenComercial
+    })
+}
+
+---
+// 3. Aplanamos el resultado para que quede un solo array de objetos
+flatten(consolidado)]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="02d63ca3-3ee2-4496-8c9a-0814074fd2f1">
+					<when expression="#[!isEmpty(payload)]">
+						<flow-ref doc:name="Validacion de reglas" doc:id="cb50c9b4-e17d-4485-abeb-c599a77d398a" name="product-order-validate-rules-orchestratorSub_Flow" />
+						<choice doc:name="Choice" doc:id="d52e480b-7859-4f5f-b5d5-04873b83141e">
+					<when expression="#[(vars.reglasAcumuladas map ((regla) -&gt; (regla.esValido == false and regla.obligatoria == true))) contains true]">
+						<ee:transform doc:name="Respuesta Error" doc:id="6a2507c1-f884-466e-9cfb-d97fbdb457be">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "500",
+	messageResponse: "Error Updated Order",
+	order: {
+		rulesApplied: vars.reglasAcumuladas map (regla) -> {
+			idRule: regla.idRegla,
+	        isValid: regla.esValido,
+	        mandatory: regla.obligatoria,
+	        detailedEvaluation: regla.evaluacionDetallada map (detalle) -> {
+	            compared: detalle.comparacion,
+	            description: detalle.descripcion,
+	            mandatory: detalle.obligatoria,
+	            result: detalle.resultado
+	        },
+	        
+	        responseRule: {
+	            code: regla.respuestaRegla.codigo,
+	            message: regla.respuestaRegla.mensaje
+	        }
+	    }
+	}
+	
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables />
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Transform Message" doc:id="a7ea647c-997a-47eb-9985-c9db26a387a6">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// ---  VARIABLES ---
+var inputData = vars.requestOrder default {}
+var orderNum = vars.requestOrder.orderNumber
+
+// ---  FUNCIONES ---
+fun findObject(nombreLlave) = 
+    (vars.resultadoSapi filter ($.llave == nombreLlave))[0].objeto default null
+
+fun toDate(d) = if (isEmpty(d)) null else { "\$date": d }
+
+fun calcularEstadoComercial(reglas, estadoActual) = do {
+    var estadosLimpios = (reglas map (item) -> {
+        "esValido": item.esValido default false,
+        "estadoOrdenComercial": item.estadoOrdenComercial
+    }) orderBy (item) -> item.estadoOrdenComercial.codigo
+    
+    var reglasExitosas = estadosLimpios filter (item) -> item.esValido == true
+    var todasPasaron = !isEmpty(estadosLimpios) and (sizeOf(reglasExitosas) == sizeOf(estadosLimpios))
+    var fechaActual = { "\$date": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"} }
+    ---
+    if (isEmpty(reglas)) 
+        estadoActual // Si no hay reglas, mantenemos el i10
+    else if (todasPasaron)
+        { 
+            "Codigo": p("status-orchestrator.code"), 
+            "Descripcion": p("status-orchestrator.description"), 
+            "Fecha": fechaActual 
+        }
+    else if (!isEmpty(reglasExitosas))
+        // Si algunas pasaron, tomamos la última exitosa (ej. i20)
+        (reglasExitosas[-1].estadoOrdenComercial ++ { "Fecha": fechaActual })
+    else 
+        estadoActual // Si hay reglas pero NINGUNA se cumplió, mantenemos el i10
+}
+
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: { 
+        "query": {
+            "update": "MDM_CD_ORDEN",
+            "updates": [
+                {
+                    "q": { "Numero_Orden": orderNum },
+                    "u": {
+                        "\$set": {
+                            "Fecha_Modificacion": { "\$date": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"} },
+                            "Usuario_Modificacion": inputData.updatedBy,
+                            
+                            // --- ATRIBUTOS CONDICIONALES ---
+                            // Solo se mapean si no vienen vacíos en el inputData
+                            ("Actualizacion_Extractor": inputData.extractorUpdate) if (!isEmpty(inputData.extractorUpdate)),
+                            ("Canal": inputData.channel) if (!isEmpty(inputData.channel)),
+                            ("Fase": inputData.phase) if (!isEmpty(inputData.phase)),
+                            
+                            // Estado Comercial: solo si hay reglas para procesar
+                            ("Estado_Orden_Comercial": calcularEstadoComercial(vars.reglasAcumuladas,vars.orderData.result[0].Estado_Orden_Comercial)) if (!isEmpty(vars.reglasAcumuladas)),
+                            
+                            // Tramite: Mapeo interno condicional
+                            ("Tramite": {
+                                ("Tipo_Tramite": inputData.through.throughType) if (!isEmpty(inputData.through.throughType)),
+                                ("Subtipo_Tramite": inputData.through.throughSubtype) if (!isEmpty(inputData.through.throughSubtype)),
+                                ("Fecha_Tramite": toDate(inputData.through.throughDate)) if (!isEmpty(inputData.through.throughDate)),
+                                ("Causal_Cancelacion": inputData.through.cancellationReason) if (!isEmpty(inputData.through.cancellationReason))
+                                // ... puedes agregar más subcampos aquí siguiendo el mismo patrón
+                            }) if (!isEmpty(inputData.through)),
+                            
+                            ("CUN": inputData.cun) if (!isEmpty(inputData.cun)),
+                            
+                            // Objetos de MDM y Oferta: solo si la búsqueda retornó algo
+                            ("Cliente_Tramite": findObject("MDM_CLIENTE")) if (!isEmpty(findObject("MDM_CLIENTE"))),
+                            ("Servicio_Tramite": findObject("CMP_OFERTA_PRODUCTO")) if (!isEmpty(findObject("CMP_OFERTA_PRODUCTO")))
+                        }
+                    },
+                    "upsert": false,
+                    "multi": false
+                }
+            ]
+        }
+    },
+    headers: {
+        "client_secret": p('mongo-db-sapi.security.client-secret'),
+        "client_id": p('mongo-db-sapi.security.client-id'),
+        "name": vars.headers.name,
+        "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+        "source": vars.headers.source,
+        "systemId": vars.headers.systemId
+    }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+								<flow-ref doc:name="Flow Reference" doc:id="f628e9a3-244f-4246-b093-1b8d963f02d6" name="generic-sapi-clientSub_Flow" target="resultUpdateOrder"/>
+								<choice doc:name="Choice" doc:id="30c20e07-7beb-4d19-86fa-153c5bd73368">
+									<when expression="#[// Condición: Mongo reportó éxito Y no tenemos reglas que marcar como TRUE&#10;(vars.resultUpdateOrder.result.n &gt; 0) and (sizeOf(vars.reglasAcumuladas filter ($.esValido == true)) &lt; 0)]">
+										<ee:transform doc:name="Transform Message" doc:id="71bee95d-e402-4cea-b270-cdb24bcb66d7">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// Guardamos la respuesta de Mongo en una variable local para facilitar la lectura
+var mongoRes = vars.resultUpdateOrder.result default {}
+var orderNum = vars.requestOrder.orderNumber default ""
+
+---
+    if (mongoRes.n > 0 and mongoRes.nModified > 0)
+        {
+            code: "200",
+            messageResponse: "Order Update Success",
+            order: {
+                orderNumber: orderNum,
+                rulesApplied: vars.reglasAcumuladas filter ($.esValido == true)
+            }
+        }
+    else if (mongoRes.n > 0 and mongoRes.nModified == 0)
+        {
+            code: "200",
+            messageResponse: "Order Not Modified"
+        }
+    else // Caso donde n == 0
+        {
+            code: "200",
+            messageResponse: "Order Not Found"
+        }
+
+]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+									</when>
+									<when expression="#[// Condición: Mongo reportó éxito Y tenemos reglas que marcar como TRUE&#10;(vars.resultUpdateOrder.result.n &gt; 0) and (sizeOf(vars.reglasAcumuladas filter ($.esValido == true)) &gt; 0)]">
+										<ee:transform doc:name="Transform Message" doc:id="4780dcb6-482a-4a03-b17c-e24109f72987">
+											<ee:message>
+												<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// ---  VARIABLES ---
+// Filtramos los IDs o códigos de las reglas que fueron exitosas en esta ejecución
+var idsReglasExitosas = (vars.reglasAcumuladas filter ($.esValido == true)).idRegla default []
+var orderNum = vars.requestOrder.orderNumber
+
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: { 
+        "query": {
+            "update": "MDM_REGLAS_ORDEN", 
+            "updates": [
+                {
+                    // 1. FILTRO: Buscamos el documento por Numero_Orden
+                    "q": { "Numero_Orden": vars.requestOrder.orderNumber },
+                    
+                    // 2. ACTUALIZACIÓN: Usamos el identificador $[regla]
+                    "u": {
+                        "\$set": {
+                            "Reglas_Aplicadas.\$[regla].esValido": true
+                        }
+                    },
+                    "upsert": false,
+                    "multi": true,
+                    // 3. ARRAY FILTERS: Aquí definimos qué es "regla"
+                    "arrayFilters": [
+                        { "regla.idRegla": { "\$in": idsReglasExitosas } }
+                    ]
+                }
+            ]
+        }
+    },
+    headers: {
+        "client_secret": p('mongo-db-sapi.security.client-secret'),
+        "client_id": p('mongo-db-sapi.security.client-id'),
+        "name": vars.headers.name,
+        "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+        "source": vars.headers.source,
+        "systemId": vars.headers.systemId
+    }
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+										<flow-ref doc:name="Flow Reference" doc:id="1f34bc10-b93a-4603-9f37-fd04e2e2242d" name="generic-sapi-clientSub_Flow" target="resultUpdateRules" />
+										<ee:transform doc:name="Transform Message" doc:id="f7310c7d-ba1e-4db5-9261-41e57bf74de6">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// Guardamos la respuesta de Mongo en una variable local para facilitar la lectura
+var mongoRes = vars.resultUpdateOrder.result default {}
+var orderNum = vars.requestOrder.orderNumber default ""
+
+---
+    if (mongoRes.n > 0 and mongoRes.nModified > 0)
+        {
+            code: "200",
+            messageResponse: "Order Update Success and rules modified",
+            order: {
+                orderNumber: orderNum,
+                rulesApplied: vars.reglasAcumuladas filter ($.esValido == true)
+            }
+        }
+    else if (mongoRes.n > 0 and mongoRes.nModified == 0)
+        {
+            code: "200",
+            messageResponse: "Order Not Modified"
+        }
+    else // Caso donde n == 0
+        {
+            code: "200",
+            messageResponse: "Order Not Found"
+        }
+
+]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+									
+</when>
+									<otherwise >
+										<ee:transform doc:name="Transform Message" doc:id="882fe739-8b75-48d4-a6b1-e79e58349c86" >
+											<ee:message >
+												<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var orderNum = vars.requestOrder.orderNumber default ""
+
+---
+    {
+        code: "500",
+        messageResponse: "Error Updated Order",
+        order: {
+            orderNumber: orderNum,
+            rulesApplied: vars.reglasAcumuladas
+        }
+    }]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									</otherwise>
+								</choice>
+					</otherwise>
+				</choice>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Update Order" doc:id="bb1e9593-2068-46f9-be63-f50d02ced0f8">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+// ---  VARIABLES ---
+var inputData = vars.requestOrder default {}
+var orderNum = vars.requestOrder.orderNumber
+
+
+fun toDate(d) = if (isEmpty(d)) null else { "\$date": d }
+
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: { 
+        "query": {
+            "update": "MDM_CD_ORDEN",
+            "updates": [
+                {
+                    "q": { "Numero_Orden": orderNum },
+                    "u": {
+                        "\$set": {
+                            "Fecha_Modificacion": { "\$date": now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"} },
+                            "Usuario_Modificacion": inputData.updatedBy,
+                            
+                            // --- ATRIBUTOS CONDICIONALES ---
+                            // Solo se mapean si no vienen vacíos en el inputData
+                            ("Actualizacion_Extractor": inputData.extractorUpdate) if (!isEmpty(inputData.extractorUpdate)),
+                            ("Canal": inputData.channel) if (!isEmpty(inputData.channel)),
+                            ("Fase": inputData.phase) if (!isEmpty(inputData.phase)),
+                            
+                           
+                            // Tramite: Mapeo interno condicional
+                            ("Tramite": {
+                                ("Tipo_Tramite": inputData.through.throughType) if (!isEmpty(inputData.through.throughType)),
+                                ("Subtipo_Tramite": inputData.through.throughSubtype) if (!isEmpty(inputData.through.throughSubtype)),
+                                ("Fecha_Tramite": toDate(inputData.through.throughDate)) if (!isEmpty(inputData.through.throughDate)),
+                                ("Causal_Cancelacion": inputData.through.cancellationReason) if (!isEmpty(inputData.through.cancellationReason))
+                                // ... puedes agregar más subcampos aquí siguiendo el mismo patrón
+                            }) if (!isEmpty(inputData.through)),
+                            
+                            ("CUN": inputData.cun) if (!isEmpty(inputData.cun))
+                            }
+                    },
+                    "upsert": false,
+                    "multi": false
+                }
+            ]
+        }
+    },
+    headers: {
+        "client_secret": p('mongo-db-sapi.security.client-secret'),
+        "client_id": p('mongo-db-sapi.security.client-id'),
+        "name": vars.headers.name,
+        "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+        "source": vars.headers.source,
+        "systemId": vars.headers.systemId
+    }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Flow Reference" doc:id="6abbcc99-19c3-4dfc-a74d-fe59c5edaf52" name="generic-sapi-clientSub_Flow"/>
+						<ee:transform doc:name="Transform Message" doc:id="1ef7bb28-c7d3-4e06-8e2a-eb45b762f2b0" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+// Guardamos la respuesta de Mongo en una variable local para facilitar la lectura
+var mongoRes = payload.result default {}
+var orderNum = vars.requestOrder.orderNumber default ""
+
+---
+if (mongoRes.ok == 1) (
+    if (mongoRes.n > 0 and mongoRes.nModified > 0)
+        {
+            code: "200",
+            messageResponse: "Update Order Success",
+            order: {
+                orderNumber: orderNum
+            }
+        }
+    else if (mongoRes.n > 0 and mongoRes.nModified == 0)
+        {
+            code: "200",
+            messageResponse: "Order Not Modified"
+        }
+    else // Caso donde n == 0
+        {
+            code: "200",
+            messageResponse: "Order Not Found"
+        }
+)
+else // Caso donde ok != 1 (Fallo de sintaxis o error de base de datos)
+    {
+        code: "500",
+        messageResponse: "Error Updated Order",
+        order: {
+            orderNumber: orderNum
+        }
+    }]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Respuesta Error" doc:id="d96af0f6-a07c-4f00-889e-b8f646ad728e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	code: "200",
+	messageResponse: "Order not found",
+	order: {}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="update-agendamiento-order-orchestratorSub_Flow" doc:id="fbf6c238-9b59-48c1-bbdc-8841cfe0f042" >
+		<ee:transform doc:name="http Request Update Orden - Agendamiento" doc:id="d58e2a75-fe71-4c51-8f67-58e06bb71d63">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var esAgendado = vars.agendamiento.confirmaAgendamiento default false
+var esDisponible = vars.ordenServicio.Factibilidad default false
+
+var codigoEstado = if (esAgendado)
+        p('estado-orden-servicio.ejecutar-agenda.codigo')
+    else
+        p('estado-orden-servicio.ejecutar-agenda-fallido.codigo')
+
+var descripcionEstado = if (esAgendado)
+        p('estado-orden-servicio.ejecutar-agenda.descripcion')
+    else
+        p('estado-orden-servicio.ejecutar-agenda-fallido.descripcion')
+
+var codigoEstadoComercial = if (esAgendado)
+        p('status-orchestrator.code')
+    else
+        p('status-orchestrator.status-failed.agendamineto.code')
+
+var descripcionEstadoComercial = if (esAgendado)
+        p('status-orchestrator.description')
+    else
+        p('status-orchestrator.status-failed.agendamineto.description')
+
+var fechaActualIso = (now() >> "UTC-5") as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+
+
+---
+{
+    basePath: p("mongo-db-sapi.base-path"),
+    host: p("mongo-db-sapi.host"),
+    port: p("mongo-db-sapi.port"),
+    method: "POST",
+    path: "/dynamicQuery",
+    body: {
+    "query": {
+        "update": "MDM_CD_ORDEN",
+        "updates": [
+            {
+                "q": { "Numero_Orden": vars.orderNumber },
+                "u": {
+                    "\$set": {
+                        "Fecha_Modificacion": { "\$date": fechaActualIso },
+                        
+                        ("Estado_Orden_Comercial.Codigo": codigoEstadoComercial ) if (esDisponible),
+                        ("Estado_Orden_Comercial.Descripcion": descripcionEstadoComercial ) if (esDisponible),
+                        ("Estado_Orden_Comercial.Fecha": { "\$date": fechaActualIso } ) if (esDisponible),
+
+                        ("Orden_Servicio.Estado_Orden.Codigo": codigoEstado ) if (esDisponible),
+                        ("Orden_Servicio.Estado_Orden.Descripcion": descripcionEstado ) if (esDisponible),
+                        ("Orden_Servicio.Estado_Orden.Fecha": { "\$date": fechaActualIso }) if (esDisponible),
+
+                        ("Agendamiento": vars.agendamiento.agendamiento) if (esAgendado)
+                    }
+                },
+                "upsert": false,
+                "multi": false
+            }
+        ]
+    }
+},
+    headers: {
+        "client_secret": p('mongo-db-sapi.security.client-secret'),
+        "client_id": p('mongo-db-sapi.security.client-id'),
+        "name": vars.headers.name,
+        "X-CORRELATION-ID": vars.headers."X-CORRELATION-ID",
+        "source": vars.headers.source,
+        "systemId": vars.headers.systemId
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="ae2f6e7c-87c6-4e11-bba9-2124436229a6" name="generic-sapi-clientSub_Flow"/>
+		<logger level="INFO" doc:name="Logger" doc:id="7d6e4334-e220-42b5-95ee-1999de2300d2" message="#[payload]"/>
+	</sub-flow>
+	
+	
+</mule>

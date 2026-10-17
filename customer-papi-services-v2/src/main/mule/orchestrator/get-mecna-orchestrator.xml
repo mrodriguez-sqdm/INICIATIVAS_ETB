@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="lisim-customer-papi-orchestrator-v2-mecna" doc:id="5701d073-5c25-4053-9915-2e01ae510bae" >
+		<ee:transform doc:name="set request variables" doc:id="a60b8174-12f9-420c-abc9-03ffb9f6405d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"fields": [],
+	"filters": [{
+		"field": "TipoIdentificacion",
+		"value": attributes.queryParams.document_id_type
+	},
+    {
+		"field": "Identificacion",
+		"value": attributes.queryParams.document_id
+	},
+    {
+		"field": "EstadoRegistro",
+		"value": "Activo"
+	}],
+	"limit": 10
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="method" ><![CDATA[%dw 2.0
+output application/json
+---
+"POST"]]></ee:set-variable>
+				<ee:set-variable variableName="path" ><![CDATA[%dw 2.0
+output application/json
+---
+p('mongo-db-sapi.resources.mecna.base-path')]]></ee:set-variable>
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"client_secret" : p('mongo-db-sapi.security.client-secret'),
+	"client_id" : p('mongo-db-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"collectionName": "MDM_MECNA_ARCHIVO"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="mongo-sapi-client" doc:id="f12ee49c-0728-40be-a052-ded547ee6969" name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+		<choice doc:name="Choice" doc:id="a0370b99-ccd9-42a9-a7cc-aaeafb830687" >
+			<when expression="#[isEmpty(payload)]" >
+				<ee:transform doc:name="business payload empty" doc:id="f5bed46a-7f07-4710-bb06-cc643f9f7c51" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": 1,
+  "description": "Sin registros"
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[sizeOf(payload) &gt; 1]" >
+				<ee:transform doc:name="last record" doc:id="370a569d-0ea0-4c57-b06b-22d54ba04ea1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var sorted = payload orderBy (
+    (item) -> (item.FechacargaArchivo as Date {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"})
+)
+var sortedDesc =sorted[-1 to 0]
+---
+sortedDesc[0]]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<ee:transform doc:name="business payload negative" doc:id="57a40149-4a5a-4672-8308-0ad4918bfdec" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "code": -1,
+  "description": payload.Observacion default "sin especificar",
+  "error": payload.tipologia default "sin especificar"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="bussiness payload" doc:id="88faae37-52aa-46bb-bc3a-25b559b2023c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var obj = payload[0]
+---
+{
+  "code": -1,
+  "description": obj.Observacion default "sin especificar",
+  "error": obj.tipologia default "sin especificar"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

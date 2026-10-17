@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+    <flow name="customer-xapi-services-main" doc:id="b4e109cd-8655-4099-91ad-1959dac6fd85">
+        <http:listener doc:name="Listener" doc:id="0e2db5ba-354c-4923-aa48-6e7ed8117703" config-ref="customer-xapi-services-httpListenerConfig" path="/v2/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <flow-ref doc:name="Call initial Logger" doc:id="d1fa78e7-f9c5-4bae-bbcb-795fbcbb678a" name="initial-loggin-Sub_Flow" />
+        <apikit:router doc:id="8e720648-434b-4ef1-a826-a267c5dc88a8" config-ref="customer-xapi-services-config" doc:name="APIkit Router" />
+        <async doc:name="Async" doc:id="55adffd5-960f-4f92-91bb-8276f90d1d05">
+            <flow-ref doc:name="Call logger" doc:id="950f4e55-0479-4c53-8292-2d38e4766000" name="loggin-client-call" />
+        </async>
+        <error-handler ref="common-error-handler-v2" />
+    </flow>
+	<flow name="customer-xapi-services-v2-dlb-proxy">
+		<http:listener config-ref="HTTP_DLB_Listener" path="/v2/*">
+			<http:response statusCode="#[vars.httpStatus default 200]">
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="#[vars.httpStatus default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<http:request config-ref="HTTP_Self_Request" method="#[attributes.method]" path="#[attributes.requestPath]">
+			<http:headers><![CDATA[#[attributes.headers]]]></http:headers>
+			<http:query-params><![CDATA[#[attributes.queryParams]]]></http:query-params>
+			<http:response-validator>
+				<http:success-status-code-validator values="0..599" />
+			</http:response-validator>
+		</http:request>
+		<set-variable variableName="httpStatus" value="#[attributes.statusCode]" />
+		<set-variable variableName="outboundHeaders" value="#[attributes.headers]" />
+	</flow>
+    <flow name="customer-xapi-services-dlb-proxy">
+        <http:listener config-ref="HTTP_DLB_Listener" path="/v2/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <http:request config-ref="HTTP_Self_Request" method="#[attributes.method]" path="#[attributes.requestPath]">
+            <http:headers><![CDATA[#[attributes.headers]]]></http:headers>
+            <http:query-params><![CDATA[#[attributes.queryParams]]]></http:query-params>
+            <http:response-validator>
+                <http:success-status-code-validator values="0..599" />
+            </http:response-validator>
+        </http:request>
+        <set-variable variableName="httpStatus" value="#[attributes.statusCode]" />
+        <set-variable variableName="outboundHeaders" value="#[attributes.headers]" />
+    </flow>
+    <flow name="customer-xapi-services-console" doc:id="6420b9da-b14e-4e61-bbe5-916aa27e89fa">
+        <http:listener doc:name="Listener" doc:id="bb122c5c-3fe7-4ce5-ad37-48bcc273483d" config-ref="customer-xapi-services-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console doc:id="fe632ccd-7ffe-4aad-8068-cc411b8d7344" config-ref="customer-xapi-services-config" doc:name="APIkit Console" />
+    </flow>
+    <flow name="get:\balance:customer-xapi-services-config" doc:id="c3d4e5f6-get-balance-xapi">
+        <flow-ref doc:name="GET customer-papi balance" doc:id="d4e5f6a7-bal-ref" name="balance-get-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\customer:customer-xapi-services-config" doc:id="e113b5cf-1545-4f7b-8cf4-afbd32bbe86e">
+        <flow-ref doc:name="Flow Reference" doc:id="38bf7e9e-f7a1-4184-bafa-6edaf84b8a32" name="customer-get-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\payment\banks:customer-xapi-services-config" doc:id="9b3458e1-e076-4fdf-9aa7-77b0409971e5">
+        <flow-ref doc:name="Flow Reference" doc:id="a81b6e90-72d2-4d16-895f-c1ccd0c46492" name="get-payments-banks-clientSub_Flow" />
+    </flow>
+    <flow name="get:\payment\(paymentId):customer-xapi-services-config" doc:id="e7615902-a249-413a-8f53-2127b8c7d348">
+        <flow-ref doc:name="Flow Reference" doc:id="86f867dc-5e00-413e-b005-7bc85c7885ef" name="get-payment-by-id-clientSub_Flow" />
+    </flow>
+    <flow name="post:\payment:application\json:customer-xapi-services-config" doc:id="a721e68c-398d-41c7-80d1-b38be90bf384">
+        <flow-ref doc:name="Flow Reference" doc:id="78f0ea6c-36dc-4a29-b544-86193d0d9195" name="payment-post-orchestadorSub_Flow" />
+    </flow>
+    <flow name="patch:\payment\(paymentId):application\json:customer-xapi-services-config" doc:id="13f7dca9-04d6-4f05-949a-12c89b43a69b">
+        <flow-ref doc:name="Flow Reference" doc:id="437e4f54-6d41-4511-a2c4-2521817de3bc" name="patch-payment-by-id-clientSub_Flow" />
+    </flow>
+	<flow name="post:\riskValidation\identityVerification:application\json:customer-xapi-services-config" doc:id="e1a5b9c3-d840-4192-aa09-b7a83b191158" >
+		<flow-ref doc:name="Call PAPI identityVerification" doc:id="f2b6c0d4-e951-42a3-bb10-c8b94c202269" name="customer-papi-identity-verification-v2-clientSub_Flow"/>
+	</flow>
+    <flow name="post:\riskValidation\identityValidation:customer-xapi-services-config" doc:id="85aea3d9-c168-4661-b6fe-39ec7a477cd0">
+        <flow-ref doc:name="Call orchestrator" doc:id="6d718d15-eb95-49e4-9dd2-fa16e2c6159d" name="customer-papi-identity-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\riskValidation\score:customer-xapi-services-config" doc:id="1de74d38-6d33-4558-8942-802630bc58ba">
+        <flow-ref doc:name="Call orchestrator" doc:id="69408093-8131-4040-91f3-c61170f6376a" name="customer-papi-score-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\riskValidation\otp\resend:customer-xapi-services-config" doc:id="d5a9dc36-7e16-4889-b4fd-17ab28d4bcd8">
+        <flow-ref doc:name="Call orchestrator" doc:id="f6090df8-2082-48a7-9348-93006544a4c2" name="customer-papi-otp-resend-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\riskValidation\otp\validation:customer-xapi-services-config" doc:id="27eba19c-682d-4be9-912d-3f5d61dbf3c3">
+        <flow-ref doc:name="Call orchestrator" doc:id="7f28e8b7-535d-4c9a-a05b-4359d97902e9" name="customer-papi-otp-validate-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\riskValidation\questionnaire:customer-xapi-services-config">
+        <flow-ref doc:name="Call orchestrator" doc:id="db014928-ff8d-4a25-96d1-f5cee49dd4a9" name="lisim-customer-xapi-orchestrator-v2-questionnaire" />
+    </flow>
+    <flow name="post:\riskValidation\questionaries\validation:customer-xapi-services-config" doc:id="ce474de3-e5b2-4fce-b3cf-33d88f371c48">
+        <flow-ref doc:name="Call orchestrator" doc:id="a62427d1-f660-47f4-88d6-95f79f323538" name="customer-papi-question-validate-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\riskValidation\mecna:customer-xapi-services-config" doc:id="a0de0cad-b290-4f82-a966-110e68dd5021">
+        <flow-ref doc:name="Call orchestrator" doc:id="f3c7363c-d9ba-4376-9f22-5ed85a257780" name="lisim-customer-xapi-orchestrator-v2-mecna" />
+    </flow>
+    <flow name="post:\serviceOrder\orquestator\mobile\processOrder:application\json:customer-xapi-services-config">
+        <flow-ref doc:name="Go to service-papi-mobile" doc:id="ec5de448-7f3d-4d0d-8b6c-82faa3128d3a" name="post-service-Order-mobile-clientSub_Flow" />
+    </flow>
+    <flow name="post:\serviceOrder\orquestator\fix\processOrder:application\json:customer-xapi-services-config">
+        <flow-ref doc:name="Go to service-papi-fix" doc:id="eeabfbde-9bc6-4dc9-a4f5-e38b1a6731c4" name="post-service-Order-fix-clientSub_Flow" />
+    </flow>
+    <flow name="get:\riskValidation\questionaries\(identityValidation):customer-xapi-services-config" doc:id="a1d241fe-32f5-44c0-b5b4-0ab5c75033c1">
+        <flow-ref doc:name="Call orchestrator" doc:id="be5a88aa-9416-4475-ac4b-85459b022123" name="customer-papi-get-question-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\productOrder:customer-xapi-services-config" doc:id="24fffc0d-d9c4-4cf7-b478-7cfe92071870">
+        <flow-ref doc:name="Call orchestrator" doc:id="2eeec650-ae05-4a80-a5a7-f3b7c60ada19" name="customer-papi-product-order-create-v2-clientSub_Flow" />
+    </flow>
+    <flow name="patch:\productOrder:customer-xapi-services-config" doc:id="7b094034-0217-46ff-9544-ce176ce1ca1d">
+        <flow-ref doc:name="Call orchestrator" doc:id="3fcdb31f-c88d-4980-bdc1-200f1d491a64" name="customer-papi-product-order-update-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\productOrder:customer-xapi-services-config" doc:id="68a22d40-ec25-4e41-826a-5ac015fe059f">
+        <flow-ref doc:name="Flow Reference" doc:id="b0aa0795-6318-4dc9-98f8-0f701f5f1ff9" name="customer-papi-product-order-get-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\payment\webhook:application\json:customer-xapi-services-config" doc:id="af733e08-68c8-499d-99d2-74dddc138638">
+        <flow-ref doc:name="Flow Reference" doc:id="a106558d-1794-4503-a7c2-9670ad27b3e8" name="post-webhook-payment-clientSub_Flow" />
+    </flow>
+    <flow name="post:\transferBalance:application\json:customer-xapi-services-config" doc:name="post transferBalance">
+        <flow-ref doc:name="Call customer-papi transferBalance" name="customer-papi-transfer-balance-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\customer360:customer-xapi-services-config" doc:id="0b8da328-f6ef-4495-ad38-fe73ca102fde">
+        <flow-ref doc:name="customer-papi-customer360Sub_Flow" doc:id="c3323d0b-bf35-4899-a667-2dae0b85dbb2" name="customer-papi-customer360Sub_Flow" />
+    </flow>
+	<flow name="post:\payment\webhook\confirmation\payu:application\x-www-form-urlencoded:customer-xapi-services-config" doc:id="11b2c4d1-baa2-423d-8fe6-a04a2c312186">
+		<flow-ref doc:name="Flow Reference" doc:id="e719f6a6-86b8-4a31-b66e-719c329cdc71" name="post-webhook-payment-confirmation-payu-clientSub_Flow" />
+	</flow>
+	<flow name="post:\productOrder\wholesale:application\json:customer-xapi-services-config" doc:id="e9c4a3b5-84fa-4657-9c3a-c2625d2edc9a" >
+		<flow-ref doc:name="post-interaction-orchestratorSub_Flow" doc:id="56c21a8b-d19b-4820-b30c-869c5a9901a1" name="post-interaction-orchestratorSub_Flow"/>
+	</flow>
+	<flow name="get:\productOrder\wholesale\(orderNumber):customer-xapi-services-config" doc:id="364039a1-3d2e-4e85-8a2d-a8ff1ab93aa9">
+		<flow-ref doc:name="get-product-order-wholesale-orchestratorSub_Flow" doc:id="590231e2-600a-466d-b4a2-5ddbf31d6780" name="get-product-order-wholesale-orchestratorSub_Flow" />
+	</flow>
+	<flow name="patch:\productOrder\wholesale\(orderNumber)\availability\confirm:application\json:customer-xapi-services-config" doc:id="7fad5425-6790-4355-bf3d-0cdd2579a101">
+		<flow-ref doc:name="patch-product-order-wholesale-availability-confirm-clientSub_Flow" doc:id="2297d148-2310-4a60-abbd-2b6eabc95806" name="patch-product-order-wholesale-availability-confirm-clientSub_Flow" />
+	</flow>
+	<flow name="patch:\productOrder\wholesale\(orderNumber)\cancellation:application\json:customer-xapi-services-config" doc:id="425cbfbf-bf5d-41ef-ad44-af1af56b996f" >
+		<flow-ref doc:name="patch-product-order-wholesale-cancellation-clientSub_Flow" doc:id="05a7372d-c173-48b8-8528-4b06cce86452" name="patch-product-order-wholesale-cancellation-clientSub_Flow"/>
+	</flow>
+    <flow name="get:\billingBalance:customer-xapi-services-config">
+        <flow-ref doc:name="get-billingBalance-customer-papi-v2-clientSub_Flow" doc:id="f5f61feb-ad79-4f24-b35f-c2dc029a986e" name="get-billingBalance-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\billingHistory:customer-xapi-services-config">
+        <flow-ref doc:name="get-billingHistory-customer-papi-v2-clientSub_Flow" doc:id="10d08046-c611-49ed-a709-9f0ecae2ceed" name="get-billingHistory-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\billingAccountItem:customer-xapi-services-config">
+        <flow-ref doc:name="get-billingAccountItem-customer-papi-v2-clientSub_Flow" doc:id="e1ca10ef-c75f-4453-b2cc-7c84acd9b810" name="get-billingAccountItem-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\billingSubscriberProfile:customer-xapi-services-config">
+        <flow-ref doc:name="customer-papi-billingSubscriberProfile-v2-clientSub_Flow" doc:id="132336c2-0812-4ee0-8d7e-019f94f5b3ec" name="customer-papi-billingSubscriberProfile-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\billingClearance:application\json:customer-xapi-services-config">
+        <ee:transform doc:name="Transform Message">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ 
+  codeResponse: "200",
+  messageResponse: "OK",
+  resultCode: "0000",
+  resultMsg: "Success",
+  dueAmount: "0"
+} as Object {encoding: "UTF-8", mediaType: "application/json"}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+    <flow name="get:\billingDispute:customer-xapi-services-config">
+        <flow-ref doc:name="billing-dispute-orchestrator-v2Sub_Flow" doc:id="ad9b6621-ffdb-4e45-b9f8-5631d9f7044d" name="billing-dispute-orchestrator-v2Sub_Flow" />
+    </flow>
+    <flow name="get:\payment:customer-xapi-services-config" doc:id="13ef1d3c-a7a4-4a0c-86f7-356c5ba8140c">
+        <flow-ref doc:name="Flow Reference" doc:id="9e83c120-afcb-4009-b8ae-24486909e2c8" name="get-payment-clientSub_Flow" />
+    </flow>
+    <flow name="get:\billingInvoicePDF:customer-xapi-services-config">
+        <flow-ref doc:name="get-billingInvoicePDF-customer-papi-v2-clientSub_Flow" doc:id="a3ff829e-3856-4ba9-8219-2e63ef71c238" name="get-billingInvoicePDF-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\billingHistory:application\json:customer-xapi-services-config">
+        <flow-ref doc:name="post-billingHistory-customer-papi-v2-clientSub_Flow" doc:id="8985bd25-d07a-475e-84f8-d0fdaefa525c" name="post-billingHistory-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\billingAccountStatement:customer-xapi-services-config">
+        <flow-ref doc:name="get-billingAccountStatement-customer-papi-v2-clientSub_Flow" doc:id="ecfdb460-4b8f-4650-8fd6-e602243c02a5" name="get-billingAccountStatement-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\billingRechargeHistory:customer-xapi-services-config">
+        <flow-ref doc:name="get-billingRechargeHistory-customer-papi-v2-clientSub_Flow" doc:id="58d5a3e4-532b-49c7-afeb-d522879e1435" name="get-billingRechargeHistory-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\billingMagicCode:application\json:customer-xapi-services-config">
+        <flow-ref doc:name="post-billingMagicCode-customer-papi-v2-clientSub_Flow" doc:id="351c3fd5-ef1f-4bb3-b940-f6948c3a73fa" name="post-billingMagicCode-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\payment\banks:application\json:customer-xapi-services-config">
+        <flow-ref doc:name="post-payment-banks-customer-papi-v2-clientSub_Flow" doc:id="6712db46-7846-4ccc-bdda-e67de2b57fbe" name="post-payment-banks-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\payment\banksBasicAuth:application\json:customer-xapi-services-config">
+        <flow-ref doc:name="post-payment-banks-basic-auth-customer-papi-v2-clientSub_Flow" doc:id="e7b91c9d-e845-4c1d-8bfe-4e976266e41b" name="post-payment-banks-basic-auth-customer-papi-v2-clientSub_Flow" />
+    </flow>
+    <flow name="post:\billingDispute:application\json:customer-xapi-services-config">
+        <flow-ref doc:name="customer-papi-post-billing-dispute-v2-clientSub_Flow" doc:id="dcd916a6-5bc5-435c-9c02-3adc68363d8e" name="customer-papi-post-billing-dispute-v2-clientSub_Flow" />
+    </flow>
+    <flow name="get:\receivablesInquiry:customer-xapi-services-config">
+		<flow-ref doc:name="get-receivablesInquiry-customer-papi-v2-clientSub_Flow" doc:id="73994328-0808-496d-acd0-29d7775e2cbc" name="get-receivablesInquiry-customer-papi-v2-clientSub_Flow"/>
+    </flow>
+    <flow name="post:\receivablesInquiryBasicAuth:application\json:customer-xapi-services-config">
+		<flow-ref doc:name="post-receivablesInquiryBasicAuth-customer-papi-v2-clientSub_Flow" doc:id="d75ee3aa-28be-4d9b-abb5-67121fb485f6" name="post-receivablesInquiryBasicAuth-customer-papi-v2-clientSub_Flow"/>
+    </flow>
+</mule>
