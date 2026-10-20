@@ -1,0 +1,587 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-customer-bill-orchestratorSub_Flow" doc:id="4d3c026d-87e1-4938-9ce2-308c151e5511" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="16a32885-540c-45c0-a81a-fae0303a2720" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="639e8817-0fb4-4f9b-a543-05c6ce0ade2f" variableName="headers" />
+		<ee:transform doc:name="Transform FILTROS PARAM to JSON" doc:id="47bda643-8011-409a-8b40-7a352ecc95da" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.BILLING_NUMBER != null and vars.parameters.BILLING_NUMBER != "")&#10;  true &#10;else&#10; if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;  true&#10; else&#10;  false]' doc:name="Set Variable" doc:id="25d2ef02-b82e-4049-b0db-06317c4b613e" variableName="call_bot" />
+		<choice doc:name="Choice" doc:id="35f918b4-482f-4c81-9f95-52acce19d826" >
+			<when expression="#[vars.call_bot]">
+				<choice doc:name="Choice1" doc:id="3fa91463-dcb1-4d27-b14b-aa11db37d225">
+			<when expression="#[attributes.queryParams.NOTIFICATION_METHOD? and !isEmpty(attributes.queryParams.NOTIFICATION_METHOD)]">
+						<ee:transform doc:name="build Payload BOT" doc:id="50106c18-41c2-452f-a614-66ebb04d6cc7" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var notificationMethod = (vars.parameters.NOTIFICATION_METHOD default "") as String
+var notificationValue  = (vars.parameters.NOTIFICATION_VALUE default "")
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+    
+    "Bill": {
+      "Number": (vars.parameters.BILLING_NUMBER default ""),
+      "Period": ""
+    },
+    "Customer": {
+      "Document_Number": (payload.filtros.DocumentNumber default ""),
+      "Document_Type": (payload.filtros.DocumentType default "")
+    },
+    "Notify": {
+      "Email": 
+        if (upper(notificationMethod) == "EMAIL") notificationValue 
+        else "",
+      "Phone": if (upper(notificationMethod) == "PHONE") notificationValue 
+        else "",
+      "Type": upper(notificationMethod)
+    },
+    "Service": {
+      "Billing_Account": (payload.filtros.BillingAccount default ""),
+      "Phone": (payload.filtros.Phone default "")
+    }
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Flow Reference" doc:id="dbb1ab3f-19b7-4f04-84c5-8d7392063a95" name="post-requestinvoice-clientSub_Flow"/>
+						<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="f3e5c438-2786-4d0f-bce8-a18b432272d1" variableName="httpStatus" />
+						<ee:transform doc:name="Transform Message" doc:id="a2bcb617-9fb6-470f-afc2-4007864b9172">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    invoices: [],
+    file: {
+    	link: if(payload.File != null) payload.File.Link else ""
+    }
+		    
+}
+
+
+]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+			</when>
+					<otherwise>
+						<ee:transform doc:name="build Payload BOT" doc:id="a5b03892-2f44-4a6d-8cb4-fd28c8e0f17b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+    "Barcode": (payload.filtros.Barcode default ""),
+    "Billing_Account": (payload.filtros.BillingAccount default ""),
+    "Billing_Number": (vars.parameters.BILLING_NUMBER default ""),
+    "Phone": (payload.filtros.Phone default ""),
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+						<flow-ref doc:name="Flow Reference" doc:id="48bd1f67-426f-4d39-b5a8-4c084460e02f" name="post-invoices-clientSub_Flow" />
+						<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="0e062ecc-f679-4656-afbd-909584dfb436" variableName="httpStatus" />
+						<ee:transform doc:name="Transform Message" doc:id="abf5453e-7d52-473d-8289-ec3aa7e8369a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    invoices: 
+      if(payload.WSResponseBody.Invoices == null) 
+        []
+	  else
+	     ( (payload.WSResponseBody.Invoices default [])) filter ($ != null) map (invoice) -> {
+		    	adjust: (
+		    		if(invoice.Adjust != null and typeOf(invoice.Adjust) == Object) 
+		    		  {
+					      date: invoice.Adjust.Date,
+					      numPqr: invoice.Adjust.Num_PQR,
+					      origin: invoice.Adjust.Origin,
+					      value: invoice.Adjust.Value,
+					      valueStr: invoice.Adjust.Value_Str
+					    } else null ),
+		    		barcode: invoice.Barcode,
+		    		billedPeriod: invoice.Billed_Period,
+  					billingAccount: invoice.Billing_Account,
+					billingAddress: invoice.Billing_Address,
+					billingCutoffDate: invoice.Billing_Cutoff_Date,
+					billingPhone: invoice.Billing_Phone,
+					billingNumber: invoice.Billing_Number,
+					billingNumberPse: invoice.Billing_Number_PSE,
+					cuotasFactura: 
+					  (
+		    		if(invoice.Cuotas_Factura != null and invoice.Cuotas_Factura != "") 
+		    		
+					  (invoice.Cuotas_Factura default []) map (cuota) -> {
+					    cuota: cuota.Cuota,
+					    estado: cuota.Estado,
+					    fechaPagoCuota: cuota.Fecha_Pago_Cuota,
+					    fechaVencimiento: cuota.Fecha_Vencimiento,
+					    referenciaPagoCuota: cuota.Referencia_Pago_Cuota,
+					    valorAcumulado: cuota.Valor_Acumulado,
+					    valorPagado: cuota.Valor_Pagado,
+					    valorPagar: cuota.Valor_Pagar
+					  } 
+					  else null
+						  ),
+					  creationDate: invoice.Creation_Date,
+					  deliveryType: invoice.Delivery_Type,
+					  email: invoice.Email,
+					  extemporaneous: invoice.Extemporaneous,
+					  informationValue: 
+					  (
+		    		if(invoice.Information_Value != null and invoice.Information_Value != "") 
+		    		
+					  (invoice.Information_Value default []) map (info) -> {
+					    date: info.Date,
+					    message: info.Message
+					  } 
+					  else null
+						  ),
+					invoiceOrigin: invoice.Invoice_Origin,
+					isReceiptOfPayment: invoice.Is_Receipt_Of_Payment,
+					paydayLimit: invoice.Payday_Limit,
+					payment: 
+					  (if (invoice.Payment != null and invoice.Payment != "") 
+					  {
+					    bank: invoice.Payment.Bank,
+					    franchise: invoice.Payment.Franchise,
+					    paymentDate: invoice.Payment.Payment_Date,
+					    state: invoice.Payment.State,
+					    "type": invoice.Payment.Type,
+					    value: invoice.Payment.Value,
+					    valueStr: invoice.Payment.Value_Str,
+					    visibleNumber: invoice.Payment.Visible_Number
+					  } 
+					  else null),
+					  paymentDate: invoice.Payment_Date,
+					  phone: invoice.Phone,
+					  state: invoice.State,
+					  valueOriginal: 
+						  if (invoice.Value_Original != null and invoice.Value_Original != "") 
+						  {
+						    tensSetting: invoice.Value_Original.TensSetting,
+						    value: invoice.Value_Original.Value,
+						    valueStr: invoice.Value_Original.Value_Str,
+						    valuePay: invoice.Value_Original.Value_Pay,
+						    valuePayStr: invoice.Value_Original.Value_Pay_Str
+						  } 
+						  else null,
+						
+					  valueFinal: 
+						  if (invoice.Value_Final != null and invoice.Value_Final != "") 
+						  {
+						    tensSetting: invoice.Value_Final.TensSetting,
+						    value: invoice.Value_Final.Value,
+						    valueStr: invoice.Value_Final.Value_Str,
+						    valuePay: invoice.Value_Final.Value_Pay,
+						    valuePayStr: invoice.Value_Final.Value_Pay_Str
+						  } 
+						  else null,
+						
+					  valuePrevious: 
+						  if (invoice.Value_Previous != null and invoice.Value_Previous != "") 
+						  {
+						    tensSetting: invoice.Value_Previous.TensSetting,
+						    value: invoice.Value_Previous.Value,
+						    valueStr: invoice.Value_Previous.Value_Str,
+						    valuePay: invoice.Value_Previous.Value_Pay,
+						    valuePayStr: invoice.Value_Previous.Value_Pay_Str
+						  } 
+						  else null,
+						
+					  valueService: 
+						  if (invoice.Value_Service != null and invoice.Value_Service != "") 
+						  {
+						    tensSetting: invoice.Value_Service.TensSetting,
+						    value: invoice.Value_Service.Value,
+						    valueStr: invoice.Value_Service.Value_Str,
+						    valuePay: invoice.Value_Service.Value_Pay,
+						    valuePayStr: invoice.Value_Service.Value_Pay_Str
+						  } 
+						  else null
+		    	} 
+		    
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="249fa710-2d5e-4293-9de8-d8f706249ff7">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD REQUEST",
+  "message": {
+    "message": "Error processing your consultation request"
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable" doc:id="0766bcf4-68e1-4e38-a58e-7d9241568708" variableName="httpStatus" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-getbalance-bill-orchestratorSub_Flow" doc:id="e9a0427d-402b-4e5d-b4cf-1988975da92a" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="0124a7a4-d799-4a3b-af1b-916fd7ec9110" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="0bb07074-729b-45b1-b7f4-32c669e24a33" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="fc810463-d73d-473d-bd80-2f9d14783922">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+    "Phone": (vars.parameters.CONNECTION_NUMBER default ""),
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="c659e026-0342-4f83-a38b-e6ae931bcdda" name="post-getbalance-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="098f7893-219f-4c28-8b9e-82f4661f2761" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="85efa36e-496f-4764-885c-d68e3d237519">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var response = payload
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+  balance: {
+    availableCoin: response.WSResponseBody.Available_Coin,
+    availableCoinValue: response.WSResponseBody.Available_Coin_Value,
+    promotionCoin: response.WSResponseBody.Promotion_Coin,
+    promotionCoinValue: response.WSResponseBody.Promotion_Coin_Value,
+    detailed: {
+      detail: response.WSResponseBody.Detailed.Detail map (d) -> {
+        sectionName: d.Section_Name,
+        boxes: d.Boxs map (b) -> {
+          boxName: b.Box_Name,
+          groupName: b.Group_Name,
+          unitType: b.Unity_Type,
+          available: b.Available,
+          consumed: b.Consume,
+          provisioned: b.Provisioned,
+          offers: b.Offers map (o) -> {
+            offerName: o.Offer_Name,
+            available: o.Available,
+            consumed: o.Consumed,
+            provisioned: o.Provisioned,
+            expirationDate: o.Expiration_Date
+          }
+        }
+      }
+    },
+    summary: {
+      resource: response.WSResponseBody.Resume.Resource map (r) -> {
+        name: r.Name,
+        available: r.Available,
+        consumed: r.Consumed,
+        provisioned: r.Provisioned,
+        expirationDate: r.Expiration_Date
+      }
+    }
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-getclearance-bill-orchestratorSub_Flow" doc:id="211576ad-a43d-45ca-aeb2-c3ab14a79213" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="d3ae9f36-7b5e-4300-9ea9-b6ac32c1edf8" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="8bbe9493-7a08-4773-9ddf-8f7e1ccf764e" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="17fe1cb5-371c-4eb1-a553-0719c6026406" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var notificationMethod = (vars.parameters.NOTIFICATION_METHOD default "") as String
+var notificationValue  = (vars.parameters.NOTIFICATION_VALUE default "")
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+    "Customer": {
+      "Document_Number": (vars.parameters.CUSTOMER_ID default ""),
+      "Document_Type": (vars.parameters.CUSTOMER_ID_TYPE default "")
+    },
+    "Email_Notify": 
+        if (upper(notificationMethod) == "EMAIL") notificationValue 
+        else "",
+    "Phone": (vars.parameters.CONNECTION_NUMBER default ""),
+    "Phone_Notify": 
+        if (upper(notificationMethod) == "PHONE" or upper(notificationMethod) == "WHATSAPP") notificationValue 
+        else ""
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="f1be3e27-e003-4595-8f1c-49a533e3813a" name="post-withoutdebt-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="fa1e42b1-6112-42c3-b42a-7beec55af84c" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="8383a2b0-069f-435b-a267-7865b7b2f180" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var response = payload
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+  balance: {
+    billingAccount: response.WSResponseBody.Billing_Account default "",
+    link: response.WSResponseBody.Link default "",
+    payPoint: response.WSResponseBody.Pay_Point default "",
+    pendingBalance: {
+      value: response.WSResponseBody.Pending_Balance.Value default "",
+      valueStr: response.WSResponseBody.Pending_Balance.Value_Str default ""
+    },
+    collectionHours: {
+      value: response.WSResponseBody.Collection_Hours.Value default "",
+      valueStr: response.WSResponseBody.Collection_Hours.Value_Str default ""
+    },
+    defaultInterest: {
+      value: response.WSResponseBody.Default_Interest.Value default "",
+      valueStr: response.WSResponseBody.Default_Interest.Value_Str default ""
+    }
+  }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-debts-bill-orchestratorSub_Flow" doc:id="8b545ed3-8cc5-46b3-858c-69b207d6041a" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="39d4630d-6412-41ef-bfda-82391ad4de03" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="cb590025-4bb9-4923-a58b-fbd06b66a72e" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="122f9ab1-a3c8-4990-8537-00d38f1a912d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+    "Billing_Number": (vars.parameters.BILLING_NUMBER default "")
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="18400a83-e50c-45fd-8991-a4825cd02da6" name="post-whypay-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="77bbb878-aae2-4f57-82ac-a0e15815f423" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="5febb4ba-93db-4b4a-ab6c-bdbcb0cbaa3f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+   debt: {
+        adjust: {
+            date: payload.WSResponseBody.Adjust.Date default "",
+            numPqr: payload.WSResponseBody.Adjust.Num_PQR default "",
+            origin: payload.WSResponseBody.Adjust.Origin default "",
+            value: {
+                value: payload.WSResponseBody.Adjust.Value.Value default "",
+                valueStr: payload.WSResponseBody.Adjust.Value.Value_Str default ""
+            }
+        },
+        barcode: payload.WSResponseBody.Barcode default "",
+        billedPeriod: payload.WSResponseBody.Billed_Period default "",
+        billingAccount: payload.WSResponseBody.Billing_Account default "",
+        billingAddress: payload.WSResponseBody.Billing_Address default "",
+        billingCutoffDate: payload.WSResponseBody.Billing_Cutoff_Date default "",
+        billingNumber: payload.WSResponseBody.Billing_Number default "",
+        billingNumberPse: payload.WSResponseBody.Billing_Number_PSE default "",
+        billingPhone: payload.WSResponseBody.Billing_Phone default "",
+        concepts: {
+            reconnected: {
+                cost: payload.WSResponseBody.Concepts.Reconnected.Cost default "",
+                costUsr: payload.WSResponseBody.Concepts.Reconnected.Cost_Usr default "",
+                date: payload.WSResponseBody.Concepts.Reconnected.Date default ""
+            },
+            suspend: {
+                cost: payload.WSResponseBody.Concepts.Suspend.Cost default "",
+                costUsr: payload.WSResponseBody.Concepts.Suspend.Cost_Usr default "",
+                date: payload.WSResponseBody.Concepts.Suspend.Date default ""
+            }
+        },
+        deliveryType: payload.WSResponseBody.Delivery_Type default "",
+        email: payload.WSResponseBody.Email default "",
+        extemporaneous: payload.WSResponseBody.Extemporaneous default "",
+        informationValue: (payload.WSResponseBody.Information_Value default []) map {
+            date: $.Date default "",
+            message: $.Message default ""
+        },
+        invoiceOrigin: payload.WSResponseBody.Invoice_Origin default "",
+        isReceiptOfPayment: payload.WSResponseBody.Is_Receipt_Of_Payment default "",
+        paydayLimit: payload.WSResponseBody.Payday_Limit default "",
+        payment: {
+            bank: payload.WSResponseBody.Payment.Bank default "",
+            paymentDate: payload.WSResponseBody.Payment.Payment_Date default "",
+            "type": payload.WSResponseBody.Payment.Type default "",
+            value: {
+                value: payload.WSResponseBody.Payment.Value.Value default "",
+                valueStr: payload.WSResponseBody.Payment.Value.Value_Str default ""
+            }
+        },
+        paymentDate: payload.WSResponseBody.Payment_Date default "",
+        phone: payload.WSResponseBody.Phone default "",
+        state: payload.WSResponseBody.State default "",
+        valueFinal: {
+            value: payload.WSResponseBody.Value_Final.Value default "",
+            valueStr: payload.WSResponseBody.Value_Final.Value_Str default ""
+        },
+        valueOriginal: {
+            value: payload.WSResponseBody.Value_Original.Value default "",
+            valueStr: payload.WSResponseBody.Value_Original.Value_Str default ""
+        },
+        valueService: {
+            value: payload.WSResponseBody.Value_Service.Value default "",
+            valueStr: payload.WSResponseBody.Value_Service.Value_Str default ""
+        }
+    }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-billPresentationMedia-orchestratorSub_Flow" doc:id="8e817b0a-32f1-41fc-8bcf-b30391ba37e5" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="3c337a21-786c-4a64-b9a6-975517c7333c" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="34618f8f-346f-4fdf-be25-06b09eae9739" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="95efe181-49bc-40d3-be72-50b999ccc84e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var method_send = upper(payload.shippingMethod."type")
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+     "Address": {
+      "Address": payload.address.address default "",
+      "City_DANE": payload.address.address default "",
+      "Department_DANE": payload.address.address default ""
+    },
+    "Bill_Email": if(method_send == "EMAIL") payload.shippingMethod.value else "",
+    "Bill_Phone": if(method_send == "SMS" or method_send == "WHATSAPP") payload.shippingMethod.value else "",
+    "Delivery_Type": if(method_send == "EMAIL") "Email" 
+                      else if(method_send == "WHATSAPP") "WhatsApp"
+                      else method_send,
+    "Phone": payload.customer.phone default ""
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="996a278a-67a2-46e0-a769-e2795b9c1da2" name="post-setdeliverytypeinvoice-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="d3297784-a7e0-4455-8ad5-d088bfd9cbb1" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="aefc2430-c16b-48f7-916c-06c82494d3ed" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+  detail: {
+	numberPqr: payload.WSResponseBody.PQR_Number default ""
+  }
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
