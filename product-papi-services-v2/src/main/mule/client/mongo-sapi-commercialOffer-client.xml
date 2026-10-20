@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="get-commercialOffer-clientSub_Flow" doc:id="c0ffee01-a2b3-4c5d-8e9f-001122334455">
+		<choice doc:name="Mock or call mongo-sapi" doc:id="c0ffee07-a2b3-4c5d-8e9f-001122334455">
+			<when expression="#[(p('mongo-sapi.commercialOffer.mock.enabled') default 'false') as Boolean]">
+				<ee:transform doc:name="Load commercialOffer mock" doc:id="c0ffee08-a2b3-4c5d-8e9f-001122334455">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var emptyResponse = (p('mongo-sapi.commercialOffer.mock.emptyResponse') default "false") as Boolean
+---
+if (emptyResponse)
+	readUrl("classpath://mocks/commercialOffer-empty.json", "application/json")
+else
+	readUrl("classpath://mocks/commercialOffer.json", "application/json")]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<async doc:name="Async before" doc:id="c0ffee02-a2b3-4c5d-8e9f-001122334455">
+					<flow-ref doc:name="Call logger before" doc:id="c0ffee03-a2b3-4c5d-8e9f-001122334455" name="loggin-client-call" />
+				</async>
+				<http:request method="GET" doc:name="GET commercialOffer mongo-sapi" doc:id="c0ffee04-a2b3-4c5d-8e9f-001122334455" config-ref="HTTP_Request_configuration_mongo" path="${mongo-sapi.path.commercialOffer}">
+					<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_id": p('mongo-sapi.client_id'),
+	"client_secret": p('mongo-sapi.client_secret'),
+	"systemId": attributes.headers.systemId default "PRODUCT",
+	"processName": attributes.headers.processName default "commercialOffer",
+	"name": attributes.headers.name default "",
+	"source": attributes.headers.source default "",
+	"X-CORRELATION-ID": attributes.headers.'X-CORRELATION-ID' default correlationId
+}]]]></http:headers>
+					<http:query-params><![CDATA[#[output application/java
+---
+vars.mongoQueryParams]]]></http:query-params>
+				</http:request>
+				<async doc:name="Async after" doc:id="c0ffee05-a2b3-4c5d-8e9f-001122334455">
+					<flow-ref doc:name="Call logger after" doc:id="c0ffee06-a2b3-4c5d-8e9f-001122334455" name="loggin-client-call" />
+				</async>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

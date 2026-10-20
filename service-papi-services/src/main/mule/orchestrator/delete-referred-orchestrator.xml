@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="delete-referred-orchestrator" doc:id="2cbc2d89-7b75-4ac2-ae33-a22829c01aaa" >
+		<ee:transform doc:name="Set input payload" doc:id="97c2cc5e-a424-4482-9dcd-4009420523fb" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="inputPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Set query params" doc:id="71dfeaf1-dd44-41f1-a8ec-193de1d0d1b2">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="tipoDocumento"><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputPayload.tipoDocumento]]></ee:set-variable>
+				<ee:set-variable variableName="numeroDocumento"><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputPayload.numeroDocumento]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try" doc:id="e1a8c389-ea80-4a20-94b1-dcf6b66d1a5d" >
+			<ee:transform doc:name="Set query params" doc:id="e619dd74-f6fc-450b-8d9e-66f67c5e8d22">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="numeroIdentificacion" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.numeroDocumento]]></ee:set-variable>
+					<ee:set-variable variableName="tipoIdentificacion" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.tipoDocumento]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="Go to get client" doc:id="e3a69aab-f747-4857-ab4c-66fe3ae1d7e9" name="get-mdm_client_mongo-clientSub_Flow" target="get_client_resp" />
+			<logger level="INFO" doc:name="Logger" doc:id="ef3a3f87-c199-487a-a61f-df2e3489de81" message="#[vars.get_client_resp]"/>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="206e829a-6c3d-4e4b-9d43-be0cfd6677a0" >
+					<ee:transform doc:name="Set error description and status code" doc:id="af9c5833-95b8-42c5-bd4b-b9d21a30f11e" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+							<ee:set-variable variableName="errorDescription" ><![CDATA[%dw 2.0
+output application/java
+---
+"Data not found"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<raise-error doc:name="Raise error" doc:id="73fda53f-6c81-4c17-9247-c11eda6073d8" type="CUSTOM:NOT_FOUND" description="#[vars.errorDescription]" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<flow-ref doc:name="Go to remove a referral flow" doc:id="40bc71e5-ff80-4242-9cef-1175c4993212" name="delete-referred-remove-a-referral" />
+		<ee:transform doc:name="Set response" doc:id="e3192aae-0b3f-4982-b025-c485fe1f3c58">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "Exitoso",
+	descripcion: "Se eliminó el referido de forma exitosa"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+200]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="f8470a16-5383-4390-bc9b-fe2d2e658647" message="#[payload]"/>
+	</sub-flow>
+	<sub-flow name="delete-referred-remove-a-referral" doc:id="1049b322-e1c1-4b2d-9414-32fa2d101a1e" >
+		<ee:transform doc:name="Set request payload" doc:id="6bea8fe9-1cb4-4711-8c09-aae74621fd6e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var referal_to_remove = vars.get_client_resp[0].Referidos_Empleado filter (
+  (item, index) -> 
+    (item.Tipo_Documento ++ item.Numero_Documento) ==
+    (vars.inputPayload.referido.tipoDocumentoReferido ++ vars.inputPayload.referido.numeroDocumentoReferido)
+)
+---
+{
+  "Fecha_Actualizacion": now() >> "America/Bogota",
+  "Referidos_Empleado": vars.get_client_resp[0].Referidos_Empleado -- referal_to_remove
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="5f2a162e-53ac-4af6-85aa-1a69b61b167f" message="#[payload]" />
+		<choice doc:name="Choice" doc:id="606b93fe-7348-4245-9223-fb65808b9f95" >
+			<when expression="payload.Referidos_Empleado == vars.get_client_resp[0].Referidos_Empleado">
+				<ee:transform doc:name="Set error description and status code" doc:id="8bdb2693-0809-42ec-8aa3-74774e4d9de6" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+						<ee:set-variable variableName="errorDescription" ><![CDATA[%dw 2.0
+output application/java
+---
+"No se encontró el referido"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<raise-error doc:name="Raise error" doc:id="07c5c9a7-8afe-4477-9a9f-3df2ee13f5b6" type="CUSTOM:NOT_FOUND" description="#[vars.errorDescription]" />
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to patch client" doc:id="7fa9723b-ee63-4bdf-b665-bcd602370c17" name="patch-client-client" target="patch_resp" />
+				<choice doc:name="Choice" doc:id="f1b667bb-6195-4a69-98dd-bf24a8346e90">
+					<when expression="#[(vars.patch_resp.matched != 1) or (vars.patch_resp.modified != 1)]">
+						<ee:transform doc:name="Set error description and status code" doc:id="3751d81c-b5d5-42a4-aef8-317f22cf51aa">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+								<ee:set-variable variableName="errorDescription"><![CDATA[%dw 2.0
+output application/java
+---
+"No se pudo eliminar el referido"]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<raise-error doc:name="Raise error" doc:id="a17cc6ca-2ed4-43ec-b306-b53476088dc8" type="CUSTOM:ERROR" description="#[vars.errorDescription]" />
+					</when>
+					<otherwise>
+						<flow-ref doc:name="Go to update referral state flow" doc:id="6e1b2432-811d-400f-9cee-9eec37440cab" name="delete-referred-update-referral-state" />
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="delete-referred-update-referral-state" doc:id="6199f9ad-91e2-420d-9499-55eed4d637d9" >
+		<ee:transform doc:name="Set request payload" doc:id="1404ab10-5df8-435d-b377-69214397068c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "Estado_Activo": "0"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Set query params" doc:id="02de0cad-9fb0-495f-b04a-b4d7e911d4c6">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="numeroDocumentoReferido"><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputPayload.referido.numeroDocumentoReferido]]></ee:set-variable>
+				<ee:set-variable variableName="tipoDocumentoReferido"><![CDATA[%dw 2.0
+output application/java
+---
+vars.inputPayload.referido.tipoDocumentoReferido]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try" doc:id="9658f717-2995-43e3-8853-ed05327c897c" >
+			<flow-ref doc:name="Go to get referral client" doc:id="ed9c6d35-22e4-4bb2-89b2-039e876449e6" name="get-referido-empleados" target="get_referido_resp" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="3fc08101-4cf6-4f70-afe3-11e472e99586">
+					<ee:transform doc:name="Set empty get_referido_resp" doc:id="6d612f8f-302f-48cc-895d-460032caf134">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="get_referido_resp"><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<logger level="INFO" doc:name="Logger" doc:id="4add01db-1e99-47ed-89f7-8c4863d127a8" message='#["get_referido_resp: " : vars.get_referido_resp]' />
+		<choice doc:name="Choice" doc:id="65664fd6-1d28-4741-8a7f-d921207ecca5" >
+			<when expression="#[!isEmpty(vars.get_referido_resp)]">
+				<ee:transform doc:name="Filter referrals of client" doc:id="cc33736e-f6e8-4233-af13-1c8fab3d1057">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="referrals_client"><![CDATA[%dw 2.0
+output application/json
+---
+vars.get_referido_resp filter (
+  (($.Tipo_Documento_Empleado ++ $.Numero_Documento_Empleado) ==
+  (vars.inputPayload.tipoDocumento ++ vars.inputPayload.numeroDocumento)) and $.Estado_Activo == "1"
+)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="a6dbdffc-5a7b-451b-9681-ef3894bdb7a2" message="#[payload]" />
+				<choice doc:name="Choice" doc:id="08cbee49-526c-4e0c-821e-e23cffd691ff">
+			<when expression="#[((vars.referrals_client default []) != [])]">
+						<flow-ref doc:name="Go to patch referrals of client" doc:id="463a4450-57d8-4961-b070-911bf3cadfbb" name="patch-referido-empleados" target="patch_resp" />
+						<choice doc:name="Choice" doc:id="b4a47e67-863a-45c2-9357-a6dd0c53fa51">
+			<when expression="#[(vars.patch_resp.matched != 1) or (vars.patch_resp.modified != 1)]">
+								<ee:transform doc:name="Set response" doc:id="90de474b-1564-400d-b6ee-695bac915742" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "Exitoso",
+	descripcion: "Se eliminó el referido, pero no se pudo cambiar el estado."
+}]]></ee:set-payload>
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+200]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+			</when>
+							<otherwise >
+								<ee:transform doc:name="Set response" doc:id="73553fb0-d142-4b88-9a3f-9e407d5bd40a" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "Exitoso",
+	descripcion: "Se eliminó el referido de forma exitosa"
+}]]></ee:set-payload>
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+200]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</otherwise>
+		</choice>
+			</when>
+		</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set response" doc:id="dae18439-c514-4b95-80df-a25fc3e4a58a">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "Exitoso",
+	descripcion: "Se eliminó el referido de forma exitosa"
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+200]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

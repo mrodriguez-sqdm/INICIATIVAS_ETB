@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-promotions-sisext-clientSub_Flow" doc:id="a8c3f1e6-2b94-4d5a-9e71-6f4c8a2d3059" >
+		<choice doc:name="Mock or call sisext" doc:id="f1a2b3c4-d5e6-4789-a012-3456789abcde" >
+			<when expression="#[(p('sisext-sapi.promotions.mock.enabled') default 'false') as Boolean]">
+				<ee:transform doc:name="Load mock response" doc:id="a2b3c4d5-e6f7-4890-b123-456789abcdef" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var path = vars.sisextPromotionsPath default ""
+var isMobile = (path contains "mobile")
+var emptyResponse = (p('sisext-sapi.promotions.mock.emptyResponse') default "false") as Boolean
+---
+if (emptyResponse)
+	readUrl("classpath://mocks/promotions-empty.json", "application/json")
+else if (isMobile)
+	readUrl("classpath://mocks/promotions-mobile.json", "application/json")
+else
+	readUrl("classpath://mocks/promotions-fixed.json", "application/json")]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<try doc:name="Try" doc:id="b9d4e2f7-3c05-4e6b-af82-7a5d9b3e4160" >
+					<http:request method="POST" doc:name="Call sisext promotions" doc:id="c0e5f3a8-4d16-4f7c-b093-8b6e0c4f5271" config-ref="sisext-Sapi-HTTP_Request_configuration" path="#[vars.sisextPromotionsPath]">
+						<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('sisext-sapi.client_secret'),
+	"client_id" : p('sisext-sapi.client_id'),
+	"Content-Type" : "application/json",
+	"X-CORRELATION-ID" : (attributes.headers.'x-correlation-id' default attributes.headers.'X-CORRELATION-ID') default correlationId,
+	"systemId" : (attributes.headers.systemId default vars.systemId) default "MIGRACION",
+	("name" : attributes.headers.name) if (attributes.headers.name != null),
+	("source" : attributes.headers.source) if (attributes.headers.source != null)
+}]]]></http:headers>
+					</http:request>
+					<error-handler >
+						<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="d1f6a4b9-5e27-408d-c104-9c7f1d5a6382" >
+							<set-variable value="#[p('sisext-sapi.promotions.errorMessage')]" doc:name="Set Error Message" doc:id="e2a7b5c0-6f38-419e-d215-0d8a2e6b7493" variableName="errorMessageOutput" />
+						</on-error-propagate>
+					</error-handler>
+				</try>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

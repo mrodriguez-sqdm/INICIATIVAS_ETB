@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-subscription-orchestratorSub_Flow" doc:id="d7ed00c3-795c-4cd2-986a-8978f4b84530" >
+		<try doc:name="Try" doc:id="ca9ce969-862a-4777-942a-12269bc41140" >
+			<flow-ref doc:name="GET subscription" doc:id="edb0b003-9281-4036-8796-e0a15eead0e7" name="get-subscription-client-by-msisdn" />
+			<choice doc:name="Choice" doc:id="0a59cc1c-5b36-4a13-a199-b9c3f6a29eb9">
+			<when expression="#[!isEmpty(payload.content)]">
+				<set-variable value="#[payload.content.id[0]]" doc:name="subscriberId" doc:id="9aa24424-0bda-44de-b4f5-3bc7522fa35a" variableName="subscription_id" />
+				<set-payload value="#[vars.inputPayload]" doc:name="Set Payload" doc:id="4e30603b-444b-416c-866c-aed096a31cac" />
+				<flow-ref doc:name="PATCH subscription/{subscriptionID}" doc:id="86396ec3-29d8-4d81-8a69-5e7dddfc62b2" name="patch-SubscriptionMVNE-client" />
+				<ee:transform doc:name="Successful" doc:id="8034a452-0b1d-4040-88e8-d9d70c226656">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"codigo": "OK",
+	"description": "Proceso exitoso."
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables />
+					</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Error Output" doc:id="e100ce46-7ba2-48b3-ba82-ba572398a7ee">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 404,
+	"code": "NOT_FOUND",
+	"message": {
+		"message": "Data not found"
+	},
+	"messageServer": "",
+	"cause": [{
+		"origin": app.name,
+		"message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	}]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c088bd57-0bda-46b9-ba55-3039876ff986" >
+					<ee:transform doc:name="Error output" doc:id="7beef42d-ed29-425a-a240-9924879914ff" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "",
+	"message": {
+	  "message": (vars.errorMessageOutput default "") ++ " Respuesta JSC: " ++ error.muleMessage.typedValue.message.message default ""
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="post-promotions-orchestratorSub_Flow" doc:id="f3b8c6d1-7a49-42af-e326-1e9b3f7c8504" >
+		<ee:transform doc:name="Resolve type and analytics flag" doc:id="04c9d7e2-8b5a-43b0-f437-2f0c4a8d9615" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var inputPayload = vars.inputPayload default {}
+---
+inputPayload -- ["type", "analytics", "validations"]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="promotionType" ><![CDATA[%dw 2.0
+output application/java
+---
+lower(trim((vars.inputPayload.'type' default "")))]]></ee:set-variable>
+				<ee:set-variable variableName="analyticsEnabled" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.inputPayload.analytics default false) as Boolean]]></ee:set-variable>
+				<ee:set-variable variableName="analyticsIds" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+				<ee:set-variable variableName="skipSisextFixed" ><![CDATA[%dw 2.0
+output application/java
+---
+false]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Route by type" doc:id="15dae8f3-9c6b-44c1-0458-3a1d5b9e0726" >
+			<when expression='#[vars.promotionType == "movil" or vars.promotionType == "mobile"]'>
+				<set-variable value="#[p('sisext-sapi.path.promotions.mobile')]" doc:name="Set mobile path" doc:id="26ebf904-0d7c-45d2-1569-4b2e6c0f1837" variableName="sisextPromotionsPath"/>
+				<try doc:name="Try mobile" doc:id="37fc0a15-1e8d-46e3-267a-5c3f7d102948" >
+					<flow-ref doc:name="Call sisext mobile" doc:id="480d1b26-2f9e-47f4-378b-6d408e213a59" name="post-promotions-sisext-clientSub_Flow"/>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="591e2c37-30af-4805-489c-7e519f324b6a" >
+							<ee:transform doc:name="Error output" doc:id="6a2f3d48-41b0-4916-59ad-8f620a435c7b">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "PROMOTIONS_MOBILE",
+	"message": {
+	  "message": vars.errorMessageOutput default p('sisext-sapi.promotions.errorMessage')
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<when expression='#[vars.promotionType == "fijo" or vars.promotionType == "fixed"]'>
+				<set-variable value="#[p('sisext-sapi.path.promotions.fixed')]" doc:name="Set fixed path" doc:id="7b304e59-52c1-4a27-6abe-90731b546d8c" variableName="sisextPromotionsPath"/>
+				<choice doc:name="Analytics path?" doc:id="analytics-choice-01" >
+					<when expression="#[vars.analyticsEnabled]">
+						<choice doc:name="Validations present?" doc:id="analytics-validations-choice" >
+							<when expression="#[vars.inputPayload.validations != null]">
+								<flow-ref doc:name="Call Analitica ofertas sugeridas" doc:id="analytics-call-01" name="post-promotions-analitica-pathSub_Flow"/>
+							</when>
+							<otherwise >
+								<ee:transform doc:name="Missing validations" doc:id="analytics-missing-validations">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 400,
+	"code": "BAD_REQUEST",
+	"message": {
+	  "message": "validations is required when analytics=true"
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "Missing validations object for analytics path"
+	  }
+	]
+}]]></ee:set-payload>
+									</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+										<ee:set-variable variableName="skipSisextFixed"><![CDATA[true]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</otherwise>
+						</choice>
+					</when>
+				</choice>
+				<choice doc:name="Call sisext fixed?" doc:id="sisext-fixed-skip-choice" >
+					<when expression="#[!(vars.skipSisextFixed default false)]">
+						<ee:transform doc:name="Merge predefinedPromotions with analytics Ids" doc:id="merge-predefined-analytics">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var base = vars.inputPayload default {}
+var body = base -- ["type", "analytics", "validations"]
+var fromRequest = body.predefinedPromotions default []
+var fromAnalytics = vars.analyticsIds default []
+---
+(body - "predefinedPromotions") ++ {
+	predefinedPromotions: (fromRequest ++ fromAnalytics) distinctBy $
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<try doc:name="Try fixed" doc:id="8c415f6a-63d2-4b38-7bcf-a1842c657e9d" >
+							<flow-ref doc:name="Call sisext fixed" doc:id="9d526a7b-74e3-4c49-8cd0-b2953d768fae" name="post-promotions-sisext-clientSub_Flow"/>
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="ae637b8c-85f4-4d5a-9de1-c3a64e8790bf" >
+									<ee:transform doc:name="Error output" doc:id="bf748c9d-96a5-4e6b-aef2-d4b75f98a1c0">
+										<ee:message>
+											<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "PROMOTIONS_FIXED",
+	"message": {
+	  "message": vars.errorMessageOutput default p('sisext-sapi.promotions.errorMessage')
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+										</ee:message>
+										<ee:variables>
+											<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+										</ee:variables>
+									</ee:transform>
+								</on-error-continue>
+							</error-handler>
+						</try>
+					</when>
+				</choice>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Invalid type" doc:id="c0859dae-a7b6-4f7c-bf03-e5c860a9b2d1">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 400,
+	"code": "BAD_REQUEST",
+	"message": {
+	  "message": "Invalid type. Allowed values: movil, fijo, mobile, fixed"
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "Invalid promotions type: " ++ (vars.promotionType default "")
+	  }
+	]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+
+	<sub-flow name="post-promotions-analitica-pathSub_Flow" doc:id="analytics-path-subflow" >
+		<ee:transform doc:name="Build SolicitudOfertaSugerida" doc:id="build-solicitud-oferta" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var v = vars.inputPayload.validations default {}
+var cobDesName = p('analitica-sapi.solicitud.cobDes.nombre')
+var cobDesValue = p('analitica-sapi.solicitud.cobDes.valor')
+var coberturaName = p('analitica-sapi.solicitud.cobertura.nombre')
+fun param(nombre, valor) = {
+	Nombre: nombre,
+	Valor: valor,
+	Detalle: null
+}
+---
+{
+	SolicitudOfertaSugerida: [
+		{
+			Nombre: cobDesName,
+			Valor: cobDesValue,
+			Detalle: [
+				{
+					Nombre: coberturaName,
+					Valor: v.technology,
+					Detalle: [
+						param("CodigoMunicipio", v.municipalityCode),
+						param("CodigoDepartamento", v.departmentCode),
+						param("Latitud", v.latitude),
+						param("Longitud", v.longitude),
+						param("CodigoLote", v.lotCode default ""),
+						param("Distrito", v.district default ""),
+						param("Localidad", v.locality),
+						param("Estrato", v.stratum default ""),
+						param("Direccion_GIS", v.gisAddress default ""),
+						param("Molecula", v.molecule default ""),
+						param("Proposito", v.purpose default ""),
+						param("Tecnologia", v.technology)
+					]
+				}
+			]
+		},
+		param("SistemaOrigen", v.originSystem),
+		param("ClienteUen", v.clientUen),
+		param("SegmentoUEN", v.uenSegment),
+		param("TipoIdentificacion", v.documentType),
+		param("NumeroIdentificacion", v.documentNumber),
+		param("TipoTramite", v.procedureType),
+		param("NumAgrupacion", v.groupingNumber),
+		param("CodigoAlianza", v.allianceCode)
+	]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log SolicitudOfertaSugerida mapped request"
+			message='#["[ANALITICA REQUEST] SolicitudOfertaSugerida mapped payload: " ++ write(payload, "application/json")]'/>
+		<try doc:name="Try analitica" doc:id="try-analitica" >
+			<flow-ref doc:name="Call analitica-sapi" doc:id="call-analitica-client" name="post-ofertasSugeridas-analitica-clientSub_Flow"/>
+			<ee:transform doc:name="Extract Id values to analyticsIds" doc:id="extract-analytics-ids" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="analyticsIds" ><![CDATA[%dw 2.0
+output application/java
+var ofertas = payload.OfertasSugeridas default []
+---
+(ofertas flatMap ((oferta) ->
+	(oferta.Acciones default []) flatMap ((accion) ->
+		(accion.ParametrosCadena default [])
+			filter ((p) -> upper(p.Llave default "") == "ID")
+			flatMap ((p) -> p.Valor default [])
+	)
+)) distinctBy $]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="Continue without analitica Ids" doc:id="analitica-error-continue" >
+					<logger level="WARN" doc:name="Log analitica failure" message='#["Analitica ofertasSugeridas failed or empty; continuing with PROM_Promociones_Fija. detail=" ++ (vars.errorMessageOutput default error.description default "")]'/>
+					<set-variable value="#[[]]" doc:name="Empty analyticsIds" variableName="analyticsIds"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

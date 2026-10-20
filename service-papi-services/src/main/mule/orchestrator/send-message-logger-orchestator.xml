@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" 
+      xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" 
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Subflow que reemplaza al antiguo flow -->
+    <sub-flow name="logging-historial-estados" doc:id="2896bd1c-04ba-4a1e-8797-38b6129b1014">
+		<flow-ref doc:name="Go to Client to logging historial estados" doc:id="a12be5dc-a41d-4171-9a91-282ecfed60fa" name="patch-log-historial-estado-client"/>
+    </sub-flow>
+
+    <sub-flow name="logging-create-first-log" doc:id="f220d2af-d909-4f7e-a9f6-1ba23e9a3bf4" >
+		<ee:transform doc:name="Transform Message" doc:id="b5148dd3-8960-48b4-88df-18510e7f7e9a">
+        <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var correlationId = attributes.headers."X-CORRELATION-ID" default ""
+---
+payload.destinations map (item, index) -> {
+    "mensajeId": vars.uuids[index],
+    "sistemaOrigen": vars.xSystemId,
+    "numeroDestino": item,
+    "contenidoSMS": payload.message,
+    "fechaRecepcion": (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},
+    "historialEstados": [
+        {
+            "codigoEstado": "MSG_RECEIVED",
+            "estado": "Mensaje Recibido",
+            "detalle": "El sistema ha recibido correctamente la solicitud de envío.",
+            "fecha": (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},
+            "usuario": vars.xUserId
+        }
+    ],
+    "smscId": "",
+    "respuestaSMSC": "",
+    "usuarioRegistro": vars.xUserId,
+    "metadata": {
+        "prioridad": 
+            if (payload.category == "OTP") "Alta"
+            else if (payload.category == "REGULATORY") "Media"
+            else if (payload.category == "CAMPAIGN") "Baja"
+            else "Desconocida",
+        "canalEnvio": vars.xSystemId,
+        "tipoMensaje": payload.category,
+        "origenIP": vars.xClienteIp
+    }
+}
+]]></ee:set-payload>
+        </ee:message>
+    </ee:transform>
+
+    <flow-ref doc:name="Go to Client" doc:id="dca52bd9-6e7d-424b-ba55-e85fc30a65a2" name="post-log-message-client"/>
+</sub-flow>
+
+
+</mule>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="post-ofertasSugeridas-analitica-clientSub_Flow" doc:id="analitica-client-ofertas" >
+		<choice doc:name="Mock or call analitica" doc:id="analitica-mock-choice" >
+			<when expression="#[(p('analitica-sapi.ofertasSugeridas.mock.enabled') default 'false') as Boolean]">
+				<choice doc:name="Mock fail?" doc:id="analitica-mock-fail-choice" >
+					<when expression="#[(p('analitica-sapi.ofertasSugeridas.mock.fail') default 'false') as Boolean]">
+						<raise-error type="APP:ANALITICA_MOCK_FAIL" description="Simulated Analitica failure for local testing"/>
+					</when>
+					<otherwise >
+						<logger level="INFO" doc:name="Log analitica mock using mapped payload"
+							message='#["[ANALITICA MOCK] Request that would be sent to analitica-sapi: " ++ write(payload, "application/json")]'/>
+						<ee:transform doc:name="Load analitica mock response" doc:id="analitica-load-mock" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var emptyResponse = (p('analitica-sapi.ofertasSugeridas.mock.emptyResponse') default "false") as Boolean
+---
+if (emptyResponse)
+	readUrl("classpath://mocks/ofertasSugeridas-empty.json", "application/json")
+else
+	readUrl("classpath://mocks/ofertasSugeridas.json", "application/json")]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<try doc:name="Try" doc:id="analitica-client-try" >
+					<http:request method="POST" doc:name="POST analitica ofertasSugeridas"
+						config-ref="analitica-Sapi-HTTP_Request_configuration"
+						path="${analitica-sapi.path.ofertasSugeridas}">
+						<http:body><![CDATA[#[payload]]]></http:body>
+						<http:headers><![CDATA[#[output application/java
+---
+{
+	"client_secret" : p('analitica-sapi.client_secret'),
+	"client_id" : p('analitica-sapi.client_id'),
+	"Content-Type" : "application/json",
+	"X-CORRELATION-ID" : (attributes.headers.'x-correlation-id' default attributes.headers.'X-CORRELATION-ID') default correlationId,
+	"systemId" : (attributes.headers.systemId default vars.systemId) default "MIGRACION",
+	("name" : attributes.headers.name) if (attributes.headers.name != null),
+	("source" : attributes.headers.source) if (attributes.headers.source != null)
+}]]]></http:headers>
+					</http:request>
+					<error-handler >
+						<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" >
+							<set-variable value="#[p('analitica-sapi.errorMessage')]" doc:name="Set Error Message" variableName="errorMessageOutput" />
+						</on-error-propagate>
+					</error-handler>
+				</try>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

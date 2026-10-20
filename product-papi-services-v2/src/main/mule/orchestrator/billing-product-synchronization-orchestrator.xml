@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow
+		name="post-billing-product-synchronization-orchestratorSub_Flow">
+		<try doc:name="Try" doc:id="2ee581f8-8c21-4509-8c1b-ea217c7d85c3" >
+			<ee:transform doc:name="set initial variables" doc:id="45b8cdd6-4647-4679-b67a-9b8820608d45">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="requestHeaders"><![CDATA[%dw 2.0
+output application/java
+var requestHeaders = attributes.headers
+---
+{
+	"client_secret": p('zsmart-sapi.security.client_secret'),
+	"client_id": p('zsmart-sapi.security.client_id'),
+	"name": requestHeaders.name,
+	"X-CORRELATION-ID": requestHeaders."X-CORRELATION-ID",
+	"source": requestHeaders.source,
+	"systemId": requestHeaders.systemId
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			<choice doc:name="validate sync arrays" doc:id="988521e7-f1c9-43cf-8fbb-c6791a6faa79" >
+				<when expression="#[isEmpty(vars.inputPayload.attributeSynchronization default []) and isEmpty(vars.inputPayload.productSynchronization default []) and isEmpty(vars.inputPayload.offerSynchronization default []) and isEmpty(vars.inputPayload.offerRelaSynchronization default [])]">
+					<raise-error doc:name="BILLING_PROD_SYNC:INVALID_PARAMS" doc:id="b8e1b81c-7df2-469f-8f5f-bc41907a5d1f" type="BILLING_PROD_SYNC:INVALID_PARAMS" description="There was an error trying to process Billing Product Synchronization information"/>
+				</when>
+				<otherwise >
+					<flow-ref doc:name="billing-attributes-sync-zsmart" doc:id="47bbac83-8bce-4f36-8e7d-b1c21e79c0aa" name="billing-attributes-sync-zsmart"/>
+					<flow-ref doc:name="billing-products-sync-zsmart" doc:id="5ddc4fe9-ea35-4a8e-8434-2ed2972b5ea8" name="billing-products-sync-zsmart"/>
+					<flow-ref doc:name="billing-offers-sync-zsmart" doc:id="22daf1ac-d677-407f-862d-a99652653be5" name="billing-offers-sync-zsmart"/>
+					<flow-ref doc:name="billing-offers-relations-sync-zsmart" doc:id="32b29c0b-807d-458a-9c2b-fe938f0b980c" name="billing-offers-relations-sync-zsmart"/>
+					<ee:transform doc:name="set billingProductSynchronization response" doc:id="ce96a127-340e-48b0-a4f3-2e034533df71" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var offerRelaBundle = vars.offerRelaSynchronizationResult default [] filter ((item) -> item.payload.syncType == "bundleMember") map ((item) -> item.payload - "syncType")
+var offerRelaMainOffer = vars.offerRelaSynchronizationResult default [] filter ((item) -> item.payload.syncType == "mainOffer") map ((item) -> item.payload - "syncType")
+
+---
+{
+	synchronizationId: vars.inputPayload.synchronizationId,
+	results: {
+		(attributeSynchronization: vars.attributeSynchronizationResult map ((item) -> item.payload)) if vars.attributeSynchronizationResult?,
+		(productSynchronization: vars.productSynchronizationResult) if vars.productSynchronizationResult?,
+		(offerSynchronization: vars.offerSynchronizationResult) if vars.offerSynchronizationResult?,
+		(offerRelaSynchronization: {
+			(bundleMemberList: offerRelaBundle) if !isEmpty(offerRelaBundle),
+			(mainOfferMemberList: offerRelaMainOffer) if !isEmpty(offerRelaMainOffer)
+		}) if vars.offerRelaSynchronizationResult?
+	}
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</otherwise>
+			</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="aa7a3166-e427-4e71-a370-205ec61ba3db" type="BILLING_PROD_SYNC:INVALID_PARAMS">
+					<ee:transform doc:name="set billingProductSynchronization error" doc:id="a8c97df1-f3d3-4e77-89a7-454eecd8cdb2" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var badRequestMessage = "Bad Request — at least one synchronization array must be present: attributeSynchronization, productSynchronization, offerSynchronization, or offerRelaSynchronization"
+---
+{
+    "status": "400",
+    "code": "BILLING_PROD_SYNC:INVALID_PARAMS",
+    "message": badRequestMessage,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "product-papi-services-v2",
+            "message": badRequestMessage
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+
+	</sub-flow>
+	<sub-flow name="billing-attributes-sync-zsmart" doc:id="0c75b145-dd53-4b4a-a337-77debada5b75">
+		<choice doc:name="Validar attributeSynchronization" doc:id="b604d1d2-e03f-4d4a-8eeb-cca1f82b2038">
+			<when expression="#[vars.inputPayload.attributeSynchronization? and !isEmpty(vars.inputPayload.attributeSynchronization)]">
+				<parallel-foreach doc:name="Parallel For Each Attribute" doc:id="035117dd-b8f3-40d7-b261-df5f51c10157" collection="#[vars.inputPayload.attributeSynchronization]" maxConcurrency="10" target="attributeSynchronizationResult">
+					<try doc:name="Try" doc:id="014e0e8d-7201-4e55-a52a-1369039b9a99">
+						<flow-ref doc:name="build-zsmart-set-sync-variables" doc:id="9b73200d-65dd-4bf9-bad5-c0235fe949db" name="build-zsmart-set-sync-variables"/>
+						<ee:transform doc:name="set attributes sync zsmart request" doc:id="b6570df7-a3f9-41a2-9572-3bc8fdb121cc">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+	transactionId: vars.transactionId,
+	createDate: vars.syncDate,
+	message: payload
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="zsmartRequest"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.attribute-sync.path'),
+	method: p('zsmart-sapi.attribute-sync.post.method'),
+	headers: vars.requestHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="zsmart-sapi-clientSub_Flow" doc:id="fefbf866-c996-4a8e-838c-6629dee615d1" name="zsmart-sapi-clientSub_Flow" />
+						<flow-ref doc:name="build-zsmart-success-result" doc:id="f565735c-33df-4329-8a90-68e01ba6e9e7" name="build-zsmart-success-result"/>
+						<error-handler>
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e0c42388-93e8-441a-a293-0d8fb347f97e">
+								<set-variable value='#["attributeSynchronization"]' doc:name="syncTypeLabel" doc:id="02820e13-c7e9-4688-8c92-1a9c997387be" variableName="syncTypeLabel" />
+								<flow-ref doc:name="build-zsmart-error-result" doc:id="a2a99924-9751-42b5-8da9-06bdcc141cae" name="build-zsmart-error-result"/>
+							</on-error-continue>
+						</error-handler>
+					</try>
+				</parallel-foreach>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Attribute No Recibido" doc:id="67f5f738-03b3-4b94-8a45-6afa2d601f82" message="AttributeSynchronization was not received or is empty" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="billing-products-sync-zsmart" doc:id="cb150747-4bef-4987-a41e-df5f4cbef50e" >
+		<choice doc:name="Validar productSynchronization" doc:id="56556dfc-d306-45fc-9237-234fa127aa52" >
+			<when expression="#[vars.inputPayload.productSynchronization? and !isEmpty(vars.inputPayload.productSynchronization)]" >
+				<try doc:name="Procesar Product Synchronization" doc:id="25ffe93a-186d-4a43-b297-97e4352ce3d0" >
+					<flow-ref doc:name="build-zsmart-set-sync-variables" doc:id="7bc29c98-74f9-479c-bbb2-96676ce3ca98" name="build-zsmart-set-sync-variables"/>
+					<ee:transform doc:name="set products sync zsmart request" doc:id="426fb2d1-cbc0-4c8c-a442-339aa5870560" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+	transactionId: vars.transactionId,
+	createDate: vars.syncDate,
+	message: {
+		prodList: (vars.inputPayload.productSynchronization default []) map (product) -> {
+			prodType: product.prodType,
+			id: product.id,
+			prodName: product.prodName,
+			prodCode: product.prodCode,
+			networkType: product.networkType,
+			comments: product.comments,
+			operate: product.operate,
+			(productAttrList: (product.productAttrList default []) map (attribute) -> {
+				id: attribute.id,
+				productCode: attribute.productCode,
+				attrCode: attribute.attrCode,
+				defaultValue: attribute.defaultValue,
+				operate: attribute.operate
+			}) if (product.productAttrList?)
+		}
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="zsmartRequest" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.product-sync.path'),
+	method: p('zsmart-sapi.product-sync.post.method'),
+	headers: vars.requestHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="zsmart-sapi-clientSub_Flow" doc:id="192037de-97ef-46b2-839f-01515b5a9d1b" name="zsmart-sapi-clientSub_Flow" />
+					<flow-ref doc:name="build-zsmart-success-result" doc:id="6bb6fe0b-5913-413b-8eb0-6ddc536dca46" name="build-zsmart-success-result" target="productSynchronizationResult"/>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="Continuar Error Product" doc:id="ade98726-bb14-4bac-bbff-fdb954d5c1ec" type="ANY" >
+							<set-variable value='#["productSynchronization"]' doc:name="syncTypeLabel" doc:id="cc562bbb-e3e0-47aa-afc6-4532eb97002e" variableName="syncTypeLabel" />
+							<flow-ref doc:name="build-zsmart-error-result" doc:id="94fb1517-f24e-43d0-bc58-8076c0f22ea6" name="build-zsmart-error-result" target="productSynchronizationResult"/>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Product No Recibido" doc:id="39ec5116-3779-4f93-9c6f-fb19d8d4404c" message="ProductSynchronization was not received or is empty" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="billing-offers-sync-zsmart" doc:id="699ac4ca-10dc-4313-9550-4d2bc9a161db" >
+		<choice doc:name="Validar offerSynchronization" doc:id="58128436-04e0-40bf-8744-b62ac5366baa" >
+			<when expression="#[vars.inputPayload.offerSynchronization? and !isEmpty(vars.inputPayload.offerSynchronization)]" >
+				<try doc:name="Procesar Offer Synchronization" doc:id="009ac98a-b881-4679-a64f-0cb35d9a4203" >
+					<flow-ref doc:name="build-zsmart-set-sync-variables" doc:id="2fc50af3-8fad-4c71-98ac-dbdf6b7daa81" name="build-zsmart-set-sync-variables"/>
+					<ee:transform doc:name="set offer sync zsmart request" doc:id="56ad4cc1-cdb0-46c6-bb75-baed25994dbe" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+	transactionId: vars.transactionId,
+	createDate: vars.syncDate,
+	message: {
+		offerList: (vars.inputPayload.offerSynchronization default []) map (offer) -> {
+			id: offer.id,
+			offerType: offer.offerType,
+			offerName: offer.offerName,
+			offerCode: offer.offerCode,
+			effDate: offer.effDate,
+			expDate: offer.expDate,
+			effType: offer.effType,
+			saleListPrice: offer.saleListPrice,
+			rentListPrice: offer.rentListPrice,
+			bundleFlag: offer.bundleFlag,
+			prodCode: offer.prodCode,
+			effDurationPeriod: offer.effDuration,
+			effDurationUnit: offer.effDurationType,
+			comments: offer.comments,
+			operate: offer.operate,
+			(offerAttrList: (offer.offerAttrList default []) map (attribute) -> {
+				id: attribute.id,
+				offerCode: attribute.offerCode,
+				attrCode: attribute.attrCode,
+				defaultValue: attribute.defaultValue,
+				operate: attribute.operate
+			}) if (offer.offerAttrList?)
+		}
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="zsmartRequest" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.offer-sync.path'),
+	method: p('zsmart-sapi.offer-sync.post.method'),
+	headers: vars.requestHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<flow-ref doc:name="zsmart-sapi-clientSub_Flow" doc:id="8dddce8e-0794-4c18-81c6-fe044d091923" name="zsmart-sapi-clientSub_Flow" />
+					<flow-ref doc:name="build-zsmart-success-result" doc:id="9e9c38d4-bbb2-486b-a72f-abf2f27e9cf2" name="build-zsmart-success-result" target="offerSynchronizationResult"/>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="Continuar Error Offer" doc:id="d9159fdf-4dca-4f9f-b146-93f6ae79d7b5" type="ANY" >
+							<set-variable value='#["offerSynchronization"]' doc:name="syncTypeLabel" doc:id="72d35d60-6b27-45a9-bcee-7a26a4154815" variableName="syncTypeLabel" />
+							<flow-ref doc:name="build-zsmart-error-result" doc:id="be075e8d-13df-4a3f-b18f-ee725546867b" name="build-zsmart-error-result" target="offerSynchronizationResult"/>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Offer No Recibido" doc:id="5212ded8-121b-4bb5-b84b-3c70e79dbb26" message="OfferSynchronization was not received or is empty" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="billing-offers-relations-sync-zsmart" doc:id="f769490e-4a24-4f53-b5c0-27ef0c4bf76a" >
+		<choice doc:name="Validar offerRelaSynchronization" doc:id="6c19351d-fb66-4a6a-ae99-71abb4648bbe" >
+			<when expression="#[vars.inputPayload.offerRelaSynchronization? and !isEmpty(vars.inputPayload.offerRelaSynchronization)]" >
+				<ee:transform doc:name="set offerRela records" doc:id="1a5cc6d5-86d5-4324-9077-2893c4f1645b">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+						<ee:set-variable variableName="offerRelaRecords" ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+do {
+	var bundleList = vars.inputPayload.offerRelaSynchronization flatMap (sync) -> 
+		(sync.bundleMemberList default []) map (item) -> {
+            syncType: "bundleMember",
+			bundleOfferCode: item.bundleOfferCode,
+			bundleOfferName: item.bundleOfferName,
+			memMainOfferCode: item.memMainOfferCode,
+			memMainOfferName: item.memMainOfferName,
+			operate: item.operate
+		}
+	var mainOfferList = vars.inputPayload.offerRelaSynchronization flatMap (sync) -> 
+		(sync.mainOfferMemberList default []) map (item) -> {
+            syncType: "mainOffer",
+			mainOfferCode: item.mainOfferCode,
+			mainOfferName: item.mainOfferName,
+			memAddOfferCode: item.memAddOfferCode,
+			memAddOfferName: item.memAddOfferName,
+			operate: item.operate
+		}
+	---
+	flatten(bundleList + mainOfferList)
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				<parallel-foreach doc:name="Parallel For Each OfferRela" doc:id="9a1fddff-6bd8-4fe8-9871-066995863ae9" collection="#[vars.offerRelaRecords]" maxConcurrency="10" target="offerRelaSynchronizationResult">
+					<try doc:name="Procesar Offer Relation Synchronization" doc:id="30dfa613-95e8-4871-94ba-1a4d7b53cc53">
+					<flow-ref doc:name="build-zsmart-set-sync-variables" doc:id="8cc9ef26-fbfd-4eac-aece-646a07fca9ab" name="build-zsmart-set-sync-variables"/>
+						<ee:transform doc:name="set offerRela syncType" doc:id="55d88b2a-a6c9-4b74-9246-5dace4574c43" >
+							<ee:message >
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="syncType" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.syncType]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<ee:transform doc:name="set offerRela zsmart request" doc:id="603c97bc-07d9-4cf7-b124-0ae3e6f11038">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var zsmartContent = [payload - "syncType"]
+---
+{
+	transactionId: vars.transactionId,
+	createDate: vars.syncDate,
+	message: {
+		(bundleMemberList: zsmartContent) if (vars.syncType == "bundleMember"),
+		(mainOfferMemberList: zsmartContent) if (vars.syncType == "mainOffer")
+	}
+}
+]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="zsmartRequest"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	host: p('zsmart-sapi.host'),
+	port: p('zsmart-sapi.port'),
+	basepath: p('zsmart-sapi.base-path'),
+	path: p('zsmart-sapi.offer-rela-sync.path'),
+	method: p('zsmart-sapi.offer-rela-sync.post.method'),
+	headers: vars.requestHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	},
+	responseTimeout: p('configurationTimeout.zsmart-sapi.responseTimeout')
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+						<flow-ref doc:name="zsmart-sapi-clientSub_Flow" doc:id="38626373-fb29-4626-9374-db47e2183062" name="zsmart-sapi-clientSub_Flow" />
+					<flow-ref doc:name="build-zsmart-success-result" doc:id="563855a5-d734-46d6-86ba-c70e8506a3a4" name="build-zsmart-success-result"/>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="Continuar Error Offer Relation" doc:id="9bc185f5-067a-4028-938c-ac6f24766677" type="ANY">
+							<set-variable value='#["offerRelaSynchronization"]' doc:name="syncTypeLabel" doc:id="e502009a-f662-41c5-b0ea-d1389af431df" variableName="syncTypeLabel" />
+							<flow-ref doc:name="build-zsmart-error-result" doc:id="88745213-9ad6-4731-aae3-f4c5bb38e23a" name="build-zsmart-error-result"/>
+						</on-error-continue>
+					</error-handler>
+				</try>
+				</parallel-foreach>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Offer Relation No Recibido" doc:id="36da99c9-099b-4563-b59c-b9db9eebb866" message="OfferRelaSynchronization was not received or is empty" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="build-zsmart-set-sync-variables" doc:id="4afab033-5135-4ff6-9223-892b7acb04fa" >
+		<ee:transform doc:name="set transactionId and syncDate" doc:id="bfe1e5ee-98e0-438d-992a-f4b8db8d0fea" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="transactionId" ><![CDATA[%dw 2.0
+output application/java
+---
+uuid()]]></ee:set-variable>
+				<ee:set-variable variableName="syncDate" ><![CDATA[%dw 2.0
+output application/java
+---
+now() as String {format: "YYYY-MM-dd HH:mm:ss"}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="build-zsmart-success-result" doc:id="74a9e6a5-8a42-4c52-b3b6-b3b8fa0c96ef" >
+		<ee:transform doc:name="set synchronization success result" doc:id="732f43ee-b2a3-447b-8c7f-d6598013b125" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	transactionId: vars.transactionId,
+	synchronizationDate: vars.syncDate,
+    responseCode: payload.result.result.responseCode,
+    responseMessage: payload.result.result.responseMessage,
+    (syncType: vars.syncType) if !isEmpty(vars.syncType)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="build-zsmart-error-result" doc:id="76257abb-1cbf-48f6-ae58-aacdee4ac26b" >
+		<ee:transform doc:name="set synchronization error result" doc:id="d0888613-57e1-4ee9-8913-b677e010dd95" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	transactionId: vars.transactionId,
+	synchronizationDate: vars.syncDate,
+	responseCode: (error.errorMessage.payload.status) default "9999",
+	responseMessage: (error.errorMessage.payload.message) default (error.description) default ('Error processing ' ++ (vars.syncTypeLabel default "sync")),
+	(syncType: vars.syncType) if !isEmpty(vars.syncType)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

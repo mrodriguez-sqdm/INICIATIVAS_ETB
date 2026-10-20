@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-productOffering-clientSub_Flow" doc:id="57000187-4ecd-4e84-9c04-bff0d3cfd988">
+		<try doc:name="Try" doc:id="6d612910-4f0b-4139-a3bb-13fd51c76988" >
+			<set-variable value="#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;	aggregate: p('mongoDb-mdm.collection-productOffering'),&#10;	pipeline: [&#10;	 { &quot;\$facet&quot;: &#10;	 	{ &#10;	 	&quot;data&quot;:[&#10;		 	{ &quot;\$match&quot;: payload.query},&#10;	        { &quot;\$skip&quot;: payload.offset},&#10;	        { &quot;\$limit&quot;: payload.limit}&#10;        ],&#10;        &quot;totalCount&quot;: [&#10;	        { &quot;\$match&quot;: payload.query },&#10;	        { &quot;\$count&quot;: &quot;total&quot; }&#10;         ]&#10;        }&#10;      }&#10;     ],&#10;	cursor: {&#10;	}&#10;}]" doc:name="Set Variable" doc:id="e1321cc8-4b68-4011-a6f1-5b9910288224" variableName="executeQuery" />
+			<mongo:execute-command doc:name="Execute command" doc:id="1831b534-bc0f-4b0d-83e6-f1905f7dc26b" config-ref="mdm_db_Config">
+			<mongo:command><![CDATA[#[vars.executeQuery]]]></mongo:command>
+		</mongo:execute-command>
+			<ee:transform doc:name="Transform Message" doc:id="3e133c3c-07df-43ed-bbcf-db0f5b851bc8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    codigo: "200",
+    mensaje: if(payload.cursor.firstBatch[0].data != []) "Consulta realizada con exito" else "No se encontraron resultados con los parametros de busqueda enviados",
+    totalDatos: payload.cursor.firstBatch[0].totalCount[0].total,
+    ofertasProducto: payload.cursor.firstBatch[0].data default 0
+    
+    
+}
+
+
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="3f413367-ebee-4cae-83a2-1a51b51e9777" type="ANY">
+					<set-variable value="500" doc:name="Set Variable" doc:id="9197f2d1-4c52-4782-8c65-840b6378a5a1" variableName="httpStatus"/>
+					<ee:transform doc:name="Transform Message" doc:id="fdc6ce4f-6670-4910-92a6-af9d3278c457" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 500,
+  "code": "INTERNAL SERVER ERROR",
+  "message": error.description,
+  "messageServer": ""
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	
+	
+</sub-flow>
+</mule>

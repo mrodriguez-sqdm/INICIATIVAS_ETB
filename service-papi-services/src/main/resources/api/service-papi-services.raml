@@ -1,0 +1,909 @@
+#%RAML 1.0
+title: service-papi-services
+version: "1"
+protocols:
+  - HTTP
+mediaType: 
+- application/json
+baseUri: https://service-papi-services-{env}.us-e2.cloudhub.io/services/
+description: This API exposes services to handle MVNe orchestration.
+
+traits:
+  disponibilidad: !include traits/disponibilidad.raml
+  commonHeaders: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/commonheaders/1.0.0/commonheaders.raml
+  security_client_id: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/security-clientid/1.0.2/security-clientid.raml
+  channel-headers: !include exchange_modules/35a39a92-efa9-49b6-8f13-d66508fd2f35/channelheaders/1.0.1/channelheaders.raml
+  tibcoHeaders: !include exchange_module/35a39a92-efa9-49b6-8f13-d66508fd2f35/tibcorequestheaders/1.0.6/tibcorequestheaders.raml
+
+/v1:
+  /balance:
+    /{msisdn}:
+      uriParameters:
+        msisdn:
+          type: string
+          example: "3057135005"
+          required: true
+      get:
+        displayName: Consulta de balance detallado
+        description: Consulta de balance detallado
+        is: [security_client_id, commonHeaders]
+        responses:
+          200:
+            body:
+              example: !include examples/responses/get-detailed-balance.json
+          404:
+            body:
+              type: !include datatypes/response/notFoundError.raml
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+  /transferbalance:
+    post:
+      is: [security_client_id, commonHeaders]
+      displayName: Transferencia de Saldo
+      description: Transferencia de Saldo
+      body:
+        application/json:
+          type: !include datatypes/request/posttransferbalance.raml
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/response/posttransferbalance.raml
+        500:
+          body:
+            application/json:
+              type: !include datatypes/response/internalServerError.raml
+  
+  /subscription/balance:
+    get:
+      displayName: Consulta de balance y saldo
+      description: Consulta de balance y saldo
+      is: [security_client_id, commonHeaders]
+      queryParameters:
+        msisdn:
+          type: string
+          example: "3336025011"
+          required: true
+      responses:
+        200:
+          body:
+            example: !include examples/responses/get-balance.json
+        404:
+          body:
+            type: !include datatypes/response/notFoundError.raml
+        500:
+          body:
+            type: !include datatypes/response/internalServerError.raml
+  /ordenes:
+    /movilidad:
+      /{id}:
+        uriParameters:
+          id:
+            type: string
+            required: true
+            description: Identificador de la orden de movilidad
+            example: "123"
+        /activate:
+          post:
+            displayName: Activate Mobile Line (Masivo)
+            description: Service to activate a mobile line (Masivo)
+            is: [security_client_id, commonHeaders]
+            body:
+              type: !include datatypes/request/activate.raml
+            responses:
+              200:
+                body:
+                  type: !include datatypes/response/activate.raml
+              500:
+                body:
+                  type: !include datatypes/response/internalServerError.raml
+      /recargar:
+        post:
+          is: [security_client_id, commonHeaders]
+          displayName: Recarga (Masivo)
+          description: Recarga línea (Masivo)
+          body:
+            type: !include datatypes/request/recargar.raml
+          responses:
+            200:
+              body:
+                type: !include datatypes/response/recargar.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml
+      /disponibilidad:
+        get:
+          displayName: Disponibilidad
+          description: Disponibilidad (Masivo)
+          is: [security_client_id, commonHeaders]
+          queryParameters:
+            msisdn:
+              type: string|nil
+              example: "3336025011"
+              required: false
+            sim:
+              type: string|nil
+              example: "8957287000000000049"
+              required: false
+            Subtipo_Orden:
+              type: string|nil
+              example: "Venta LTE"
+              required: false
+              description: "Es una Venta LTE o una Venta LTE NCP"
+          responses:
+            200:
+              body:
+                type: !include datatypes/response/get-disponibilidad.raml
+            404:
+              body:
+                type: !include datatypes/response/notFoundError.raml
+  /operations:
+    /subscription:
+      /{connectionNumber}:
+        uriParameters:
+          connectionNumber:
+            type: string
+        delete:
+          is: [security_client_id, commonHeaders]
+          displayName: Cancelación (Masivo) 
+          description: Cancelaciones (Masivo) 
+          queryParameters:
+            product:
+              type: string
+              example: "FWA"
+              required: false
+          responses: 
+            201:
+              body:
+                application/json:
+                  type: !include datatypes/response/subscription.raml
+            404:
+              body:
+                type: !include datatypes/response/notFoundError.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml
+        patch:
+          is: [security_client_id, commonHeaders]
+          displayName: Suspensiones-Reconexiones (Masivo) 
+          description: Suspensiones-Reconexiones (Masivo) 
+          body:
+            application/json:
+              type: !include datatypes/request/patch-subscription.raml
+          responses:      
+            201:
+              body:
+                application/json:
+                  type: !include datatypes/response/subscription.raml
+            404:
+              body:
+                type: !include datatypes/response/notFoundError.raml
+            500:
+              body:
+                type: !include datatypes/response/internalServerError.raml          
+                
+  /replacement:
+    post:
+      is: [security_client_id, commonHeaders]
+      displayName: RenoRepo (Masivo)
+      description: RenoRepo SIM (Masivo)
+      body:
+        application/json:
+          type: !include datatypes/request/post-replacement.raml
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include datatypes/response/post-replacement.raml
+        404:
+          body:
+            type: !include datatypes/response/notFoundError.raml
+        500:
+          body:
+            type: !include datatypes/response/internalServerError.raml
+    /plan:
+      post:
+        displayName: Cambio de plan (Masivo)
+        description: Cambio de plan (Masivo)
+        is: [security_client_id, commonHeaders]
+        body:
+          application/json:
+              type: !include datatypes/request/post-replacement-plan.raml
+        responses:
+          201:
+            body:
+              application/json:
+                type: !include datatypes/response/post-replacement-plan.raml
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+    /planLteCorp:
+      post:
+        is: security_client_id
+        displayName: Cambio Plan LTE (Corporativo)
+        description: Cambio Plan LTE (Corporativo)
+        headers:
+          origenTransaccion:
+            description: "Origen de la transaccion"
+            example: "salesforce-xapi-services"
+            type: string
+            required: false
+        body:
+          application/json:
+            type: !include datatypes/request/post-replacement-plan-lteCorp.raml
+        responses:
+          201:
+            body:
+              example: { "code": 0, "descripcion": "Procesamiento exitoso" }
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+  /provisioningLTECorp:
+    post:
+      displayName: Activación Línea (Corporativo)
+      description: Activación Línea (Corporativo)
+      is: [security_client_id, commonHeaders]
+      body:
+        application/json:
+          type: !include datatypes/request/post-provisioningLTECorp.raml
+      responses:
+        201:
+          body:
+            application/json:
+              type: !include datatypes/response/post-provisioningLTECorp.raml
+        404:
+          body:
+            type: !include datatypes/response/notFoundError.raml
+        500:
+          body:
+            type: !include datatypes/response/internalServerError.raml
+  /sva:
+    post:
+      is: [security_client_id, commonHeaders]
+      displayName: Adición Retiro Sva (Masivo)
+      description: Adición Retiro Sva (Masivo)
+      body:
+        application/json:
+          type: !include datatypes/request/post-sva.raml
+          example: !include examples/requests/post-sva.json
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include examples/responses/post-sva.json
+        404:
+          body:
+            type: !include datatypes/response/notFoundError.raml
+        500:
+          body:
+            type: !include datatypes/response/internalServerError.raml
+    /corp:
+      post:
+        is: [security_client_id, commonHeaders]
+        headers:
+          origenTransaccion:
+            type: string
+            required: false
+            example: "salesforce-xapi-services"
+        displayName: Adición Retiro Sva (Corporativo)
+        description: Adición Retiro Sva (Corporativo)
+        body:
+          application/json:
+            type: !include datatypes/request/post-sva-corp.raml
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/response/post-sva-corp.raml
+          404:
+            body:
+              type: !include datatypes/response/notFoundError.raml
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+  /svas:
+    post:
+      is: [security_client_id]
+      displayName: Compra de bolsas
+      description: Service to buy bags
+      body:
+        application/json:
+          type: !include /datatypes/request/post-api-svas.raml
+          example: !include /examples/requests/post-api-svas.json
+      responses:
+        201:
+          body:
+            application/json:
+              example: !include /examples/responses/post-api-svas.json
+        404:
+          body:
+            type: !include datatypes/response/notFoundError.raml
+        500:
+          body:
+            type: !include datatypes/response/internalServerError.raml
+    /{id}:
+      uriParameters:
+        id:
+          description: "Numero de conexion"
+          type: string
+          required: true
+          example: "Numero de conexion"
+      get:
+        is: [security_client_id, commonHeaders]
+        displayName: Consult Balance
+        description: Service to consult balance
+        responses:
+          404:
+            body:
+              type: !include datatypes/response/notFoundError.raml
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+  /bagsOffer:
+    get:
+      is: security_client_id
+      displayName: Consultar oferta de bolsas
+      description: Service to consult bags offer
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include examples/responses/getBagsOffer.json
+
+  /bolsaCompartidaLTECorp:
+    delete:
+      is: [security_client_id, commonHeaders]
+      headers:
+        origenTransaccion:
+          description: "Origen de la transaccion"
+          example: "salesforce-xapi-services"
+          type: string
+          required: false
+      displayName: Reduccion Bolsa Compartida Corporativo
+      description: Reduccion Bolsa Compartida Corporativo
+      queryParameters:
+        integrationId:
+          type: string
+          example: "AC-0000000"
+          description: "Identificador único de la línea LTE a relacionar a la bolsa compartida."
+          required: false
+        msisdn:
+          type: string
+          example: "3057135005"
+          description: "Identificador único de la línea LTE MSISDN."
+          required: false
+        parentPkgInstanceId:
+          type: string
+          example: "PKGID11_TS1708598971841"
+          description: "Identificador del package instance de una línea LTE padre que pertenece a una bolsa compartida (Group). Este key aplica únicamente cuando el aprovisionamiento corresponde a una línea 'Hija' de una bolsa compartida."
+          required: true
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/reduccionBolsaCompartidaLTECorp.json
+        404:
+          body:
+            type: !include datatypes/response/notFoundError.raml
+        500:
+          body:
+            type: !include datatypes/response/internalServerError.raml
+    post:
+      is: [security_client_id, commonHeaders]
+      headers:
+        origenTransaccion:
+          description: "Origen de la transaccion"
+          example: "salesforce-xapi-services"
+          type: string
+          required: false
+      displayName: Adicion Bolsa Compartida Corporativo
+      description: Adicion Bolsa Compartida Corporativo
+      queryParameters:
+        integrationId:
+          type: string
+          example: "AC-0000000"
+          description: "Identificador único de la línea LTE a relacionar a la bolsa compartida."
+          required: true
+        MSISDN:
+          type: string
+          example: "3050000000"
+          description: "MSISDN de la línea hija a adicionar al group. "
+          required: true
+        parentPkgInstanceId:
+          type: string
+          example: "PKGID11_TS1708598971841"
+          description: "Identificador del package instance de una línea LTE padre que pertenece a una bolsa compartida (Group). Este key aplica únicamente cuando el aprovisionamiento corresponde a una línea 'Hija' de una bolsa compartida."
+          required: true
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include /examples/responses/genericResponseCorp.json
+        404:
+          body:
+            type: !include datatypes/response/notFoundError.raml
+        500:
+          body:
+            type: !include datatypes/response/internalServerError.raml
+  /cambioSuscriptorLTECorp:
+    post:
+      is: [security_client_id, commonHeaders]
+      displayName: Cambio de suscriptor LTE corporativo
+      description: Cambio de suscriptor LTE corporativo
+      headers:
+        origenTransaccion:
+          type: string
+          required: false
+          example: "salesforce-xapi-services"
+      body:
+        application/json:
+          type: !include datatypes/request/cambioSuscriptorLTECorp.raml
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include examples/responses/cambioSuscriptorLTECorp.json
+  /apnPrivadoALineaLTE:
+    post:
+      is: [security_client_id, commonHeaders]
+      displayName: Adicion Apn a Linea
+      description: Adicion Apn a Linea
+      headers:
+        origenTransaccion:
+          type: string
+          required: false
+          example: "salesforce-xapi-services"
+      body:
+        application/json:
+          type: !include datatypes/request/post-apnPrivadoALineaLTE.raml
+      responses:
+        200:
+          body:
+            example: { "code": 0, "descripcion": "Procesamiento exitoso" }
+        404:
+          body:
+            type: !include datatypes/response/notFoundError.raml
+        500:
+          body:
+            type: !include datatypes/response/internalServerError.raml
+  /referred:
+    get:
+      is: [security_client_id, commonHeaders]
+      queryParameters:
+          tipoDocumento:
+            type: string
+            example: "CC"
+          numeroDocumento:
+            type: string
+            example: "1090409964"
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include datatypes/response/get-referrals.raml
+        404:
+          body:
+            type: !include datatypes/response/notFoundError.raml
+    post:
+      is: [security_client_id, commonHeaders]
+      body:
+        application/json:
+          type: !include datatypes/request/postReferrals.raml
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include examples/responses/postReferrals.json
+        404:
+          body:
+            application/json:
+              example: !include examples/error/404error.json
+        500:
+          body:
+            application/json:
+              example: !include examples/error/postReferral500error.json
+    delete:
+      is: [security_client_id, commonHeaders]
+      body:
+        type: !include datatypes/request/deleteReferrals.raml
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include examples/responses/deleteReferrals.json
+        404:
+          body:
+            application/json:
+              example: !include examples/error/404error.json
+        500:
+          body:
+            application/json:
+              example: !include examples/error/deleteReferral500error.json
+    /activeLines:
+      get:
+        is: [security_client_id, commonHeaders]
+        queryParameters:
+          tipoDocumento:
+            type: string
+            example: "CC"
+          numeroDocumento:
+            type: string
+            example: "1090409964"
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/response/get-activeLinesReferred.raml
+          404:
+            body:
+              type: !include datatypes/response/notFoundError.raml
+    /quotas:
+      get:
+        is: [security_client_id, commonHeaders]
+        queryParameters:
+          cantidadLineas: 
+            type: string
+            example: "2"
+        responses:
+          200:
+            body:
+              application/json:
+                properties:
+                  lineasRestantes:
+                    type: string
+                    example: "3"        
+  /clientes:
+    /contactos-frecuentes:
+      post:
+        is: [security_client_id, channel-headers, commonHeaders]
+        displayName: Consultar Contactos Frecuentes
+        description: Consultar Contactos Frecuentes
+        queryParameters:
+          tipoConsulta:
+            type: string
+            required: true
+            enum: ["cliente", "numero"]
+            example: "cliente"
+        body:
+          application/json:
+            type: !include datatypes/request/post-contactoFrecuente.raml
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/response/post-contactoFrecuente.raml
+    /recuperacion-experiencia:
+      get:
+        is: [security_client_id]
+        displayName: Get Recuperacion Experiencia
+        description: Get Recuperacion Experiencia de Cliente
+        queryParameters:
+          tipoIdentificacion:
+            type: string
+            required: true
+            enum: ["CC", "CE", "PA", "NIT", "RUT"]
+            example: "CC"
+          numeroIdentificacion:
+            type: string
+            required: true
+            example: "123456789"
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/response/recuperacionExperienciaResponse.raml
+  /activate:
+    /eSim:
+      post:
+        displayName: Activacion eSim
+        description: Activacion eSim
+        is: [security_client_id]
+        body:
+          application/json:
+            properties:
+              iccid:
+                type: string
+        responses:
+          201:
+            body:
+              type: 
+                properties:
+                  code:
+                    type: string
+                    example: "200"
+                  description:
+                    type: string
+                    example: "Activación Exitosa"
+          404:
+            body:
+              type: !include datatypes/response/notFoundError.raml
+          500:
+            body:
+              type: !include datatypes/response/internalServerError.raml
+  /serviceOrder:
+     post:
+        is: [security_client_id,tibcoHeaders]
+        displayName: service Inventory
+        description: create order service
+        queryParameters:
+          ORIGIN:
+            type: string
+            example: "WHATSAPP"
+            description: "Parameter that allows the origin of the request to be identified"
+        body:
+          application/json:
+            type: !include /datatypes/request/create-service-order.raml
+            example: !include /examples/requests/create-service-order.json
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /datatypes/response/create-service-order.raml
+                example: !include /examples/responses/create-service-order.json    
+          400:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/error/error-400.json
+          401:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/error/error-401.json
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/error/error-404.json
+          500:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/error/error-500.json
+     get:
+        is: [security_client_id,tibcoHeaders]
+        displayName: service Order
+        description: View detailed information about a service using filters; receive service data and return service information.
+        queryParameters:
+          ORIGIN:
+            type: string
+            example: "WHATSAPP"
+            description: "Parameter that allows the origin of the request to be identified"
+          ORDER_NUMBER:
+            type: string
+            example: "12552454"
+            description: "number of order"
+            required: false
+          FILTERS:
+            type: string
+            example: "CUN:542545454;ConecctionNumber:12452145"
+            description: "String used to apply filters to the query (follow example), separate the filter type and its value with a colon, and separate the number of filters with a semicolon."
+            required: false
+          LIMIT:
+            type: number
+            description: "Limit on orders to display"
+            required: false
+          OFFSET:
+            type: string
+            description: "used to organize information and establish a logical order"
+            required: false
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include /datatypes/response/get-service-order.raml
+                example: !include /examples/responses/get-service-order.json
+          400:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/error/error-400.json
+          401:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/error/error-401.json
+          404:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/error/error-404.json
+          500:
+            body:
+              application/json:
+                type: !include /datatypes/response/error.raml
+                example: !include /examples/error/error-500.json  
+  /resource:
+      get:
+        is: [security_client_id,tibcoHeaders]
+        displayName: Resource Inventory
+        description: Resource Inventory.
+        queryParameters:
+          ORIGIN:
+            type: string
+            example: "JSC"
+            description: "Parameter that allows the origin of the request to be identified"
+          ORDER_NUMBER:
+            type: string
+            example: "12552454"
+            description: "number of order"
+            required: false
+          CUSTOMER_ID:
+            type: string
+            example: "12552454"
+            description: Customer identification number can be ID card or tax ID number
+            required: false
+          CUSTOMER_ID_TYPE:
+            type: string
+            enum: ["CC","CE","PASAPORTE","NIT","RUT","TI"]
+            example: "CC"
+            description: Type of customer identification document
+            required: false
+          RESOURCE_ID:
+            type: number
+            example: 12552454
+            description: resource number can be IMEI, IMSI, MSISDN
+            required: false
+          RESOURCE_TYPE:
+            type: string
+            enum: ["IMEI", "IMSI", "MSISDN"]
+            example: "IMEI"
+            description: resource TYPE can be IMEI, IMSI, MSISDN
+            required: false 
+        responses:
+          200:
+            body:
+              application/json:
+                type: !include datatypes/response/get-resource.raml
+                example: !include examples/responses/get-resource.json
+          400:
+            body:
+              application/json:
+                type: !include datatypes/response/error.raml
+                example: !include examples/error/error-400.json
+          401:
+            body:
+              application/json:
+                type: !include datatypes/response/error.raml
+                example: !include examples/error/error-401.json
+          404:
+            body:
+              application/json:
+                type: !include datatypes/response/error.raml
+                example: !include examples/error/error-404.json
+          500:
+            body:
+              application/json:
+                type: !include datatypes/response/error.raml
+                example: !include examples/error/error-500.json
+  /service:
+   get:
+      is: [security_client_id,tibcoHeaders]
+      displayName: service Order
+      description: resource service information
+      queryParameters:
+        ORIGIN:
+          type: string
+          example: "WHATSAPP"
+          description: "Parameter that allows the origin of the request to be identified"
+        SERVICE_ACCOUNT:
+          type: string
+          example: "12552454"
+          description: "number account service"
+          required: false
+        CONNECTION_NUMBER:
+          type: string
+          example: "542545454"
+          description: "Number connection, this number is phone"
+          required: false
+        RESOURCE_ID:
+          type: string
+          description: "Network element to which the query is applied"
+          required: false
+        RESOURCE_TYPE:
+          type: string
+          description: "resource type"
+          required: false
+        OPERATION:
+          type: string
+          description: "operation on the requested query"
+          required: false
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/response/get-service.raml
+              example: !include /examples/responses/get-service.json
+        400:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/error/error-400.json
+        401:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/error/error-401.json
+        404:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/error/error-404.json
+        500:
+          body:
+            application/json:
+              type: !include /datatypes/response/error.raml
+              example: !include /examples/error/error-500.json
+  /send-message:
+    post:
+      is: [security_client_id]
+      displayName: Envío de mensaje
+      description: Envío de mensaje
+      body:
+        application/json:
+          type: !include datatypes/request/post-sendMessage-request.raml
+      responses:
+        200:
+          body:
+            application/json:
+              type: array
+              items:
+                type: !include datatypes/response/post-sendMessage-response.raml
+  
+  /log-messages:
+    get:
+      is: [security_client_id]
+      displayName: Get LogMessage
+      responses:
+        200:
+          body:
+            application/json:
+              type: !include /datatypes/response/logMessage.raml
+  /suscriber:
+    /{suscriberId}:
+        uriParameters:
+          suscriberId:
+            type: string
+            required: true
+            description: Identificador del suscriptor
+            example: "123"
+        patch:
+            is: [security_client_id,tibcoHeaders]
+            displayName: Update suscriber
+            description: Update suscriber
+            queryParameters:
+              ORIGIN:
+                type: string
+                example: "WHATSAPP"
+                description: "Parameter that allows the origin of the request to be identified"
+            body:
+              application/json:
+                type: !include /datatypes/request/patch-suscriber.raml
+                example: !include /examples/requests/patch-suscriber.json
+            responses:
+              200:
+                body:
+                  application/json:
+                    type: !include /datatypes/response/patch-suscriber.raml
+                    example: !include /examples/responses/patch-suscriber.json   
+              400:
+                body:
+                  application/json:
+                    type: !include /datatypes/response/error.raml
+                    example: !include /examples/error/error-400.json
+              401:
+                body:
+                  application/json:
+                    type: !include /datatypes/response/error.raml
+                    example: !include /examples/error/error-401.json
+              404:
+                body:
+                  application/json:
+                    type: !include /datatypes/response/error.raml
+                    example: !include /examples/error/error-404.json
+              500:
+                body:
+                  application/json:
+                    type: !include /datatypes/response/error.raml
+                    example: !include /examples/error/error-500.json

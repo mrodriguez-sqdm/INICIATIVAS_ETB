@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="recharge" doc:id="b3903cb7-6177-412a-b33c-f2f0dd760855" >
+				<set-variable value="#[vars.inputPayload.msisdn]" doc:name="connectionNumber" doc:id="set-connection-number" variableName="connectionNumber" />
+				<flow-ref doc:name="Get subscription by msisdn" doc:id="get-subscription-by-msisdn" name="get-subscription-client-by-msisdn" />
+				<choice doc:name="Subscription found?" doc:id="choice-subscription-found">
+					<when expression="#[!isEmpty(payload.content)]">
+						<set-variable value="#[payload.content.id[0]]" doc:name="subscriptionId" doc:id="set-subscription-id" variableName="subscriptionId" />
+				<ee:transform doc:name="ADD pck´s" doc:id="c4e5467a-b3e9-461b-b19a-08b267eaaa7d">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="adds"><![CDATA[output application/json 
+--- 
+vars.inputPayload.svas default []]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="0a05e8fc-4b74-42f7-8820-74045dd307f5">
+					<when expression="#[vars.inputPayload != null and vars.inputPayload.gestor != null and !isEmpty(trim(vars.inputPayload.gestor))]">
+						<ee:transform doc:name="Set payload order" doc:id="872afcc5-7072-46b0-ba2d-6ede811bc057">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+fun addDChar(str: String): String =
+  if(str matches /^[0-9]+$/)
+    "D" ++ str
+  else
+    str
+---
+{
+  "type": "RETAIL",
+  "salesChannel": "OWN_CALLCENTER",
+  "salesPerson": vars.inputPayload.gestor,
+  "externalID": vars.inputPayload.gestor,
+  "status": "CONFIRMED",
+  "packages": vars.adds map 
+    {
+      "id": addDChar($.packageId)
+    },
+  "subscription": {
+    "id": vars.subscriptionId
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Set payload order" doc:id="1dc3f858-00f6-45d7-9f0c-be21efee8b37" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+fun addDChar(str: String): String =
+  if(str matches /^[0-9]+$/)
+    "D" ++ str
+  else
+    str
+---
+{
+  "type": "RETAIL",
+  "salesChannel": "OWN_CALLCENTER",
+  "status": "CONFIRMED",
+  "packages": vars.adds map 
+    {
+      "id": addDChar($.packageId)
+    },
+  "subscription": {
+    "id": vars.subscriptionId
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+				<flow-ref doc:name="Create order" doc:id="63e8f22a-469b-4df5-b911-e26567584a27" name="post-order-client" />
+				<ee:transform doc:name="Clean Payload" doc:id="2d89ece2-0c80-439c-8e8c-b1e50c6e0264" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="Apply order" doc:id="59441d89-7e00-4f3d-b662-148c4d855a38" name="patch-endOrder-client" />
+				<ee:transform doc:name="resultAdd" doc:id="a4ba2c4e-9343-4d3f-a4ae-edc1788f3763">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="resultAdd"><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Arrays
+---
+(vars.orderObject.packages filter(obj,ind) -> (vars.adds.packageId some $ == obj.id)) map {
+		packageId: $.id,
+		idInstanceJSC: $.packageInstance.id
+	}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Map response" doc:id="map-usage-consumption-response">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	resultAdd: vars.resultAdd default []
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Error - Subscription not found" doc:id="error-subscription-not-found">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 404,
+	"code": "NOT_FOUND",
+	"message": { "message": "Suscripción no encontrada para el msisdn indicado." }
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+	</sub-flow>
+	
+	</mule>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-send-message-handlerSub_Flow" doc:id="825c5dbc-746f-4d24-9162-1c2e9f599262" >
+		<set-variable value="#[payload]" doc:name="Set Variable originalMessage" doc:id="7a89974f-4ef3-4ad6-bad0-305b9f72acf7" variableName="originalMessage"/>
+		<set-variable value="#[%dw 2.0
+output application/java
+var destinations = (payload.destinations default []) as Array
+---
+destinations map (() -&gt; uuid())]" doc:name="Set Variable UUIDS" doc:id="45a82441-e3de-42a7-8161-a17359514a30" variableName="uuids" />
+		<set-variable value='#[attributes.headers."X_SYSTEM_ID" default "CRM"]' doc:name="Set Variable xSystemId" doc:id="996b89ad-76c8-44d8-87ad-0227180d36f0" variableName="xSystemId"/>
+		<set-variable value='#[attributes.headers."X_USER_ID" default "Mulesoft"]' doc:name="Set Variable xUserId" doc:id="263406f5-507b-42b2-a7e1-7e664dee65b1" variableName="xUserId"/>
+		<set-variable value='#[attributes.headers."x-client-ip" default ""]' doc:name="Set Variable xClienteIp" doc:id="63610c1e-0e77-4389-af0c-b513b55eb462" variableName="xClienteIp"/>
+		<flow-ref doc:name="Go to first log estados" doc:id="55222c7f-be43-4493-81ed-d367d8dffc5f" name="logging-create-first-log" />
+		<flow-ref doc:name="Go to Orchestrator" doc:id="5fa6dedc-6124-420e-9d5e-6f1696f7771f" name="post-send-message-orchestratorSub_Flow"/>
+		<ee:transform doc:name="Set estado message" doc:id="5ee41b12-9277-45d7-a39b-0f9f17b0942e">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "uuids": vars.uuids,
+  "codigoEstado": "MSG_QUEUED",    // Código del estado (Ej: "MSG_RECEIVED", "MSG_SENT")
+  "estado": "Mensaje en Cola",          // Nombre del estado (Ej: "Mensaje Recibido", "Mensaje Enviado")
+  "detalle": "El mensaje ha sido colocado en la cola para su procesamiento.",         // Descripción del estado (Ej: "Mensaje validado correctamente")
+  "fecha": (now() >> "America/Bogota") as String {format: "yyyy-MM-dd'T'HH:mm:ssXXX"},         // Fecha y hora en que ocurrió este estado
+  "usuario": "MuleSoft"        // Usuario o sistema que generó el estado (Ej: "MuleSoft", "SMSC")
+ }]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		<flow-ref doc:name="Go to logging-historial-estados" doc:id="21c3d410-c932-4587-a3dd-f9b416241efe" name="logging-historial-estados" />
+		<ee:transform doc:name="Transform Message" doc:id="f1bb4066-8c83-4935-8513-b8a22c498b8d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "success",
+  "messageId": vars.uuids, 
+  "details": "Mensaje recibido correctamente"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

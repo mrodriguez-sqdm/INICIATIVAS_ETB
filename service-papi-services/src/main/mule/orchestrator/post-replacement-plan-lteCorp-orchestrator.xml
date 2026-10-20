@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-replacement-plan-lteCorp-orchestratorSub_Flow" doc:id="d5a2a38c-ec81-4935-bc5f-50ed9cd83b57" >
+		<try doc:name="Try" doc:id="571cb040-ea1d-403d-83fa-8394bbebcc7b">
+					<set-variable value="#[vars.inputPayload.msisdn]" doc:name="integration Id as connection Number" doc:id="0bfdb22b-8b15-434c-a5bc-f86b95d0153e" variableName="connectionNumber" />
+			<flow-ref doc:name="Get subscription by external id" doc:id="50864350-cf17-46f7-a7ca-cd1f5d3e92cd" name="get-subscription-client-by-msisdn" target="subscription" />
+			<choice doc:name="Choice" doc:id="0da52657-c8f8-4594-b147-6873f7a3aa04">
+			<when expression="#[!isEmpty(vars.subscription.content)]">
+				<ee:transform doc:name="Body to create Order" doc:id="173f86c4-affb-41ce-9ec6-5edee5654e64">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "type": p('jsc-sapi.order.type'),
+  "salesChannel": p('jsc-sapi.order.salesChannel'),
+  "status": p('jsc-sapi.order.status'),
+  "packages": vars.inputPayload.planPackage map $,
+  "subscription": {
+    "id": vars.subscription.content[0].id
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					<flow-ref doc:name="CreateOrder" doc:id="d95ba7fb-349a-418f-8391-4526066fd9f2" name="post-order-client" />
+				<set-variable value="#[vars.orderObject]" doc:name="response CreateOrder" doc:id="4e731843-1807-4746-8e68-331acfd81570" variableName="responseCreateOrder" />
+					<flow-ref doc:name="Billing Process" doc:id="15c4249b-ebcf-4729-8460-b55abafa364d" name="billingProcess" />
+					<ee:transform doc:name="orderObject to apply order" doc:id="84fec6f2-3f5d-4124-84d6-44565d2a631d">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="orderObject"><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseCreateOrder]]></ee:set-variable>
+						<ee:set-variable variableName="firstIdCreateOrder"><![CDATA[%dw 2.0
+output application/java
+---
+vars.subscription.content[0].id]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+					<flow-ref doc:name="Apply order" doc:id="cdf361e9-4b8a-48e7-aabe-6046acaae5f2" name="patch-endOrder-client" />
+					<flow-ref doc:name="CreateSecondOrderWithAddOns" doc:id="1f09e438-2c07-459a-a84c-2bb1375010f6" name="CreateSecondOrderWithAddOns" />
+					<ee:transform doc:name="Output" doc:id="094be3de-f6e8-4765-b641-fee18e3dd23d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 0,
+	"descripcion": "Procesamiento exitoso"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Error Output" doc:id="2247e647-92f9-46d5-9a70-ff5577bb114a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 1,
+	"description": "El subscription relacionado a la solicitud no existe."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="535f5e76-c3a4-44f9-99a7-9e38a5738642">
+							<ee:transform doc:name="Error output" doc:id="1ae71b28-f326-47f8-bea1-60780f2a8ad8">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "",
+	"message": {
+	  "message": (vars.errorMessageOutput default "") ++ " Respuesta JSC: " ++ error.muleMessage.typedValue.message.message default ""
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+	</sub-flow>
+	<sub-flow name="billingProcess" doc:id="2d5ff0b5-48e1-4013-a2cf-b59381d2e064" >
+		<choice doc:name="isPrePos?" doc:id="058d5ce4-2d00-40af-8a3b-0ce421f774f9" >
+			<when expression='#[upper(vars.inputPayload.processType)  == upper("isPrePos")]'>
+				<flow-ref doc:name="Get Billing Account" doc:id="766c3c4a-30e6-4bc6-a581-39a22c48425d" name="get-billingBA-client"/>
+				<choice doc:name="billing Account not exists?" doc:id="2c5960b6-ef20-4053-9103-e338c67e7b37" >
+					<when expression="#[vars.getBillingAccount.content.id == null]">
+						<ee:transform doc:name="Billing BA body" doc:id="eb8f98e8-35bb-46c5-9231-19d7711ab02e">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "name": p('jsc-sapi.createBillingAccount.ba.name'),
+  "externalID": vars.inputPayload.billingAccountNumber,
+  "subscriber": {
+    "id": vars.subscription.content[0].subscriber.id
+  },
+  "cycleConfig": {
+    "cycleDay": vars.inputPayload.PAM 
+   }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Post Billing BA" doc:id="8d02c376-fe8f-4c57-b447-e28fca231921" name="post-billingBA-client" />
+						<set-variable value="#[vars.billingAccountObject.id]" doc:name="Set idBA" doc:id="a15ec53d-281f-422f-8789-00d9a2cbbc9a" variableName="idBA" />
+					</when>
+					<otherwise>
+						<set-variable value="#[vars.billingAccountInfo.content[0].id]" doc:name="Set idBA" doc:id="f4b7ff39-a744-4d91-8179-03d7c174ebac" variableName="idBA" />
+					</otherwise>
+				</choice>
+				<ee:transform doc:name="subscription_id" doc:id="66971d81-3c09-476d-88d6-57d8924091e6">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="orderObject"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"subscription":{
+		"id": vars.subscription.content[0].id	
+	}
+}]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+				<ee:transform doc:name="Move Subscription body" doc:id="a2d3ac5e-270e-4ffd-8261-cb1cb79b33fb">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "billingAccount": {
+        "id": vars.idBA,
+        "name": p('jsc-sapi.createBillingAccount.subscription.nameMoveSubsc')
+    }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="subscriptionAction"><![CDATA[%dw 2.0
+output application/java
+---
+p('jsc-sapi.createBillingAccount.subscription.action') //PROP]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="Move subscription" doc:id="fa89ba7b-be9a-4212-a035-63fab223f53c" name="patch-billingSubscription-client" />
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-infoReferred-orchestratorSub_Flow" doc:id="9667283a-a3d3-4907-a98b-02f5a203c19e" >
+		<flow-ref doc:name="Get client" doc:id="1df48fa8-b683-4d13-9643-6bd6b5d69e65" name="get-mdm_client_mongo-clientSub_Flow"/>
+		<logger level="INFO" doc:name="Logger" doc:id="78b5e5c3-b637-4fdf-938b-074f432c49ca" message="#[payload]"/>
+		<set-variable value="#[[]]" doc:name="Set finalResponse" doc:id="e24077f2-bb27-4694-a942-9205e8878131" variableName="finalResponse"/>
+		<choice doc:name="Choice" doc:id="c97fab6b-1fb4-416b-b8e3-480f97460e4a" >
+			<when expression="#[!isEmpty(payload[0].Referidos_Empleado)]">
+				<foreach doc:name="For Each" doc:id="1dbaa801-4eeb-41a1-b5c0-889ce01c8e6e" collection="#[payload[0].Referidos_Empleado]">
+					<ee:transform doc:name="Set Referido" doc:id="08271292-2ccf-4fb7-b981-4213444cb5d2" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="numeroDocumentoReferido" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.Numero_Documento]]></ee:set-variable>
+							<ee:set-variable variableName="tipoDocumentoReferido" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.Tipo_Documento]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<try doc:name="Try" doc:id="118c8118-bbfc-4f2e-8be4-a7747d1b6654" >
+						<flow-ref doc:name="Get referidos empleados" doc:id="ab2a354f-790a-4e10-a77d-a2fc5ebe1fa0" name="get-referido-empleados" target="referred" />
+						<logger level="INFO" doc:name="Logger" doc:id="0b241f7c-72f3-42a2-aa3f-58a3a370bf1e" message="#[vars.referred]"/>
+						<error-handler >
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6ef6daca-34d6-40ec-9fb7-e3fe10758a1a" type="HTTP:NOT_FOUND">
+								<set-variable value="#[[]]" doc:name="Set Variable" doc:id="d4c42ff8-d67c-41b6-95ce-78730834cbf3" variableName="referred"/>
+							</on-error-continue>
+						</error-handler>
+					</try>
+					<choice doc:name="Choice" doc:id="7117cee6-fca9-46b0-af7b-f2c86517d064" >
+						<when expression="#[!isEmpty(vars.referred)]">
+							<ee:transform doc:name="Transform Message" doc:id="33dcf789-616a-4f80-9aef-ace847c474d3">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="finalResponse"><![CDATA[%dw 2.0
+output application/json
+---
+vars.finalResponse ++ 
+[payload ++ 
+{
+	Estado_Activo: vars.referred[0].Estado_Activo
+}]
+]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+						</when>
+						<otherwise >
+							<ee:transform doc:name="Transform Message" doc:id="b8c77b98-651c-4057-8269-080567c44aae" >
+								<ee:message />
+								<ee:variables >
+									<ee:set-variable variableName="finalResponse" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.finalResponse ++ 
+[payload ++ 
+{
+	Estado_Activo: "0"
+}]
+]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</otherwise>
+					</choice>
+				</foreach>
+				<set-payload value='#[output application/json&#10;---&#10;{&#10;"Referidos_Empleado" : &#10;  vars.finalResponse&#10;}]' doc:name="Set Payload" doc:id="487e6b9c-eea4-49c3-a68d-900822267a21" />
+				<ee:transform doc:name="Transform Message" doc:id="30c69699-f819-48e0-95d1-673e3ec6a3f1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error response" doc:id="d73d2d42-cd10-4780-bed2-ca1f78744649" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json 
+---
+{
+    "code": "Error",
+    "description": "El cliente no tiene referidos"
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="d8d6ee40-0bd0-4588-9a26-69c3029345ef" message="#[payload]" />
+	</sub-flow>
+</mule>

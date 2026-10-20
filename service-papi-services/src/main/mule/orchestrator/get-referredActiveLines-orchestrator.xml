@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd">
+	<sub-flow name="get-referredActiveLines-orchestratorSub_Flow" doc:id="cc1c8970-2f7d-44b9-957b-fad2f9cb224f" >
+		<flow-ref doc:name="Get services" doc:id="6dba246e-eefd-4f9d-96f5-32be908edc35" name="get-referredServices-client"/>
+		<logger level="INFO" doc:name="Logger" doc:id="6e4fdc2a-b490-4c02-b0b1-0428bb3cc414" message="#[payload]"/>
+		<set-variable value="#[[]]" doc:name="Set idPromventa" doc:id="83c7f888-9c81-428b-b172-a343be2df75b" variableName="idPromventa"/>
+		<choice doc:name="Choice" doc:id="545f5c5b-c887-4cce-b1b8-bb88d1f11041" >
+			<when expression="#[!isEmpty(payload)]">
+				<foreach doc:name="For Each" doc:id="b5cd6d40-f317-44c5-8611-dbef975d8a4f" collection="#[payload]">
+					<flow-ref doc:name="Get PromVenta" doc:id="134ccb50-f107-44b9-9fb1-7cb5776f900a" name="get-promVenta-client" target="id" targetValue="#[if(payload.PROM_Promociones_ActivoResponse == null) [] else (payload.PROM_Promociones_ActivoResponse map ($.Id))]"/>
+					<ee:transform doc:name="Set idPromventa" doc:id="4bdcd484-6e00-4b53-ae25-9078c8fcb6ad" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="idPromventa" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.idPromventa ++ [vars.id]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				
+</foreach>
+				<logger level="INFO" doc:name="Log idPromventa" doc:id="d7bc4695-c73a-439a-a9a0-bb04098d910c" message="#[vars.idPromventa]" />
+				<flow-ref doc:name="validate-promVenta" doc:id="f0271ee2-b2e6-4d6b-b6cb-eb55ec8ce28d" name="validate-promVenta"/>
+		</when>
+			<otherwise >
+				<ee:transform doc:name="Error response" doc:id="41910b51-0522-4f2b-bc81-75d456fa3726" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json 
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "There are no matching records"
+  },
+  "messageServer": "No se encontraron servicios asociados al cliente",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="68637763-5218-49a6-a37f-009b5461d222" message="#[payload]"/>
+	</sub-flow>
+	<sub-flow name="validate-promVenta" doc:id="5587398f-c9df-481a-bef2-ca417666ea86" >
+		<choice doc:name="Choice" doc:id="6608c2a2-e1e9-4996-8a03-681dd3639490" >
+			<when expression="#[!isEmpty(vars.idPromventa flatMap ($))]" >
+				<try doc:name="Try" doc:id="0400d2df-8c0a-4681-bdee-2f97e66439a7" >
+					<set-variable value="#[p('referred.typeParameter')]" doc:name="Type Parameter" doc:id="70f60528-27e5-4f26-8f91-816ffdda018b" variableName="currentParameter"/>
+					<flow-ref doc:name="Get typeParameter" doc:id="17fccf07-1b0f-4c53-86ca-4947f57b67c5" name="get-parameters-client" target="parameter"/>
+					<logger level="INFO" doc:name="Logger" doc:id="70c361a0-acfb-4102-b93f-3944a4d76f31" message="#[vars.parameter]"/>
+					<ee:transform doc:name="Transform Message" doc:id="6edb4962-cfc8-4e5c-8b6d-6a47aa699aca" >
+						<ee:message />
+						<ee:variables >
+							<ee:set-variable variableName="codes" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.parameter[0].Valores filter ($.Nombre == "Promociones descuento Empleados")).Codigo[0]]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e29edbe0-2956-4685-a706-d38649d5daaf" type="HTTP:NOT_FOUND" >
+							<set-variable value="#[true]" doc:name="Set error" doc:id="9aac6921-25be-4bee-9221-b775c156704b" variableName="error" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<ee:transform doc:name="Set response" doc:id="aac54051-3a34-458f-81fd-7ab06b823c24" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var array1 = vars.codes splitBy "|"
+var array2 = vars.idPromventa flatMap ($)
+
+var matchCodes = (array1 reduce (item, acc = []) -> if (array2 contains item) acc + item else acc)
+
+var numConexion = payload map ((item, index) -> 
+    	(if(vars.idPromventa[index]? and 
+    		!isEmpty(vars.idPromventa[index] filter (matchCodes contains $))
+    	) item[0] else [])
+    )
+---
+
+if (!isEmpty(vars.error))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "There are no matching records"
+  },
+  "messageServer": "No se encontraron datos para el Tipo de parametro: " ++ p('referred.typeParameter'),
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+else
+{
+    "code": "OK",
+    "description": if(!isEmpty(numConexion flatMap ($))) "Consulta realizada exitosamente" else "No se encontraron Numeros de conexion activos",
+    ("numeroConexion": numConexion flatMap ($)) if(!isEmpty(numConexion flatMap ($)))
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if (!isEmpty(vars.error))
+ 404 else 200]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error response" doc:id="5a8cfea0-f913-46e1-a712-f8e500f66456" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json 
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "There are no matching records"
+  },
+  "messageServer": "No se encontraron promociones activas",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

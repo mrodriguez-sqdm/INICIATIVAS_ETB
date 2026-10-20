@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-audit-dijin-clientSub_Flow" doc:id="8e92f273-7436-4286-8291-66ace93da7c0" >
+		<try doc:name="Try" doc:id="3a936def-6847-4e1f-8a07-8ced701895cb" >
+			<mongo:insert-document doc:name="Insert document" doc:id="12d59a46-1aa9-4579-972c-add73220e4fe" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.audits.collection-dijin}" />
+			<ee:transform doc:name="Set Response Body" doc:id="3d08f93e-3b48-4699-a596-7d359d9ee02d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "200",
+	mensaje: "Auditoria registrada con exito",
+	id: payload."_id"."\$oid"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="f208cba1-668e-4538-aac7-7ca77bee3b92" type="ANY">
+					<ee:transform doc:name="Set Response Fail Body" doc:id="31d6ac4d-0b55-44c5-8759-65e149a74684" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codigo: "500",
+	mensaje: error.description
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<set-variable value="500" doc:name="Set http status code" doc:id="9ed133e3-017a-466a-a1c9-3d7fbb8054e6" variableName="httpStatus"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

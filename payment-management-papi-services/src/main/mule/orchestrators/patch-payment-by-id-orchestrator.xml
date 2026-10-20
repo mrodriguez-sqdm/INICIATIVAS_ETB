@@ -1,0 +1,865 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-payment-by-id-orchestrator-sub-flow"
+		doc:id="2383e43e-9a87-4555-bdc6-675bfac0fa1d">
+		<ee:transform doc:name="set payment variables" doc:id="585ac159-9ed2-4cae-baaf-17909c4f2943">
+			<ee:variables>
+				<ee:set-variable resource="dwScripts/patchPayment/setGetHttpRequest.dwl" variableName="httpRequest" />
+				<ee:set-variable resource="dwScripts/patchPayment/setPaymentRequestPath.dwl" variableName="requestpath" />
+				<ee:set-variable variableName="payloadRequest" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				<ee:set-variable variableName="headersRequest" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="uriParamsRequest" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:dynamic-evaluate doc:name="dynamic evaluate payment request" doc:id="5c295478-da2e-4e83-aee9-718652fd23df" expression="#[vars.requestPath]" />
+		<flow-ref doc:name="sapi-http-client-sub-flow"
+			doc:id="cfbdaaa2-cf26-43cc-bb09-99ddb989ed7f"
+			name="sapi-http-client-sub-flow"/>
+		<flow-ref doc:name="post-payment-by-id-audit-orchestratorSub_Flow" doc:id="4aa8eb9b-70cf-4aec-b563-79ac08e36a5e" name="post-payment-by-id-audit-orchestrator-Sub_Flow" target="postAudit"/>
+		<ee:transform doc:name="set response" doc:id="d1f49c76-8fda-4671-9fa1-5d99c06b1716">
+			<ee:message>
+				<ee:set-payload resource="dwScripts/patchPayment/setPaymentResponse.dwl" />
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable resource="dwScripts/patchPayment/setStatusResponse.dwl" variableName="httpStatus" />
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-payment-by-id-audit-orchestrator-Sub_Flow" doc:id="c5f9805d-44c2-48ce-ba59-f1df5d7ada45" >
+		<ee:transform doc:name="set payment get variables" doc:id="ccfb4b7d-90b0-43eb-bb29-1130dad87366" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable resource="dwScripts/patchPayment/setGetMongoHttpRequestAudit.dwl" variableName="httpRequest" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="bcdf249b-167d-4e8f-81fe-34b41a595d86" name="sapi-http-client-sub-flow"/>
+		<ee:transform doc:name="set payment post variables" doc:id="7acaefb7-f19a-42ee-b230-cb548048f601">
+			<ee:message>
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var getTA = payload
+---
+{
+  id_transaccion: getTA.id_transaccion,
+  CUS: getTA.CUS,
+  atributos_pasarela: {
+    pasarela: getTA.atributos_pasarela.pasarela,
+    tipo_pasarela: getTA.atributos_pasarela.tipo_pasarela
+  },
+  metodo_pago: getTA.metodo_pago,
+  referencias: {
+    referencia: getTA.referencias.referencia,
+    descripcion: getTA.referencias.descripcion,
+    moneda: getTA.referencias.moneda,
+    valor_pagar: getTA.referencias.valor_pagar,
+    impuestos: (getTA.referencias.impuestos default []) map (impuesto) -> {
+      tipo: impuesto.tipo,
+      valor: impuesto.valor
+    },
+    detalle_referencias: (getTA.referencias.detalle_referencias default []) map (detalle) -> {
+      referencia: detalle.referencia,
+      numero_factura: detalle.numero_factura,
+      Numero_Cuenta_Facturacion: detalle.Numero_Cuenta_Facturacion,
+      descripcion: detalle.descripcion,
+      moneda: detalle.moneda,
+      valor_pagar: detalle.valor_pagar,
+      impuestos: (detalle.impuestos default []) map (impuesto) -> {
+        tipo: impuesto.tipo,
+        valor: impuesto.valor
+      },
+      atributos: (detalle.atributos default []) map (atributo) -> {
+        atributo: atributo.atributo,
+        valor: atributo.valor
+      }
+    }
+  },
+  cliente: {
+    tipo_documento: getTA.cliente.tipo_documento,
+    numero_documento: getTA.cliente.numero_documento,
+    nombre_completo: getTA.cliente.nombre_completo,
+    correo: getTA.cliente.correo,
+    telefono: getTA.cliente.telefono
+  },
+  concepto: getTA.concepto,
+  entidad_bancaria: getTA.entidad_bancaria,
+  estado_transaccion: getTA.estado_transaccion,
+  fecha_registro: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
+  fecha_respuesta_pasarela: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable resource="dwScripts/patchPayment/setPostMongoHttpRequestAudit.dwl" variableName="httpRequest" />
+				<ee:set-variable variableName="idTransaccion" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.id_transaccion]]></ee:set-variable>
+				<ee:set-variable variableName="responsegetTransaccion" ><![CDATA[payload]]></ee:set-variable>
+				<ee:set-variable variableName="referenciaPago" ><![CDATA[payload.referencias.referencia]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="5f956882-21be-4a67-8092-740a924603fb" >
+			<route >
+				<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="cf8cabb7-5b88-49cd-bc32-a6431d6a756e" name="sapi-http-client-sub-flow" />
+			</route>
+			<route >
+				<flow-ref doc:name="post-payment-by-id-mongo-bot-payment-gateway-orchestratorSub_Flow" doc:id="ca978570-6386-4f3a-ba0a-30d73fb72835" name="post-payment-by-id-mongo-bot-payment-gateway-orchestratorSub_Flow" />
+			</route>
+			<route >
+				<choice doc:name="Choice" doc:id="b46dd2da-ee91-4b1a-aaa4-3b11b6f929f2">
+			<when expression='#[%dw 2.0&#10;output application/java&#10;---&#10;sizeOf(&#10;    flatten(payload.referencias.detalle_referencias.atributos default [])&#10;        filter ((atributo) -&gt;&#10;            atributo.atributo == "TIPO_PAGO" and&#10;            upper(atributo.valor) != "RECARGA"&#10;        )&#10;) == 0]'>
+				<flow-ref doc:name="patch-payment-by-id-azure-event-orchestratorSub_Flow" doc:id="c8329285-dd33-4870-b8cc-00ceb461a8f4" name="patch-payment-by-id-azure-event-orchestratorSub_Flow" />
+			</when>
+					<when expression='#[%dw 2.0&#10;output application/java&#10;---&#10;(&#10;    sizeOf(&#10;        flatten(payload.referencias.detalle_referencias.atributos default [])&#10;            filter ((atributo) -&gt;&#10;                atributo.atributo == "TIPO_PAGO" and&#10;                upper(atributo.valor default "") != "FACTURA"&#10;            )&#10;    ) == 0&#10;)&#10;and&#10;upper(payload.estado_transaccion default "") == "PAGADA"]'>
+						<flow-ref doc:name="patch-payment-by-id-factura-pagada-orchestratorSub_Flow" doc:id="0c5ca1bc-ffda-4830-885d-735383a9d3d4" name="patch-payment-by-id-factura-pagada-orchestratorSub_Flow"/>
+					</when>
+		</choice>
+			</route>
+			<route >
+				<flow-ref doc:name="post-payment-zsmart-orchestratorSub_Flow" doc:id="0d692447-df67-40cd-8399-8c8181584278" name="post-payment-zsmart-orchestratorSub_Flow" />
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Transform Message" doc:id="f55fd854-487e-4ecd-977b-b1af9851ed4f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": "201",
+	"message": "Registro creado con exito, Id transacción: " ++ (payload[0].id_transaccion as String default "")
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="patch-payment-by-id-azure-event-orchestratorSub_Flow" doc:id="2ad36408-7b63-4dd0-920e-64d09bc52ccf" >
+		<ee:transform doc:name="Transform Message" doc:id="a3601f61-f26b-487a-b267-08428dc50049" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    attributes: [
+        {
+            key: "transactionId",
+            value: vars.idTransaccion as String
+        }
+    ]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable resource="dwScripts/postPaymentEventAzure/setAzurePaymentEventHttpRequest.dwl" variableName="httpRequest" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="c90570fa-094d-4667-b6b6-0232b7427a7d" name="sapi-http-client-sub-flow" />
+	</sub-flow>
+	<sub-flow name="post-payment-by-id-mongo-bot-payment-gateway-orchestratorSub_Flow" doc:id="3ce80a32-449b-4378-a81d-cc5e5cfa0c6b" >
+		<ee:transform doc:name="Transform Message" doc:id="49e4b66b-b2b8-48e4-b966-6c7630fbd4f9" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+fun fechaHoraColombia() =
+  (now() >> "America/Bogota") as String {
+    format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  }
+
+var fechaColombia = fechaHoraColombia()
+
+fun getEstadoPayu(statePol, responseCodePol) =
+    do {
+        var state = (statePol default "") as String
+        var code = (responseCodePol default "") as String
+        ---
+        if (
+            (["7", "12", "14"] contains state) and
+            (["9994", "9995", "9996", "9999", "25"] contains code)
+        )
+            "EN_PROCESO"
+        else if (state == "4" and code == "1")
+            "PAGADA"
+        else if (
+            state == "6" and
+            (["5", "8", "9", "12", "19", "9991"] contains code)
+        )
+            "RECHAZADA"
+        else if (
+            state == "6" and
+            (["28", "35"] contains code)
+        )
+            "RECHAZADA"
+        else if (
+            state == "104" and
+            (["9998", "1006", "1007"] contains code)
+        )
+            "RECHAZADA"
+        else if (state == "5" and code == "9997")
+            "RECHAZADA"
+        else
+            "NO_CONCILIADA"
+    }
+
+fun getEstadoWompi(status) =
+    do {
+        var state = upper((status default "") as String)
+        ---
+        if (state == "APPROVED")
+            "PAGADA"
+        else if (
+            ["PENDING", "PENDING_VALIDATION"] contains state
+        )
+            "EN_PROCESO"
+        else if (
+            ["DECLINED", "ERROR", "VOIDED"] contains state
+        )
+            "RECHAZADA"
+        else
+            "NO_CONCILIADA"
+    }
+
+fun getEstadoPayuDisputa(status) =
+    do {
+        var state = upper((status default "") as String)
+        ---
+        if (state == "WON")
+            "PAGADA"
+        else if (
+            ["LOST", "EXPIRED"] contains state
+        )
+            "RECHAZADA"
+        else if (
+            [
+                "OPENED",
+                "NOTIFIED",
+                "DOCUMENTS_REQUIRED",
+                "UNDER_REVIEW"
+            ] contains state
+        )
+            "EN_PROCESO"
+        else
+            "NO_CONCILIADA"
+    }
+
+var statusWompi =
+    vars.payloadRequest.data.transaction.status default null
+
+var statusPayuDisputa =
+    vars.payloadRequest.properties.state default null
+
+var statePolPayu =
+    vars.payloadRequest.state_pol default null
+
+var responseCodePolPayu =
+    vars.payloadRequest.response_code_pol default null
+
+var estadoPago =
+    if (statusWompi != null and statusWompi != "")
+        getEstadoWompi(statusWompi)
+    else if (statusPayuDisputa != null and statusPayuDisputa != "")
+        getEstadoPayuDisputa(statusPayuDisputa)
+    else if (
+        statePolPayu != null or
+        responseCodePolPayu != null
+    )
+        getEstadoPayu(
+            statePolPayu,
+            responseCodePolPayu
+        )
+    else
+        "NO_CONCILIADA"
+
+var referenciaTransaccion =
+    vars.payloadRequest.data.transaction.id
+        default vars.payloadRequest.transactionId
+        default vars.payloadRequest.transaction_id
+        default ""
+
+---
+{
+  query: {
+    update: "BOT_PAYMENT_GATEWAY",
+    updates: [
+      {
+        q: {
+          Referencia_Venta: payload.id_transaccion
+        },
+        u: {
+          "\$set": {
+            Estado: estadoPago,
+            Referencia_Transaccion: referenciaTransaccion,
+            Estado_Pagos_Online: "Actualizado exitosamente",
+            Fecha_Actualizacion: fechaColombia
+          }
+        },
+        multi: false
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoHttpRequest.dwl" variableName="httpRequest" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="2a7b3457-bbe7-482a-be89-193fcef4a692" name="sapi-http-client-sub-flow" />
+	</sub-flow>
+	<sub-flow name="patch-payment-by-id-factura-pagada-orchestratorSub_Flow" doc:id="1a8b46ef-7ee6-4c90-ae51-b70007681df5" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="feab0b8d-dc24-483b-8674-cbbf3e4ae0e1" >
+			<route >
+				<ee:transform doc:name="set MDM_FACTURA_ONLINE Transform Message" doc:id="bfe109ac-de08-467a-a9ab-b3a5396f2a13" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+    query: {
+        update: "MDM_FACTURA_ONLINE",
+        updates: [
+            {
+                q: {
+                    numero_cuenta_facturacion: payload.referencias.detalle_referencias[0].Numero_Cuenta_Facturacion default "",
+                    numero_factura: payload.referencias.detalle_referencias[0].numero_factura default ""
+                },
+                u: {
+                    "\$set": {
+                        estado_factura: "03"
+                    }
+                },
+                multi: true,
+                upsert: false
+            }
+        ]
+    }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoMdmHttpRequest.dwl" variableName="httpRequest" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="7613b629-8a5c-4320-a388-34be7829ee7e" name="sapi-http-client-sub-flow" />
+			</route>
+			<route >
+				<ee:transform doc:name="set MDM_PAGOS_ONLINE Transform Message" doc:id="a0b88c9c-ee78-422f-a449-5df8e6ebe56e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    query: {
+        find: "MDM_PAGOS_ONLINE",
+        filter: {
+            NumeroCuentaFacturacion: payload.referencias.detalle_referencias[0].Numero_Cuenta_Facturacion default "",
+            NumeroFactura: payload.referencias.detalle_referencias[0].numero_factura default ""
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoMdmHttpRequest.dwl" variableName="httpRequest" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="be27b7d6-33e6-4d71-bea5-be8ca66723ca" name="sapi-http-client-sub-flow" />
+			</route>
+			<route >
+				<ee:transform doc:name="set BOT_PARAMETERS Transform Message" doc:id="e3b89712-7118-43f8-ac02-d122fec7ea99" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var origin =
+    if (upper(payload.atributos_pasarela.pasarela default "") == "WOMPI")
+        "BANCOLOMBIA"
+    else
+        payload.atributos_pasarela.pasarela default ""
+
+---
+{
+    query: {
+        find: "BOT_PARAMETERS",
+        filter: {
+            Code: "PARAMETERS_PAYMENT_GATEWAY",
+            Origin: origin
+        }
+    }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoHttpRequest.dwl" variableName="httpRequest" />
+						<ee:set-variable variableName="entidadBancaria" ><![CDATA[payload.entidad_bancaria default ""]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="84b80706-9f65-4f2a-a983-249964a2cf8a" name="sapi-http-client-sub-flow" />
+				<ee:transform doc:name="set BOT_PARAMETERS Filter Bank Transform Message" doc:id="8af36ea0-0e73-4776-9d2d-fce72fa3557b" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var opciones = payload.result[0].Values default []
+
+var bancoEncontrado =
+    (
+        opciones filter ((item) ->
+            upper(item.Code default "") ==
+            upper(vars.entidadBancaria default "")
+        )
+    )[0] default null
+
+var bancoDefecto =
+    (
+        opciones filter ((item) ->
+            upper(item.Code default "") == "POR DEFECTO"
+        )
+    )[0] default {}
+
+---
+if (bancoEncontrado != null)
+    bancoEncontrado
+else
+    bancoDefecto]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			</route>
+		</scatter-gather>
+		<logger level="INFO" doc:name="Logger" doc:id="d6b7f7f1-1117-4a43-adcb-4279ac210342" message='#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;    route0: payload[0].payload,&#10;    route1: payload[1].payload,&#10;    route2: payload[2].payload&#10;}]'/>
+		<ee:transform doc:name="Set vars responses" doc:id="f5ad32d0-d6a9-49cb-91fb-08ea04720e79" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="responseFacturaOnline" ><![CDATA[payload[0].payload]]></ee:set-variable>
+				<ee:set-variable variableName="responsePagosOnline" ><![CDATA[payload[1].payload]]></ee:set-variable>
+				<ee:set-variable variableName="responseBotParameters" ><![CDATA[payload[2].payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="0fcac584-8455-408b-87dd-39141f18a9d1" message="#[vars.responsePagosOnline.resul]"/>
+		<choice doc:name="Choice" doc:id="ed324f52-5553-402e-9e50-77e11e799dbe" >
+			<when expression="#[!isEmpty(vars.responsePagosOnline.result default {})]">
+				<ee:transform doc:name="validate conditions&#10;Transform Message" doc:id="948e6688-d134-4413-9e7c-723f7912b143" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="validacionPago" ><![CDATA[%dw 2.0
+import * from dw::core::Periods
+output application/json
+
+var pagoOnline = vars.responsePagosOnline.result[0] default {}
+
+var entidadRecaudadora =
+    (
+        vars.responseBotParameters.Values
+            filter ((item) -> item.Code == "ENTIDAD_RECAUDADORA")
+    )[0].Value default ""
+
+var cuentaRecaudadora =
+    (
+        vars.responseBotParameters.Values
+            filter ((item) -> item.Code == "CUENTA_RECAUDADORA")
+    )[0].Value default ""
+
+var fechaRecaudo =
+    pagoOnline.FechaRecaudo as DateTime
+
+var diferenciaDias =
+    daysBetween(
+        fechaRecaudo as Date,
+        (now() >> "America/Bogota") as Date
+    )
+
+---
+(entidadRecaudadora != (pagoOnline.EntidadRecaudadora default ""))
+and
+(cuentaRecaudadora != (pagoOnline.CuentaRecaudadora default ""))
+and
+(diferenciaDias > 1)]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="2df140d4-2046-49fa-88a1-cef587b91bbf" >
+					<when expression="#[vars.validacionPago]">
+						<ee:transform doc:name="Transform Message" doc:id="8616f8ed-05f7-4773-8cf8-5cb55131b6aa">
+			<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+var pagoOnline = vars.responsePagosOnline.result[0] default {}
+
+---
+{
+    requestHeader: {
+        system: {
+            name: "PAYMENT_MANAGEMENT_PAPI",
+            correlationId: vars.idTransaccion,
+            processingServer: "MULE"
+        },
+        properties: [
+            {
+                name: "source",
+                value: "MULE"
+            },
+            {
+                name: "channel",
+                value: "MULESOFT"
+            }
+        ]
+    },
+    requestBody: {
+        billingAccountNumber: pagoOnline.NumeroCuentaFacturacion default "",
+        invoiceNumber: pagoOnline.NumeroFactura default "",
+        rmcaInvoiceNumber: pagoOnline.NumeroFactura default "",
+        collectedAmount: pagoOnline.ValorRecaudado default 0,
+        collectionDate: pagoOnline.FechaRecaudo default "",
+        collectingEntity: pagoOnline.EntidadRecaudadora default "",
+        cycleNumber: pagoOnline.NumeroCiclo default "",
+        collectingSystem: pagoOnline.SistemaRecaudador default "",
+        paymentOrigin: pagoOnline.ProcedenciaPago default "",
+        paymentMethod: pagoOnline.MetodoPago default "",
+        collectingAccount: pagoOnline.CuentaRecaudadora default "",
+        fileName: pagoOnline.ArchivoProcesamientoRMCA default "",
+        collectingAccountType: pagoOnline.TipoCuentaRecaudadora default ""
+    }
+}]]></ee:set-payload>
+							</ee:message>
+			<ee:variables>
+				<ee:set-variable resource="dwScripts/patchPayment/setPostDataLogicPaymentsOnlineHttpRequest.dwl" variableName="httpRequest" />
+			</ee:variables>
+		</ee:transform>
+						<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="9c2f00fa-1caf-41f0-b952-02299f2be59c" name="sapi-http-client-sub-flow" />
+						<scatter-gather doc:name="Scatter-Gather" doc:id="b0ca5ac2-872d-4c0c-be3c-4e706b5bb3fe" >
+							<route >
+								<ee:transform doc:name="set payment post variables" doc:id="65f7637a-668d-4714-a604-e4077193577d">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var getTA = vars.responsegetTransaccion
+---
+{
+  id_transaccion: getTA.id_transaccion,
+  CUS: getTA.CUS,
+  atributos_pasarela: {
+    pasarela: getTA.atributos_pasarela.pasarela,
+    tipo_pasarela: getTA.atributos_pasarela.tipo_pasarela
+  },
+  metodo_pago: getTA.metodo_pago,
+  referencias: {
+    referencia: getTA.referencias.referencia,
+    descripcion: getTA.referencias.descripcion,
+    moneda: getTA.referencias.moneda,
+    valor_pagar: getTA.referencias.valor_pagar,
+    impuestos: (getTA.referencias.impuestos default []) map (impuesto) -> {
+      tipo: impuesto.tipo,
+      valor: impuesto.valor
+    },
+    detalle_referencias: (getTA.referencias.detalle_referencias default []) map (detalle) -> {
+      referencia: detalle.referencia,
+      Numero_Cuenta_Facturacion: detalle.Numero_Cuenta_Facturacion,
+      descripcion: detalle.descripcion,
+      moneda: detalle.moneda,
+      valor_pagar: detalle.valor_pagar,
+      impuestos: (detalle.impuestos default []) map (impuesto) -> {
+        tipo: impuesto.tipo,
+        valor: impuesto.valor
+      },
+      atributos: (detalle.atributos default []) map (atributo) -> {
+        atributo: atributo.atributo,
+        valor: atributo.valor
+      }
+    }
+  },
+  cliente: {
+    tipo_documento: getTA.cliente.tipo_documento,
+    numero_documento: getTA.cliente.numero_documento,
+    nombre_completo: getTA.cliente.nombre_completo,
+    correo: getTA.cliente.correo,
+    telefono: getTA.cliente.telefono
+  },
+  concepto: getTA.concepto,
+  entidad_bancaria: getTA.entidad_bancaria,
+  estado_transaccion: getTA.estado_transaccion,
+  estado_transaccion_set_PaymentOnLine: payload.header.service.statusDetail default "",
+  fecha_registro: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
+  fecha_respuesta_pasarela: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable resource="dwScripts/patchPayment/setPostMongoHttpRequestAudit.dwl" variableName="httpRequest" />
+							</ee:variables>
+						</ee:transform>
+								<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="0b38bdd7-f3c3-4f19-bcdc-d1e0437a9fb9" name="sapi-http-client-sub-flow" />
+							</route>
+							<route >
+								<ee:transform doc:name="Transform Message" doc:id="4b5820c6-68a0-4204-8af7-32f687f52639" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+fun fechaHoraColombia() =
+    (now() >> "America/Bogota") as String {
+        format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+    }
+
+---
+{
+    query: {
+        update: "PAGOS_TRANSACCIONES",
+        updates: [
+            {
+                q: {
+                    id_transaccion: vars.idTransaccion
+                },
+                u: {
+                    "\$set": {
+                        estado_transaccion_set_PaymentOnLine:
+                            payload.header.service.statusDetail default "",
+                        fecha_actualizacion: fechaHoraColombia()
+                    }
+                },
+                multi: false,
+                upsert: false
+            }
+        ]
+    }
+}]]></ee:set-payload>
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoMdmHttpRequest.dwl" variableName="httpRequest" />
+									</ee:variables>
+								</ee:transform>
+								<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="12cbfed2-70bb-4abe-b4aa-5745c37b2840" name="sapi-http-client-sub-flow" />
+							</route>
+						</scatter-gather>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Transform Message" doc:id="b7854120-f3cb-437c-9fff-a82f572fffbf">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+fun fechaHoraColombia() =
+  (now() >> "America/Bogota") as String {
+    format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  }
+
+var fechaColombia = fechaHoraColombia()
+
+---
+{
+  query: {
+    update: "BOT_PAYMENT_GATEWAY",
+    updates: [
+      {
+        q: {
+          Referencia_Venta: vars.idTransaccion
+        },
+        u: {
+          "\$set": {
+            Estado_Pagos_Online:
+              "La factura ya fue pagada con Correlation_Id: $(vars.idTransaccion default "") y Referencia_Venta: $(vars.referenciaPago default "")",
+            Fecha_Actualizacion: fechaColombia
+          }
+        },
+        multi: false
+      }
+    ]
+  }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoHttpRequest.dwl" variableName="httpRequest" />
+					</ee:variables>
+				</ee:transform>
+						<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="fecafb6c-607f-400a-9985-68f31ec4148c" name="sapi-http-client-sub-flow" />
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message" doc:id="55e18634-215e-4ddb-81e4-58dd651c6c00" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+
+var getTA = vars.responsegetTransaccion
+var detalle = getTA.referencias.detalle_referencias[0] default {}
+
+---
+{
+    requestHeader: {
+        system: {
+            name: "PAYMENT_MANAGEMENT_PAPI",
+            correlationId: vars.idTransaccion as String,
+            processingServer: "MULE"
+        },
+        properties: [
+            {
+                name: "source",
+                value: "MULE"
+            },
+            {
+                name: "channel",
+                value: "MULESOFT"
+            }
+        ]
+    },
+    requestBody: {
+        billingAccountNumber: detalle.Numero_Cuenta_Facturacion as String,
+        collectedAmount: getTA.referencias.valor_pagar as Number,
+        collectionDate: getTA.fecha_respuesta_pasarela as String,
+        paymentMethod: getTA.metodo_pago as String
+    }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable resource="dwScripts/patchPayment/setPostDataLogicPaymentsOnlineHttpRequest.dwl" variableName="httpRequest" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="3e013c7a-d8f1-47d7-a2f8-ba6898b1cda6" name="sapi-http-client-sub-flow" />
+				<scatter-gather doc:name="Scatter-Gather" doc:id="5c2952b9-8349-4682-b90b-b69cb77468fd" >
+					<route >
+						<ee:transform doc:name="set payment post variables" doc:id="034b7d05-3a48-4ec2-ac8f-b429ce3ad1a3">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var getTA = vars.responsegetTransaccion
+---
+{
+  id_transaccion: getTA.id_transaccion,
+  CUS: getTA.CUS,
+  atributos_pasarela: {
+    pasarela: getTA.atributos_pasarela.pasarela,
+    tipo_pasarela: getTA.atributos_pasarela.tipo_pasarela
+  },
+  metodo_pago: getTA.metodo_pago,
+  referencias: {
+    referencia: getTA.referencias.referencia,
+    descripcion: getTA.referencias.descripcion,
+    moneda: getTA.referencias.moneda,
+    valor_pagar: getTA.referencias.valor_pagar,
+    impuestos: (getTA.referencias.impuestos default []) map (impuesto) -> {
+      tipo: impuesto.tipo,
+      valor: impuesto.valor
+    },
+    detalle_referencias: (getTA.referencias.detalle_referencias default []) map (detalle) -> {
+      referencia: detalle.referencia,
+      Numero_Cuenta_Facturacion: detalle.Numero_Cuenta_Facturacion,
+      descripcion: detalle.descripcion,
+      moneda: detalle.moneda,
+      valor_pagar: detalle.valor_pagar,
+      impuestos: (detalle.impuestos default []) map (impuesto) -> {
+        tipo: impuesto.tipo,
+        valor: impuesto.valor
+      },
+      atributos: (detalle.atributos default []) map (atributo) -> {
+        atributo: atributo.atributo,
+        valor: atributo.valor
+      }
+    }
+  },
+  cliente: {
+    tipo_documento: getTA.cliente.tipo_documento,
+    numero_documento: getTA.cliente.numero_documento,
+    nombre_completo: getTA.cliente.nombre_completo,
+    correo: getTA.cliente.correo,
+    telefono: getTA.cliente.telefono
+  },
+  concepto: getTA.concepto,
+  entidad_bancaria: getTA.entidad_bancaria,
+  estado_transaccion: getTA.estado_transaccion,
+  estado_transaccion_set_PaymentOnLine: payload.body.operationResultDescription default "",
+  fecha_registro: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
+  fecha_respuesta_pasarela: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable resource="dwScripts/patchPayment/setPostMongoHttpRequestAudit.dwl" variableName="httpRequest" />
+					</ee:variables>
+				</ee:transform>
+						<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="ff11e11e-c8d6-477b-acd9-a0f49edd8456" name="sapi-http-client-sub-flow" />
+					</route>
+					<route >
+						<ee:transform doc:name="Transform Message" doc:id="85ea4410-f2de-4cb4-a5ec-0c81fec73f39">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+fun fechaHoraColombia() =
+    (now() >> "America/Bogota") as String {
+        format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+    }
+
+---
+{
+    query: {
+        update: "PAGOS_TRANSACCIONES",
+        updates: [
+            {
+                q: {
+                    id_transaccion: vars.idTransaccion
+                },
+                u: {
+                    "\$set": {
+                        estado_transaccion_set_PaymentOnLine:
+                            payload.body.operationResultDescription default "",
+                        fecha_actualizacion: fechaHoraColombia()
+                    }
+                },
+                multi: false,
+                upsert: false
+            }
+        ]
+    }
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable resource="dwScripts/patchPayment/setPostDynamicMongoMdmHttpRequest.dwl" variableName="httpRequest" />
+					</ee:variables>
+				</ee:transform>
+						<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="7e4df9fe-ae43-4d6d-b19e-28d4ecf71a9d" name="sapi-http-client-sub-flow" />
+					</route>
+				</scatter-gather>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="post-payment-zsmart-orchestratorSub_Flow" doc:id="be68dbcc-7ea8-4a41-bf00-15a2d73cfcc3" >
+		<ee:transform doc:name="Transform Message" doc:id="e92366d0-e962-404c-8c7c-20d7a7ea8aeb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"accountNumber": payload.referencias.detalle_referencias[0].numero_cuenta_facturacion,
+	"payAmount": payload.referencias.valor_pagar,
+	"currencyCode": payload.referencias.moneda,
+	"channelCode": payload.referencias.atributos_pasarela.pasarela,
+	"paymentmethodCode": payload.metodo_pago,
+	"bankAccountNumber": p("zsmart-sapi.fields.accountId"),
+	"bankCode": payload.entidad_bancaria,
+	"paymentDate": payload.fecha_respuesta_pasarela,
+	"paymentParamList": (payload.referencias.detalle_referencias default []) map (detalle) -> {
+		"invoiceNumber": detalle.numero_factura,
+		"settleAmount": detalle.valor_pagar
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable resource="dwScripts/patchPayment/setPostZsmartHttpRequest.dwl" variableName="httpRequest" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="sapi-http-client-sub-flow" doc:id="63f10f71-e8bf-4821-8ae8-6b1a36421e1f" name="sapi-http-client-sub-flow" />
+	</sub-flow>
+</mule>

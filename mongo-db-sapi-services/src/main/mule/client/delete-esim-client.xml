@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="delete-esim-clientSub_Flow" doc:id="c0f5e3a4-6798-4d41-f614-789012345678">
+		<async doc:name="Async" doc:id="09ebf2ca-53d5-4719-1680-a4e5c29371f8">
+			<try doc:name="Try - async log before" doc:id="c3a0a9a2-3b4c-47fd-6f71-d4a825b703e6">
+				<flow-ref doc:name="Logger before" doc:id="1afc03db-64e6-482a-2791-b5f6d3a48209" name="loggin-client-call" />
+				<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" type="ANY" doc:name="On Error Continue - async log before" doc:id="d4b1bab3-4c5d-480e-7082-e5b936c814f7">
+						<logger level="WARN" doc:name="Log fallo auditoria async" doc:id="e5c2cbc4-5d6e-491f-8193-f6ca47d92508" message='#["[ESIM][ASYNC][LOG] Fallo loggin-client-call before. ICCID: " ++ (vars.iccid default "") ++ " | CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default attributes.headers."X-CORRELATION-ID" default correlationId) ++ " | Error: " ++ (error.description default "desconocido")]' />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</async>
+		<mongo:remove-documents doc:name="Remove MDM_ACTIVACION_ESIM by ICCID" doc:id="d1a6f4b5-7809-4e52-0725-890123456789" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.collection-esim}">
+			<mongo:query><![CDATA[#[output application/json
+---
+{
+	ICCID: vars.iccid
+}]]]></mongo:query>
+		</mongo:remove-documents>
+		<ee:transform doc:name="Response" doc:id="e2b7a5c6-8910-4f63-1836-901234567890">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var deletedCount = payload match {
+	case n is Number -> n as Number
+	case o is Object -> (o.deletedCount default o.n default 0) as Number
+	else -> 0
+}
+---
+if (deletedCount == 0)
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Data not found",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}
+else
+{
+  "code": "200",
+  "message": "Registro eliminado con exito",
+  "deletedCount": deletedCount
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+var deletedCount = payload match {
+	case n is Number -> n as Number
+	case o is Object -> (o.deletedCount default o.n default 0) as Number
+	else -> 0
+}
+---
+if (deletedCount == 0) 404 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="2b0d14ec-75f7-493b-38a2-c607e4b5931a">
+			<try doc:name="Try - async log after" doc:id="f6d3dcd5-6e7f-4a20-92a4-07db58ea3619">
+				<flow-ref doc:name="Logger after" doc:id="3c1e25fd-8608-4a4c-49b3-d718f5c6a42b" name="loggin-client-call" />
+				<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" type="ANY" doc:name="On Error Continue - async log after" doc:id="a7e4ede6-7f80-4b31-a3b5-18ec69fb4720">
+						<logger level="WARN" doc:name="Log fallo auditoria async" doc:id="b8f5fef7-8091-4c42-b4c6-29fd70ac5831" message='#["[ESIM][ASYNC][LOG] Fallo loggin-client-call after. ICCID: " ++ (vars.iccid default "") ++ " | CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default attributes.headers."X-CORRELATION-ID" default correlationId) ++ " | Error: " ++ (error.description default "desconocido")]' />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</async>
+	</sub-flow>
+</mule>

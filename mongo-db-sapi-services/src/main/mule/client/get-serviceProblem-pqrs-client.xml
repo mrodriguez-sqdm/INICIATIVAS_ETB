@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-serviceProblem-pqrsSub_Flow" doc:id="f7a7cb52-eed7-4ff6-9a48-9b7c5a155582" >
+		<mongo:find-documents doc:name="Find documents" doc:id="7e495421-e859-4ff7-908d-805a1033c475" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.serviceProblem.collection-pqr}" fields=",">
+			<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+    "estado_pqr":"Enviado a Segundo Nivel",
+    "tipo_pqr":"PRODUCTO",
+    "clase_pqr":"PETICION",
+    "motivo_pqr":"FALLA TECNICA",
+    "tipo_documento":attributes.queryParams.documentType,
+    "numero_identificacion":attributes.queryParams.document
+    }]]]></mongo:query>
+		</mongo:find-documents>
+		<choice doc:name="Choice_Validate_PQRS" doc:id="0bd97952-41b3-4e7f-921c-7ad2a6092445" >
+			<when expression="#[!isEmpty(payload[0].numero_pqr)]">
+				<ee:transform doc:name="Transform Message" doc:id="68547cc5-1080-4714-824f-182b9701c62d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="404" doc:name="Set Status Code" doc:id="173964d3-7dbe-4807-bf90-5ae9009c5ab5" variableName="httpStatus"/>
+				<ee:transform doc:name="Transform Message" doc:id="970ab2ba-e60a-4b01-9fc2-97a7ac06a399" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_DATA_FOUND",
+    "message": {
+        "message": "Not PQRS were found for this user"
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

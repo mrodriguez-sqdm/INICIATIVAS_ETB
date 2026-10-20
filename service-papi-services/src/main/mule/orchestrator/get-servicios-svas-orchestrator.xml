@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="get-servicios-svas-orchestratorFlow" doc:id="3c410dfa-dd70-44b7-91a9-9718dea9736c" >
+				<flow-ref doc:name="Find Plan" doc:id="77103ce6-f8e9-4291-9e16-03a68fb94e7c" name="get-subscription-client-by-msisdn" target="plan"/>
+		<flow-ref doc:name="Find Data of Plans" doc:id="abf99c2f-b36a-49f1-856a-bc3380197aff" name="foreachPkg"/>
+		<flow-ref doc:name="Find Consumption" doc:id="ed709a75-d2b0-4189-b480-0f3dc38f47f8" name="get-consumption-client" target="consumption"/>
+		<flow-ref doc:name="Flow Offers" doc:id="85d55edc-e43b-4352-9c8f-bb44808b03c4" name="get-offers-mongo" target="offers"/>
+		<ee:transform doc:name="Map Out" doc:id="e880fb2d-5023-424f-82fa-f4450b2c4b33" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7539ecb1-d06f-44a8-a276-f27330af0608" >
+				<ee:transform doc:name="Error output" doc:id="79c42afe-41ca-4df1-abd0-1c115450a0ee" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "CONSULT_BALANCE",
+	"message": {
+	  "message": vars.errorMessageOutput
+	},
+	"messageServer": "Error obtaining balances",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<sub-flow name="foreachPkg" doc:id="5db14e7e-7ea8-4d4b-bf53-24265ecbb003">
+		<set-variable value="#[[]]" doc:name="pkgWithValues" doc:id="e38f5cf9-7e1e-494e-9bf3-721b2a3bac15" variableName="pkgWithValues" />
+		<foreach doc:name="For Each" doc:id="f3a67194-6ab0-4389-a98b-79fbb7bcde82" collection="#[vars.plan.content[0].packageList]">
+			<set-variable value="#[[]]" doc:name="arrayLinksWithValue" doc:id="5d2df913-41a9-4fa9-9f78-748e24c6e312" variableName="arrayLinksWithValue" />
+			<foreach doc:name="For Each" doc:id="e3407094-fdf9-42e1-b53e-6cc48698e0b0" collection="#[payload.links]">
+				<http:request method="GET" doc:name="Request" doc:id="f4b550f3-0860-4a5e-aa92-815f3934cebb" url="#[payload.href]" target="request" />
+				<ee:transform doc:name="Adding link" doc:id="9ba64c09-c460-4d0b-ad80-8de20fd944d0">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="arrayLinksWithValue"><![CDATA[%dw 2.0
+output application/json
+---
+vars.arrayLinksWithValue << 
+{
+	"href": payload.href,
+	"value": vars.request
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</foreach>
+			<ee:transform doc:name="Adding Pkg" doc:id="752f9e9e-8678-47a0-9226-caf1a184c706">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="pkgWithValues"><![CDATA[%dw 2.0
+output application/json
+---
+vars.pkgWithValues << 
+{
+	"id": payload.id,
+	"links": vars.arrayLinksWithValue
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		</foreach>
+	</sub-flow>
+</mule>

@@ -1,0 +1,878 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-contactosFrecuentes-orchestratorSub_Flow" doc:id="22399381-4d48-4160-9747-da8e221289f8" >
+		<choice doc:name="cliente o numero?" doc:id="8066b6a1-cc44-4fd8-a213-c1490d92033c" >
+			<when expression='#[attributes.queryParams.tipoConsulta == "cliente"]'>
+				<ee:transform doc:name="tipo y numero identificacion y numero conexion (opcional)" doc:id="c93fbc7e-2a92-4daf-99e0-2aabd798c424">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="numeroIdentificacion" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputBody.cliente.numeroIdentificacion]]></ee:set-variable>
+						<ee:set-variable variableName="tipoIdentificacion" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputBody.cliente.tipoIdentificacion]]></ee:set-variable>
+						<ee:set-variable variableName="numeroInicial" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputBody.numeroConexion]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Consultar contacto frecuente por tipo y numero identificacion" doc:id="f12f69be-7339-4c9c-bc4a-1db5dbee7c2d" name="get-contactoFrecuenteByCliente" target="responseContactoFrecuente" />
+				<logger level="INFO" doc:name="Logger" doc:id="8e094da0-eb73-4ded-98b7-45948a67240e" message='#["vars.responseContactoFrecuente : " : vars.responseContactoFrecuente]'/>
+				<ee:transform doc:name="Set var operacionContactoFrecuente" doc:id="77d04fbf-c685-4fc2-9db2-dd6f73920940">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="operacionContactoFrecuente"><![CDATA[%dw 2.0
+output application/java
+---
+if(!isEmpty(vars.responseContactoFrecuente)) "ACTUALIZAR" else "ALTA"]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to consultar_cliente" doc:id="44f37f83-7ce0-4a47-8276-620cb2a2c2ce" name="consultar_cliente"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Consultar contacto frecuente" doc:id="5a3a1ae4-f14d-4a9c-9ae1-0717cb752523" target="responseContactoFrecuente" name="get-contactoFrecuenteByNumero-client"/>
+				<logger level="INFO" doc:name="Logger" doc:id="7f311fcd-d7a3-4c55-93fc-63ae24d3bba4" message='#["vars.responseContactoFrecuente: " : vars.responseContactoFrecuente]'/>
+				<choice doc:name="Es contacto?" doc:id="fe56748e-2397-42c1-b8c7-99f09bd20b86" >
+					<when expression="#[!isEmpty(vars.responseContactoFrecuente)]">
+						<ee:transform doc:name="tipo y numero identificacion y numero conexion" doc:id="6e9eee64-7fd0-4123-a8c6-5a3105214ea1" >
+							<ee:message />
+							<ee:variables >
+								<ee:set-variable variableName="numeroIdentificacion" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseContactoFrecuente[0].Numero_Identificacion]]></ee:set-variable>
+								<ee:set-variable variableName="tipoIdentificacion" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseContactoFrecuente[0].Tipo_Identificacion]]></ee:set-variable>
+								<ee:set-variable variableName="numeroInicial" ><![CDATA[%dw 2.0
+output application/java
+---
+if(!isBlank(vars.inputBody.numeroConexion)) vars.inputBody.numeroConexion 
+else vars.responseContactoFrecuente[0].Numeros_Contacto[0].Numero_Conexion]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<flow-ref doc:name="Go to update contacto frecuente" doc:id="af1e9927-9c6c-4f23-9bfd-6cf0974885d1" name="update-contacto-frecuente" />
+					</when>
+					<otherwise>
+						<choice doc:name="Choice" doc:id="9cef1a98-6f5a-47b2-9eb2-05dfcf027381">
+							<when expression="#[!isBlank(vars.inputBody.numeroConexion)]">
+								<flow-ref doc:name="Go to create contacto frecuente" doc:id="87de63c5-6c0b-47e5-a8d7-54bc8eff0c9e" name="create-contacto-frecuente" />
+							</when>
+							<otherwise >
+								<ee:transform doc:name="CONFLICT 409" doc:id="a9620661-3333-44b4-923f-79c957caa529">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 409,
+    "code": "CONFLICT",
+    "message": {
+        "message": "No es Contacto frecuente"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "service-papi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+409]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+							</otherwise>
+						</choice>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="update-contacto-frecuente" doc:id="7567ff7f-9159-40a9-87c8-b90a6dc4a060" >
+		<choice doc:name="Requiere actualizar?" doc:id="3a6ea2d5-b4df-4503-bff1-6e86da231a6b">
+					<when expression="#[vars.responseContactoFrecuente[0].Fecha_Siguiente_Actualizacion &lt; now()]">
+						<ee:transform doc:name="Set operacionContactoFrecuente" doc:id="8891674e-8d27-48cf-8bd1-016b7a5f86fa">
+									<ee:message>
+									</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="operacionContactoFrecuente"><![CDATA[%dw 2.0
+output application/java
+---
+"ACTUALIZAR"]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+				<flow-ref doc:name="Go to consultar_cliente" doc:id="0bc54d3a-2340-43c7-8e3e-d9c7483bb005" name="consultar_cliente" />
+							</when>
+					<otherwise>
+						<ee:transform doc:name="input body" doc:id="0810f3b9-3974-4180-a865-bf4ea6ce1f37">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Canal: vars.headers.'X_SYSTEM',
+	Descripcion: "El cliente " ++ vars.responseContactoFrecuente[0].Nombre_Cliente ++ " se comunicó al número " ++ vars.inputBody.numeroIVR ++ " desde " ++ vars.numeroInicial ++ ".",
+    Estado: "200",
+    Identificador_Interaccion: vars.headers.'X-CORRELATION-ID',
+    Num_Identificacion: vars.responseContactoFrecuente[0].Numero_Identificacion,
+    Segmento: vars.responseContactoFrecuente[0].Segmento,
+    Segmento_UEN: vars.responseContactoFrecuente[0].Segmento_UEN,
+    Sub_Canal: vars.headers.'X_CHANNEL',
+    Tipo_Canal: "Digital",
+    Tipo_Documento: vars.responseContactoFrecuente[0].Tipo_Identificacion,
+    Tipo_Interaccion: "Contacto frecuente",
+    UEN: vars.responseContactoFrecuente[0].UEN
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+						<flow-ref doc:name="Go to almacenar_transaccion" doc:id="4ea8a49a-7ccd-4f70-bde2-b3c0bbed889d" name="almacenar_transaccion"/>
+						<ee:transform doc:name="Output body" doc:id="625adffe-c253-4929-ad1e-9d6fe9e7387c">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "cliente":{
+        "categoria": vars.responseContactoFrecuente[0].Categoria,
+        "correoElectronico": vars.responseContactoFrecuente[0].Correo_Electronico,
+        "nombre": vars.responseContactoFrecuente[0].Nombre_Cliente,
+        "numeroDocumento": vars.responseContactoFrecuente[0].Numero_Identificacion,
+        "segmento":  vars.responseContactoFrecuente[0].Segmento,
+        "segmentoUEN":  vars.responseContactoFrecuente[0].Segmento_UEN,
+        "tipoDocumento": vars.responseContactoFrecuente[0].Tipo_Identificacion,
+        "uen": vars.responseContactoFrecuente[0].UEN
+    },
+    "recuperacionExperiencia": vars.responseContactoFrecuente[0].Recuperacion_Experiencia,
+    "servicios": vars.responseContactoFrecuente[0].Servicios map ({
+            "cuentaFacturacion": $.Cuenta_Facturacion,
+            "cuentaServicio": $.Cuenta_Servicio,
+            "direccionInstalacion":  $.Direccion_Instalacion,
+            "estado":  $.Estado,
+            "numeroConexion": $.Numero_Conexion,
+            "subEstado": $.Sub_Estado,
+            "tecnologia": $.Tecnologia
+        }),
+        
+    "tipoAtencion": vars.responseContactoFrecuente[0].Tipo_Atencion
+}
+]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</otherwise>
+						</choice>
+	</sub-flow>
+	<sub-flow name="create-contacto-frecuente" doc:id="080997db-a6ab-40be-b8b2-954853a6fca0">
+		<ee:transform doc:name="Set var operacion" doc:id="43218d5d-e207-4e3e-9c5e-b3dba8d89d04">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="operacionContactoFrecuente"><![CDATA[%dw 2.0
+output application/java
+---
+"ALTA"]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+				<ee:transform doc:name="numero conexion" doc:id="68811e9f-0531-4dee-ae72-66c1ce7b6ee6">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="numero"><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputBody.numeroConexion]]></ee:set-variable>
+						<ee:set-variable variableName="numeroInicial"><![CDATA[%dw 2.0
+output application/json
+---
+vars.inputBody.numeroConexion]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Consultar numero conexion" doc:id="f11de110-1267-445a-b7c1-b544b951aa58" target="responseNumeroConexion" name="consultar_numero_conexion" />
+								<choice doc:name="Es ETB?" doc:id="f8b4b119-b978-4c83-a29b-ed330eaa4ca9">
+							<when expression="#[!isEmpty(vars.responseNumeroConexion)]">
+								<ee:transform doc:name="tipo y numero identificacion" doc:id="fae03b92-a7d2-42ce-861b-804deca418d9">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="numeroIdentificacion"><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseNumeroConexion.cliente.numeroDocumento]]></ee:set-variable>
+										<ee:set-variable variableName="tipoIdentificacion"><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseNumeroConexion.cliente.tipoDocumento]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+								<flow-ref doc:name="Go to consultar_cliente" doc:id="8443b97d-20eb-4f5d-968e-d3968bbf6a0c" name="consultar_cliente" />
+							</when>
+							<otherwise>
+								<ee:transform doc:name="CONFLICT 409" doc:id="013a9901-e0c6-42cb-9429-b538cf6d3558">
+									<ee:message>
+										<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 409,
+    "code": "CONFLICT",
+    "message": {
+        "message": "No es cliente ETB"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "service-papi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+									</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+409]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+							</otherwise>
+						</choice>
+	</sub-flow>
+	<sub-flow name="consultar_cliente" doc:id="4d095ec0-3e35-45c1-ab29-ea8d12d7ab4b" >
+		<flow-ref doc:name="Consultar cliente" doc:id="7e4b522d-c9b7-4a02-a6ef-424843f4c3e6" target="responseGetClient" name="consultar_clientes_servicio"/>
+		<choice doc:name="Es cliente?" doc:id="455c4f98-b796-4513-b454-5ab61785dd5f" >
+			<when expression="#[!isEmpty(vars.responseGetClient)]">
+				<ee:transform doc:name="Set servicios a consultar" doc:id="1bba25ad-baf4-4c25-9bba-d8cf344a207a">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="serviciosAConsultar" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.responseGetClient.servicios distinctBy ($.numeroConexion)]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Go to update_servicios" doc:id="adf5a269-5c8a-4357-8595-a9cffa73c8d7" name="update_servicios"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="CONFLICT 409" doc:id="3374ad99-40d8-4b6c-915b-1d7c607a7916" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 409,
+    "code": "CONFLICT",
+    "message": {
+        "message": "No es cliente"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "service-papi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+409]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="update_servicios" doc:id="f738b016-45f9-4f10-a8b2-cf907b140035" >
+		<set-variable value="#[[]]" doc:name="Output for each" doc:id="6c7386ab-3402-463a-a3e6-3879480f87fc" variableName="serviciosActualizados"/>
+		<foreach doc:name="For Each" doc:id="436d86f9-d371-49c7-8c7c-1ce9193671c5" collection="#[vars.serviciosAConsultar]">
+			<set-variable value="#[payload.Numero_Conexion default payload.numeroConexion]" doc:name="numero conexion" doc:id="368c315b-8576-4386-922a-71bc30c92a56" variableName="numero"/>
+			<logger level="INFO" doc:name="Logger" doc:id="192660e9-2efe-4650-ac47-3256b6bdc472" message='#["vars.numero:" : vars.numero]'/>
+			<flow-ref doc:name="Consultar numero conexion" doc:id="495ed940-d50a-4c23-8a7d-4b3da92b4dd4" name="consultar_numero_conexion"/>
+			<choice doc:name="Tecnologia Hogar?" doc:id="2cdf9318-22af-4434-9fd3-04fc531d7080" >
+				<when expression="#[(p('global-vars.tecnologiaHogar') splitBy  &quot;,&quot;) contains payload.tecnologia]">
+					<set-variable value="#[payload.idDireccionInstalacion]" doc:name="id direccion instalacion" doc:id="5c5a698d-ec45-4c3b-8693-a9f98315817f" variableName="idDireccion"/>
+					<flow-ref doc:name="Consultar direccion" doc:id="8f30c62f-5b17-4f64-b1ab-3172e73471d5" name="consultar_direcciones" target="direccionServicio"/>
+				</when>
+			</choice>
+			<ee:transform doc:name="Add servicio actualizado" doc:id="c5263634-b11c-492b-90a8-ce9fc9ebb9e4">
+						<ee:message>
+						</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="serviciosActualizados" ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload)) vars.serviciosActualizados
+else
+vars.serviciosActualizados << {
+            "Cuenta_Facturacion": payload.cuentaFacturacion,
+            "Cuenta_Servicio": payload.cuentaServicio,
+            "Direccion_Instalacion": vars.direccionServicio.direccion.normalizada default null,
+            "Estado": payload.estado.nombre,
+            "Numero_Conexion": payload.numeroConexion,
+            "Sub_Estado": payload.subEstado,
+            "Tecnologia": payload.tecnologia
+        }]]></ee:set-variable>
+				</ee:variables>
+					</ee:transform>
+			<ee:transform doc:name="Set direccionServicio empty" doc:id="940bd373-154b-4b62-a8b3-8dc179426d4f" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="direccionServicio" ><![CDATA[%dw 2.0
+output application/json
+---
+{}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		</foreach>
+		<logger level="INFO" doc:name="Logger" doc:id="19ce8541-bd05-49ef-a016-5fdb490ac6bc" message='#["vars.serviciosActualizados:" : vars.serviciosActualizados]'/>
+		<flow-ref doc:name="Consultar recuperacion experiencia" doc:id="994609c0-6f9a-4713-80a6-218787f3b6d7" name="get-recuperacionExperiencia-orchestratorSub_Flow" target="responseRecuperacionExperiencia"/>
+		<logger level="INFO" doc:name="Logger" doc:id="1d3d93a5-6a94-46a1-8067-00bd67656ce3" message='#["vars.responseRecuperacionExperiencia: " : vars.responseRecuperacionExperiencia]'/>
+		<flow-ref doc:name="Consultar parametrizacion" doc:id="6b1a296b-bd7a-460a-8444-6a67f55b8de2" name="get-msParameter-clientSub_Flow" target="responseMsParameter"/>
+		<choice doc:name="Alta/actualizacion?" doc:id="5a49c437-f22c-4549-99aa-bea6fb9aea94" >
+			<when expression='#[vars.operacionContactoFrecuente == "ALTA"]'>
+				<ee:transform doc:name="Body alta" doc:id="9fd1aad4-da5b-496e-a2c1-a8b4ad953d02" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Periods
+---
+{
+    "Categoria": vars.responseGetClient.categoria,
+    "Correo_Electronico": vars.responseGetClient.correoElectronico,
+    "Fecha_Siguiente_Actualizacion": now() + days(vars.responseMsParameter[0].valor default 0),
+    "Fecha_Ultima_Actualizacion": now(),
+    "Nombre_Cliente": vars.responseGetClient.primerNombre ++ " " ++ vars.responseGetClient.primerApellido,
+    "Numero_Identificacion":  vars.responseGetClient.numeroDocumento,
+    "Numeros_Contacto": [
+        {
+            "Fecha_Ultimo_Ingreso": now(),
+            "Numero_IVR": vars.inputBody.numeroIVR,
+            "Numero_Conexion": vars.numeroInicial
+        }
+    ],
+    "Recuperacion_Experiencia": vars.responseRecuperacionExperiencia.recurrente.comercial or vars.responseRecuperacionExperiencia.recurrente.tecnico or vars.responseRecuperacionExperiencia.encuestas,
+    "Servicios": vars.serviciosActualizados,
+    "Segmento": vars.responseGetClient.segmento,
+    "Segmento_UEN": vars.responseGetClient.segmentoUEN,
+    "Tipo_Atencion": vars.responseRecuperacionExperiencia.tipoAtencion,
+    "Tipo_Identificacion":  vars.responseGetClient.tipoDocumento,
+    "UEN": vars.responseGetClient.uen
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="2ea1ce55-009e-4aec-9ac1-c31df5d574e8" message='#["Body alta:" : payload]' />
+				<flow-ref doc:name="Alta de contacto frecuente" doc:id="4db55ebb-8bfc-4eb0-baca-688b707be48c" name="post-contactoFrecuente-clientSub_Flow"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set numerosContactosActualizados" doc:id="209996b7-37b0-4081-8def-22cc7b6ce68f">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="numerosContactosActualizados" ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Arrays
+
+var updateContacto = 
+[{    
+    "Fecha_Ultimo_Ingreso" : now(),    
+    "Numero_IVR" : vars.inputBody.numeroIVR,   
+    "Numero_Conexion" : vars.numeroInicial
+}]
+---
+if(!isEmpty(vars.responseContactoFrecuente[0].Numeros_Contacto filter ($.Numero_IVR == vars.inputBody.numeroIVR))) 
+vars.responseContactoFrecuente[0].Numeros_Contacto map do {
+    var thisUpdate= updateContacto firstWith ((update, index) -> update.Numero_IVR == $.Numero_IVR)
+    ---
+    $ update {
+        case Fecha_Ultimo_Ingreso at .Fecha_Ultimo_Ingreso if (thisUpdate != null) -> thisUpdate.Fecha_Ultimo_Ingreso 
+        case Numero_Conexion at .Numero_Conexion if (thisUpdate != null) ->  thisUpdate.Numero_Conexion 
+    }
+}
+else  
+vars.responseContactoFrecuente[0].Numeros_Contacto ++ updateContacto]]></ee:set-variable>
+						<ee:set-variable variableName="id" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.responseContactoFrecuente[0].'_id'.'\$oid']]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Body actualizacion" doc:id="59e4e7f2-3f1a-4a8c-9023-d8fbef47b1d8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Periods
+---
+{
+  "Categoria": vars.responseGetClient.categoria,
+  "Correo_Electronico": vars.responseGetClient.correoElectronico,
+  "Fecha_Siguiente_Actualizacion": now() + days(vars.responseMsParameter[0].valor default 0),
+  "Fecha_Ultima_Actualizacion": now(),
+  "Numeros_Contacto": vars.numerosContactosActualizados,
+  "Recuperacion_Experiencia": vars.responseRecuperacionExperiencia.recurrente.comercial or vars.responseRecuperacionExperiencia.recurrente.tecnico or vars.responseRecuperacionExperiencia.encuestas,
+  "Servicios": vars.serviciosActualizados,
+  "Segmento": vars.responseGetClient.segmento,
+  "Segmento_UEN": vars.responseGetClient.segmentoUEN,
+  "Tipo_Atencion": vars.responseRecuperacionExperiencia.tipoAtencion,
+  "Tipo_Identificacion": vars.responseGetClient.tipoDocumento,
+  "UEN": vars.responseGetClient.uen
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="adb4f0c2-1f29-4c72-a25f-0322827fcea5" message='#["Body actualizacion: ": payload]'/>
+				<flow-ref doc:name="Actualizacion de contacto frecuente" doc:id="481ef9b1-7c70-4d5c-888c-60d59eccee62" name="patch-contactoFrecuente-client" target="responsePatch-contactoFrecuente"/>			
+</otherwise>
+		</choice>
+		<ee:transform doc:name="input body" doc:id="160749f1-8479-4e9f-ac31-41582d22df3a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Canal: vars.headers.'x_system',
+	Descripcion: "El cliente " ++ vars.responseGetClient.primerNombre ++ " se comunicó al número " ++ vars.inputBody.numeroIVR ++ " desde " ++ vars.numeroInicial ++ ".",
+    Estado: "200",
+    Identificador_Interaccion: correlationId,
+    Num_Identificacion: vars.responseRecuperacionExperiencia.cliente.numeroIdentificacion,
+    Segmento: vars.responseGetClient.segmento,
+    Segmento_UEN: vars.responseGetClient.segmentoUEN,
+    Sub_Canal: vars.headers.'x_channel',
+    Tipo_Canal: "Digital",
+    Tipo_Documento: vars.responseGetClient.tipoDocumento,
+    Tipo_Interaccion: "Contacto frecuente",
+    UEN: vars.responseGetClient.uen
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Go to almacenar_transaccion" doc:id="b8524c81-6d18-4fc9-aff2-ff10cc364731" name="almacenar_transaccion"/>
+		<ee:transform doc:name="Output body" doc:id="8eb69e26-a495-4f98-9975-3735bf729b84" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "cliente":{
+        "categoria": vars.responseGetClient.categoria,
+        "correoElectronico": vars.responseGetClient.correoElectronico,
+        "nombre": vars.responseGetClient.primerNombre ++ " " ++ vars.responseGetClient.primerApellido,
+        "numeroDocumento": vars.responseRecuperacionExperiencia.cliente.numeroIdentificacion,
+        "segmento":  vars.responseGetClient.segmento,
+        "segmentoUEN":  vars.responseGetClient.segmentoUEN,
+        "tipoDocumento": vars.responseGetClient.tipoDocumento,
+        "uen": vars.responseGetClient.uen
+    },
+    "recuperacionExperiencia": vars.responseRecuperacionExperiencia.recurrente.comercial or vars.responseRecuperacionExperiencia.recurrente.tecnico or vars.responseRecuperacionExperiencia.encuestas,
+    "servicios": vars.serviciosActualizados map {
+      "cuentaFacturacion": $.Cuenta_Facturacion,
+      "cuentaServicio": $.Cuenta_Servicio,
+      "direccionInstalacion": $.Direccion_Instalacion,
+      "estado": $.Estado,
+      "numeroConexion": $.Numero_Conexion,
+      "subEstado": $.Sub_Estado,
+      "tecnologia": $.Tecnologia
+    },
+    "tipoAtencion": vars.responseRecuperacionExperiencia.tipoAtencion
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="7b4aa9ea-62b5-4b7b-a0c9-db7c48b78427" message='#["Final Response: " : payload]'/>
+	</sub-flow>
+	<sub-flow name="almacenar_transaccion" doc:id="e6e40519-07ce-4906-8cc6-6f8c5a847a97" >
+		<async doc:name="Async" doc:id="13d60be1-4e44-48a2-ae04-64d53f6e711f" >
+			<logger level="INFO" doc:name="Logger" doc:id="d5f71ef3-469a-441f-af67-e3f4fa68c666" message="#[payload]"/>
+			<flow-ref doc:name="Publicar Transaccion" doc:id="c2217bbb-d25d-42ab-842b-93882dffde28" name="post-interactionTransaction-clientSub_Flow" />
+		</async>
+	</sub-flow>
+	<sub-flow name="consultar_numero_conexion" doc:id="9542e5bd-e905-444d-9b62-e6d6640f6c11">
+		<flow-ref doc:name="Go to get services" doc:id="89533c0a-2310-4d98-ba65-9fc459d59b7d" name="get-services-from-mdm-cd-servicio-and-mdm-servicio-activo" />
+		<choice doc:name="Choice" doc:id="786c4953-9da3-41f7-af78-1496fb115d42">
+					<when expression='#[(payload."0".payload == []) and (payload."1".payload == [])]'>
+						<ee:transform doc:name="Set empty payload" doc:id="a36cd223-258f-45cf-afa7-918299e0fac8">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+				<flow-ref doc:name="Go to consult-status in COLL_TRAMITES" doc:id="e9c26356-0c15-4fa4-8ff3-2ac12655924e" name="get-status_in_collections_mongo-clientSub_Flow" target="resp_tramites" />
+				<ee:transform doc:name="Set services" doc:id="947bc087-2090-446a-9822-9a86cf769f71">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import firstWith from dw::core::Arrays
+output application/json
+---
+if(!isEmpty(vars.resp_tramites)) 
+  if(payload."1".payload != []) do {
+    var servicio = payload."1".payload[0]
+    ---
+    {
+      "apodo":{
+        "valor": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_MiETB")[0].Valor,
+        "icono": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_Icono_MiETB")[0].Valor
+      },
+      "cliente":{
+        "tipoDocumento": servicio.Tipo_Documento,
+        "numeroDocumento": servicio.Numero_Identificacion
+      },
+      "cuentaFacturacion": servicio.Cuenta_Facturacion,
+      "cuentaServicio": servicio.Id_Cuenta_Servicio_Origen,
+      "estado": {
+        "codigo": vars.resp_tramites[0].EstadoGeneral,
+        "nombre": if(vars.resp_tramites[0].EstadoGeneral == "Inactivo") "Retiro" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Activo") "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Suspendido") "Suspendido" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Retiro.Estado != null) "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Reconexion.Estado != null) "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Suspension.Estado != null) "Activo" 
+          else vars.resp_tramites[0].EstadoGeneral
+      },
+      "idDireccionInstalacion": "-",
+      "numeroConexion": servicio.Numero_Conexion,
+      "subEstado": if(vars.resp_tramites[0].EstadoGeneral == "Inactivo") "Retiro por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Activo") "Reconectado por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Suspendido") "Suspendido por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Retiro.Estado != null) "Retiro en curso" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Reconexion.Estado != null) "Reconexión en curso" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Suspension.Estado != null) "Suspensión en curso" 
+          else vars.resp_tramites[0].EstadoGeneral,
+      "tecnologia": servicio.Tecnologia,
+      "tipoLinea": servicio.Tipo_Linea
+    }
+  }
+  else do {
+    var servicio = payload."0".payload[0]
+    ---
+    {
+      "apodo":{
+        "valor": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_MiETB")[0].Valor,
+        "icono": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_Icono_MiETB")[0].Valor
+      },
+      "cliente":{
+        "tipoDocumento": servicio.Cliente.Tipo_Documento,
+        "numeroDocumento": servicio.Cliente.Numero_Documento
+      },
+      "cuentaFacturacion": servicio.Id_Cuenta_Facturacion,
+      "cuentaServicio": servicio.Id_Cuenta_Servicio,
+      "estado": {
+        "codigo": vars.resp_tramites[0].EstadoGeneral,
+        "nombre": if(vars.resp_tramites[0].EstadoGeneral == "Inactivo") "Retiro" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Activo") "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Suspendido") "Suspendido" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Retiro.Estado != null) "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Reconexion.Estado != null) "Activo" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Suspension.Estado != null) "Activo" 
+          else vars.resp_tramites[0].EstadoGeneral
+      },
+      "idDireccionInstalacion": servicio.Id_Direccion_Instalacion,
+      "numeroConexion": if(!isEmpty((servicio.Bundle.Primarios firstWith ($.Nombre == "LINEA TELEFONICA")).Numero)) 
+      (servicio.Bundle.Primarios firstWith ($.Nombre == "LINEA TELEFONICA")).Numero 
+      else if(!isEmpty((servicio.Bundle.Primarios firstWith ($.Nombre == "INTERNET")).Numero)) 
+      (servicio.Bundle.Primarios firstWith ($.Nombre == "INTERNET")).Numero 
+      else servicio.Bundle.Primarios[0].Numero,
+      "subEstado": if(vars.resp_tramites[0].EstadoGeneral == "Inactivo") "Retiro por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Activo") "Reconectado por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "Suspendido") "Suspendido por pago" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Retiro.Estado != null) "Retiro en curso" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Reconexion.Estado != null) "Reconexión en curso" 
+          else if(vars.resp_tramites[0].EstadoGeneral == "" and vars.resp_tramites[0].Suspension.Estado != null) "Suspensión en curso" 
+          else vars.resp_tramites[0].EstadoGeneral,
+      "tecnologia": servicio.Bundle.Tipo_Servicio,
+      "tipoLinea":"-"
+    }
+  }
+else 
+  if(payload."1".payload != []) do {
+    var servicio = payload."1".payload[0]
+    ---
+    {
+      "apodo":{
+        "valor": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_MiETB")[0].Valor,
+        "icono": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_Icono_MiETB")[0].Valor
+      },
+      "cliente":{
+        "tipoDocumento": servicio.Tipo_Documento,
+        "numeroDocumento": servicio.Numero_Identificacion
+      },
+      "cuentaFacturacion": servicio.Cuenta_Facturacion,
+      "cuentaServicio": servicio.Id_Cuenta_Servicio_Origen,
+      "estado": {
+        "codigo": servicio.Estado,
+        "nombre": servicio.Estado
+      },
+      "idDireccionInstalacion": "-",
+      "numeroConexion": servicio.Numero_Conexion,
+      "subEstado": if(servicio.Estado == "Suspendido")
+            if(servicio.Estado_Fraude == "1") "Suspendido por fraude" else
+            if(servicio.Estado_Pago == "1") "Suspendido por pago" else
+            if(servicio.Estado_Robo == "1") "Suspendido por robo" else
+            if(servicio.Estado_Perdida == "1") "Suspendido por pérdida" else
+            if(servicio.Estado_Robo_Perdida == "1") "Suspendido por robo o pérdida" else
+            if(servicio.Estado_Voluntaria == "1") "Suspendido voluntariamente" else servicio.Estado
+        else servicio.Estado,
+      "tecnologia": servicio.Tecnologia,
+      "tipoLinea": servicio.Tipo_Linea
+    }
+  }
+  else do {
+    var servicio = payload."0".payload[0]
+    ---
+    {
+      "apodo":{
+        "valor": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_MiETB")[0].Valor,
+        "icono": (servicio.Caracteristica_Servicio filter $.Caracteristica == "Nickname_Icono_MiETB")[0].Valor
+      },
+      "cliente":{
+        "tipoDocumento": servicio.Cliente.Tipo_Documento,
+        "numeroDocumento": servicio.Cliente.Numero_Documento
+      },
+      "cuentaFacturacion": servicio.Id_Cuenta_Facturacion,
+      "cuentaServicio": servicio.Id_Cuenta_Servicio,
+      "estado": {
+        "codigo": servicio.Estado.Principal.Codigo,
+        "nombre": do {
+          var codigo = servicio.Estado.Principal.Codigo
+          ---
+          if(codigo == "1") "Activo" else 
+          if(codigo == "2" or codigo == "12" or codigo == "18") "Pendiente" else 
+          if(codigo == "4") "Inactivo" else 
+          if(codigo == "5" or codigo == "6" or codigo == "7" or codigo == "8") "Suspendido" else 
+          if(codigo == "9" or codigo == "10" or codigo == "11" or codigo == "15" or codigo == "16" or codigo == "17") "Retiro"
+          else servicio.Estado.Principal.Descripcion
+        }
+      },
+      "idDireccionInstalacion": servicio.Id_Direccion_Instalacion,
+      "numeroConexion": if(!isEmpty((servicio.Bundle.Primarios firstWith ($.Nombre == "LINEA TELEFONICA")).Numero)) 
+      (servicio.Bundle.Primarios firstWith ($.Nombre == "LINEA TELEFONICA")).Numero 
+      else if(!isEmpty((servicio.Bundle.Primarios firstWith ($.Nombre == "INTERNET")).Numero)) 
+      (servicio.Bundle.Primarios firstWith ($.Nombre == "INTERNET")).Numero 
+      else servicio.Bundle.Primarios[0].Numero,
+      "subEstado": do {
+          var codigo = servicio.Estado.Principal.Codigo
+          ---
+          if(codigo == "1") "Activo" else 
+          if(codigo == "2") "Pendiente" else 
+          if(codigo == "4") "Inactivo" else 
+          if(codigo == "5") "Suspendido por fraude" else 
+          if(codigo == "6") "Suspendido por pago" else 
+          if(codigo == "7") "Suspendido por robo o pérdida" else 
+          if(codigo == "8") "Suspendido voluntariamente" else 
+          if(codigo == "9" or codigo == "10" or codigo == "11") "Retiro por pago" else 
+          if(codigo == "12") "Activación en curso" else 
+          if(codigo == "15" or codigo == "16" or codigo == "17") "Retiro por fraude" else 
+          if(codigo == "18") "Activación en curso" else servicio.Estado.Principal.Descripcion
+        },
+      "tecnologia": servicio.Bundle.Tipo_Servicio,
+      "tipoLinea":"-"
+    }
+  }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					
+</otherwise>
+				</choice>
+	</sub-flow>
+	<sub-flow name="consultar_clientes_servicio" doc:id="1eb2b749-f20b-4256-af3c-487ada9a5781">
+		<flow-ref doc:name="Go to Get client from MDM" doc:id="e892bb63-a87b-493d-b4d2-3c1e33c5e26d" name="get-mdm_client_mongo-clientSub_Flow" target="resp_client" />
+		<choice doc:name="Client == [] ?" doc:id="29b46c42-fe29-47da-ae51-a218976fbea7">
+			<when expression="#[vars.resp_client == []]">
+				<ee:transform doc:name="Set empty payload" doc:id="392fdb6f-e13b-4503-aa74-337cb0f2fce7">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Go to get services (active and not active)" doc:id="a4c676f9-9596-4091-a356-883479b82bca" name="get-services-from-mdm-cd-servicio-and-mdm-servicio-activo" />
+				<ee:transform doc:name="Set cliente body" doc:id="33559edf-3baf-40fe-aefe-bfe60610de01">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var MDM_CLIENTE = vars.resp_client[0]
+var PORTAL_UNIFICADO_USUARIO = vars.resp_user[0]
+var MDM_CD_SERVICIO = payload."0".payload
+var MDM_SERVICIO_ACTIVO = payload."1".payload
+---
+{
+  "categoria": MDM_CLIENTE.Categoria,
+  "correoElectronico": MDM_CLIENTE.Correo_Electronico,
+  "correoElectronicoAlterno": PORTAL_UNIFICADO_USUARIO.CorreoElectronicoAlterno,
+  "estadoCivil": MDM_CLIENTE.Estado_Civil,
+  "fechaNacimiento": MDM_CLIENTE.Fecha_Nacimiento,
+  "genero": MDM_CLIENTE.Genero,
+  "hobbies": PORTAL_UNIFICADO_USUARIO.Hobbies,
+  "nivelEducativo": PORTAL_UNIFICADO_USUARIO.Nivel_Educativo,
+  "numeroDocumento": MDM_CLIENTE.Numero_Identificacion,
+  "permiteTratamientoDatos": if(MDM_CLIENTE.ATDP.Habeas_Data == 'False') false else true,
+  "primerApellido": MDM_CLIENTE.Primer_Apellido,
+  "primerNombre": MDM_CLIENTE.Nombres,
+  "segmento": MDM_CLIENTE.Segmento,
+  "segundoApellido": MDM_CLIENTE.Segundo_Apellido,
+  "segundoNombre": MDM_CLIENTE.Nombres[1],
+  "segmentoUEN": MDM_CLIENTE.Segmento_UEN,
+  "servicios": (MDM_CD_SERVICIO map {
+    "estado": 
+      if($.Estado.Principal.Codigo == "1") "Activo"
+      else if($.Estado.Principal.Codigo == "2") "Pendiente"
+      else if($.Estado.Principal.Codigo == "4") "Inactivo"
+      else if($.Estado.Principal.Codigo == "5") "Suspendido por fraude"
+      else if($.Estado.Principal.Codigo == "6") "Suspendido por pago"
+      else if($.Estado.Principal.Codigo == "7") "Suspendido por robo o pérdida"
+      else if($.Estado.Principal.Codigo == "8") "Suspendido voluntariamente"
+      else if(($.Estado.Principal.Codigo == "9" or $.Estado.Principal.Codigo == "10") or $.Estado.Principal.Codigo == "11") "Retiro por pago"
+      else if($.Estado.Principal.Codigo == "12" or $.Estado.Principal.Codigo == "18") "Activación en curso"
+      else if(($.Estado.Principal.Codigo == "15" or $.Estado.Principal.Codigo == "16") or $.Estado.Principal.Codigo == "17") "Retiro por fraude"
+      else "",
+    "numeroConexion": $.Bundle.Primarios[0].Numero
+  }) ++ (MDM_SERVICIO_ACTIVO map {
+      "estado": 
+         if($.Estado == "Suspendido" and $.Estado_Fraude == "1") "Suspendido por fraude"
+      else if($.Estado == "Suspendido" and $.Estado_Pago == "1") "Suspendido por pago"
+      else if($.Estado == "Suspendido" and $.Estado_Robo == "1") "Suspendido por robo"
+      else if($.Estado == "Suspendido" and $.Estado_Perdida == "1") "Suspendido por pérdida"
+      else if($.Estado == "Suspendido" and $.Estado_Robo_Perdida == "1") "Suspendido por robo o pérdida"
+      else if($.Estado == "Suspendido" and $.Estado_Voluntaria == "1") "Suspendido voluntariamente"
+      else $.Estado,
+      "numeroConexion": $.Numero_Conexion
+    }),
+  "telefonoAlterno": MDM_CLIENTE.Telefono_Movil2,
+  "telefonoFijo": MDM_CLIENTE.Telefono_Fijo,
+  "telefonoMovil": MDM_CLIENTE.Telefono_Movil,
+  "tipoDocumento": MDM_CLIENTE.Tipo_Documento,
+  "tipoPersona": MDM_CLIENTE.Tipo_Cliente,
+  "uen": MDM_CLIENTE.UEN,
+  "usuario":{
+      "facebook": PORTAL_UNIFICADO_USUARIO.UsuarioFacebook, 
+      "mietb": PORTAL_UNIFICADO_USUARIO.Mail,
+      "twitter": PORTAL_UNIFICADO_USUARIO.UsuarioTwitter
+  }
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="consultar_direcciones" doc:id="ddc6652a-8d61-4c89-8483-21e6bf1fe42e" >
+		<flow-ref doc:name="Go to get client" doc:id="9861a100-bcae-47c1-9d71-0c3eee31c05c" name="get-mdm_client_mongo-clientSub_Flow" target="resp_client" />
+		<choice doc:name="Choice" doc:id="0f08dd85-596f-4633-a8cb-37b9c78d4dd3">
+			<when expression="#[isEmpty(vars.resp_client)]"><ee:transform doc:name="Set error" doc:id="0aac8430-7f01-438d-835c-de3dad7ce4c2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "Client not found"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "service-papi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="direccion valida" doc:id="7f27ef41-8dce-4dac-a106-445d043f02da">
+							<ee:message>
+							</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="direccionValida" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.resp_client[0].Direcciones filter (($.Id_Direccion as String) == vars.idDireccion as String)]]></ee:set-variable>
+					</ee:variables>
+						</ee:transform>
+				<choice doc:name="Choice" doc:id="27a753ee-67be-4a3e-9ea0-2e5e90ac1687" >
+					<when expression="#[isEmpty(vars.direccionValida)]">
+						<ee:transform doc:name="Set error" doc:id="da86568b-e64c-47b1-81d1-15900c43cc93" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_FOUND",
+    "message": {
+        "message": "Address not found"
+    },
+    "messageServer": "",
+    "cause": [
+        {
+            "origin": "service-papi-services",
+            "message": "org.mule.runtime.api.exception.DefaultMuleException"
+        }
+    ]
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables >
+								<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Set response body to encrypt" doc:id="86af9109-a795-4ffa-b747-bdcfa51720e6">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var address = vars.direccionValida[0]
+---
+{
+	"direccion": {
+	  "ciudad":{
+	     "codigo": address.Codigo_Municipio default "",
+	     "nombre": address.Municipio default ""
+	  },
+	  "departamento":{
+	     "codigo": address.Codigo_Departamento default "",
+	     "nombre": address.Departamento default ""
+	  },
+	  "normalizada": address.Direccion_Normalizada default ""
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</otherwise>
+				</choice>
+			
+</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

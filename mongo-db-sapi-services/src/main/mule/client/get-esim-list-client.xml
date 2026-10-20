@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-esim-list-clientSub_Flow" doc:id="a2d7c5e6-8910-45c3-7ef6-901234567890">
+		<async doc:name="Async" doc:id="c5a7c8e6-1f91-43d5-d24c-60a18e5f3db4">
+			<try doc:name="Try - async log before" doc:id="c7a4a34c-d586-41f7-091b-7e42cf51ad80">
+				<flow-ref doc:name="Logger before" doc:id="d6b8d9f7-20a2-44e6-e35d-71b29f604ec5" name="loggin-client-call" />
+				<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" type="ANY" doc:name="On Error Continue - async log before" doc:id="d8b5b45d-e697-42a8-1a2c-8f53d062be91">
+						<logger level="WARN" doc:name="Log fallo auditoria async" doc:id="e9c6c56e-f708-43b9-2b3d-9064e173cfa2" message='#["[ESIM][ASYNC][LOG] Fallo loggin-client-call before list. CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default attributes.headers."X-CORRELATION-ID" default correlationId) ++ " | Error: " ++ (error.description default "desconocido")]' />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</async>
+		<mongo:find-documents doc:name="Find MDM_ACTIVACION_ESIM" doc:id="b3e8d6f7-9021-46d4-8fa7-012345678901" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.collection-esim}" fields="," limit="#[vars.OffSet + vars.Limit]">
+			<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+{}]]]></mongo:query>
+			<mongo:sort-by><![CDATA[#[%dw 2.0
+output application/json
+---
+{ "_id": -1 }]]]></mongo:sort-by>
+		</mongo:find-documents>
+		<ee:transform doc:name="Response" doc:id="c4f9e7a8-0132-47e5-90b8-123456789012">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var offset = vars.OffSet as Number default 0
+var docs = payload default []
+---
+if (isEmpty(docs) or (sizeOf(docs) <= offset))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": ""
+  },
+  "messageServer": "Data not found",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.exception.NotFoundExcecption"
+    }
+  ]
+}
+else
+docs[offset to -1]]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+var offset = vars.OffSet as Number default 0
+---
+if (isEmpty(payload) or (sizeOf(payload) <= offset)) 404 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<async doc:name="Async" doc:id="e7c9e0a8-31b3-45f7-f46e-82c3a0715fd6">
+			<try doc:name="Try - async log after" doc:id="f0d7d67f-0819-44ca-3c4e-a175f284d0b3">
+				<flow-ref doc:name="Logger after" doc:id="f8dae1b9-42c4-4608-057f-93d4b18260e7" name="loggin-client-call" />
+				<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" type="ANY" doc:name="On Error Continue - async log after" doc:id="a1e8e780-192a-45db-4d5f-b2860395e1c4">
+						<logger level="WARN" doc:name="Log fallo auditoria async" doc:id="b2f9f891-2a3b-46ec-5e60-c39714a6f2d5" message='#["[ESIM][ASYNC][LOG] Fallo loggin-client-call after list. CorrelationId: " ++ (vars.headers."X-CORRELATION-ID" default attributes.headers."X-CORRELATION-ID" default correlationId) ++ " | Error: " ++ (error.description default "desconocido")]' />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</async>
+	</sub-flow>
+</mule>

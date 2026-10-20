@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-commercialOffer-orchestratorSub_Flow" doc:id="0rch001-a2b3-4c5d-8e9f-001122334455">
+		<ee:transform doc:name="Normalize query EN + pagination" doc:id="0rch002-a2b3-4c5d-8e9f-001122334455">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="queryParameters"><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Strings
+fun first(v) = if (v is Array) (v[0] default null) else v
+var q = attributes.queryParams default vars.rawQueryParams default {}
+var groupingNumberRaw = first(q.groupingNumber default q['groupingNumber'] default null)
+var nameRaw = first(q.name default q['name'] default null)
+var commercialNameRaw = first(q.commercialName default q['commercialName'] default null)
+var profile = upper((Mule::p('pagination.profile') default "Bajo") as String)
+var maxLimit = if (profile == "ALTO") ((Mule::p('pagination.profiles.alto.max') default 100) as Number)
+	else if (profile == "MEDIO") ((Mule::p('pagination.profiles.medio.max') default 50) as Number)
+	else ((Mule::p('pagination.profiles.bajo.max') default 25) as Number)
+var defaultLimit = maxLimit
+var defaultOffset = (Mule::p('pagination.default.offset') default 0) as Number
+var reqLimit = (first(q.limit default q.LIMIT default defaultLimit) default defaultLimit) as Number
+var reqOffset = (first(q.offset default q.OFFSET default defaultOffset) default defaultOffset) as Number
+var safeLimit = if (reqLimit > maxLimit) maxLimit else if (reqLimit < 0) 0 else reqLimit
+var safeOffset = if (reqOffset < 0) 0 else reqOffset
+---
+{
+	groupingNumber: if (groupingNumberRaw != null and !isBlank((groupingNumberRaw as String) default "")) (groupingNumberRaw as Number) else null,
+	name: if (nameRaw != null and !isBlank((nameRaw as String) default "")) (nameRaw as String) else null,
+	commercialName: if (commercialNameRaw != null and !isBlank((commercialNameRaw as String) default "")) (commercialNameRaw as String) else null,
+	limit: safeLimit,
+	offset: safeOffset,
+	maxLimit: maxLimit
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Build mongo query params" doc:id="0rch002b-a2b3-4c5d-8e9f-001122334455">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="mongoQueryParams"><![CDATA[%dw 2.0
+output application/java
+var qp = vars.queryParameters default {}
+---
+{
+	(numAgrupacion: qp.groupingNumber) if (qp.groupingNumber != null),
+	(nombre: qp.name) if (qp.name != null),
+	(nombreComercial: qp.commercialName) if (qp.commercialName != null)
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Has at least one filter?" doc:id="0rch003-a2b3-4c5d-8e9f-001122334455">
+			<when expression="#[(vars.queryParameters.groupingNumber != null) or (vars.queryParameters.name != null) or (vars.queryParameters.commercialName != null)]">
+				<try doc:name="Try call mongo-sapi" doc:id="0rch004-a2b3-4c5d-8e9f-001122334455">
+					<flow-ref doc:name="Call mongo-sapi commercialOffer" doc:id="0rch005-a2b3-4c5d-8e9f-001122334455" name="get-commercialOffer-clientSub_Flow" />
+					<ee:transform doc:name="Map ES to EN + apply pagination" doc:id="0rch006-a2b3-4c5d-8e9f-001122334455">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+fun mapId(id) =
+	if (id is Object) (id."\$oid" default id.oid default (id as String))
+	else id
+fun mapMainService(s) =
+	if (s is String) {
+		name: s,
+		productType: null,
+		products: []
+	}
+	else if (s is Object) {
+		name: s.nombre default s.name,
+		productType: s.tipoProducto default s.productType,
+		products: (s.productos default s.products default []) map ((p) -> mapMainService(p))
+	}
+	else s
+fun mapOffer(o) = {
+	id: mapId(o."_id"),
+	groupingNumber: o.numAgrupacion,
+	configurationCode: o.codConfiguracion,
+	name: o.nombre,
+	commercialName: o.nombreComercial,
+	bundleType: o.tipoBundle,
+	productType: o.tipoProducto,
+	serviceType: o.tipoServicio,
+	serviceSubtype: o.subtipoServicio,
+	planDescription: o.descripcionPlan,
+	mainServices: (o.serviciosPrincipales default []) map ((s) -> mapMainService(s)),
+	price: {
+		priceWithoutTax: (o.precio default {}).precioSinIva,
+		priceWithTax: (o.precio default {}).precioConIva,
+		tax: (o.precio default {}).iva,
+		salesChannel: (o.precio default {}).canalVenta
+	},
+	channels: o.canales default [],
+	businessUnit: o.uen default [],
+	catalogBusinessUnit: o.uenCatalogo default [],
+	profile: o.perfil default [],
+	scoring: o.scoring default [],
+	strata: o.estratos default [],
+	procedures: o.tramites default [],
+	technologies: o.tecnologias default [],
+	billing: o.facturacion default [],
+	capabilities: {
+		appointment: (o.capacidades default {}).agendamiento,
+		availability: (o.capacidades default {}).disponibilidad,
+		provisioning: (o.capacidades default {}).aprovisionamiento,
+		billing: (o.capacidades default {}).facturacion
+	},
+	characteristics: o.caracteristicas default [],
+	technicalSpecifications: o.especificacionesTecnicas default [],
+	promotions: o.promociones default [],
+	image: {
+		url: (o.imagen default {}).url,
+		blobName: (o.imagen default {}).blobName,
+		templateVersion: (o.imagen default {}).versionPlantilla,
+		generationDate: (o.imagen default {}).fechaGeneracion
+	},
+	status: o.estado,
+	sourceBundleId: o.sourceBundleId,
+	creationDate: o.fechaCreacion,
+	modificationDate: o.fechaModificacion,
+	publicationDate: o.fechaPublicacion
+}
+var offers = if (payload is Array) payload else [payload]
+var mapped = offers map ((o) -> mapOffer(o))
+var limit = vars.queryParameters.limit as Number
+var offset = vars.queryParameters.offset as Number
+var total = sizeOf(mapped)
+var lastIndex = total - 1
+var toIndex = min([offset + limit - 1, lastIndex])
+var page = if (total == 0 or offset > lastIndex) [] else mapped[offset to toIndex]
+---
+{
+	code: 200,
+	commercialOffers: page
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<error-handler>
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="0rch007-a2b3-4c5d-8e9f-001122334455">
+							<ee:transform doc:name="Error output" doc:id="0rch008-a2b3-4c5d-8e9f-001122334455">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 500,
+	code: "COMMERCIAL_OFFER_QUERY",
+	message: {
+		message: "Error while querying commercial offer from mongo-sapi."
+	},
+	messageServer: "",
+	cause: [{
+		origin: app.name,
+		message: (error.description default error.errorMessage.payload default "Unexpected error") as String
+	}]
+}]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Bad request missing filter" doc:id="0rch009-a2b3-4c5d-8e9f-001122334455">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 400,
+	code: "BAD_REQUEST",
+	message: {
+		message: "At least one filter is required: groupingNumber, name or commercialName."
+	},
+	messageServer: "",
+	cause: [{
+		origin: app.name,
+		message: "Missing required query filter"
+	}]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

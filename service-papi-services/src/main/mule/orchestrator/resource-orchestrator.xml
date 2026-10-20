@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-resource-orchestratorSub_Flow" doc:id="b57b3c09-a505-411a-846f-45c555e154e5" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable" doc:id="b5cafa55-8759-4567-b015-7eddaf49f7ae" variableName="headers" />
+		<set-variable value="#[attributes.queryParams]" doc:name="Set Paremeters" doc:id="08fc59ba-aa84-4e45-917a-b4db302b4bcf" variableName="parameters" />
+		<choice doc:name="Choice" doc:id="98514bf5-7c81-48bc-98d2-e2623898e69a" >
+			<when expression="#[((upper(p('botAuthorizedOrigins')) default &quot;&quot;) splitBy &quot;,&quot; map trim($)) contains (upper(vars.parameters.ORIGIN) default &quot;&quot;)]">
+				<flow-ref doc:name="Flow Reference" doc:id="83c0395c-55a7-46e2-97e9-20223965daa9" name="resource-validateimei-orchestratorSub_Flow"/>
+			   
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Flow Reference" doc:id="510256ce-e51d-4e76-9cf1-080acce2b591" name="resource-jsc-msisdn-orchestratorSub_Flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="resource-validateimei-orchestratorSub_Flow" doc:id="8827ff1d-26ec-4035-989a-39ad78028d8f" >
+		<ee:transform doc:name="Set Body Request" doc:id="5ee815e9-32ac-45a9-8978-ff57e84b117b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.system,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.system
+    },
+    "Document_Type": vars.parameters.CUSTOMER_ID_TYPE default "",
+    "Document_Number": vars.parameters.CUSTOMER_ID default "",
+    "IMEI": vars.parameters.RESOURCE_ID default ""
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="Flow Reference" doc:id="ee18de82-fe29-45ec-98aa-874668d3ea78" name="post-validateimei-clientSub_Flow"/>
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Http Status" doc:id="cad18989-8494-443e-9eb0-44c1c51eeaa6" variableName="httpStatus" />
+		<ee:transform doc:name="Set Body Response" doc:id="dd0b4920-4a25-4492-9c60-a2e2adfa2bb7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode,
+	detail: {
+		state: payload.WSResponseHeader.State,
+		resourceId: vars.parameters.RESOURCE_ID
+	}
+	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="resource-jsc-msisdn-orchestratorSub_Flow" doc:id="0abe7ff8-c27d-4ed1-a96a-781269b5a356" >
+		<choice doc:name="Choice" doc:id="b25db254-3b30-4c08-85e9-4ec50acf3650" >
+			<when expression='#[vars.parameters.RESOURCE_TYPE == "MSISDN"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="bcbdcdd8-680b-4397-8c27-6216a7b108e0" name="get-subscription-msisdn-imei" />
+				<set-variable value="200" doc:name="Set Variable" doc:id="dac1a8b4-d8fa-483a-9215-a12b73b938a0" variableName="httpStatus" />
+				<ee:transform doc:name="Set Body Response1" doc:id="3dc0ee6e-ef83-4803-8f19-8aec7f57685d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: "Consulta realizada con exito",
+	detail: {
+		state: "",
+		resourceId: payload.content[0].id
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="400" doc:name="Set Variable" doc:id="91fedd18-9354-4f0c-9d0c-b9a98e10fc81" variableName="httpStatus"/>
+				<ee:transform doc:name="Set Body Response" doc:id="97b93155-659c-4512-96e1-e7f2421716b5">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: "Peticion no soportada, verifique los parametros enviados",
+	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

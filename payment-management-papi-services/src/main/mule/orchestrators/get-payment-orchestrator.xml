@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-payment-orchestratorSub_Flow" doc:id="722dc975-0fb5-4f2d-b23a-41c4854172f7" >
+		<ee:transform doc:name="Transform Message" doc:id="d90a9b74-3713-4cd6-a0a2-528c160ddae8">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable resource="dwScripts/getPayment/setGetTransactionsInquiryZsmartHttpRequest.dwl" variableName="httpRequest" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart TransInfoInquiry )" doc:id="4900ded0-1f1c-4d6a-915a-ff3c0b77b2f5" name="sapi-http-client-sub-flow" />
+		<ee:transform doc:name="set get payment customer response" doc:id="8664ddbe-b9aa-4390-9cb8-b60b195199fc">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+fun nullIfString(value) =
+    if (value == null or lower(trim((value as String))) == "null")
+        null
+    else
+        value
+
+fun normalizeDateTime(value) =
+    if (value == null)
+        null
+    else
+        (value as String) replace /:\s+/ with ":"
+
+var source = payload.result.result
+
+---
+{
+    codeResponse: payload.status,
+    messageResponse: if (payload.status == "200") "OK" else payload.message,
+    payment: {
+        id: source.transactionID,
+        paymentTransaction: (source.transExParamList default []) map (transaction) -> {
+            id: transaction.transID,
+            billingAccountId: transaction.accountNumber,
+            paymentType: transaction.transType,
+            paymentTypeDescription: transaction.transTypeDetail,
+            amount: transaction.transAmount,
+            remainingAmount: transaction.oddments,
+            currency: transaction.currencyCode,
+            transactionDate: normalizeDateTime(transaction.transTime),
+            paymentDate: normalizeDateTime(transaction.paymentTime),
+            reversedPaymentId: nullIfString(transaction.reversedTransID),
+            originalAmount: transaction.oriAmount,
+            originalCurrency: transaction.oriCurrencyCode,
+            originalExchangeRate: nullIfString(transaction.originalRate),
+            targetExchangeRate: nullIfString(transaction.targetRate),
+            relatedPartyType: transaction.partyType,
+            relatedPartyId: transaction.partyCode,
+            channelId: transaction.contactChannelID,
+            paymentReference: nullIfString(transaction.paymentNumber),
+            paymentMethod: (transaction.paymentMethodDtoList default []) map (method) -> {
+                id: method.paymentMethodId,
+                code: method.paymentMethodCode,
+                name: method.paymentMethodName,
+                amount: method.paymentAmount
+            },
+            bankCode: transaction.bankCode,
+            bankAccountNumber: transaction.bankAccountNumber,
+            receipt: (transaction.receiptDtoList default []) map (receipt) -> {
+                id: receipt.receiptDocId,
+                receiptNumber: receipt.receiptNumber,
+                receiptType: receipt.receiptType
+            },
+            adjustment: {
+                adjustmentType: transaction.adjustDto.adjustType,
+                adjustmentLevel: transaction.adjustDto.adjustLevel,
+                adjustmentReasonId: transaction.adjustDto.adjustReasonID,
+                adjustmentReason: transaction.adjustDto.adjustReasonName,
+                customerNumber: transaction.adjustDto.cunNumber,
+                adjustmentItem: (transaction.adjustDto.adjustItemDtoList default []) map (item) -> {
+                    billingAccountItemId: item.acctItemID,
+                    amount: item.amount,
+                    billingAccountItemTypeId: item.acctItemTypeID,
+                    billingAccountItemTypeName: item.acctItemTypeName
+                }
+            }
+        }
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

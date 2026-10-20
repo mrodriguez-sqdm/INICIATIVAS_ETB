@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd 
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd">
+	<apikit:config name="business-xapi-services-config"
+		api="business-xapi-services.raml"
+		outboundHeadersMapName="outboundHeaders"
+		httpStatusVarName="httpStatus" />
+	<http:listener-config
+		name="business-xapi-services-httpListenerConfig">
+		<http:listener-connection host="0.0.0.0"
+			port="${https.port}"
+			readTimeout="${configurationTimeout.business-xapi-v2-listener}"
+			tlsContext="TLS_Context" protocol="HTTPS" />
+	</http:listener-config>
+	<http:request-config
+		name="HTTP_Request_configuration_business-papi-services-v2"
+		doc:name="HTTP Request configuration"
+		doc:id="40d70c5e-18f2-4db4-8917-e29226bf5487"
+		basePath="${business-papi-v2.base-path}"
+		responseTimeout="${configurationTimeout.business-papi-v2.responseTimeout}">
+		<http:request-connection
+			protocol="${business-papi-v2.protocol}"
+			host="${business-papi-v2.host}" port="${business-papi-v2.port}"
+			connectionIdleTimeout="${configurationTimeout.business-papi-v2.connectionIdleTimeout}" />
+	</http:request-config>
+	<tls:context name="TLS_Context" doc:name="TLS Context"
+		doc:id="8a830915-c34e-48ff-81b4-8363504e478d">
+		<tls:key-store type="${tls.type}" path="${tls.path}"
+			keyPassword="${tls.keyPassword}" password="${tls.keyPassword}" />
+	</tls:context>
+	<import doc:name="Import"
+		doc:id="8e77709b-c571-40f8-9164-bbfa21527b7a"
+		file="error-handler-v2.xml" />
+	<import doc:name="Import"
+		doc:id="ac2c9bba-fdb1-41c9-a414-67f7b5fea96b" file="loggin.xml" />
+	<import doc:name="Import"
+		doc:id="c2c0521b-b853-4e1e-8009-bdb93414761c"
+		file="audits-sapi-client.xml" />
+	<import doc:name="Import"
+		doc:id="92f53a9d-a76a-4aaf-8f10-12581266fbfc"
+		file="etb-common-lib.xml" />
+	<import doc:name="Import"
+		doc:id="1b27924a-31ee-4b81-aeea-11300f529f0e" file="insert-audit.xml" />
+	<configuration-properties
+		doc:name="Configuration properties"
+		doc:id="cb9bc0a5-fb03-4b35-9f98-5d1cf31dd592"
+		file="${env}-properties.yaml" />
+	<http:listener-config name="HTTP_DLB_Listener" doc:name="HTTP DLB Listener">
+		<http:listener-connection host="${http-dlb.host}" port="${http-dlb.port}" protocol="HTTP" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Self_Request" doc:name="HTTP Self Request" basePath="/">
+		<http:request-connection host="localhost" port="${https.port}" protocol="HTTPS">
+			<tls:context>
+				<tls:trust-store insecure="true" />
+			</tls:context>
+		</http:request-connection>
+	</http:request-config>
+	<api-gateway:autodiscovery
+		apiId="${autodiscovery}" ignoreBasePath="true"
+		doc:name="API Autodiscovery"
+		doc:id="adb9e1e6-5a1f-4787-8e97-461c5e7588c2"
+		flowRef="business-xapi-services-main" />
+</mule>

@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-bolsaCompartidaCorp-orchestratorSub_Flow" doc:id="e0f507b5-9c82-4416-b841-db216db4449d" >
+		<try doc:name="Try" doc:id="90931804-ea2c-45c8-8e1b-5fb8662b36c8" >
+			<set-variable value="#[vars.MSISDN]" doc:name="integration Id as connection Number" doc:id="704270a9-a598-48b9-a4c3-cdc127099625" variableName="connectionNumber" />
+			<flow-ref doc:name="Get subscription by external id" doc:id="419b1cbc-73ca-4e22-9729-aa651de39d92" name="get-subscription-client-by-msisdn" target="subscription" />
+			<choice doc:name="Data valid from subscription?" doc:id="18a0def5-a2f4-4351-ab7a-69124da39c51">
+			<when expression="#[!isEmpty(vars.subscription.content)and !(vars.subscription.content[0].id == null)]">
+				<choice doc:name="Is daughter line?" doc:id="c9aa18bb-8710-48f3-a946-db16b36bb69a">
+					<when expression='#[!isBlank(vars.parentMSISDN default "")]'>
+						<set-variable value="#[vars.parentMSISDN]" doc:name="Set msisdn" doc:id="9da1e39f-d06d-4b15-b665-bf70d28ec814" variableName="connectionNumber" />
+							<flow-ref doc:name="GET Parent PKG ID" doc:id="489ccadd-50d6-4abf-9b09-a603bd486d23" name="get-subscription-client-by-msisdn" />
+							<set-variable value="#[payload.content[0].packageList.id[0]]" doc:name="Set parentPkgInstanceId" doc:id="0adcbdee-9e5e-4588-bb52-52d5edc73f99" variableName="parentPkgInstanceId" />
+							<flow-ref doc:name="Get SID virtual" doc:id="48d2c910-aba5-4d90-87e6-5108d3ae5496" name="get-pkgi-client" />
+						<set-variable value='#[payload.groupMember.id replace "#" with "%23"]' doc:name="Set pkgSID" doc:id="ec7c1673-b505-4e72-a910-ee2ab64f4627" variableName="pkgSID" />
+						<flow-ref doc:name="Get groupInstance ID" doc:id="1895ae2e-e96a-4b5a-8254-5c349740d7e4" name="get-subcriptionBySID-client" />
+						<set-variable value="#[payload.groupInstance.id]" doc:name="Set groupInstanceId" doc:id="2bc221a0-2ad7-4562-91ec-bfe8cfa81f22" variableName="groupInstanceId" />
+						<ee:transform doc:name="Mapping Request" doc:id="598eecf8-8e7b-4c52-adc3-ac4e8d73b506">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	id: vars.subscription.content[0].id,
+	name: "Add member to group",
+	msisdn: vars.MSISDN
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="Link line to a group" doc:id="8b918268-b7ad-4cd8-bb5e-6c360a4c2b01" name="post-groupinstance-client" />
+						<ee:transform doc:name="Positive Output" doc:id="a337a63e-adf9-41e3-92a7-510741fab4b0">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 0,
+	"descripcion": "Procesamiento exitoso"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[200]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Positive Output" doc:id="27756f7e-94ec-433e-95d2-e166d07235aa">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 0,
+	"descripcion": "Procesamiento exitoso"
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[200]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Error Output" doc:id="a785ecf4-3f0a-41ba-98bc-3c3e91d30f9b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"code": 1,
+	"description": "El subscription relacionado a la solicitud no existe."
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="86397598-6e33-4f52-b89d-25669d32383d" >
+					<ee:transform doc:name="Error output" doc:id="da98ba5d-5485-4fd4-88f8-fd4a6cee6487" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": 500,
+	"code": "",
+	"message": {
+	  "message": (vars.errorMessageOutput default "") ++ " Respuesta JSC: " ++ error.muleMessage.typedValue.message.message default ""
+	},
+	"messageServer": "",
+	"cause": [
+	  {
+	    "origin": app.name,
+	    "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+	  }
+	]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

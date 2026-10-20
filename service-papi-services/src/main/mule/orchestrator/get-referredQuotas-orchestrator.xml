@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-referredQuotas-orchestratorSub_Flow" doc:id="eaffde2b-fcdb-42fb-8d47-cf46fecf7a62" >
+		<set-variable value="#[p('referred.typeParameter')]" doc:name="Type Parameter" doc:id="94f2f7c9-a8ed-49eb-9118-db2abac7c573" variableName="currentParameter" />
+		<flow-ref doc:name="Go to client" doc:id="53ddf1ae-7ab8-4016-919c-1ac224b8f239" name="get-parameters-client" />
+		<logger level="INFO" doc:name="Logger" doc:id="ef86f75c-7f1c-42d4-98d7-347941e2b3d6" message="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="61898bbc-3aeb-4228-b932-5a2a3c6f02f7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+(payload[0].Valores filter ($.Nombre == "Cantidad Referidos")).Codigo[0] as Number
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="c635bfd6-fc19-47f1-be82-69e8f7a27d23" >
+			<when expression="#[!isEmpty(payload)]">
+				<ee:transform doc:name="Transform Message" doc:id="88f517bf-47b1-45ad-b75e-14243d7a0bd3">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="response"><![CDATA[%dw 2.0
+output application/json
+var cantidad = vars.cantidadLineas
+var cupos = payload
+---
+if(cantidad > cupos){
+	lineasRestantes: "La cantidad de lineas excede"	
+} else if (cantidad <= cupos){
+	lineasRestantes: cupos - cantidad	
+} else true
+
+]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				<set-payload value='#[output application/json&#10;---&#10;vars.response]' doc:name="Set Payload" doc:id="114e399f-c9ab-4b26-8b75-528bc185f3d0" />
+				<ee:transform doc:name="Transform Message" doc:id="d1143215-ee41-46f1-a195-b7792f5c78d4" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Error response" doc:id="b26f03c1-7430-48b2-93a5-155023f24f79" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "There are no matching records"
+  },
+  "messageServer": "No se encontraron datos para el Tipo de parametro: " ++ p('referred.typeParameter'),
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="bee15cb1-481f-464f-b5c9-ffd2922f65d5" message="#[payload]"/>
+	</sub-flow>
+</mule>
