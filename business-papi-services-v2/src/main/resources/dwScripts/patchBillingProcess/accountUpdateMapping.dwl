@@ -17,10 +17,6 @@ output application/json  skipNullOn = "everywhere"
 		"custId": transaction.custId,
 		"acctId": transaction.acctId,
 		"salesChannel": transaction.salesChannel,
-		"salesDepartment": transaction.salesDepartment,
-		"salesCity": transaction.salesCity,
-		"po": transaction.po,
-		"billType": transaction.billType,
 		"comments": transaction.comments
 	},
 	// Account Mapping

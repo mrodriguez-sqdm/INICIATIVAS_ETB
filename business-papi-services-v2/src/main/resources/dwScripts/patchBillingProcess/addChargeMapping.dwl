@@ -35,6 +35,7 @@ output application/json  skipNullOn = "everywhere"
 		"installmentPlanId": charge.installmentPlanId,
 		"prodInstFlag": charge.prodInstFlag,
 		"origAcctItemTypeCode": charge.origAcctItemTypeCode,
-		"currencyId": currency
+		"currencyId": currency,
+		"remark": charge.remark
 	}) if (!isEmpty(flatten(charges default [])))
 }
