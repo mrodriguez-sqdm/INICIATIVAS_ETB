@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-customer-om-recharges-orchestratorSub_Flow" doc:id="c05c3bd3-966a-4715-8dc9-bf9a00e6726d" >
+		<ee:transform doc:name="set variables headers - initialPayload" doc:id="ba98a13a-16cb-4c83-b24c-cbd98df4eb8b" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[output application/java
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="validate methodName" doc:id="7ec8cfed-01ff-4708-933b-e05c3e4f1b38">
+			<when expression="#[p('global-vars.refill') == vars.initialPayload.methodCall.methodName]">
+				<ee:transform doc:name="set Refill recharge request" doc:id="39bd333a-0cde-4845-af39-cf151ce7f7f2">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  amount: vars.initialPayload.methodCall.member.transactionAmount as Number,
+  msisdn: vars.initialPayload.methodCall.member.subscriberNumber,
+  gestor: vars.initialPayload.methodCall.member.originHostName
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="post-services-recharge-clientSub_Flow" doc:id="34a03648-4052-4c7c-8024-e6912f45e270" name="post-services-recharge-clientSub_Flow" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="set Pkgaddon recharge request" doc:id="59f58963-7b86-4840-80d4-40e70389210b">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var integrationId = (vars.activeService filter upper($.Estado) != p("global-vars.inactivo"))[0].Integration_Id
+---
+{
+  "msisdn": vars.initialPayload.methodCall.member.subscriberNumber,
+  "gestor": vars.initialPayload.methodCall.member.originHostName,
+  "svas": [
+  	{
+  		"action": vars.initialPayload.methodCall.member.action,
+  		"packageId": vars.initialPayload.methodCall.member.refillProfileID
+  	}
+  ]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<flow-ref doc:name="post-service-sva-recharge-clientSub_Flow" doc:id="5e1745e0-04ab-4563-a078-a0103c773585" name="post-service-sva-recharge-clientSub_Flow" />
+				<ee:transform doc:name="set recharge reponse" doc:id="8990da8b-67ae-478e-a28a-f1b22d1030b7">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	id: payload.idRecarga,
+	status: "Successful"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
