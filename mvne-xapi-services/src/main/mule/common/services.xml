@@ -1,0 +1,429 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:etbutilities="http://www.mulesoft.org/schema/mule/etbutilities" xmlns:dotnet="http://www.mulesoft.org/schema/mule/dotnet"
+	xmlns:crypto="http://www.mulesoft.org/schema/mule/crypto"
+	xmlns:azure-key-vault="http://www.mulesoft.org/schema/mule/azure-key-vault" xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/azure-key-vault http://www.mulesoft.org/schema/mule/azure-key-vault/current/mule-azure-key-vault.xsd
+http://www.mulesoft.org/schema/mule/crypto http://www.mulesoft.org/schema/mule/crypto/current/mule-crypto.xsd
+http://www.mulesoft.org/schema/mule/dotnet http://www.mulesoft.org/schema/mule/dotnet/current/mule-dotnet.xsd
+http://www.mulesoft.org/schema/mule/etbutilities http://www.mulesoft.org/schema/mule/etbutilities/current/mule-etbutilities.xsd">
+	<sub-flow name="fetch-azureKeyCaptcha" doc:id="819aabe9-090c-4e98-9095-3bc9a9e49d7f" >
+		<set-variable value='#["CAPTCHA"]' doc:name="key captcha" doc:id="8e72769e-316d-4d1a-9de5-72f052d3ae63" variableName="key" />
+		<flow-ref doc:name="Go to azure-sapi" doc:id="3f77a9c4-4ef5-4116-b5de-09b97012ea3a" name="get-keyVault" target="secretCaptcha" />
+	</sub-flow>
+	<sub-flow name="fetch-azureKeySecret" doc:id="aaa3b7a0-90aa-48de-ae8c-3715fe488e04" >
+		<set-variable value='#["SECRET"]' doc:name="key secret" doc:id="410a57f4-70b2-4e0f-b024-fb3937c69912" variableName="key" />
+		<flow-ref doc:name="Go to azure-sapi" doc:id="c997d8cd-ec80-4f4a-a221-d875698b348e" name="get-keyVault" target="secret"/>
+	</sub-flow>
+	<sub-flow name="validation-subFlow" doc:id="0e4b0f71-f9db-4dc4-976e-9b5b900d9958">
+		<ee:transform doc:name="Saving headers and encryptedInput" doc:id="a83a25e7-5c61-4627-9726-0e3ed528f9ba">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+				<ee:set-variable variableName="encryptedInput"><![CDATA[%dw 2.0
+output application/java
+---
+payload.peticion]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Azure key secret" doc:id="ec841814-29be-44af-b22f-59d90dc245c2" name="fetch-azureKeySecret" />
+		<flow-ref doc:name="Azure key captcha" doc:id="59916a27-61d6-43cf-9acc-114ff33436ef" name="fetch-azureKeyCaptcha" />
+		<flow-ref doc:name="Validate System" doc:id="cf1db24d-8cea-4f49-a2d6-717e011a1206" name="validate-systems" />
+		<choice doc:name="Choice" doc:id="6caa5c7b-3380-4a69-b4df-e790bb06961f">
+			<when expression="#[payload == true]">
+				<try doc:name="Try" doc:id="3585ef13-69fa-4fac-9712-43b3da7e713a" >
+					<etbutilities:decrypt-aes doc:name="Decrypt aes" doc:id="cbe7bb2e-d133-473d-b175-7b29240950b9" textToDecrypt="#[vars.encryptedInput]" secret="#[vars.secret.secret]" iv='#[vars.headers."X_CIV_REQUEST"]' target="inputBody" targetValue="#[output application/json --- read(payload)]"/>
+					<choice doc:name="Is valid data?" doc:id="9eb70f61-d977-48ea-9051-12e6ad5e7a08" >
+						<when expression="#[vars.inputBody == null]">
+							<raise-error doc:name="Content cannot be decrypt" doc:id="97b479ac-6384-41ac-beba-0ddd5e4e2dac" type="ERR:DECRYPT" description="Content cannot be decrypt"/>
+						</when>
+						<otherwise >
+							<set-variable value='#[vars.inputBody.recaptcha]' doc:name="Captcha" doc:id="05e49638-053c-40d8-afa0-ae06fac49adf" variableName="captcha" />
+							<flow-ref doc:name="Validate Captcha" doc:id="b86b369c-c551-40e7-bee5-8ecda7f568d6" name="post-captcha" target="validationCaptcha"/>
+							<choice doc:name="Is valid captcha?" doc:id="df6ef676-4200-45da-86c9-12c6ebb90802" >
+								<when expression="#[vars.validationCaptcha.success == false]">
+									<raise-error doc:name="Captcha cannot be validated" doc:id="e5c0e8d9-0ab4-4751-9e02-e25432734aa0" type="ERR:CAPTCHA" description="Captcha cannot be validated" />
+								</when>
+							</choice>
+						</otherwise>
+					</choice>
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="787deee4-6cde-4a07-8179-148757d4e74d" >
+														<ee:transform doc:name="Negative 409 Input cannot be decrypted" doc:id="d078eff0-a8cb-4006-b821-cc334b597079">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+write(
+        {
+			"status": 409,
+			"code": "CONFLICT",
+			"message": {
+				"message": "Input cannot be decrypted or validated"
+			},
+			"messageServer": "Input cannot be decrypted or validated.",
+			"cause": [{
+				"origin": "mvne-xapi-services",
+			}]
+		}
+    )
+
+]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+409]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+							<async doc:name="Async" doc:id="d8316bdb-52f1-474a-b1eb-9baeb707d881">
+								<flow-ref doc:name="Call logger after without encrypt" doc:id="518ebacd-d84b-4daa-8615-ff7ea8048852" name="audits-mongo-log-after" />
+							</async>
+							<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="602467f3-65cb-47db-ba8c-917ec5cfc7dc" secret="#[vars.secret.secret]" target="encryptedResponse" textToEncrypt="#[payload]"/>
+							<ee:transform doc:name="Encrypt out" doc:id="5462f3d7-a9c3-455c-b98d-c0385eadcd72">
+								<ee:message>
+									<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": vars.encryptedResponse[0]
+}]]></ee:set-payload>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	"X_CIV_REQUEST": toBase64(vars.encryptedResponse[1]),
+	"X_CORRELATION_ID": vars.headers."x-correlation-id"
+}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validate-systems" doc:id="f5831cd7-bdc2-4394-8478-e7db2bac8c87" >
+		<set-variable value='#[vars.headers."X_SYSTEM"]' doc:name="system" doc:id="58100a51-8ef0-4c26-92d3-932a4e5f578b" variableName="system" />
+		<flow-ref doc:name="Get Ms Sytems" doc:id="8fb73c02-5440-48a6-ae57-2b40761247dc" name="get-ms-systems"/>
+		<choice doc:name="Have access to systems?" doc:id="4e2bdb14-55ec-46d1-92cd-3150c86cc5d8" >
+			<when expression="#[!isEmpty(payload)]">
+				<set-payload value="#[true]" doc:name="Positive" doc:id="b2697c37-fbec-4311-8e86-29fa4e3dbc0f" />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Negative 401 Unauthorized" doc:id="d9cacb05-016c-4bae-ad93-2d1472d7f0dd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+write({
+  "status": 401,
+  "code": "UNAUTHORIZED",
+  "message": {
+    "message": "Unauthorized to access to the system"
+  },
+  "messageServer": "Request not authorized.",
+  "cause": [
+    {
+      "origin": "mvne-xapi-services",
+    }
+  ]
+})]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<async doc:name="Async" doc:id="7006aca7-f00f-4db5-a5fa-d834d46e5cc8">
+					<flow-ref doc:name="Call logger after without encrypt" doc:id="8dd4b7c5-78f6-4635-a0c8-b39cdbacb3f8" name="audits-mongo-log-after" />
+				</async>
+				<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="b98f424c-c74c-4cbd-b390-d1eb0756944a" textToEncrypt="#[payload]" secret="#[vars.secret.secret]" target="encryptedResponse" />
+				<ee:transform doc:name="Encrypt out" doc:id="3da452c6-46d5-4304-83f1-17ef14289e25" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": vars.encryptedResponse[0]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="outboundHeaders" ><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	"X_CIV_REQUEST": toBase64(vars.encryptedResponse[1]),
+	"X_CORRELATION_ID": vars.headers."x-correlation-id"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validation-bodylessRequests" doc:id="0895436b-7c5c-4514-a0cc-b186482b7f70" >
+		<ee:transform doc:name="Saving headers" doc:id="f1a063ef-ec4f-4e82-a620-e73b1edbd90d">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try" doc:id="1df951ae-1524-4c13-8115-a2bb5694b199" >
+			<flow-ref doc:name="Call validate oauth" doc:id="6451fb57-9d11-4927-a2c5-72e2e8c1d3c2" name="validate-oAuth-clientSub_Flow" target="resp_validateOauth" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6e3f16c7-d04b-4e4a-bf58-b61283ff01fe" >
+					<set-variable value="#[true]" doc:name="Token Validation Error" doc:id="b0a47931-371e-4371-9ee0-b1bf83d0b481" variableName="validationError" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<flow-ref doc:name="Azure key secret" doc:id="bef6491e-bf5d-435f-bf37-a20f1e046c0a" name="fetch-azureKeySecret"/>
+		<choice doc:name="Choice" doc:id="aaa41c6d-4a6c-470e-ba6e-3abf6153f019" >
+			<when expression="#[vars.validationError == true]">
+				<ee:transform doc:name="Negative 401 Unauthorized" doc:id="ddfbe978-4a04-4690-9f54-86058606784c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+write({
+  "status": 401,
+  "code": "UNAUTHORIZED",
+  "message": {
+    "message": "Unauthorized to access to the system"
+  },
+  "messageServer": "Request not authorized.",
+  "cause": [
+    {
+      "origin": "mvne-xapi-services",
+    }
+  ]
+})]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<async doc:name="Async" doc:id="f48f77e4-a370-459a-8992-d53ae5a2c4d0" >
+					<flow-ref doc:name="Call logger after without encrypt" doc:id="981e24f0-ae92-4c5c-b612-213a5e44e9ac" name="audits-mongo-log-after" />
+				</async>
+				<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="83b52ffc-8937-49a5-aa1b-76979a500c08" textToEncrypt="#[payload]" secret="#[vars.secret.secret]" target="encryptedResponse" />
+				<ee:transform doc:name="Encrypt out" doc:id="0305f231-36f8-4995-b130-b57678de529a" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": vars.encryptedResponse[0]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="outboundHeaders" ><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	"X_CIV_REQUEST": toBase64(vars.encryptedResponse[1]),
+	"X_CORRELATION_ID": vars.headers."x-correlation-id"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+								<flow-ref doc:name="Validate System" doc:id="93c7f049-d9be-4ec9-8dfb-b767570e2133" name="validate-systems" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="log-and-aes-encrypt-response" doc:id="dc5a78a1-59e5-4154-8c4d-3f118d055df0" >
+		<async doc:name="Async" doc:id="b12fff2c-ac53-40e6-8cb5-3e55201c9dd5" >
+			<flow-ref doc:name="Call logger after without encrypt" doc:id="7fabc2d6-124d-4808-ba54-b99977861131" name="audits-mongo-log-after" />
+		</async>
+		<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="00b11281-88eb-4dd1-a11f-578ae645b60a" textToEncrypt="#[output application/java --- write(payload)]" secret="#[vars.secret.secret]" />
+		<ee:transform doc:name="Set response" doc:id="2aab4117-784a-4bad-8f1d-93799528f90b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": payload[0]
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="outboundHeaders" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"X_CIV_REQUEST": vars.initialHeaders."x_civ_request",
+	"X_CORRELATION_ID": vars.initialHeaders."x-correlation-id"
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="decrypt-token" doc:id="eb125172-e981-4cdd-87b7-be2fca6a6dbc" >
+		<set-variable value="#[attributes]" doc:name="attr" doc:id="86cef72b-d482-4b49-b3c7-cbfeed72424c" variableName="attr" />
+		<ee:transform doc:name="Set iv" doc:id="b88cb417-a246-437c-95e6-7e407366601d" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="attr" ><![CDATA[output application/java
+---
+{
+  headers: vars.attr.headers ++ {
+    iv: vars.attr.headers.x_civ_request
+  }
+} ++ (vars.attr - "headers")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="f8bc35bb-dbe3-44ec-bcc7-f96a5f0dc54a" >
+			<when expression="vars.secret == null">
+				<set-variable value='#["SECRET"]' doc:name="key secret" doc:id="25790661-772a-4c3e-be96-d7cf9184906a" variableName="key" />
+				<flow-ref doc:name="Obtain Azure Secret" doc:id="37ea2242-1250-475d-9768-a91b08b81333" name="get-keyVault" target="secret" />
+			</when>
+		</choice>
+		<try doc:name="Try" doc:id="d7b26270-fae6-48cb-a9ec-699438b4e916" >
+			<etbutilities:decrypt-aes doc:name="Decrypt aes" doc:id="05c4a221-dbe5-45d9-bde7-88bfbc2b5c83" textToDecrypt="#[vars.attr.headers.authorization]" secret="#[vars.secret.secret]" iv="#[vars.attr.headers.iv]" target="decryptedInput" targetValue="#[output application/json --- read(payload)]" />
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="bc81dc04-d121-4bea-870d-4c301158fc70" >
+					<raise-error doc:name="AUTH:INVALID_SECRET" doc:id="fe11574c-8b8a-4b2c-9298-5a4d9134b210" type="AUTH:INVALID_SECRET" description="Could not decrypt the token, verify the secret and the IV." />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<flow-ref doc:name="Flow ref to validate token" doc:id="f6609213-696f-4faf-891a-355490ac07b3" name="validate-token" />
+	</sub-flow>
+	<sub-flow name="validate-token" doc:id="5bdcab97-4708-4a43-82e1-4014a3ba3eb4" >
+		<ee:transform doc:name="Invoke Static method Decode java" doc:id="7ffde486-ba34-4f5f-86fa-3e86e70f5998" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="tokenDecoded" ><![CDATA[%dw 2.0
+import java!com::globant::jwt::JWTGeneration
+output application/json
+---
+JWTGeneration::decodeJWT_v2(vars.decryptedInput.accessToken,p('token-v2.secret'))
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Token Valid?" doc:id="1862923e-1b5c-4bda-8446-52f2bbc955f3" >
+			<when expression="#[vars.tokenDecoded != null]" >
+				<crypto:jce-decrypt-pbe doc:name="Jce decrypt sub" doc:id="dab36597-ad38-4abb-b3ac-2a87c08f06f3" password="${token-v2.secretBody}" target="tokenDecrypted" >
+					<crypto:content ><![CDATA[#[%dw 2.0
+import fromBase64 from dw::core::Binaries
+output application/octet-stream
+---
+fromBase64(vars.tokenDecoded.sub)]]]></crypto:content>
+				</crypto:jce-decrypt-pbe>
+				<ee:transform doc:name="Mapping Data" doc:id="a149fb8a-1ea6-426d-902a-f4ea7d9152f8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var splitted = vars.tokenDecrypted splitBy "||"
+---
+{
+	"idDb": splitted[0],
+	"email": splitted[1],
+	"tipoDocumento": splitted[2],
+	"numeroDocumento": splitted[3],
+	"ip": splitted[4],
+	"env": splitted[5],
+	"date": splitted[6]
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<raise-error doc:name="AUTH:INVALID_TOKEN" doc:id="129abb4a-ce5d-42dd-8391-7d8ab2c7b08b" type="AUTH:INVALID_TOKEN" description="Invalid TOKEN" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="validation-bodywithoutOauth" doc:id="dc918803-2da4-454a-b333-f8db26ae009b" >
+		<ee:transform doc:name="Saving headers" doc:id="56c81b6f-d060-4898-a445-43aaeff830f2" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.headers]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try" doc:id="9f18f034-19ef-4143-8b17-34ad9f9ca7eb">
+			<flow-ref doc:name="Azure key secret" doc:id="98212cb5-01f2-404d-af54-a4e2e955eb09" name="fetch-azureKeySecret" />
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="bb270aab-dee1-42f9-9f68-d0eccea12314">
+					<set-variable value="#[true]" doc:name="Token Validation Error" doc:id="0d12b8ad-e443-4766-b1b0-81c9a820ad05" variableName="validationError" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice" doc:id="24015b35-b313-470e-85a9-ee4851705e3d" >
+			<when expression="#[vars.validationError == true]" >
+				<ee:transform doc:name="Negative 401 Unauthorized" doc:id="0555f6da-6b83-4bcc-a962-f7e17ed51be1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+write({
+  "status": 401,
+  "code": "UNAUTHORIZED",
+  "message": {
+    "message": "Unauthorized to access to the system"
+  },
+  "messageServer": "Request not authorized.",
+  "cause": [
+    {
+      "origin": "mvne-xapi-services",
+    }
+  ]
+})]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<async doc:name="Async" doc:id="780e8269-7775-4b61-b73c-a5595fd3d98a" >
+					<flow-ref doc:name="Call logger after without encrypt" doc:id="f6e46a30-168d-44f6-8d0e-abda88516e7f" name="audits-mongo-log-after" />
+				</async>
+				<etbutilities:encrypt-aes doc:name="Encrypt aes" doc:id="f44357ab-9fa0-4864-869d-a2d570ac7427" textToEncrypt="#[payload]" secret="#[vars.secret.secret]" target="encryptedResponse" />
+				<ee:transform doc:name="Encrypt out" doc:id="839ff0f4-ccf3-4d3a-828e-3f5607b49740" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"respuesta": vars.encryptedResponse[0]
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="outboundHeaders" ><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	"X_CIV_REQUEST": toBase64(vars.encryptedResponse[1]),
+	"X_CORRELATION_ID": vars.headers."x-correlation-id"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Validate System" doc:id="5d5fcf2f-7553-4543-b85c-cf1522e1aa2b" name="validate-systems" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
