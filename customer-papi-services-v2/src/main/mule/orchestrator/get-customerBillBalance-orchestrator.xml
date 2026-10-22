@@ -1,5 +1,345 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd"></mule>
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="get-customerBillBalance-orchestratorSub_Flow" doc:id="23443435-7dda-44a4-82d6-59d0434f869f" >
+		<choice doc:name="Choice" doc:id="adcd6236-2bce-4e7f-a6af-26beed893a76" >
+			<when expression="#[attributes.headers.'x-target-system' == &quot;2&quot;]">
+				<flow-ref doc:name="get-billingBalance-zsmart-orchestratorSub_Flow" doc:id="08eede28-0dde-45f1-a9d2-8473a0dbc709" name="get-billingBalance-zsmart-orchestratorSub_Flow"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="post-getbalance-bill-orchestratorSub_Flow" doc:id="afac83c7-fbcb-43f2-9b53-e89c548d45bc" name="post-getbalance-bill-orchestratorSub_Flow"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="get-billingBalance-zsmart-orchestratorSub_Flow" doc:id="c8edaf3a-7a64-4500-9e10-c7c0a843cbc3" >
+		<ee:transform doc:name="set billing variables" doc:id="61939acc-da0d-43ba-93b1-4021954a6f45">
+				<ee:message>
+				</ee:message>
+				<ee:variables>
+					<ee:set-variable variableName="billingParams"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams]]></ee:set-variable>
+					<ee:set-variable variableName="billingHeaders"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('mongo-db-sapi.security.client-secret'),
+	"client_id": p('mongo-db-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		<choice doc:name="Choice Billing Params" doc:id="b9c3d1bb-8732-481f-b27e-c9b81a2f896b">
+				<when expression="#[!isEmpty(trim(vars.billingParams.'CUSTOMER_ID_TYPE')) and !isEmpty(trim(vars.billingParams.'CUSTOMER_ID'))]">
+					<flow-ref doc:name="get-billingBalance-request-customer" doc:id="73e38aa0-b870-45f0-b200-4d87b588db97" name="get-billingBalance-request-customer" />
+				</when>
+				<otherwise>
+					<flow-ref doc:name="get-billingBalance-zsmart-request-sub-flow" doc:id="a6eff353-963a-4e4d-b5fa-bcb4be6e24b8" name="get-billingBalance-zsmart-request-sub-flow" />
+				</otherwise>
+			</choice>
+	</sub-flow>  
+	<sub-flow name="get-billingBalance-zsmart-request-sub-flow" doc:id="98a71dd3-6fd2-4a1b-868d-ddd55bdc1c36" >
+		<ee:transform doc:name="set Zsmart Request" doc:id="ce01bd1a-c7c6-45bf-b7ce-e645393052a8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "GET",
+    path: p('zsmart-sapi.resources.billingBalance.path'),
+    body: {},
+    headers: vars.billingHeaders default {},
+    queryParameters: {
+    	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
+    	"accountCode": vars.billingParams.'BILLING_ACCOUNT'
+    },
+    uriParameters: {}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="billingAccount" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.billingParams.'BILLING_ACCOUNT']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart Billing Ballance)" doc:id="31886a61-303a-47d5-a47a-7ea2d73a0a3e" name="generic-zsmart-sapi-clientSub_Flow" />
+		<ee:transform doc:name="set billing balance response" doc:id="2de9d0c9-07e7-47b6-b34a-fc8f19aa7da4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var zsmartResponse = payload.result.result
+---
+{
+  codeResponse: "200",
+  messageResponse: "OK",
+  accounts: [
+    {
+      transactionID: zsmartResponse.transactionID,
+      accountNumber: vars.billingAccount,
+      balances: zsmartResponse.balDtoList map ((item, index) -> {
+        balanceId: item.balID,
+        balanceTypeCode: item.acctResCode,
+        balanceTypeName: item.acctResName,
+        balance: item.balance,
+        effectiveDate: item.effDate,
+        expirationDate: item.expDate,
+        lastUpdateDate: item.updateDate
+      })
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-billingBalance-request-customer" doc:id="2c1a6ae3-5c3f-47b7-9866-c008754f1134" >
+		<ee:transform doc:name="set dynamicQuery Request" doc:id="b5449928-4705-4ea6-aca8-c2b1785bda31" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	basePath: p("mongo-db-sapi.base-path"),
+	host: p("mongo-db-sapi.host"),
+	port: p("mongo-db-sapi.port"),
+	method: "POST",
+	path: p('mongo-db-sapi.resources.dynamicQuery.base-path'),
+	body: {
+		"query": {
+			"aggregate": "MDM_CUENTA_FACTURACION",
+			"pipeline": [{
+				"\$match": {
+					"Tipo_Documento": vars.billingParams.'CUSTOMER_ID_TYPE',
+					"Numero_Identificacion": vars.billingParams.'CUSTOMER_ID'
+				}
+			}],
+			"cursor": {
+			}
+		}
+	},
+	headers: vars.billingHeaders default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables />
+		</ee:transform>
+		<flow-ref doc:name="System Generic (MDM_CUENTA_FACTURACION)" doc:id="58977e72-78ea-441f-b05e-b306e6c4a45a" name="generic-sapi-clientSub_Flow" target="mdmCuentaFact" />
+		<ee:transform doc:name="set billingAccounts" doc:id="dc519753-575c-4d13-a8c9-6876431ba514">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="billingAccounts"><![CDATA[%dw 2.0
+output application/json
+---
+vars.mdmCuentaFact.result.*"Cuenta_Facturacion"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<parallel-foreach doc:name="Parallel For Each Billing Account" doc:id="88d0a2bb-edd1-4257-8239-c1e56bb86d09" maxConcurrency="10" collection="#[vars.billingAccounts]" target="billingBalanceAcc">
+			<try doc:name="Try" doc:id="647072c9-e900-4389-ab68-a961afd48567">
+				<logger level="INFO" doc:name="billing loop value" doc:id="398171ac-23f9-448f-aae0-6b43b7569306" message='#["billing account processing: " ++ payload default ""]' />
+				<ee:transform doc:name="set billingAccount" doc:id="79680407-20e7-496d-b187-db351b7fa312">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+				<ee:transform doc:name="set Zsmart Request" doc:id="defcb845-4842-40e6-a9fa-88146ee75e10">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "GET",
+    path: p('zsmart-sapi.resources.billingBalance.path'),
+    body: {},
+    headers: vars.billingHeaders default {},
+    queryParameters: {
+    	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
+    	"accountCode": vars.billingAccount
+    },
+    uriParameters: {}
+}]]></ee:set-payload>
+				</ee:message>
+				<ee:variables />
+			</ee:transform>
+				<flow-ref doc:name="System Generic (Zsmart Billing Ballance)" doc:id="3e9d9c8f-72ff-4b34-994a-6a999ac229d5" name="generic-zsmart-sapi-clientSub_Flow" />
+				<ee:transform doc:name="set billingBalanceAcc value" doc:id="91555325-984e-470a-bd8c-26f542757d56">
+				<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	status: "success",
+	transactionID: payload.result.result.transactionID,
+	accountNumber: vars.billingAccount,
+	balances: payload.result.result.balDtoList map ((item, index) -> {
+		balanceId: item.balID,
+		balanceTypeCode: item.acctResCode,
+		balanceTypeName: item.acctResName,
+		balance: item.balance,
+		effectiveDate: item.effDate,
+		expirationDate: item.expDate,
+		lastUpdateDate: item.updateDate
+	})
+}]]></ee:set-payload>
+					</ee:message>
+				<ee:variables>
+				</ee:variables>
+			</ee:transform>
+				<error-handler>
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e8c0c4cc-fbe6-425f-bfa1-5858f99b4012">
+						<ee:transform doc:name="set billingBalanceAcc value" doc:id="66ba05c8-a25c-4714-8873-0c1639680d11">
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+ {
+	"status": "failed",
+	"accountNumber": vars.billingAccount,
+	"billingError": error.description
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+							</ee:variables>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</parallel-foreach>
+		<ee:transform doc:name="set billingBalance response" doc:id="9d428f6b-67a8-46fb-b914-b7da05e77d90" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var totalCount = sizeOf(vars.billingBalanceAcc default []) default 0
+var successCount = sizeOf(vars.billingBalanceAcc default [] filter ($.payload.status == "success")) default 0
+var failedCount = sizeOf(vars.billingBalanceAcc default [] filter ($.payload.status == "failed")) default 0
+var successAccounts = vars.billingBalanceAcc default [] filter ($.payload.status == "success") default []
+var failedAccounts = vars.billingBalanceAcc default [] filter ($.payload.status == "failed") default []
+---
+{
+	"codeResponse": if ( failedCount == 0 ) "200" 
+          else if ( failedCount < totalCount ) "207" 
+          else "500",
+	"messageResponse": if ( failedCount == 0 ) "OK" 
+          else if ( failedCount < totalCount ) "PARTIAL_SUCCESS" 
+          else "FAILED",
+	"accounts": successAccounts map $ - "status",
+	"failedAccounts": failedAccounts,
+	"summary": {
+		"totalAccounts": totalCount,
+		"processedAccounts": successCount,
+		"failedAccounts": failedCount
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+output application/json
+var totalCount = sizeOf(vars.billingBalanceAcc default []) default 0
+var failedCount = sizeOf(vars.billingBalanceAcc default [] filter ($.payload.status == "failed")) default 0
+---
+if ( failedCount == 0 ) 200 
+          else if ( failedCount < totalCount ) 207 
+          else 500]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-getbalance-bill-orchestratorSub_Flow" doc:id="962768f5-80a5-4934-8c8d-4aa4f03e4cca" >
+		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="5322557e-1aa9-474c-8a72-e4846b68fdf9" variableName="parameters" />
+		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="6af15538-df3b-49b9-87e8-f15d581064ca" variableName="headers" />
+		<ee:transform doc:name="build Payload BOT" doc:id="42d0022e-6e87-402b-9f6d-f62bd018f42a">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "WSRequestHeader": {
+    "System": {
+      "name": vars.headers.name,
+      "correlationID": vars.headers."X-CORRELATION-ID",
+      "processingServer": ""
+    },
+    "Property": []
+  },
+  "WSRequestBody": {
+    "Audit": {
+      "Canal": vars.headers.name
+    },
+    "Phone": (vars.parameters.CONNECTION_NUMBER default ""),
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+		<flow-ref doc:name="post-getbalance-clientSub_Flow" doc:id="d7e063cd-5ee9-45ce-bac4-63370f80eb87" name="post-getbalance-clientSub_Flow" />
+		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="745795be-ba57-4217-a55b-b0d792b861cc" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message" doc:id="273ac45b-be14-4ee8-b040-c7a79e8b5c9f">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var response = payload
+---
+{
+  codeResponse: vars.httpStatus as String ,
+  messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+  balance: {
+    availableCoin: response.WSResponseBody.Available_Coin,
+    availableCoinValue: response.WSResponseBody.Available_Coin_Value,
+    promotionCoin: response.WSResponseBody.Promotion_Coin,
+    promotionCoinValue: response.WSResponseBody.Promotion_Coin_Value,
+    detailed: {
+      detail: response.WSResponseBody.Detailed.Detail map (d) -> {
+        sectionName: d.Section_Name,
+        boxes: d.Boxs map (b) -> {
+          boxName: b.Box_Name,
+          groupName: b.Group_Name,
+          unitType: b.Unity_Type,
+          available: b.Available,
+          consumed: b.Consume,
+          provisioned: b.Provisioned,
+          offers: b.Offers map (o) -> {
+            offerName: o.Offer_Name,
+            available: o.Available,
+            consumed: o.Consumed,
+            provisioned: o.Provisioned,
+            expirationDate: o.Expiration_Date
+          }
+        }
+      }
+    },
+    summary: {
+      resource: response.WSResponseBody.Resume.Resource map (r) -> {
+        name: r.Name,
+        available: r.Available,
+        consumed: r.Consumed,
+        provisioned: r.Provisioned,
+        expirationDate: r.Expiration_Date
+      }
+    }
+  }
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+</mule>
