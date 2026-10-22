@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<sub-flow name="get-customerBill-rmca-orchestratorSub_Flow" doc:id="13575082-cd1e-4cb2-83e8-9bc5ad1bc73f">
+		<try doc:name="Try" doc:id="ba143038-711b-440b-95b9-3b7275583885" >
+			<ee:transform doc:name="set FILTERS to json" doc:id="71d55c31-993d-473f-b715-4d7168c83d5d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var raw = vars.parameters.FILTERS
+var lista = raw splitBy ";"
+var pares = lista map (item) -> item splitBy ":"
+var filtrados = pares filter (kv) -> sizeOf(kv) == 2
+var resultado = filtrados reduce (pair, acc = {}) -> acc ++ {
+  (pair[0] as String {lowerFirst: true}): pair[1]
+}
+---
+{
+  filtros: resultado
+}
+]]></ee:set-payload>
+			</ee:message>
+				<ee:variables >
+				</ee:variables>
+		</ee:transform>
+			<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if(vars.parameters.BILLING_NUMBER != null and vars.parameters.BILLING_NUMBER != "")&#10;  true &#10;else&#10; if(sizeOf((payload.filtros default {}) pluck ((v,k) -&gt; v)) &gt; 0)&#10;  true&#10; else&#10;  false]' doc:name="call_bot" doc:id="2bc09f31-4fd5-4dec-baa4-7576d637651e" variableName="call_bot" />
+			<validation:is-false doc:name="validate call_bot" doc:id="307d48c9-1d97-4328-b077-d44d5abf7177" message="Error processing your RMCA customerBill request. One of (BILLING_NUMBER, FILTERS) needs to be present." expression="#[vars.call_bot  default  false]"/>
+			<choice doc:name="validate notificationMethod" doc:id="4f361e0b-5298-49d0-a4cb-e0518979a6cf">
+					<when expression="#[vars.parameters.NOTIFICATION_METHOD? and !isEmpty(vars.parameters.NOTIFICATION_METHOD)]">
+						<ee:transform doc:name="set bot requestInvoice" doc:id="1e54c084-316c-4d9d-a4c7-50b1e66ff188">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+var notificationMethod = (vars.parameters.NOTIFICATION_METHOD default "") as String
+var notificationValue  = (vars.parameters.NOTIFICATION_VALUE default "")
+---
+{
+	basePath: p("bot-sapi.base-path"),
+	host: p("bot-sapi.host"),
+	port: p("bot-sapi.port"),
+	method: "POST",
+	path: p('bot-sapi.resources.services.base-path') ++ p('bot-sapi.resources.requestinvoice'),
+	body: {
+		"WSRequestHeader": {
+			"System": {
+				"name": vars.headers.name,
+				"correlationID": vars.headers."X-CORRELATION-ID",
+				"processingServer": ""
+			},
+			"Property": []
+		},
+		"WSRequestBody": {
+			"Audit": {
+				"Canal": vars.headers.name
+			},
+			"Bill": {
+				"Number": (vars.parameters.BILLING_NUMBER default ""),
+				"Period": ""
+			},
+			"Customer": {
+				"Document_Number": (payload.filtros.DocumentNumber default ""),
+				"Document_Type": (payload.filtros.DocumentType default "")
+			},
+			"Notify": {
+				"Email": if ( upper(notificationMethod) == "EMAIL" ) notificationValue 
+        else "",
+				"Phone": if ( upper(notificationMethod) == "PHONE" ) notificationValue 
+        else "",
+				"Type": upper(notificationMethod)
+			},
+			"Service": {
+				"Billing_Account": (payload.filtros.BillingAccount default ""),
+				"Phone": (payload.filtros.Phone default "")
+			}
+		}
+	},
+	headers: vars.headers default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="System Generic (Bot SAPI requestInvoice)" doc:id="3e4b895d-589e-42b5-839f-7871aec369b3" name="generic-bot-sapi-clientSub_Flow" />
+						<ee:transform doc:name="set customerBill invoice link response" doc:id="cfb0176e-2934-4389-8d0e-0757f5a1b91b">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    invoices: [],
+    file: {
+    	link: if(payload.File != null) payload.File.Link else ""
+    }
+		    
+}
+
+
+]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if ( payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR" ) 500
+else
+ 200]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="set bot invoice" doc:id="18863b56-4202-427a-87eb-581c9209425c">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+	basePath: p("bot-sapi.base-path"),
+	host: p("bot-sapi.host"),
+	port: p("bot-sapi.port"),
+	method: "POST",
+	path: p('bot-sapi.resources.services.base-path') ++ p('bot-sapi.resources.invoices'),
+	body: {
+		"WSRequestHeader": {
+			"System": {
+				"name": vars.headers.name,
+				"correlationID": vars.headers."X-CORRELATION-ID",
+				"processingServer": ""
+			},
+			"Property": []
+		},
+		"WSRequestBody": {
+			"Audit": {
+				"Canal": vars.headers.name
+			},
+			"Barcode": (payload.filtros.Barcode default ""),
+			"Billing_Account": (payload.filtros.BillingAccount default ""),
+			"Billing_Number": (vars.parameters.BILLING_NUMBER default ""),
+			"Phone": (payload.filtros.Phone default ""),
+		}
+	},
+	headers: vars.headers default {
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<flow-ref doc:name="System Generic (Bot SAPI getInvoices)" doc:id="5ee4d184-a2fd-401e-b4bd-fd938d48f35a" name="generic-bot-sapi-clientSub_Flow" />
+						<ee:transform doc:name="set customerBill invoice response" doc:id="1ab5dbcd-2e25-405d-940c-19e58f862dbc">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	codeResponse: vars.httpStatus as String ,
+	messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
+    invoices: 
+      if(payload.WSResponseBody.Invoices == null) 
+        []
+	  else
+	     ( (payload.WSResponseBody.Invoices default [])) filter ($ != null) map (invoice) -> {
+		    	adjust: (
+		    		if(invoice.Adjust != null and typeOf(invoice.Adjust) == Object) 
+		    		  {
+					      date: invoice.Adjust.Date,
+					      numPqr: invoice.Adjust.Num_PQR,
+					      origin: invoice.Adjust.Origin,
+					      value: invoice.Adjust.Value,
+					      valueStr: invoice.Adjust.Value_Str
+					    } else null ),
+		    		barcode: invoice.Barcode,
+		    		billedPeriod: invoice.Billed_Period,
+  					billingAccount: invoice.Billing_Account,
+					billingAddress: invoice.Billing_Address,
+					billingCutoffDate: invoice.Billing_Cutoff_Date,
+					billingPhone: invoice.Billing_Phone,
+					billingNumber: invoice.Billing_Number,
+					billingNumberPse: invoice.Billing_Number_PSE,
+					cuotasFactura: 
+					  (
+		    		if(invoice.Cuotas_Factura != null and invoice.Cuotas_Factura != "") 
+		    		
+					  (invoice.Cuotas_Factura default []) map (cuota) -> {
+					    cuota: cuota.Cuota,
+					    estado: cuota.Estado,
+					    fechaPagoCuota: cuota.Fecha_Pago_Cuota,
+					    fechaVencimiento: cuota.Fecha_Vencimiento,
+					    referenciaPagoCuota: cuota.Referencia_Pago_Cuota,
+					    valorAcumulado: cuota.Valor_Acumulado,
+					    valorPagado: cuota.Valor_Pagado,
+					    valorPagar: cuota.Valor_Pagar
+					  } 
+					  else null
+						  ),
+					  creationDate: invoice.Creation_Date,
+					  deliveryType: invoice.Delivery_Type,
+					  email: invoice.Email,
+					  extemporaneous: invoice.Extemporaneous,
+					  informationValue: 
+					  (
+		    		if(invoice.Information_Value != null and invoice.Information_Value != "") 
+		    		
+					  (invoice.Information_Value default []) map (info) -> {
+					    date: info.Date,
+					    message: info.Message
+					  } 
+					  else null
+						  ),
+					invoiceOrigin: invoice.Invoice_Origin,
+					isReceiptOfPayment: invoice.Is_Receipt_Of_Payment,
+					paydayLimit: invoice.Payday_Limit,
+					payment: 
+					  (if (invoice.Payment != null and invoice.Payment != "") 
+					  {
+					    bank: invoice.Payment.Bank,
+					    franchise: invoice.Payment.Franchise,
+					    paymentDate: invoice.Payment.Payment_Date,
+					    state: invoice.Payment.State,
+					    "type": invoice.Payment.Type,
+					    value: invoice.Payment.Value,
+					    valueStr: invoice.Payment.Value_Str,
+					    visibleNumber: invoice.Payment.Visible_Number
+					  } 
+					  else null),
+					  paymentDate: invoice.Payment_Date,
+					  phone: invoice.Phone,
+					  state: invoice.State,
+					  valueOriginal: 
+						  if (invoice.Value_Original != null and invoice.Value_Original != "") 
+						  {
+						    tensSetting: invoice.Value_Original.TensSetting,
+						    value: invoice.Value_Original.Value,
+						    valueStr: invoice.Value_Original.Value_Str,
+						    valuePay: invoice.Value_Original.Value_Pay,
+						    valuePayStr: invoice.Value_Original.Value_Pay_Str
+						  } 
+						  else null,
+						
+					  valueFinal: 
+						  if (invoice.Value_Final != null and invoice.Value_Final != "") 
+						  {
+						    tensSetting: invoice.Value_Final.TensSetting,
+						    value: invoice.Value_Final.Value,
+						    valueStr: invoice.Value_Final.Value_Str,
+						    valuePay: invoice.Value_Final.Value_Pay,
+						    valuePayStr: invoice.Value_Final.Value_Pay_Str
+						  } 
+						  else null,
+						
+					  valuePrevious: 
+						  if (invoice.Value_Previous != null and invoice.Value_Previous != "") 
+						  {
+						    tensSetting: invoice.Value_Previous.TensSetting,
+						    value: invoice.Value_Previous.Value,
+						    valueStr: invoice.Value_Previous.Value_Str,
+						    valuePay: invoice.Value_Previous.Value_Pay,
+						    valuePayStr: invoice.Value_Previous.Value_Pay_Str
+						  } 
+						  else null,
+						
+					  valueService: 
+						  if (invoice.Value_Service != null and invoice.Value_Service != "") 
+						  {
+						    tensSetting: invoice.Value_Service.TensSetting,
+						    value: invoice.Value_Service.Value,
+						    valueStr: invoice.Value_Service.Value_Str,
+						    valuePay: invoice.Value_Service.Value_Pay,
+						    valuePayStr: invoice.Value_Service.Value_Pay_Str
+						  } 
+						  else null
+		    	} 
+		    
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if ( payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR" ) 500
+else
+ 200]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="0471865a-71a2-4f3c-8a84-41af37d35b89" type="VALIDATION:INVALID_BOOLEAN" >
+					<ee:transform doc:name="set call_bot error" doc:id="7904a591-13f7-4028-a47d-88840223805b" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "HTTP:BAD_REQUEST",
+    "message": error.description,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="get-customerBill-zsmart-orchestratorSub_Flow" doc:id="13067519-c340-485d-b706-62549f6318ef" >
+		<logger level="INFO" doc:name="Logger" doc:id="0ed32860-264d-41ac-b814-1571b10db328" />
+	</sub-flow>
+</mule>
