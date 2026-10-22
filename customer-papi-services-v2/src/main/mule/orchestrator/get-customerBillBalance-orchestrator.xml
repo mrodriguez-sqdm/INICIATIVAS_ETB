@@ -6,29 +6,8 @@
 	xsi:schemaLocation="
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
 	<sub-flow name="get-billingBalance-zsmart-orchestratorSub_Flow" doc:id="c8edaf3a-7a64-4500-9e10-c7c0a843cbc3" >
-		<ee:transform doc:name="set billing variables" doc:id="61939acc-da0d-43ba-93b1-4021954a6f45">
-				<ee:message>
-				</ee:message>
-				<ee:variables>
-					<ee:set-variable variableName="billingParams"><![CDATA[%dw 2.0
-output application/json
----
-attributes.queryParams]]></ee:set-variable>
-					<ee:set-variable variableName="billingHeaders"><![CDATA[%dw 2.0
-output application/json
----
-{
-	"client_secret": p('mongo-db-sapi.security.client-secret'),
-	"client_id": p('mongo-db-sapi.security.client-id'),
-	"name": attributes.headers.name,
-	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
-	"source": attributes.headers.source,
-	"systemId": attributes.headers.systemId
-}]]></ee:set-variable>
-				</ee:variables>
-			</ee:transform>
 		<choice doc:name="Choice Billing Params" doc:id="b9c3d1bb-8732-481f-b27e-c9b81a2f896b">
-				<when expression="#[!isEmpty(trim(vars.billingParams.'CUSTOMER_ID_TYPE')) and !isEmpty(trim(vars.billingParams.'CUSTOMER_ID'))]">
+				<when expression="#[!isEmpty(trim(vars.parameters.'CUSTOMER_ID_TYPE')) and !isEmpty(trim(vars.parameters.'CUSTOMER_ID'))]">
 					<flow-ref doc:name="get-billingBalance-request-customer" doc:id="73e38aa0-b870-45f0-b200-4d87b588db97" name="get-billingBalance-request-customer" />
 				</when>
 				<otherwise>
@@ -49,10 +28,10 @@ output application/json skipNullOn = "everywhere"
     method: "GET",
     path: p('zsmart-sapi.resources.billingBalance.path'),
     body: {},
-    headers: vars.billingHeaders default {},
+    headers: vars.headers default {},
     queryParameters: {
-    	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
-    	"accountCode": vars.billingParams.'BILLING_ACCOUNT'
+    	"msisdn": vars.parameters.'CONNECTION_NUMBER',
+    	"accountCode": vars.parameters.'BILLING_ACCOUNT'
     },
     uriParameters: {}
 }]]></ee:set-payload>
@@ -61,7 +40,7 @@ output application/json skipNullOn = "everywhere"
 				<ee:set-variable variableName="billingAccount" ><![CDATA[%dw 2.0
 output application/json
 ---
-vars.billingParams.'BILLING_ACCOUNT']]></ee:set-variable>
+vars.parameters.'BILLING_ACCOUNT']]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
 		<flow-ref doc:name="System Generic (Zsmart Billing Ballance)" doc:id="31886a61-303a-47d5-a47a-7ea2d73a0a3e" name="generic-zsmart-sapi-clientSub_Flow" />
@@ -110,15 +89,15 @@ output application/json
 			"aggregate": "MDM_CUENTA_FACTURACION",
 			"pipeline": [{
 				"\$match": {
-					"Tipo_Documento": vars.billingParams.'CUSTOMER_ID_TYPE',
-					"Numero_Identificacion": vars.billingParams.'CUSTOMER_ID'
+					"Tipo_Documento": vars.parameters.'CUSTOMER_ID_TYPE',
+					"Numero_Identificacion": vars.parameters.'CUSTOMER_ID'
 				}
 			}],
 			"cursor": {
 			}
 		}
 	},
-	headers: vars.billingHeaders default {
+	headers: vars.headers default {
 	},
 	queryParameters: {
 	},
@@ -162,9 +141,9 @@ output application/json skipNullOn = "everywhere"
     method: "GET",
     path: p('zsmart-sapi.resources.billingBalance.path'),
     body: {},
-    headers: vars.billingHeaders default {},
+    headers: vars.headers default {},
     queryParameters: {
-    	"msisdn": vars.billingParams.'CONNECTION_NUMBER',
+    	"msisdn": vars.parameters.'CONNECTION_NUMBER',
     	"accountCode": vars.billingAccount
     },
     uriParameters: {}
@@ -256,8 +235,6 @@ if ( failedCount == 0 ) 200
 		</ee:transform>
 	</sub-flow>
 	<sub-flow name="post-getbalance-bill-orchestratorSub_Flow" doc:id="962768f5-80a5-4934-8c8d-4aa4f03e4cca" >
-		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="5322557e-1aa9-474c-8a72-e4846b68fdf9" variableName="parameters" />
-		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="6af15538-df3b-49b9-87e8-f15d581064ca" variableName="headers" />
 		<ee:transform doc:name="build Payload BOT" doc:id="42d0022e-6e87-402b-9f6d-f62bd018f42a">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
@@ -282,15 +259,19 @@ output application/json
 					</ee:message>
 				</ee:transform>
 		<flow-ref doc:name="post-getbalance-clientSub_Flow" doc:id="d7e063cd-5ee9-45ce-bac4-63370f80eb87" name="post-getbalance-clientSub_Flow" />
-		<set-variable value='#[if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")&#10; 500&#10;else&#10; 200]' doc:name="Set Variable" doc:id="745795be-ba57-4217-a55b-b0d792b861cc" variableName="httpStatus" />
 		<ee:transform doc:name="Transform Message" doc:id="273ac45b-be14-4ee8-b040-c7a79e8b5c9f">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 var response = payload
+var httpStatus = 
+	if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")
+ 		"500"
+	else
+ 		"200"
 ---
 {
-  codeResponse: vars.httpStatus as String ,
+  codeResponse: vars.httpStatus,
   messageResponse: if(payload.WSResponseHeader.Service.status == "OK") payload.WSResponseHeader.Service.statusDetail[0].errorDetailCode else payload.WSResponseHeader.Service.statusDetail[0].errorMessage,
   balance: {
     availableCoin: response.WSResponseBody.Available_Coin,
@@ -330,6 +311,15 @@ var response = payload
 }
 ]]></ee:set-payload>
 					</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(payload.WSResponseHeader.Service.status == "FAIL" and payload.WSResponseHeader.Service.statusDetail[0].errorCode == "BOTERROR")
+ 500
+else
+ 200]]></ee:set-variable>
+			</ee:variables>
 				</ee:transform>
 	</sub-flow>
 </mule>
