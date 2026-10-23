@@ -1,23 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
 	<sub-flow name="get-customerBill-handlerSub_Flow" doc:id="b4432beb-4785-4516-a605-8b9451287118" >
-		<ee:transform doc:name="set headers - parameters - targetSystem variables" doc:id="493d99b1-3162-4770-b23a-dcb3cec0d7fd" >
-			<ee:message >
+		<try doc:name="Try" doc:id="720188ec-08d8-4f16-a2a7-69927a0380a3" >
+			<ee:transform doc:name="set filters - headers - parameters - targetSystem" doc:id="493d99b1-3162-4770-b23a-dcb3cec0d7fd">
+			<ee:message>
 			</ee:message>
-			<ee:variables >
-				<ee:set-variable variableName="parameters" ><![CDATA[%dw 2.0
+			<ee:variables>
+				<ee:set-variable variableName="parameters"><![CDATA[%dw 2.0
 output application/java
 ---
 attributes.queryParams]]></ee:set-variable>
-				<ee:set-variable variableName="targetSystem" ><![CDATA[%dw 2.0
+				<ee:set-variable variableName="targetSystem"><![CDATA[%dw 2.0
 output application/java
 ---
 attributes.headers.'x-target-system']]></ee:set-variable>
-				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -28,15 +30,202 @@ output application/json
 	"source": attributes.headers.source,
 	"systemId": attributes.headers.systemId
 }]]></ee:set-variable>
+				<ee:set-variable variableName="filters"><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+fun getFilterParams(filters) =
+  ((((filters default "") splitBy ";") filter ((item) -> !isEmpty(trim(item))) reduce ((item, acc = {
+}) -> do {
+	var parts = trim(item) match /^([^:]+):(.*)$/
+	---
+	if ( isEmpty(parts) ) acc
+      else
+        acc ++ {
+		(upper(trim(parts[1]))): trim(parts[2])
+	}
+})) default {
+}) distinctBy ((value, key) -> key)
+---
+getFilterParams(attributes.queryParams.FILTERS)]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<choice doc:name="validate targetSystem" doc:id="c5b94196-5b05-4d59-b3f9-5e679375c34a" >
-			<when expression='#[vars.targetSystem == "1"]'>
-				<flow-ref doc:name="get-customerBill-rmca-orchestratorSub_Flow" doc:id="d2ffd5b6-d6b5-4a47-a180-da002bcc186f" name="get-customerBill-rmca-orchestratorSub_Flow"/>
-			</when>
-			<otherwise >
-				<flow-ref doc:name="get-customerBill-zsmart-orchestratorSub_Flow" doc:id="50d948e7-8d2c-438b-a273-f7ff1c38cec6" name="get-customerBill-zsmart-orchestratorSub_Flow"/>
-			</otherwise>
-		</choice>
+			<choice doc:name="validate targetSystem" doc:id="7e0365c0-986f-4f49-a1dc-91f790ee81bc" >
+				<when expression='#[vars.targetSystem == "2"]'>
+					<validation:is-false doc:name="validate ZSMART parameters" doc:id="80e57312-cd71-4f07-95bc-2f90d6bc2ba5" expression="#[isEmpty(vars.filters default {})]" message="Customer Bill Error: FILTERS parameter is empty, at leats one filter value needs to be present." />
+					<ee:transform doc:name="set billingOperation" doc:id="b538ef39-ef02-442c-bca3-6b9848c84893">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="billingOperation"><![CDATA[%dw 2.0
+output application/java
+var dateRange = ["START_DATE", "END_DATE"]
+var rules = [{
+	route: "QUERY_BILL_PDF",
+	required: ["INVOICE_NUMBER", "BILLING_ACCOUNT"],
+	optional: []
+},
+  {
+	route: "QUERY_INVOICE_PDF",
+	required: ["TRANSACTION_ID", "INVOICE_TYPE"],
+	optional: ["COMMENTS"]
+},
+  {
+	route: "QUERY_BILL_HISTORY",
+	required: ["CONNECTION_NUMBER"],
+	optional: dateRange
+},
+  {
+	route: "QUERY_BILL_HISTORY",
+	required: ["CONNECTION_NUMBER", "BILLING_ACCOUNT"],
+	optional: dateRange
+},
+  {
+	route: "QUERY_BILL_HISTORY",
+	required: ["CONNECTION_NUMBER", "INVOICE_NUMBER"],
+	optional: dateRange
+},
+  {
+	route: "QUERY_BILL_HISTORY",
+	required: ["CUSTOMER_ID_TYPE", "CUSTOMER_ID"],
+	optional: dateRange
+}]
+
+fun matches(rule, keys) = 
+ isEmpty(rule.required -- keys) and isEmpty(keys -- (rule.required ++ rule.optional))
+ 
+var filters = vars.filters
+var keys = keysOf(filters filterObject((value) -> !isEmpty(value))) map ($ as String)
+var matched = (rules filter((value) -> matches(value, keys)))[0]
+---
+matched.route default "INVALID"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<choice doc:name="validate billingOperation" doc:id="f6850480-a2a7-4a83-bc43-c5e819e694d6">
+						<when expression='#[vars.billingOperation == "QUERY_BILL_PDF" or vars.billingOperation == "QUERY_INVOICE_PDF"]'>
+							<flow-ref doc:name="get-customerBill-pdf-zsmart-orchestratorSub_Flow" doc:id="b7c197ae-f414-4902-a9d9-1ba743a4afa6" name="get-customerBill-pdf-zsmart-orchestratorSub_Flow" />
+						</when>
+						<when expression='#[vars.billingOperation == "QUERY_BILL_HISTORY"]'>
+							<flow-ref doc:name="get-customerBill-zsmart-queryBillHistory-orchestratorSub_Flow" doc:id="0e9c0d79-5910-418e-92be-b0b6c4a3d640" name="get-customerBill-zsmart-queryBillHistory-orchestratorSub_Flow" />
+						</when>
+						<otherwise>
+							<raise-error doc:name="CUSTOMER_BILL:INVALID_FILTERS" doc:id="573b71c9-e330-4880-bb33-5c78bfed64e5" type="CUSTOMER_BILL:INVALID_FILTERS" description="Invalid filters combination: #[vars.parameters.FILTERS]. Please refer to the valid combinations" />
+						</otherwise>
+					</choice>
+				</when>
+				<otherwise >
+					<validation:is-false doc:name="validate RMCA parameters" doc:id="8e10dc79-c4b3-4886-93a2-5763debebf77" expression="#[isEmpty(vars.parameters.BILLING_NUMBER) and isEmpty(vars.filters default {})]" message="Customer Bill Error: One of (BILLING_NUMBER, FILTERS) needs to be present." />
+					<flow-ref doc:name="get-customerBill-rmca-orchestratorSub_Flow" doc:id="d2ffd5b6-d6b5-4a47-a180-da002bcc186f" name="get-customerBill-rmca-orchestratorSub_Flow" />
+				</otherwise>
+			</choice>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b546c623-00cf-4576-a806-2664d3f7d29c" type="VALIDATION:INVALID_BOOLEAN" >
+					<ee:transform doc:name="set validation error" doc:id="fc27d711-6344-4d07-9cb2-f516c275dda9" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "HTTP:BAD_REQUEST",
+    "message": error.description,
+    "messageServer": error.failingComponent default "VALIDATION:INVALID_BOOLEAN",
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="db291476-d954-4e61-88ef-b67fe3f47ff6" type="VALIDATION:MULTIPLE">
+					<ee:transform doc:name="set prepaid validation error" doc:id="57e2e985-8985-4349-86f6-de3d7cbe0860">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "HTTP:BAD_REQUEST",
+    "message": error.description,
+    "messageServer": error.failingComponent default "VALIDATION:MULTIPLE",
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="a563a9d2-6489-4883-9b9a-31b882c59cf5" type="CUSTOMER_BILL:INVALID_FILTERS">
+					<ee:transform doc:name="set filters error" doc:id="b44c7b52-0f6b-4e12-acfc-7d2d2aa05414">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var validCombinations = [
+    "INVOICE_NUMBER; BILLING_ACCOUNT",
+    "TRANSACTION_ID; INVOICE_TYPE; COMMENTS(optional)",
+    "CONNECTION_NUMBER; START_TIME(optional); END_TIME(optional)",
+    "CONNECTION_NUMBER; BILLING_ACCOUNT; START_TIME(optional); END_TIME(optional)",
+    "CONNECTION_NUMBER; INVOICE_NUMBER; START_TIME(optional); END_TIME(optional)",
+    "CUSTOMER_ID_TYPE; CUSTOMER_ID"
+  ]
+var errorMsg = error.description ++ ": " ++ write(validCombinations, "application/java")
+---
+{
+    "status": "400",
+    "code": "HTTP:BAD_REQUEST",
+    "message": errorMsg,
+    "messageServer": error.failingComponent default "CUSTOMER_BILL:INVALID_FILTERS",
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": errorMsg
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="6cc15c4c-1481-4d97-bea9-79e742b1a1dc" type="BILLING_HISTORY:INVALID_PARAMS" >
+					<ee:transform doc:name="set billingHistory error" doc:id="d17b7793-627c-4d62-af3f-83830bfcb6b1" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "BILLING_HISTORY:INVALID_PARAMS",
+    "message": "(CONNECTION_NUMBER; BILLING_ACCOUNT) and (CUSTOMER_ID_TYPE; CUSTOMER_ID) combination cant be empty at the same time.",
+    "messageServer": error.failingComponent default "BILLING_HISTORY:INVALID_PARAMS",
+    "cause": [
+        {
+            "origin": "customer-papi-services-v2",
+            "message": error.description,
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
 	</sub-flow>
 </mule>

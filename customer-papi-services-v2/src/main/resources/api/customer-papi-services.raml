@@ -1544,17 +1544,81 @@ mediaType:
   get:
     is: [security_client_id, tibcoHeaders]
     displayName: Get Customer Bill
-    description: Retrieves customer bill information based on the requested target system, RMCA will retrieve customer bill invoice information, ZSMART will retrieve information related to billing history, billing PDF or Invoice PDF.
+    description: |
+      Retrieves customer bill information. The parameters and filter
+      combinations that apply depend on the target system defined in the
+      `x-target-system` header (default `1`, RMCA).
+
+      ## RMCA (`x-target-system: 1`)
+
+      ### Parameters
+      | Parameter | Description |
+      |---|---|
+      | `ORIGIN` | Origin of the request. |
+      | `BILLING_NUMBER` | Billing number. |
+      | `NOTIFICATION_METHOD` | Notification method. |
+      | `NOTIFICATION_VALUE` | Notification value (destination for the notification method). |
+      | `FILTERS` | Additional filters in `KEY:VALUE;KEY:VALUE` format. |
+
+      At least one of `BILLING_NUMBER` or `FILTERS` is required.
+
+      ### Allowed FILTERS combinations
+      | Combination | Filters |
+      |---|---|
+      | By document | `documentType`, `documentNumber`, `BillingAccount`, `Phone` |
+      | By barcode | `Barcode`, `BILLING_NUMBER`, `BillingAccount`, `Phone` |
+
+      Example: `documentType:CC;documentNumber:92892829;BillingAccount:123452;Phone:3001234567`
+
+      ## ZSMART (`x-target-system: 2`)
+
+      ### FILTERS format
+      A string of `KEY:VALUE` pairs separated by semicolons (`;`).
+      Only the first `:` in each pair is used as the separator, so values
+      may contain `:` (for example, dates with time).
+
+      `BILLING_ACCOUNT:123452;CONNECTION_NUMBER:1501332623`
+
+      `FILTERS` is required for ZSMART.
+
+      ### Allowed combinations
+      | Query | Required filters | Optional filters |
+      |---|---|---|
+      | Bill PDF | `INVOICE_NUMBER`, `BILLING_ACCOUNT` | — |
+      | Invoice PDF | `TRANSACTION_ID`, `INVOICE_TYPE` | `COMMENTS` |
+      | Bill History | `CONNECTION_NUMBER` | `START_TIME`, `END_TIME` |
+      | Bill History | `CONNECTION_NUMBER`, `BILLING_ACCOUNT` | `START_TIME`, `END_TIME` |
+      | Bill History | `CONNECTION_NUMBER`, `INVOICE_NUMBER` | `START_TIME`, `END_TIME` |
+      | Bill History | `CUSTOMER_ID_TYPE`, `CUSTOMER_ID` | — |
+
+      ### Rules
+      - The combination must exactly match one row of the table: all required
+        filters must be sent and no additional filters are accepted.
+      - Filters with an empty value (`BILLING_ACCOUNT:`) are ignored.
+      - Filter names are case-insensitive.
+      - If a filter is sent more than once, only the first occurrence is used
+        and the following ones are ignored.
+        i.e in `CONNECTION_NUMBER:111;CONNECTION_NUMBER:222`
+        `CONNECTION_NUMBER = 111` is used.
+      - Dates use the `yyyy-MM-dd` format.
+
+      ## Errors
+      If the parameters do not match an allowed combination for the selected
+      target system, the response is `400 Bad Request`.
     headers:
       x-target-system:
         required: false
         type: string
         enum: ["1", "2"]
+        default: "1"
         example: "1"
         description: |
           Target system from where the data is retrieved:
           - 1 -> RMCA
           - 2 -> ZSMART (Whale Cloud)
+
+          The allowed query parameters and filter combinations depend on this
+          value. See the method description for each target system.
     queryParameters:
       ORIGIN:
         type: string
@@ -1618,32 +1682,52 @@ mediaType:
       is: [security_client_id, tibcoHeaders]
       displayName: Consultar balance de cliente y facturación
       description: |
-        Consult customer balance and postpaid billing account balance.
+        Retrieves the customer bill balance. The parameters that apply depend
+        on the target system defined in the `x-target-system` header
+        (default `1`, RMCA).
 
-        Retrieves customer billing information and queries
-        ZSmart billing account balance (queryAccountbalance — v0.8).
+        ## RMCA (`x-target-system: 1`)
 
-        Expired balances are not returned by ZSmart.
-        Negative balance = account has money.
-        Positive balance = account has debt.
+        | Parameter | Required | Description |
+        |---|---|---|
+        | `ORIGIN` | No | Origin of the request. |
+        | `CONNECTION_NUMBER` | Yes | Connection number. |
 
-        At least one search key must be provided:
-          - CONNECTION_NUMBER
-          - BILLING_ACCOUNT
-          - CUSTOMER_ID_TYPE + CUSTOMER_ID
+        ## ZSMART (`x-target-system: 2`)
 
-        CUSTOMER_ID_TYPE and CUSTOMER_ID must be
-        provided together when searching by document.
+        ### Allowed combinations
+        | Query | Required parameters | Optional parameters |
+        |---|---|---|
+        | ZSmart Billing Balance | `CONNECTION_NUMBER` | `BILLING_ACCOUNT`, `START_TIME`, `END_TIME` |
+        | Customer Billing Balance | `CUSTOMER_ID`, `CUSTOMER_ID_TYPE` | `START_TIME`, `END_TIME` |
+
+        ### Rules
+        - The combination must exactly match one row of the table: additional
+          parameters and mixed combinations are not accepted.
+        - Parameters with an empty value are ignored.
+        - If a parameter is sent more than once, only the first occurrence is used
+          and the following ones are ignored.
+          i.e in `?CONNECTION_NUMBER=111&CONNECTION_NUMBER=222`
+          `CONNECTION_NUMBER = 111` is used.
+        - Dates use the `yyyy-MM-dd` format.
+
+        ## Errors
+        If the parameters do not match an allowed combination for the selected
+        target system, the response is `400 Bad Request`.
       headers:
         x-target-system:
           required: false
           type: string
           enum: ["1", "2"]
+          default: "1"
           example: "1"
           description: |
             Target system from where the data is retrieved:
             - 1 -> RMCA
             - 2 -> ZSMART (Whale Cloud)
+
+            The allowed query parameters and filter combinations depend on this
+            value. See the method description for each target system.
       queryParameters:
         ORIGIN:
           type: string
