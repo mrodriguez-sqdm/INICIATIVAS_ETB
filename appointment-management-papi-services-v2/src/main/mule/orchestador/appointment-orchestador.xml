@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
 	<sub-flow name="appointment-get-orchestadorSub_Flow" doc:id="427b5c2f-e8aa-4d8f-a5a8-519c230c1fff" >
 		<set-variable value="#[attributes.queryParams]" doc:name="Save Params Values" doc:id="108eaeac-96f5-4751-9d7c-707ef156ec5b" variableName="parameters"/>
 		<set-variable value="#[attributes.headers]" doc:name="Save Headers Values" doc:id="39e54839-4daf-442c-852d-23e7c4d845d3" variableName="headers"/>
@@ -143,6 +144,33 @@ output application/json
 					</ee:message>
 				</ee:transform>
 				<set-variable value="400" doc:name="Set Variable" doc:id="20792db7-5d58-47e9-bc28-2bd82172ea2a" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="appointment-get-consultation-criteria-orchestadorSub_Flow" doc:id="980ccfba-b844-473f-b972-284854741e3b" >
+		<choice doc:name="Choice" doc:id="b58b3d80-49d2-499b-9b2e-5f5e728ed3e6" >
+			<when expression='#[!isEmpty(trim((attributes.queryParams.ACTIVITY_ID default "") as String))]'>
+				<flow-ref doc:name="appointments-get-activity-id-orchestadorSub_Flow" doc:id="118e1bcd-71f8-47ed-b490-dff1436eb1f6" name="appointments-get-activity-id-orchestadorSub_Flow"/>
+			</when>
+			<when expression='#[!isEmpty(trim((attributes.queryParams.CUSTOMER_ID_TYPE default "") as String)) and !isEmpty(trim((attributes.queryParams.CUSTOMER_ID default "") as String))]'>
+				<flow-ref doc:name="appointments-get-orchestadorSub_Flow" doc:id="77a5ed51-a019-4743-9fa9-07cfea290596" name="appointments-get-orchestadorSub_Flow" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message" doc:id="9d514512-cc8e-42e4-91d3-8d8dfe80b40f" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": 400,
+  "code": "BAD REQUEST",
+  "message": {
+    "message": "Inquiry data is missing: You must send Activity ID or Identification Number and Identification Type."
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="400" doc:name="Set Variable" doc:id="7c6e8ac1-eca6-4559-8197-2ad895aab69c" variableName="httpStatus" />
 			</otherwise>
 		</choice>
 	</sub-flow>
@@ -340,6 +368,25 @@ output application/json
 				<set-variable value="400" doc:name="Set Variable" doc:id="989ebe87-1214-4b8c-acae-e2c0e684fc48" variableName="httpStatus" />
 			</otherwise>
 		</choice>
+	</sub-flow>
+	<sub-flow name="appointments-get-activity-id-orchestadorSub_Flow" doc:id="8831dcb2-bc9a-4883-8622-45311845cc3b" >
+		<set-variable value="#[attributes.headers]" doc:name="Set Variable" doc:id="fc7c6e88-f1ff-4161-99e5-33425c45b035" variableName="headers"/>
+		<flow-ref doc:name="get-an-activity-client" doc:id="e1643fcf-12cf-4845-8735-c4bc5ff2cb6f" name="get-an-activity-client"/>
+		<ee:transform doc:name="Transform Message" doc:id="406fca9a-f606-4179-9f1a-a87210550241">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if ( payload.status != 200 ) payload
+else {
+	"code": 200,
+	"message": "Successfuly Transaction.",
+	"appointments": payload
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
 	</sub-flow>
 	<sub-flow name="appointment-post-appointments-orchestadorSub_Flow" doc:id="429252ad-ac84-4a9a-8daa-d2e45e6d7b6e" >
 		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="f3d2d8a2-3bcc-4c38-b23d-3af44258fa1c" variableName="payloadRequest"/>

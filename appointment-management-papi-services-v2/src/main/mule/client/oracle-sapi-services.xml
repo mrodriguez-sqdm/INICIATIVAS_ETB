@@ -41,4 +41,46 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 }]]]></http:headers>
 		</http:request>
 	</sub-flow>
+	<sub-flow name="get-an-activity-client" doc:id="f3644145-85e7-4f66-bc41-5f9346ff641c" >
+		<try doc:name="Try" doc:id="97b58cac-7a92-417c-b85b-3c0c6353cde8" >
+			<http:request doc:name="Call oracle sapi" doc:id="5a5ae34e-39f0-4fc2-9e0c-ec34e4bdc2ae" config-ref="Oracle-Sapi-HTTP_Request_configuration" path="${oracle-sapi.resources.activities.get.path}">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"source" : attributes.headers.'source',
+	"X-CORRELATION-ID": correlationId,
+	"name" : attributes.headers.'name',
+	"client_secret" : p('credentials.client_secret'),
+	"client_id" : p('credentials.client_id'),
+	"systemId": attributes.headers.systemId
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"activityId" : attributes.queryParams.ACTIVITY_ID
+}]]]></http:uri-params>
+		</http:request>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4af16089-8d57-4372-9ac0-0cac7facae6c" >
+					<ee:transform doc:name="Transform Message" doc:id="0b2794f7-fba1-4b92-831a-f6b894ae7bf4" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": error.exception.errorMessage.payload.status default 400,
+	"code": error.exception.errorMessage.payload.title default "BAD REQUEST",
+	"message": {
+		"message": error.exception.errorMessage.payload.detail default "Error processing your consultation request."
+	}
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[200]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
 </mule>
