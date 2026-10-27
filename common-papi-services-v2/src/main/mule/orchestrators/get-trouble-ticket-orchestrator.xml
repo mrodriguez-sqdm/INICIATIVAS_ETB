@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-trouble-ticket-orchestrator-sub-flow"
+		doc:id="f13b7c5a-4e9d-4016-b1a3-8d5f2e6a0c37">
+		<ee:transform doc:name="set get pqr request"
+			doc:id="c46e0f8d-7120-4349-e4d6-1a8c5b9d3f60">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret" : p('secure::api.clientSecret'),
+	"client_id" : p('secure::api.clientId'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID" default attributes.headers."x-correlation-id" default correlationId,
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				<ee:set-variable variableName="queryParameters"><![CDATA[%dw 2.0
+import substringBefore, substringAfter from dw::core::Strings
+output application/json skipNullOn="everywhere"
+var filters = (
+    ((attributes.queryParams.FILTERS default "") splitBy ";")
+        filter ((item) -> item contains ":")
+        reduce ((item, acc = {}) -> acc ++ {
+            (trim(item substringBefore ":")): trim(item substringAfter ":")
+        })
+) default {}
+---
+{
+	id: attributes.queryParams.id,
+	pqrNumber: attributes.queryParams.pqrId,
+	customerDocumentType: attributes.queryParams.documentType,
+	customerDocumentNumber: attributes.queryParams.documentNumber,
+	connectionNumber: attributes.queryParams.connectionNumber,
+	billingAccount: attributes.queryParams.billingAccount,
+	cun: attributes.queryParams.cun,
+	assignedUser: filters.usuarioAsignado,
+	queryType: filters.tipoConsulta,
+	serviceType: filters.tipoServicio,
+	receptionChannel: filters.canalRecepcion,
+	businessDays: filters.diasHabiles,
+	status: filters.estado
+}]]></ee:set-variable>
+				<ee:set-variable variableName="limit"><![CDATA[%dw 2.0
+output application/json
+---
+attributes.queryParams.LIMIT]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="get pqr request"
+			doc:id="9a1c4e7b-3f20-4d68-b5e2-7c0a9d3f1b64"
+			message="#[vars.queryParameters]" />
+		<flow-ref doc:name="get-pqr-datalogic-sapi-client-sub-flow"
+			doc:id="d57f1a9e-8231-4450-f5e7-2b9d6c0e4a71"
+			name="get-pqr-datalogic-sapi-client-sub-flow" />
+		<ee:transform doc:name="apply limit"
+			doc:id="e68a2b0f-9342-4561-a6f8-3c0e7d1f5b82">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+---
+{
+    code: payload.code,
+    message: payload.message,
+    pqr: if (isEmpty(vars.limit)) payload.pqr
+        else payload.pqr filter ((item, index) -> index < vars.limit as Number)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
