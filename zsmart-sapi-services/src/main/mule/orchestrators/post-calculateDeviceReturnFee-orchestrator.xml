@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="calculateDeviceReturnFee-zsmart-orchestrator"
+		doc:id="37a9ec3c-f14e-4bf4-9b6d-0c75a22ee836">
+		<try doc:name="Try" doc:id="a8f44ee8-7ff0-4a4e-bc87-aa2f52c823cd">
+			<logger level="INFO" doc:name="Log Orchestration Start"
+				doc:id="e9ee008b-e215-4eca-a979-e33dd18de486"
+				message='#["ORCHESTRATOR START | cid=" ++ correlationId ++ " | operation=POST /calculate-device-return-fee"]' />
+			<ee:transform doc:name="set initialPayload"
+				doc:id="addd1695-774a-4f1a-af0d-71df53463deb">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform
+				doc:name="set subscriberProfile auth parameters"
+				doc:id="8fc5c500-3370-4a1f-abb1-81eebef1258e">
+				<ee:message />
+				<ee:variables>
+					<ee:set-variable variableName="zsmartAuthParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	appCode: p('zsmartToken.auth.subscriberProfile.appCode'),
+	appSecret: p('secure::zsmartToken.auth.subscriberProfile.appSecret'),
+	privateKey: p('secure::zsmartToken.auth.subscriberProfile.privateKey')
+}]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<flow-ref doc:name="zsmart-auth-get-token"
+				doc:id="668d4555-9a67-431e-9ff6-e854b4e770f5"
+				name="zsmart-auth-get-token" />
+			<ee:transform
+				doc:name="set zsmart calculateDeviceReturnFee request"
+				doc:id="2c76685b-f380-4e55-98b6-589c1f465086">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+---
+{
+	access_token: vars.zsmartToken,
+	method: "calculateDeviceReturnFee",
+	version: "1.0",
+	content: vars.initialPayload
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="billing-zsmart-client"
+				doc:id="f0e9061a-221a-41be-ab69-3eb26813ec21"
+				name="billing-zsmart-client" />
+			<choice doc:name="validate zsmart response1"
+				doc:id="624e2575-9c64-4185-8a61-e490f8b9d6fd">
+				<when
+					expression='#[(payload.res_code != "00000" or payload.result.resultCode != "0000")]'>
+					<ee:transform doc:name="set zsmartError"
+						doc:id="088e0e14-8849-4a64-9425-c6155225e9ab">
+						<ee:message />
+						<ee:variables>
+							<ee:set-variable variableName="zsmartError"><![CDATA[%dw 2.0
+output application/json
+var resCode = payload.res_code default "99999"
+var resultResCode = payload.result.resultCode default "99999"
+var resMessage = payload.res_message default "System Unexpected Error"
+var resultResMessage = payload.result.resultMsg  default "Business Unexpected Error"
+---
+if(payload.result?)
+    resultResCode ++ ": " ++ resultResMessage
+else
+    resCode ++ ": " ++ resMessage]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<choice doc:name="error type"
+						doc:id="a5aac1d3-ba08-4a73-837b-f357551ab1c4">
+						<when expression="#[payload.result?]">
+							<raise-error doc:name="ZSMART:BUSINESS_ERROR"
+								doc:id="5e2e3a24-de9b-420a-8b9b-ca4e8fdc3ac8"
+								type="ZSMART:BUSINESS_ERROR" description="#[vars.zsmartError]" />
+						</when>
+						<otherwise>
+							<raise-error doc:name="ZSMART:SYSTEM_ERROR"
+								doc:id="47a1b5a4-2a3f-4b3a-b275-49b21d309df1"
+								type="ZSMART:SYSTEM_ERROR" description="#[vars.zsmartError]" />
+						</otherwise>
+					</choice>
+				</when>
+				<otherwise>
+					<ee:transform doc:name="set response"
+						doc:id="c49ff59f-399d-443c-9eaf-1f77b11b853b">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "status": "200",
+  "message": "Success",
+  "result": payload
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</otherwise>
+			</choice>
+			<logger level="INFO" doc:name="Log Orchestration End"
+				doc:id="d43cabfe-933b-4912-9e21-096292120b1b"
+				message='#["ORCHESTRATOR END | cid=" ++ correlationId ++ " | operation=POST /calculate-device-return-fee"]' />
+			<error-handler>
+				<on-error-continue enableNotifications="true"
+					logException="true" doc:name="On Error Continue"
+					doc:id="cd6e3dc1-9b12-483d-99c5-d2b9fb35f7e5"
+					type="ZSMART:BUSINESS_ERROR">
+					<ee:transform doc:name="set business error"
+						doc:id="94b3b472-75e1-4efe-a949-a84004d0a719">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "400",
+    "code": "ZSMART:BUSINESS_ERROR",
+    "message": error.description,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "zsmart-sapi-services",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+400]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+				<on-error-continue enableNotifications="true"
+					logException="true" doc:name="On Error Continue"
+					doc:id="2f06f29c-f6aa-4210-ba96-fd090c4c1a5c"
+					type="ZSMART:SYSTEM_ERROR">
+					<ee:transform doc:name="set system error"
+						doc:id="93b13080-5dfe-444f-9c41-bc414b42bd05">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "500",
+    "code": "ZSMART:SYSTEM_ERROR",
+    "message": error.description,
+    "messageServer": error.description,
+    "cause": [
+        {
+            "origin": "zsmart-sapi-services",
+            "message": error.description
+        }
+    ]
+}]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

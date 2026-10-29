@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+	xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<sub-flow
+		name="post-customerBill-deviceReturnFee-orchestratorSub_Flow"
+		doc:id="3340c9a8-2ea0-4cbb-82f9-89303b2c1c88">
+		<ee:transform doc:name="set headers - initialPayload"
+			doc:id="3a1302aa-c5e0-4218-a43e-287c24b24ad3">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"client_secret": p('zsmart-sapi.security.client-secret'),
+	"client_id": p('zsmart-sapi.security.client-id'),
+	"name": attributes.headers.name,
+	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID",
+	"source": attributes.headers.source,
+	"systemId": attributes.headers.systemId
+}]]></ee:set-variable>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform
+			doc:name="set Zsmart calculateDeviceReturnFee Request"
+			doc:id="6b919b04-4a8e-42ae-badf-8d9f656465ca">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+---
+{
+    basePath: p("zsmart-sapi.base-path"),
+    host: p("zsmart-sapi.host"),
+    port: p("zsmart-sapi.port"),
+    method: "POST",
+    path: p('zsmart-sapi.resources.calculateDeviceReturnFee.path'),
+    body: payload - "chargeType" - "notes",
+    headers: vars.headers default {},
+    queryParameters: {},
+    uriParameters: {}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="billingAccount"><![CDATA[%dw 2.0
+output application/json
+---
+vars.filters.'BILLING_ACCOUNT']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="System Generic (Zsmart Billing History)"
+			doc:id="21b16afc-067e-4d5a-b272-4d93bddc1e6d"
+			name="generic-zsmart-sapi-clientSub_Flow" />
+		<ee:transform
+			doc:name="set device return fee calculation response"
+			doc:id="dca9190e-d312-4ebd-bfe5-5461a227b5d9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import some, every from dw::core::Arrays
+var zsmartResponse = payload.result.result - "resultCode" - "resultMsg"
+output application/json  skipNullOn="everywhere"
+---
+{
+  "codeResponse": "200",
+  "messageResponse": "OK",
+  "taxCalculation": zsmartResponse
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>
