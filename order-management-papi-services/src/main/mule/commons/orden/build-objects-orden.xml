@@ -97,11 +97,12 @@ fun obtenerValorFiltro(tipoTramite) =
 output application/json
 
 import modules::GlobalFunctions as global
+import * from modules::ColombiaHolidays
 
 var tramite = upper(trim(vars.requestOrder.through.throughType default ""))
 
-var UMBRAL_DIAS = 3
-var DIA_CORTE_FIN_MES = 30
+var DIAS_HABILES = 3
+var FESTIVOS_ADICIONALES = parseAdicionales(p('festivos.adicionales'))
 
 fun aNumero(v, porDefecto = 0) = do {
     var s = trim((v default "") as String)
@@ -110,7 +111,6 @@ fun aNumero(v, porDefecto = 0) = do {
 }
 
 var fecha_corte = aNumero(vars.responseMongo.result[0].Fecha_Corte_Facturacion)
-
 
 fun pad2(n: Number): String = if (n < 10) "0" ++ (n as String) else (n as String)
 
@@ -121,7 +121,7 @@ fun primerDiaMes(fecha: Date): Date = crearFecha(fecha.year, fecha.month, 1)
 
 fun ultimoDiaMes(fecha: Date): Date = (primerDiaMes(fecha) + |P1M|) - |P1D|
 
-// Si el mes no tiene ese día (ej. 30 de febrero), usa el último día del mes
+// Si el mes no tiene ese día (ej. 31 en noviembre), usa el último día del mes
 fun fechaEnMes(base: Date, dia: Number): Date = do {
     var ultimo = ultimoDiaMes(base).day
     ---
@@ -129,17 +129,20 @@ fun fechaEnMes(base: Date, dia: Number): Date = do {
 }
 
 fun fechaEjecucionCancelacionVoluntaria(fechaCorteFacturacion: Number): Date = do {
-    var hoy = (now() >> "UTC-5") as Date
+    var hoy = (now() >> "America/Bogota") as Date
     var intDiaCorte = fechaCorteFacturacion default 0
     var corteEsFinDeMes = (intDiaCorte <= 0) or (intDiaCorte > 31)
-    var diaCorte = if (corteEsFinDeMes) DIA_CORTE_FIN_MES else intDiaCorte
-    var fechaCorteMesActual = fechaEnMes(hoy, diaCorte)
-    var diasParaCorte = daysBetween(hoy, fechaCorteMesActual)
+    var mesSiguiente = primerDiaMes(hoy) + |P1M|
+
+    var corteMesActual =
+        if (corteEsFinDeMes) ultimoDiaMes(hoy) else fechaEnMes(hoy, intDiaCorte)
+    var corteMesSiguiente =
+        if (corteEsFinDeMes) ultimoDiaMes(mesSiguiente) else fechaEnMes(mesSiguiente, intDiaCorte)
+
+    var diasNoHabiles = countNonBusinessDays(hoy, corteMesActual, FESTIVOS_ADICIONALES)
+    var enVentana = hoy.day > (corteMesActual.day - (DIAS_HABILES + diasNoHabiles))
     ---
-    if (diasParaCorte >= UMBRAL_DIAS)
-        fechaCorteMesActual
-    else
-        fechaEnMes(primerDiaMes(hoy) + |P1M|, diaCorte)
+    (if (enVentana) corteMesSiguiente else corteMesActual) + |P1D|
 }
 
 fun generarFechaEjecucionPorCiclo(tramite: String, fechaCorteFacturacion: Number): Date | Null =
@@ -149,7 +152,6 @@ fun generarFechaEjecucionPorCiclo(tramite: String, fechaCorteFacturacion: Number
     }
 
 var fecha = generarFechaEjecucionPorCiclo(tramite, fecha_corte)
-
 var cf = vars.responseMongo.result[0]
 ---
 {  

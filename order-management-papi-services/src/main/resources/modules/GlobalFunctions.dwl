@@ -1,5 +1,7 @@
 %dw 2.0
 
+import try from dw::Runtime
+
 /*********************************************************************************************
 ** Modulo para implementar funciones globales para la API order-management-papi-services (v1)*
 **********************************************************************************************/
@@ -33,20 +35,38 @@ fun scoreVigente(scoreObj) =
         (fechaHoy - fechaScore) as Number {unit: "days"} <= 30
     }
 
-// Formatos de Fechas    
-fun parseFechaFlexible(valor) =
-    if (isEmpty(valor)) "0001-01-01T00:00:00.000Z"
+var FECHA_POR_DEFECTO = "0001-01-01T00:00:00.000Z"
+
+// Convierte con el formato dado; si la fecha es inválida, devuelve la fecha por defecto
+fun fechaAISO(valor: String, formato: String): String = do {
+    var r = try(() -> valor as Date {format: formato})
+    ---
+    if (r.success) (r.result as String {format: "yyyy-MM-dd"}) ++ "T00:00:00.000Z"
+    else FECHA_POR_DEFECTO
+}
+
+// Fechas con "/": prefiere dd/MM/yyyy; si el 2º segmento es > 12, es MM/dd/yyyy
+fun formatoConBarras(valor: String): String = do {
+    var partes = valor splitBy "/"
+    var p1 = partes[0] as Number
+    var p2 = partes[1] as Number
+    ---
+    if (p1 <= 12 and p2 > 12) "M/d/yyyy" else "d/M/yyyy"
+}
+
+fun parseFechaFlexible(valor) = do {
+    var v = if (valor is String) trim(valor) else valor
+    ---
+    if (isEmpty(v)) FECHA_POR_DEFECTO
+    else if (v matches /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?$/)
+        v as String                              // ya viene en ISO completo
+    else if (v matches /^\d{4}-\d{2}-\d{2}$/)
+        fechaAISO(v, "yyyy-MM-dd")
+    else if (v matches /^\d{1,2}\/\d{1,2}\/\d{4}$/)
+        fechaAISO(v, formatoConBarras(v))
     else
-        (
-            if (valor matches /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?$/)
-                valor as String  // ya viene en formato ISO completo, se deja tal cual
-            else if (valor matches /^\d{4}-\d{2}-\d{2}$/)
-                ((valor as Date {format: "yyyy-MM-dd"}) as String {format: "yyyy-MM-dd"}) ++ "T00:00:00.000Z"
-            else if (valor matches /^\d{2}\/\d{2}\/\d{4}$/)
-                ((valor as Date {format: "dd/MM/yyyy"}) as String {format: "yyyy-MM-dd"}) ++ "T00:00:00.000Z"
-            else
-                "0001-01-01T00:00:00.000Z"
-        )
+        FECHA_POR_DEFECTO
+}
         
 fun homologarAccion(tipoTramite) =
     tipoTramite match {
