@@ -182,9 +182,9 @@ var errorBody = error.cause.errorMessage.payload default {}
 		</try>
 	</sub-flow>
 	<sub-flow name="patch-actitivies-appointment-mgmt-papi-clientSub_Flow" doc:id="5239243d-c2a4-4862-a329-a70b19e7ee9a" >
-		<try doc:name="Try" doc:id="984140e1-c804-469c-be62-dc04cc8c17ca" >
-			<http:request method="PATCH" doc:name="Request" doc:id="b9909566-6ec4-4fb0-b0eb-eac58f88f7c8" config-ref="appointment_mgmt_papi_config" path="${appointment-mgmt-papi.resources.appointments.base-path}${appointment-mgmt-papi.resources.appointments.patch.path}" >
-				<http:headers ><![CDATA[#[output application/java
+		<try doc:name="Try" doc:id="e61dd43d-3c6c-4566-a89e-5407d761b48f" >
+			<http:request method="PATCH" doc:name="Request" doc:id="b9909566-6ec4-4fb0-b0eb-eac58f88f7c8" config-ref="appointment_mgmt_papi_config" path="${appointment-mgmt-papi.resources.appointments.base-path}${appointment-mgmt-papi.resources.appointments.patch.path}">
+				<http:headers><![CDATA[#[output application/java
 ---
 {
 	"client_secret" : p('appointment-mgmt-papi.security.client_secret'),
@@ -194,133 +194,19 @@ var errorBody = error.cause.errorMessage.payload default {}
 	"source": attributes.headers.source,
 	"systemId": attributes.headers.systemId
 }]]]></http:headers>
-				<http:query-params ><![CDATA[#[attributes.queryParams]]]></http:query-params>
+				<http:query-params><![CDATA[#[attributes.queryParams]]]></http:query-params>
 			</http:request>
 			<error-handler >
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Client Errors" doc:id="1bd87098-eba5-4ca1-a3cc-81b165acc1fd" type="HTTP:BAD_REQUEST, HTTP:UNAUTHORIZED, HTTP:FORBIDDEN, HTTP:NOT_FOUND, HTTP:METHOD_NOT_ALLOWED, HTTP:NOT_ACCEPTABLE, HTTP:UNSUPPORTED_MEDIA_TYPE, HTTP:TOO_MANY_REQUESTS" >
-					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 400]" doc:name="Set Variable" doc:id="e4c3e1a2-c769-472a-affb-d67f91875793" variableName="httpStatus" />
-					<ee:transform doc:name="Transform Message" doc:id="11a94bec-e132-4824-9027-95266eed3d92" >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="833518f0-5fec-43aa-a8b6-cda7bbd93f95" >
+					<ee:transform doc:name="Transform Message" doc:id="06a36416-6d3d-4130-9f0f-cccef8b3462a" >
 						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-var errorBody = error.cause.errorMessage.payload default {}
-var papiError = if (errorBody is Object and errorBody.status?) errorBody else null
----
-if (papiError != null) 
-	papiError
-else {
-	"status": vars.httpStatus,
-	"code": error.errorType.identifier default "CLIENT_ERROR",
-	"message": {
-		"message": if (errorBody is String and !isEmpty(errorBody)) 
-					errorBody 
-				   else 
-					error.description default "Error en la solicitud al servicio de agendamientos."
-	},
-	"messageServer": error.description default "Error en la solicitud al servicio de agendamientos.",
-	"cause": [
-		{
-			"origin": "customer-xapi-services",
-			"message": "Error en llamada a appointment-papi-services: " ++ (error.errorType.identifier default "HTTP_CLIENT_ERROR")
-		}
-	]
-}]]></ee:set-payload>
+							<ee:set-payload ><![CDATA[error.exception.errorMessage.payload]]></ee:set-payload>
 						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[error.exception.errorMessage.payload.status default 500]]></ee:set-variable>
+						</ee:variables>
 					</ee:transform>
-				</on-error-continue>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - HTTP Server Errors" doc:id="bb41ca66-5d92-4c88-b288-7f847fe492ca" type="HTTP:INTERNAL_SERVER_ERROR, HTTP:BAD_GATEWAY, HTTP:SERVICE_UNAVAILABLE, HTTP:GATEWAY_TIMEOUT" >
-					<set-variable value="#[error.cause.errorMessage.attributes.statusCode default 500]" doc:name="Set Variable" doc:id="c645c9fe-6e27-470b-9239-baea32eb5f59" variableName="httpStatus" />
-					<ee:transform doc:name="Transform Message" doc:id="87ec5350-7a77-4d48-b735-08a7dd64d39e" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-var errorBody = error.cause.errorMessage.payload default {}
-var papiError = if (errorBody is Object and errorBody.status?) errorBody else null
----
-if (papiError != null) 
-	papiError
-else {
-	"status": vars.httpStatus,
-	"code": if (vars.httpStatus == 503) "SERVICE_UNAVAILABLE" 
-			else if (vars.httpStatus == 504) "GATEWAY_TIMEOUT"
-			else "PAPI_ERROR",
-	"message": {
-		"message": if (errorBody is String and !isEmpty(errorBody)) 
-					errorBody 
-				   else if (vars.httpStatus == 503)
-					"El servicio de agendamiento no está disponible temporalmente. Por favor intente más tarde."
-				   else if (vars.httpStatus == 504)
-					"Tiempo de espera agotado al conectar con el servicio de agendamiento."
-				   else 
-					"Error en el servicio de agendamiento."
-	},
-	"messageServer": error.description default "Error en el servicio de agendamiento.",
-	"cause": [
-		{
-			"origin": "appointment-xapi-services",
-			"message": "Error en llamada a appointment-papi-services: " ++ (error.errorType.identifier default "HTTP_SERVER_ERROR")
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Connectivity" doc:id="1a750048-0f6a-447e-b8b9-b8e566b4f4a7" type="HTTP:CONNECTIVITY, HTTP:TIMEOUT, MULE:CONNECTIVITY, MULE:RETRY_EXHAUSTED" >
-					<set-variable value="503" doc:name="Set Variable" doc:id="f99802f8-0fb3-4bf9-bc1d-9af8ca6577d0" variableName="httpStatus" />
-					<ee:transform doc:name="Transform Message" doc:id="194e0e0d-42db-405f-a06c-0f9f3af6020c" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-var isTimeout = (error.errorType.identifier default "") contains "TIMEOUT"
----
-{
-	"status": 503,
-	"code": if (isTimeout) "TIMEOUT" else "SERVICE_UNAVAILABLE",
-	"message": {
-		"message": if (isTimeout) 
-					"Tiempo de espera agotado al conectar con el servicio de agendamiento. Por favor intente nuevamente."
-				   else 
-					"No fue posible conectar con el servicio de agendamiento. Por favor intente más tarde."
-	},
-	"messageServer": error.description default "Error en el servicio de agendamiento.",
-	"cause": [
-		{
-			"origin": "appointment-xapi-services",
-			"message": "Error de conectividad con appointment-papi-services: " ++ (error.errorType.identifier default "CONNECTIVITY_ERROR")
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
-				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue - Any" doc:id="97206cb6-b9a0-4807-b034-d284e9d0137c" type="ANY" >
-					<set-variable value="500" doc:name="Set Variable" doc:id="203c8d62-ca0b-49af-aa3d-62457a4487c7" variableName="httpStatus" />
-					<ee:transform doc:name="Transform Message" doc:id="b9160cd2-bf62-4764-babc-ae790f923fd9" >
-						<ee:message >
-							<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-var errorBody = error.cause.errorMessage.payload default {}
----
-{
-	"status": 500,
-	"code": "INTERNAL_SERVER_ERROR",
-	"message": {
-		"message": if (errorBody is String and !isEmpty(errorBody)) 
-					errorBody 
-				   else 
-					"Error inesperado en el servicio de agendamiento."
-	},
-	"messageServer": error.description default "Error en el servicio de agendamiento.",
-	"cause": [
-		{
-			"origin": "appointment-xapi-services",
-			"message": "Error inesperado en llamada a appointment-papi-services: " ++ (error.errorType.identifier default "UNKNOWN_ERROR")
-		}
-	]
-}]]></ee:set-payload>
-						</ee:message>
-					</ee:transform>
-				</on-error-continue>
+				</on-error-propagate>
 			</error-handler>
 		</try>
 	</sub-flow>
