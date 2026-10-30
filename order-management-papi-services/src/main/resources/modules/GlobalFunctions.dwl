@@ -139,3 +139,7 @@ fun homologarTipo(typeValue, subTypeValue) =
 
 fun valorCaracteristica(lista, nombre) =
     ((lista default []) filter ((c) -> c.Caracteristica == nombre))[0].Valor
+
+fun obtenerPrecioPorCanal(preciosOferta: Array | Null, canal: String = "DISTRIBUIDOR") =
+    ((preciosOferta default []) filter ((p) ->
+        upper(trim(p.canal_venta default "")) == upper(trim(canal))))[0].precio_con_iva

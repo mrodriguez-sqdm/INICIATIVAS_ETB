@@ -93,7 +93,7 @@ output application/json
 				<flow-ref doc:name="Build CMP_OFERTA_PRODUCTO" doc:id="7ba5d2c7-103d-4c53-879d-31f53266bf02" name="build-cmp-oferta-producto-objects-ordenSub_Flow" target="responseOfertaProducto"/>
 			</route>
 			<route >
-				<flow-ref doc:name="Get Department" doc:id="4d3f6d12-0bf7-45c6-81e6-1837919dd7c2" name="get-departments-ordenSub_Flow" target="responseDepartment"/>
+				<flow-ref doc:name="Get Department" doc:id="4d3f6d12-0bf7-45c6-81e6-1837919dd7c2" name="get-departments-ordenSub_Flow" target="responseDepartment" />
 			</route>
 		</scatter-gather>
 		<ee:transform doc:name="objeto MDM_ORDEN" doc:id="f13b9fe9-aa6e-4842-b4d1-1247c3dfa532" >
@@ -106,8 +106,7 @@ import modules::GlobalFunctions as global
 var idCatalogo = vars.objectServicioActivo.Bundles[0].id_catalogo
 var bundlesConstantesNull = ["opcionales", "caracteristicas_bundle", "estados_bundle", "bundle_auxiliar"]
 
-var precioReposicion = ((vars.responseOfertaProducto.precio_oferta default [])
-    filter ((p) -> upper(trim(p.canal_venta default "")) == "DISTRIBUIDOR"))[0].precio_con_iva
+var precioReposicion = global::obtenerPrecioPorCanal(vars.responseOfertaProducto.precio_oferta)
 
 fun crearFase(fase, estado, resultado = null, causal = null) = {
     Fase: fase,
@@ -183,7 +182,7 @@ fun crearFase(fase, estado, resultado = null, causal = null) = {
           },
           {
             Caracteristica: "PERFIL",
-            Valor: "CALL",
+            Valor: "VALIDADOR CALL",
             Accion: "",
             actualizacion_extractor: "1"
           },
@@ -267,8 +266,7 @@ fun crearFase(fase, estado, resultado = null, causal = null) = {
 		    crearFase("ORDEN CREADA", "CLIENTE CARGADO"),
 		    crearFase("FACTURA", "EXITOSO"),
 		    crearFase("PAGO", "EXITOSO"),
-		    crearFase("COBRO SIM", "EXITOSO"),
-		    crearFase("DESPACHO OL", "EXITOSO", "", "OK")
+		    crearFase("COBRO SIM", "EXITOSO")
 		],
         Cuenta_Facturacion: vars.objectServicioActivo.Cuenta_Facturacion,
         Cuenta_Facturacion_Equipo: null,
@@ -297,6 +295,7 @@ fun crearFase(fase, estado, resultado = null, causal = null) = {
 			</ee:message>
 		</ee:transform>
 		<flow-ref doc:name="call to mongo Sapi" doc:id="b0f948af-348c-4d53-8065-2cae6c11effd" name="mongo-dynamic-query-subFlow" target="resultadoOrden" />
+		<flow-ref doc:name="Dispatch OL" doc:id="134c0515-e949-4a43-b8cf-e71c005b92bf" name="post-Dispatch-OL-ordenSub_Flow" target="dispatchOl" />
 		<ee:transform doc:name="Set Response" doc:id="62c6c060-8069-4e52-8102-4e702ea948d1" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
@@ -308,10 +307,76 @@ output application/json
     order: {
         orderNumber: vars.orderNumber default "",
         cun: vars.cunNumber.cun,
-        rulesApplied: vars.cumulativeRules.reglas
+        rulesApplied: vars.cumulativeRules.reglas,
+        phase: {
+        	name: if(vars.dispatchOl.exitoso default true) "ENTREGA OL" else "COBRO SIM",
+        	status: if(vars.dispatchOl.exitoso default true) "EN PROCESO" else "EXITOSO",
+        	detail: if(vars.dispatchOl.exitoso default true) "OK" else "No se creo la orden de despacho OL, detalle: " ++ (vars.dispatchOl.resultadoDataLogic.responseBody.response.code default "") ++ " - " ++ (vars.dispatchOl.resultadoDataLogic.responseBody.response.customDescription default "")
+        	
+        }
     }
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+		<async doc:name="Async" doc:id="1607cab4-f344-4556-9168-e067ef0bc676" >
+			<flow-ref doc:name="create MDM_ORDEN_SERVICIO" doc:id="f7e5202d-646e-4b23-b480-212fbd7faea0" name="build-MDM_ORDEN_SERVICIO-ordenSub_Flow"/>
+		</async>
+	</sub-flow>
+	<sub-flow name="update-order-reposition-orchestratorSub_Flow" doc:id="4c0cc5c8-88cd-430c-8f40-7807558f217c" >
+		<ee:transform doc:name="request UPDATE order" doc:id="fc6458ab-fdf5-4e8c-b66d-c1e6c5511485" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+import modules::GlobalFunctions as global
+
+fun crearFase(fase, estado, resultado = null, causal = null) = {
+    Fase: fase,
+    Fecha_Ejecucion: global::fechaMongo(),
+    Resultado: resultado,
+    Causal_Fase: causal,
+    Usuario_Creo: "PortalLTE",
+    Estado: estado,
+    Detalle_Fase: [
+        {
+            Fecha_Registro: global::fechaMongo(),
+            Codigo: null,
+            Detalle: null
+        }
+    ],
+    Reintentos: 0,
+    actualizacion_extractor: "1"
+}
+
+
+---
+{
+  "query": {
+    "update": p('mongo-db-sapi.collections.orden-movil'),
+    "updates": [
+      {
+        "q": {
+          "Numero_Orden": vars.orderNumber
+        },
+        "u": {
+          "\$push": {
+          	"Fecha_Modificacion": global::fechaMongo(),
+            "Fase_Orden": {
+              "\$each": [
+                	crearFase("DESPACHO OL", "EXITOSO","","OK"),
+                	crearFase("ENTREGA OL", "EN PROCESO","","OK")
+              ]
+            }
+          }
+        },
+        "upsert": false,
+        "multi": false
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to Mongo" doc:id="d9f98e05-8f0c-4e97-aff5-ddf47394f01a" name="mongo-dynamic-query-subFlow" target="responseMongo" />
 	</sub-flow>
 </mule>

@@ -407,6 +407,14 @@ vars.objectCliente_Tramite update {
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
+
+fun homologarTipoPlan(tipoPlan: String | Null): String =
+    upper(trim(tipoPlan default "")) match {
+        case "POSTPAGO" -> "POSPAGO"
+        case "POSPAGO"  -> "POSPAGO"
+        else            -> "PREPAGO"
+    }
+
 ---
 {
 	"query": {
@@ -416,7 +424,7 @@ output application/json
         // Envolvemos el resultado en un $match para que Mongo filtre
         "\$match": {
         	producto: "CARGO REPOSICION SIM",
-        	subtipo_servicio: upper(vars.objectvars.objectServicioActivoActivo.Tipo_Linea)
+        	subtipo_servicio: homologarTipoPlan(vars.objectServicioActivo.Tipo_Linea)
         }
       }
     ],
@@ -437,6 +445,7 @@ var record = if (vars.responseMongo.result is Array) vars.responseMongo.result[0
 record]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="a96f4f0e-fdd3-409a-af90-09665ae5c24c" message="#[payload]" />
 	</sub-flow>
 	<sub-flow name="get-departments-ordenSub_Flow" doc:id="a813e1bd-2cff-4c6a-bf61-cca2ade6fbb3" >
 		<ee:transform doc:name="request PAR_DEPARTAMENTOS" doc:id="7c464eea-75be-4727-95ce-804ddff39d55" >
@@ -472,5 +481,216 @@ var record = if (vars.responseMongo.result is Array) vars.responseMongo.result[0
 record]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+	</sub-flow>
+	<sub-flow name="post-Dispatch-OL-ordenSub_Flow" doc:id="004e7108-35ec-41b2-970b-b1a89dc2b858" >
+		<ee:transform doc:name="set Request OrchestratorLTE" doc:id="1307e62e-3678-4355-bb38-30a456eae750" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+import modules::GlobalFunctions as global
+
+fun homologarTipoOrden(tipoEntrega: String | Null): String =
+    if (upper(trim(tipoEntrega default "")) == "ENTREGA ESPECIALIZADA") "Express"
+    else "Basic"
+
+var precioReposicion = global::obtenerPrecioPorCanal(vars.responseOfertaProducto.precio_oferta)
+
+---
+{
+  "requestHeader": {
+    "externalId": "Orquestador_LTE",
+    "system": "Orquestador_LTE"
+  },
+  "requestBody": {
+    "id": "PortalLTE_TIBCO_CreateDispatchOrder",
+    "parameters": [
+      {
+        "attribute": "DISPATCH_ORDER",
+        "value": vars.orderNumber
+      },
+      {
+        "attribute": "DISPATCH_ORDER_NUMBER",
+        "value": vars.orderNumber default "" ++ "-OL-1"
+      },
+      {
+        "attribute": "DISPATCH_ORDER_NUMBER_ANTE",
+        "value": ""
+      },
+      {
+        "attribute": "ENVIAR_ENTRGAOL",
+        "value": ""
+      },
+      {
+        "attribute": "EQUIPMENT_VALUE_SIM_AJUSTADO",
+        "value": precioReposicion
+      },
+      {
+        "attribute": "TIPOORDEN",
+        "value": homologarTipoOrden(vars.requestOrder.through.delivery."type")
+      },
+      {
+        "attribute": "TIPOENTREGA",
+        "value": "Cliente"
+      },
+      {
+        "attribute": "RECAUDO",
+        "value": false
+      },
+      {
+        "attribute": "VALORRECAUDO",
+        "value": "0"
+      },
+      {
+        "attribute": "BARRIO",
+        "value": vars.requestOrder.through.delivery.geographicAddress.locality
+      },
+      {
+        "attribute": "CITY",
+        "value": vars.requestOrder.through.delivery.geographicAddress.cityCode
+      },
+      {
+        "attribute": "TIPOPRODUCTO",
+        "value": "Equipo"
+      },
+      {
+        "attribute": "ORDEN_DESPACHO_RENO_REPO_SIM",
+        "value": vars.orderNumber default "" ++ "-OL-1"
+      },
+      {
+        "attribute": "ES_MASCOTAS",
+        "value": ""
+      }
+    ]
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call data logic" doc:id="9b9071ef-52b3-4ab7-9632-1d91c6748ebe" name="service-orchestrations-subFlow" target="responseDataLogic"/>
+		<choice doc:name="Choice" doc:id="de756303-d65c-45f5-a035-2e68ee9e537a" >
+			<when expression='#[vars.responseDataLogic.responseBody.response.code == "0" or vars.responseDataLogic.responseBody.response.code == "99"]'>
+				<flow-ref doc:name="Flow Reference" doc:id="61e9a336-7780-484b-b1e6-3493a8d74da8" name="update-order-reposition-orchestratorSub_Flow"/>
+				<ee:transform doc:name="set response success" doc:id="864116e1-3864-432d-8d18-673d11897314" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"resultadoDataLogic": vars.responseDataLogic,
+	"exitoso": true
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="set response failed" doc:id="61190fd8-e257-4839-8c0b-ad06f0077640" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"resultadoDataLogic": vars.responseDataLogic,
+	"exitoso": false
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="build-MDM_ORDEN_SERVICIO-ordenSub_Flow" doc:id="4d168df4-b63c-4405-ad67-856c4eeb1fd8" >
+		<ee:transform doc:name="Transform Message" doc:id="7cc6e484-a60b-475f-9118-a9732446e8c3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+import modules::GlobalFunctions as global
+
+var precioReposicion = global::obtenerPrecioPorCanal(vars.responseOfertaProducto.precio_oferta)
+---
+{
+  "query" : {
+    "insert": p('mongo-db-sapi.collections.orden-servicio'),
+    "documents": [
+    	{
+    "Id_Orden_Sistema_Origen" : vars.orderNumber, 
+    "Id_Orden_Padre" : vars.orderNumber,         
+    "Empaquetado" : null,                         
+    "TIpo_Producto" : "Equipo",                   
+    "Codigo_Producto_Servicio" : "",              
+    "Codigo_Servicio" : "",                       
+    "Producto" : "TELEFONIA MOVIL (LTE)",         
+    "Servicio" : "",                              
+    "Oferta_Plan" : "NUEVA SIM",                  
+    "Valor_Oferta" : precioReposicion,                      
+    "Numero_Conexion" : vars.requestOrder.through.connectionNumber,
+    "IMEI" : "",                                  
+    "Service_Class" : null,                       
+    "Integration_Id" : null,                      
+    "Duracion_Servicio" : 0,           
+    "Flag_Facturable" : null,                               
+    "Accion" : null,                              
+    "Id_Caracterizacion_Prom" : "",               
+    "Fecha_Cambio_Estado" : null,                 
+    "Portabilidad" : null,                        
+    "NIP" : null,                                 
+    "Fecha_Portabilidad" : null,                  
+    "Operador_Origen_Portabilidad" : null,        
+    "Id_Cliente_Cesion" : "",                     
+    "Por_Maximo_Financiamiento" : "",           
+    "Valor_Financiado" : "0",                     
+    "Numero_Cuotas" : 0,              
+    "Fecha_Actualizacion" : global::fechaMongo(),  
+    "Fecha_Activacion" : global::fechaMongo(),    
+    "Fecha_Inactivacion" : null,                  
+    "Modalidad_Servicio" : null,                  
+    "Autorizacion_Tercero_Port" : null,           
+    "Link_CC" : null,                             
+    "Link_Identificacion" : null,                 
+    "Flag_Convergencia" : null,                   
+    "Cod_Reserva_Equipo" : null,                  
+    "Fecha_Envio_Operador" : null,                
+    "Fecha_Respuesta_Operador" : null,            
+    "Operador_Logistico" : null,                  
+    "Numero_Anterior" : null,                     
+    "Fecha_Baja_Cancelacion" : null,              
+    "Direccion_Instalacion" : null,               
+    "Pais" : "",                                  
+    "Departamento" : "",                          
+    "Ciudad" : "",                                
+    "Localidad" : null,                           
+    "Barrio" : null,                              
+    "Estrato" : null,                            
+    "Tecnologia" : null,                          
+    "Fecha_Vencimiento_Ejecucion" : global::fechaMongo(), 
+    "Clausula_Permanencia" : "",
+    "Sistema_Origen" : "MDM_MOV",                 
+    "Ruta" : null,                                
+    "Promocion_Servicio" : null,                  
+    "Descuento_Servicio" : null,                  
+    "Caracteristica_Servicio" : [
+        {
+            "Caracteristica" : "ICCID",                      
+            "Valor" : "",                 
+            "Accion" : "",                                    
+            "actualizacion_extractor" : "1"                   
+        }
+    ],
+    "Catalogo_Tecnico" : null,                    
+    "Fase" : null,                                
+    "Agendamiento" : null,                        
+    "Id_Servicio_Salesforce" : null,              
+    "Cuenta_Facturacion" : null,                  
+    "actualizacion_extractor" : "1",              
+    "num_agrupacion" : 0            
+}
+    	
+    ]
+    
+    }
+    
+    }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<flow-ref doc:name="call to Mongo" doc:id="e609b961-f322-4664-b1f1-7597c9db3eaf" name="mongo-dynamic-query-subFlow" target="responseMongoOrdenServicio" />
 	</sub-flow>
 </mule>
