@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-serviceProblem-pqrs-orchestratorSub_Flow" doc:id="1fd278e6-6861-4bb2-aa32-ba9feefc8f65" >
+		<set-variable value="#[attributes.uriParams.'id']" doc:name="Set Number PQR" doc:id="f2eb790e-0cdd-40da-8a09-addb46f57c3b" variableName="numero_pqr" />
+		<set-variable value="#[payload]" doc:name="Set Activity PQR" doc:id="35fc5350-3bf5-4274-9639-30701ca59090" variableName="pqr_Activity_pqr" />
+		<flow-ref doc:name="call find PQR" doc:id="3133aaf8-83ee-4f31-bb9f-10efc39efc99" name="patch-serviceProblem-pqrs-find-clientSub_Flow"/>
+		<choice doc:name="validate find PQR" doc:id="26bb5325-004c-4b60-ad8d-a3ac5f722f32" >
+			<when expression="#[payload == null]">
+				<set-variable value="404" doc:name="Set Status Code" doc:id="a9bb538b-e6c0-43bc-afd1-dce2756146dd" variableName="httpStatus" />
+				<ee:transform doc:name="Set Payload" doc:id="6a80285a-4ad9-4b4f-995c-f093cab2f381" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": 404,
+    "code": "NOT_DATA_FOUND",
+    "message": {
+        "message": "Not PQRS were found for this id"
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set Payload update PQR" doc:id="2563bec5-3127-4b79-aa13-b0292c381e78">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "pqr_actividades_pqr": payload[0]."pqr_actividades_pqr" ++ [vars.pqr_Activity_pqr]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<flow-ref doc:name="call update PQR" doc:id="50fbf271-5097-4417-a827-a38d4d7bef1f" name="patch-serviceProblem-pqrs-update-clientFlow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
