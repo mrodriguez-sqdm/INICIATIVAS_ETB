@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd">
+	<sub-flow name="patch-clients-clientSub_Flow" doc:id="ed472f9f-c7eb-4a31-bd3d-6d09047cd520" >
+		<async doc:name="Async" doc:id="46a33fbc-f113-42d9-ac8b-3944cf91695a" >
+			<flow-ref doc:name="Call logger before" doc:id="bb19afe6-7c38-4277-9b13-76240f16c629" name="loggin-client-call"/>
+		</async>
+		<mongo:update-documents doc:name="Update documents" doc:id="21d78013-af6e-4e1a-8188-d842dcb2c019" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-client}">
+			<mongo:query ><![CDATA[#[output application/json
+---
+{
+    ("Tipo_Documento": {'\$regex': attributes.queryParams.'tipoDocumento', '\$options': "i"}) if (attributes.queryParams.'tipoDocumento' != null),
+    "Numero_Identificacion": attributes.queryParams.'numeroIdentificacion'
+}]]]></mongo:query>
+		</mongo:update-documents>
+		<async doc:name="Async" doc:id="e5e6a11c-3c0e-41d9-8c0d-344886014ccb" >
+			<flow-ref doc:name="Call logger after" doc:id="0b76d281-421b-49c4-99b5-1d5cf1e8617d" name="loggin-client-call"/>
+		</async>
+	</sub-flow>
+	<sub-flow name="patch-clients-portal-unificado-clientSub_Flow" doc:id="0a6f89af-0880-4769-a1a9-c8f832de12c2" >
+		<async doc:name="Async" doc:id="642428f1-f7a5-4960-a4d9-bf85360518f8" >
+			<flow-ref doc:name="Call logger before audits-mongo" doc:id="cab22883-1800-439b-8158-aab6b5f253bc" name="audits-mongo-log-before" />
+		</async>
+		<mongo:update-documents collectionName="${mongoDb-mdm.ecommerce.collection-users}" doc:name="Update Accesos in PORTAL_UNIFICADO_USUARIO" doc:id="9659ed36-f167-467e-8ee9-6b5b2f8fa2b0" config-ref="mdm_db_Config" >
+			<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{ 
+	'Mail': attributes.uriParams.email,
+	'TipoIdentificacion': attributes.queryParams.tipoDocumento,
+	'NumIdentificacion': attributes.queryParams.numeroIdentificacion
+}]]]></mongo:query>
+			<mongo:content-to-update ><![CDATA[#[%dw 2.0
+output application/json
+---
+payload]]]></mongo:content-to-update>
+		</mongo:update-documents>
+		<async doc:name="Async" doc:id="72854df9-e487-4a93-a9f8-3e59fca94098" >
+			<flow-ref doc:name="Call logger after audits-mongo" doc:id="c8ce342b-e754-4253-a69b-4de3713e0e16" name="audits-mongo-log-after" />
+		</async>
+	</sub-flow>
+</mule>

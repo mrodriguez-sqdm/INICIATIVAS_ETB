@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns:java="http://www.mulesoft.org/schema/mule/java"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd">
+	<sub-flow name="get-health-check-orchestrator" doc:id="a9b18839-600d-49ff-9915-2dc0018ea23e" >
+		<scatter-gather doc:name="Scatter-Gather" doc:id="9c8980bf-9ade-4a56-9134-992624fbb8be" >
+			<route >
+				<ee:transform doc:name="MongoDB OR" doc:id="c7b776f3-44af-4c73-b736-9a92a0afa088">
+					<ee:message >
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="host" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"hostname":p('mongoDb.host'),
+	"port":p('mongoDb.port') as Number,
+	"database":p('mongoDb.database'),
+	"collection" : p('mongoDb.collectionRtaViabilidad')
+}
+]]></ee:set-variable>
+
+					</ee:variables>
+				</ee:transform>
+			<flow-ref doc:name="Call tester procedure" doc:id="0f78642e-68cf-460a-a8f6-ec672eef09e3" name="orchestrateTesting" />
+				<choice doc:name="Choice" doc:id="3db438a7-408a-4e36-bd9b-1b6c184384aa" >
+					<when expression="#[payload.status == 'Up']">
+						<try doc:name="Try" doc:id="ac7cfb35-576a-4b75-9b15-6ba31a771cae" >
+							<mongo:collection-exists doc:name="Collection exists" doc:id="6e3f83c6-c5a9-4346-80b9-2cd199029ac6" config-ref="or_db_config" collectionName="#[payload.collection]" target="exist" />
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="da51f95a-7948-42cc-9f0d-506fca3ae268" >
+									<set-variable value="false" doc:name="Set Variable" doc:id="05d88714-2785-477f-b405-9c47dae01940" variableName="exist"/>
+								</on-error-continue>
+							</error-handler>
+						</try>
+					</when>
+				</choice>
+			</route>
+			<route >
+				<ee:transform doc:name="MongoDB MDM" doc:id="9c8649c1-c7b9-450d-bad3-6ebe9528a2b7">
+			<ee:message >
+					</ee:message>
+			<ee:variables>
+						<ee:set-variable variableName="host" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"hostname":p('mongoDb-mdm.host_list.host1'),
+	"port":p('mongoDb-mdm.port') as Number,
+	"database":p('mongoDb-mdm.database'),
+	"collection" : p('mongoDb-mdm.tibco.collection')
+	
+}
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<flow-ref doc:name="Call tester procedure" doc:id="a2a07c0d-d0bf-4c8d-b5f4-7c606d67366b" name="orchestrateTesting" />
+				<choice doc:name="Choice" doc:id="55068db4-774b-49ea-9c18-db3d56f42858" >
+					<when expression="#[payload.status == 'Up']">
+						<try doc:name="Try" doc:id="9bc55cee-139b-47c7-9fd9-c4390d438c0a" >
+							<mongo:collection-exists collectionName="#[payload.collection]" doc:name="Collection exists" doc:id="7df95d60-97f1-4d96-b136-93eaa28775ba" config-ref="mdm_db_Config" target="exist" />
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="129266d9-f176-4773-86ef-ad67d9a12406" >
+									<set-variable value="false" doc:name="Set Variable" doc:id="79906097-f72e-4643-9b7f-b35d3394d85e" variableName="exist" />
+								</on-error-continue>
+							</error-handler>
+						</try>
+					</when>
+				</choice>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Transform Message" doc:id="ed691773-3ea1-44dd-9f98-5e0818edd23e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload pluck ((value, key, index) -> {
+    host :value.payload.hostname,
+    port: value.payload.port,
+    database: value.payload.database,
+	status: if(value.payload.status == 'Up' and vars.exist[0] == true ) 'Up' else 'Down'
+})]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="7b107e80-528f-4a8d-8d70-b56a0dbca631" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="healthy" ><![CDATA[%dw 2.0
+output application/json
+---
+sizeOf(payload filter ((value,index) -> (value.status == "Up")))]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="ff57c7a6-d625-4794-a7e2-ff90cb91d400" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"application": app.name,
+	"status": if(vars.healthy == 2) "Up" else if(vars.healthy == 1 ) "Warning" else "Critical",
+	"dependencies": payload	
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="orchestrateTesting" doc:id="cc4559f4-585e-4b56-85a9-535a1a9e5051">
+		<flow-ref doc:name="Call tester" doc:id="5b1cd7c5-39dc-4f41-af9d-bb113d85ac35" name="test-channel" />
+		<ee:transform doc:name="Transform Message" doc:id="70b73a12-1ec7-40eb-ac87-1bd901b11631">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+
+vars.host ++ { "status" : payload }]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+	</sub-flow>
+	<sub-flow name="test-channel" doc:id="3fddd2fa-3a68-429e-b5bf-d7c8aa11d558">
+		<java:new constructor="Tester()" doc:name="New Tester" doc:id="700a02e7-53b4-4225-9762-4476ad67999a" class="com.globant.Connectivity.Tester" />
+		<java:invoke doc:name="Invoke" doc:id="dae71264-0c57-4c41-b675-74df9156a428" instance="#[payload]" class="com.globant.Connectivity.Tester" method="testHost(String, Integer)">
+			<java:args><![CDATA[#[{
+	host: vars.host.hostname, 
+	port: vars.host.port
+}]]]></java:args>
+		</java:invoke>
+	</sub-flow>
+</mule>

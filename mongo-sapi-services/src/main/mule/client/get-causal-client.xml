@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-causal-clientSub_Flow" doc:id="751c5e52-8b95-40fc-81d5-e9b31d44427d" >
+		<async doc:name="Async" doc:id="5be40833-31a7-4de9-8b49-a5c5e67dde46" >
+			<choice doc:name="Choice" doc:id="16271e32-eab2-48ba-a990-a78b51c457ec" >
+				<when expression="#[p('logging.mayoristas.causal') == &quot;ON&quot;]">
+					<flow-ref doc:name="Call logger before" doc:id="6a530c59-69e0-41f1-978a-463fd8e01b58" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="567dfa9f-83a8-4011-8d55-5c1798714adc">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="fa93f505-81b5-4210-9d74-fe9cff16ffa5" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+		<mongo:find-documents doc:name="Get causales" doc:id="e75768e8-ee10-4c2c-8046-197521916244" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-causal}" fields=","/>
+		<async doc:name="Async" doc:id="e593d04b-c32b-4a00-8a6a-8738dbcfde10" >
+			<choice doc:name="Choice" doc:id="d7852ece-81e9-42d2-9f7f-817ccf677b3d" >
+				<when expression="#[p('logging.mayoristas.causal') == &quot;ON&quot;]" >
+					<flow-ref doc:name="Call logger after" doc:id="ab2dc360-cd11-4ae3-a61d-f78cb4b262f0" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="61af68c3-affe-43c1-844f-53732acc644a">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="eabbac63-92c2-4e8e-bb26-269715560df6" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+	</sub-flow>
+</mule>

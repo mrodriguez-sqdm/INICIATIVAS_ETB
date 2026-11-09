@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<sub-flow name="get-ordersExample-orchestratorSub_Flow" doc:id="ebcb3334-9dd7-443c-badd-195c0cced577" >
+		<choice doc:name="Choice" doc:id="8a95a4a1-d723-48f3-a082-2bb159aaaada" >
+			<when expression="#[vars.consecutiveType == 'interaction' and !isEmpty(vars.transactType)]">
+				<set-variable value="${mongoDb-mdm.mayoristas.serie-orderNumber}" doc:name="Set serie orderNumber" doc:id="d4d1c2b8-f27e-4c19-bdfe-4a85146d13e2" variableName="serie"/>
+				<flow-ref doc:name="get-ordersExample-status-clientSub_Flow" doc:id="bb147bab-c978-439f-88f5-d80a71160064" name="get-ordersExample-status-clientSub_Flow" target="guion_estados" />
+				<flow-ref doc:name="get-consecutive" doc:id="015f02b8-2a98-406d-bf01-58cd8a706678" name="get-consecutive" target="consecutive" />
+			</when>
+			<when expression="#[vars.consecutiveType == 'availability' and !isEmpty(vars.transactType) and vars.transactType == &quot;VTAM&quot;]" >
+				<set-variable value="${mongoDb-mdm.mayoristas.serie-serviceAccount}" doc:name="Set serie serviceAccount" doc:id="98d4d66a-96e5-43e4-a891-661a724bf465" variableName="serie" />
+				<flow-ref doc:name="get-consecutive" doc:id="67dba2de-a1c7-4cb0-8732-6cec39c5b9b7" name="get-consecutive" target="consecutive" />
+			</when>
+		</choice>
+		<flow-ref doc:name="get-ordersExample-parameter-clientSub_Flow" doc:id="679f68e1-48ac-4f37-aba6-c097c831e2ec" name="get-ordersExample-parameter-clientSub_Flow"/>
+		<ee:transform doc:name="Set response final" doc:id="98863606-500c-4d46-a9a3-a3cf7aeac477" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	parameter: payload,
+	consecutive: vars.consecutive,
+	status: vars.guion_estados
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-consecutive" doc:id="203770ab-56ca-40c2-9257-461c84074951" >
+		<flow-ref doc:name="get-ordersExample-consecutive-clientSub_Flow" doc:id="9b40bd85-bb88-496f-b13c-8d925db7187f" name="get-ordersExample-consecutive-clientSub_Flow"/>
+		<ee:transform doc:name="Set consecutive" doc:id="c48f14ee-9770-4eef-a8b9-f902240dc7fc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload.Prefijo[0] ++ vars.SecuenciaPlusOne as Number as String {format: p('mongoDb-mdm.mayoristas.format-consecutive')}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

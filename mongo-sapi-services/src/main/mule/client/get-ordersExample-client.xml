@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-ordersExample-status-clientSub_Flow" doc:id="4cbd8059-bbf1-47d1-a6a3-23727d027358" >
+		<async doc:name="Async" doc:id="18c46416-12d2-4524-b91e-581bcf2e35a4" >
+			<choice doc:name="Choice" doc:id="b7312014-23dc-43c1-9d90-3431b00c8a67" >
+				<when expression="#[p('logging.mayoristas.ordenesModelo') == &quot;ON&quot;]">
+					<flow-ref doc:name="Call logger before" doc:id="2098ab7b-0cf8-42a2-a8a9-fe5afd37c94f" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="af3a4bac-6087-4e63-b2b1-284d103ce0e8">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="e7116dc1-d384-454e-b30e-33974781d573" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+		<mongo:find-documents collectionName="${mongoDb-mdm.mayoristas.collection-guionStatus}" fields="," doc:name="Get status" doc:id="ee9889aa-3f12-4257-a0b5-208852fdbf6f" config-ref="mdm_db_Config">
+			<mongo:query ><![CDATA[#["{ 'Tramite': '" ++ vars.transactType ++ "', 'Estados_Entrada.Comercial' : 'I10'}"]]]></mongo:query>
+		</mongo:find-documents>
+		<async doc:name="Async" doc:id="8c9209d6-4399-4c70-b66d-012b459ce591" >
+			<choice doc:name="Choice" doc:id="bcd4f709-2000-4a3f-9b74-a1bea2533e95" >
+				<when expression="#[p('logging.mayoristas.ordenesModelo') == &quot;ON&quot;]" >
+					<flow-ref doc:name="Call logger after" doc:id="10cef811-a3cc-4ee6-b99a-0f9c725a4a3e" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="5bd9db73-6860-4bbb-a1a2-b77097fa35f8">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="4f552baf-e752-4a67-8a17-82a7b30aabe2" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+	</sub-flow>
+	<sub-flow name="get-ordersExample-consecutive-clientSub_Flow" doc:id="966cd195-4816-40f0-ae8e-e4e7331349f2" >
+		<!--  <mongo:find-documents doc:name="Get Secuencia" doc:id="2dbc665f-aecf-4946-b9ec-d46d53a08612" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-consecutive}" fields="," limit="1">
+			<mongo:query><![CDATA[#["{ 'Serie': '" ++ vars.serie ++ "'}"]]]></mongo:query>
+			<mongo:sort-by><![CDATA[{"Secuencia":"DESC"}]]></mongo:sort-by>
+		</mongo:find-documents>
+		<set-variable value="#[(payload[0].Secuencia  + 1) as String]" doc:name="Set SecuenciaPlusOne" doc:id="020e6fcc-6298-43f5-89ab-0c4e1619fc24" variableName="SecuenciaPlusOne" />
+		<mongo:update-documents doc:name="Update Secuencia" doc:id="1762be2e-3727-4bf1-b3d3-88645bc25e3c" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-consecutive}" target="updateResult">
+			<mongo:query><![CDATA[#["{ 'Serie': '" ++ vars.serie ++ "'}"]]]></mongo:query>
+			<mongo:content-to-update><![CDATA[#["{ 'Secuencia': '" ++ vars.SecuenciaPlusOne ++ "'}"]]]></mongo:content-to-update>
+		</mongo:update-documents> -->
+		<ee:transform doc:name="Set Command Update Consecutive" doc:id="5da12a3c-6939-4c06-ad10-835eaa9bbaee" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+ findAndModify: p('mongoDb-mdm.mayoristas.collection-consecutive'),
+ query: { Serie: vars.serie
+  },
+  update: { "\$inc": { Secuencia: 1 } },
+  new: true
+}
+ ]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<mongo:execute-command doc:name="Execute command" doc:id="61a56bcb-a3a2-4cee-b355-bdb2337c62cb" config-ref="mdm_db_Config"/>
+	    <set-variable value="#[(payload.value.Secuencia) as String]" doc:name="Set SecuenciaPlusOne" doc:id="a6f76262-4272-4ccd-8d24-eca55b91f01c" variableName="SecuenciaPlusOne" />
+		<ee:transform doc:name="Set Payload Response" doc:id="50f7259e-a520-4a9f-98f2-39554a5b57ee" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[
+    {
+        "Serie": payload.value.Serie,
+        "Secuencia": payload.value.Secuencia,
+        "Prefijo": payload.value.Prefijo
+    }
+]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-ordersExample-parameter-clientSub_Flow" doc:id="05c7d62c-866f-4528-907a-322387160835" >
+		<async doc:name="Async" doc:id="397c5241-8a6b-4ff3-a229-f5201af99cd3" >
+			<choice doc:name="Choice" doc:id="97fb87f6-e259-4bfd-ba80-1ff1770c9852" >
+				<when expression="#[p('logging.mayoristas.ordenesModelo') == &quot;ON&quot;]" >
+					<flow-ref doc:name="Call logger before" doc:id="dc65a85e-1b8d-4447-aad7-d4e2869318b7" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="43229ba7-8728-4e12-bd5d-f0b367d2f6aa">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="afb139a8-41f6-454b-a1e5-bbe8f96dc2c7" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+		<mongo:find-documents doc:name="Get data parameter" doc:id="eac9d9c0-550b-4975-b8fe-84106ea76bc7" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-parameter}" fields=",">
+			<mongo:query ><![CDATA[#["{'Tipo_Parametro' : '" ++ p('mongoDb-mdm.mayoristas.parameter-type') ++ "'}"]]]></mongo:query>
+		</mongo:find-documents>
+		<async doc:name="Async" doc:id="e0461671-d249-4a9c-b33e-29f4f997949c" >
+			<choice doc:name="Choice" doc:id="c1f48cf1-5cd2-4fe8-abd4-c20d5a578105" >
+				<when expression="#[p('logging.mayoristas.ordenesModelo') == &quot;ON&quot;]" >
+					<flow-ref doc:name="Call logger after" doc:id="77b31534-09d4-4633-9752-e3321dc4df16" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="cb8caab6-6997-4993-8f38-714a7f603eae">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="80c60c06-78c8-4a16-9ff1-6490b1ce1947" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+	</sub-flow>
+</mule>
