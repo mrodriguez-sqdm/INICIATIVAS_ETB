@@ -1,19 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
 	xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
 http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
-	<sub-flow name="lisim-customer-papi-orchestrator-v2-identityValidation" doc:id="d1b3a304-34b0-4d5f-8698-1bc580a32fa0" >
-		<ee:transform doc:name="set variables" doc:id="00f4fd78-ffaf-4714-92ca-08431a145181" >
+	<sub-flow
+		name="lisim-customer-papi-orchestrator-v2-identityValidation"
+		doc:id="d1b3a304-34b0-4d5f-8698-1bc580a32fa0">
+		<ee:transform doc:name="set variables"
+			doc:id="00f4fd78-ffaf-4714-92ca-08431a145181">
 			<ee:message />
-			<ee:variables >
-				<ee:set-variable variableName="initialPayload" ><![CDATA[%dw 2.0
+			<ee:variables>
+				<ee:set-variable variableName="initialPayload"><![CDATA[%dw 2.0
 output application/json
 ---
 payload]]></ee:set-variable>
-				<ee:set-variable variableName="headers" ><![CDATA[%dw 2.0
+				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -24,7 +30,7 @@ output application/json
 	"systemId": attributes.headers.systemId,
 	"source": attributes.headers.source
 }]]></ee:set-variable>
-				<ee:set-variable variableName="queryParams" ><![CDATA[%dw 2.0
+				<ee:set-variable variableName="queryParams"><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -33,10 +39,13 @@ output application/json
 }]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
-		<flow-ref doc:name="post-identity-lisim-sub-flow" doc:id="f816204b-d395-4143-9f10-ee5c995b7a33" name="post-identity-lisim-sub-flow" target="rsLisim"/>
-		<ee:transform doc:name="Transform Message" doc:id="73ac9d5e-f449-4db8-b005-3a6634f3b384">
-							<ee:message>
-								<ee:set-payload><![CDATA[%dw 2.0
+		<flow-ref doc:name="post-identity-lisim-sub-flow"
+			doc:id="f816204b-d395-4143-9f10-ee5c995b7a33"
+			name="post-identity-lisim-sub-flow" target="rsLisim" />
+		<ee:transform doc:name="Transform Message"
+			doc:id="73ac9d5e-f449-4db8-b005-3a6634f3b384">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -52,24 +61,78 @@ output application/json
 		"limit": 1
 	}
 }]]></ee:set-payload>
-							</ee:message>
-							<ee:variables>
-								<ee:set-variable resource="dw/call-dynamic-query-method.dwl" variableName="method" />
-								<ee:set-variable resource="dw/call-dynamic-query-path.dwl" variableName="path" />
-							</ee:variables>
-						</ee:transform>
-				<flow-ref doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow" doc:id="59da8b5a-02b1-46ca-b046-c577e3fea58f" name="mongo-db-sapi-post-dynamic-clientSub_Flow" target="getIdentityResponse" />
-		<choice doc:name="Choice" doc:id="514f9a83-0c55-4906-a992-0c97b04714ca" >
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable
+					resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+				<ee:set-variable
+					resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+			</ee:variables>
+		</ee:transform>
+		<flow-ref
+			doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			doc:id="59da8b5a-02b1-46ca-b046-c577e3fea58f"
+			name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+			target="getIdentityResponse" />
+		<choice doc:name="Choice"
+			doc:id="514f9a83-0c55-4906-a992-0c97b04714ca">
 			<when expression="#[!isEmpty(vars.getIdentityResponse.result)]">
-				<flow-ref doc:name="patch-identity-mongo-sub-flow" doc:id="49928b20-be10-4b55-9fa7-cc23e8eaebd6" name="patch-identity-mongo-sub-flow" />
-				<choice doc:name="Choice" doc:id="d51aa585-b573-4613-ab22-ea03f53ee68f" >
+				<ee:transform doc:name="Update User Validation Data"
+					doc:id="87403e85-f898-4829-9485-74154eac0026">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import modules::GlobalFunctions as global
+var additionalDate = vars.getIdentityResponse.result[0].fecha_exp default null
+var formattedDate = global::formatDateToISO8601(additionalDate)
+---
+{
+	"query": {
+		"update": "MDM_VALIDACION_CLIENTE",
+		"updates": [{
+			"q": {
+				"num_doc": vars.initialPayload.documentNumber,
+				"tipo_doc": vars.initialPayload.documentType
+			},
+			"u": [{
+				"\$set": {
+					"fecha_consulta": global::formatDate(now() >> "UTC-05:00" as TimeZone),
+					"fecha_exp": {
+						"\$concat": [formattedDate[0 to 9],
+                                    formattedDate[10 to -1]]
+					},
+					"causal": vars.rsLisim.cause default vars.rsLisim.message default ""
+				}
+			}],
+			"multi": false,
+			"upsert": false
+		}]
+	}
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable
+							resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+						<ee:set-variable
+							resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+					</ee:variables>
+				</ee:transform>
+				<flow-ref
+					doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+					doc:id="bed40075-0511-4b24-9ad9-f42e92f1d3d8"
+					name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<choice doc:name="Choice"
+					doc:id="d51aa585-b573-4613-ab22-ea03f53ee68f">
 					<when expression='#[isEmpty(vars.rsLisim.code)]'>
-						<flow-ref doc:name="os-store-validation-sub-flow" doc:id="1abc1f8f-1b5f-47b3-a9d7-8a5ad31f1b85" name="os-store-validation-sub-flow"/>
+						<flow-ref doc:name="os-store-validation-sub-flow"
+							doc:id="1abc1f8f-1b5f-47b3-a9d7-8a5ad31f1b85"
+							name="os-store-validation-sub-flow" />
 					</when>
-					<otherwise >
-						<ee:transform doc:name="set validation response" doc:id="975fda0b-a61c-4a2e-8959-3430f8e98817" >
-							<ee:message >
-								<ee:set-payload ><![CDATA[%dw 2.0
+					<otherwise>
+						<ee:transform doc:name="set validation response"
+							doc:id="975fda0b-a61c-4a2e-8959-3430f8e98817">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -83,34 +146,73 @@ output application/json
 				</choice>
 			</when>
 			<otherwise>
-				<ee:transform doc:name="set mongo post identity request" doc:id="c36ce46b-7499-4d39-834e-f7f8b6682e51">
+				<ee:transform doc:name="Insert User Validation Data"
+					doc:id="adab412f-d97a-4037-b14a-f303c728dcc5">
 					<ee:message>
 						<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 import modules::GlobalFunctions as global
+var formattedDate = global::formatDateToISO8601(vars.initialPayload.dateExpedition)
 ---
 {
-    nombres: vars.initialPayload.names,
-    apellido: vars.initialPayload.firstLastName,
-    segundo_apellido: vars.initialPayload.secondLastName,
-    fecha_exp: global::formatDate(vars.initialPayload.dateExpedition),
-    num_doc: vars.initialPayload.documentNumber,
-    tipo_doc: vars.initialPayload.documentType,
-    fecha_consulta: global::formatDate(now() >> "UTC-05:00" as TimeZone),
-    estado: "NO VIGENTE",
-    causal: vars.rsLisim.cause default vars.rsLisim.message default ""
+	"query": {
+		"aggregate": 1,
+		"pipeline": [{
+			"\$documents": [{
+				"nombres": vars.initialPayload.names,
+				"apellido": vars.initialPayload.firstLastName,
+				"segundo_apellido": vars.initialPayload.secondLastName,
+				"num_doc": vars.initialPayload.documentNumber,
+				"tipo_doc": vars.initialPayload.documentType,
+				"fecha_consulta": global::formatDate(now() >> "UTC-05:00" as TimeZone),
+				"estado": "NO VIGENTE",
+				"causal": vars.rsLisim.cause default vars.rsLisim.message default ""
+			}]
+		},
+            {
+			"\$set": {
+				"fecha_exp": {
+					"\$concat": [
+						formattedDate[0 to 9],
+                        formattedDate[10 to -1]]
+				}
+			}
+		},
+            {
+			"\$merge": {
+				"into": "MDM_VALIDACION_CLIENTE",
+				"whenMatched": "fail",
+				"whenNotMatched": "insert"
+			}
+		}],
+		"cursor": {
+		}
+	}
 }]]></ee:set-payload>
 					</ee:message>
+					<ee:variables>
+						<ee:set-variable
+							resource="dw/call-dynamic-query-method.dwl" variableName="method" />
+						<ee:set-variable
+							resource="dw/call-dynamic-query-path.dwl" variableName="path" />
+					</ee:variables>
 				</ee:transform>
-				<flow-ref doc:name="mongo-db-sapi-post-identity-validation-sub-flow" doc:id="60a76c71-099c-4efc-b354-08c42a4287d6" name="mongo-db-sapi-post-identity-validation-sub-flow" />
-				<choice doc:name="Choice" doc:id="1e9c0ed1-0792-452b-b948-2241a427f900" >
-					<when expression='#[isEmpty(vars.rsLisim.code)]' >
-						<flow-ref doc:name="os-store-validation-sub-flow" doc:id="1fd494a1-a4a6-4cd5-aa72-047d6b3f78e0" name="os-store-validation-sub-flow" />
+				<flow-ref
+					doc:name="mongo-db-sapi-post-dynamic-clientSub_Flow"
+					doc:id="f9e7841b-9d28-495a-b64f-3920b02d2a52"
+					name="mongo-db-sapi-post-dynamic-clientSub_Flow" />
+				<choice doc:name="Choice"
+					doc:id="1e9c0ed1-0792-452b-b948-2241a427f900">
+					<when expression='#[isEmpty(vars.rsLisim.code)]'>
+						<flow-ref doc:name="os-store-validation-sub-flow"
+							doc:id="1fd494a1-a4a6-4cd5-aa72-047d6b3f78e0"
+							name="os-store-validation-sub-flow" />
 					</when>
-					<otherwise >
-						<ee:transform doc:name="set validation response" doc:id="6f70eb5f-dd0c-4958-90af-e8c5dac7c2e0" >
-							<ee:message >
-								<ee:set-payload ><![CDATA[%dw 2.0
+					<otherwise>
+						<ee:transform doc:name="set validation response"
+							doc:id="6f70eb5f-dd0c-4958-90af-e8c5dac7c2e0">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -125,10 +227,12 @@ output application/json
 			</otherwise>
 		</choice>
 	</sub-flow>
-	<sub-flow name="post-identity-lisim-sub-flow" doc:id="a7df9a23-3e46-409a-ba6c-faf3690433cd" >
-		<ee:transform doc:name="set lisim post identity request" doc:id="cdf54576-fefc-40b9-8128-a4c3eeeafce5" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+	<sub-flow name="post-identity-lisim-sub-flow"
+		doc:id="a7df9a23-3e46-409a-ba6c-faf3690433cd">
+		<ee:transform doc:name="set lisim post identity request"
+			doc:id="cdf54576-fefc-40b9-8128-a4c3eeeafce5">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
@@ -152,37 +256,16 @@ output application/json
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
-		<flow-ref doc:name="lisim-sapi-identity-clientSub_Flow" doc:id="83e1eebf-64dd-412b-bc34-6e6ae710aaa2" name="lisim-sapi-identity-clientSub_Flow"/>
+		<flow-ref doc:name="lisim-sapi-identity-clientSub_Flow"
+			doc:id="83e1eebf-64dd-412b-bc34-6e6ae710aaa2"
+			name="lisim-sapi-identity-clientSub_Flow" />
 	</sub-flow>
-	<sub-flow name="patch-identity-mongo-sub-flow" doc:id="bd4c5ac5-d561-4587-bc08-338827e7c343" >
-		<ee:transform doc:name="set mongo patch identity request" doc:id="7b0020c6-92f5-44a2-bdc9-7bdc55cbf541" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-import modules::GlobalFunctions as global
-var additionalDate = vars.getIdentityResponse.result[0].fecha_exp default null
----
-{
-	"fecha_consulta": global::formatDate(now() >> "UTC-05:00" as TimeZone),
-    "fecha_exp": global::formatDate(additionalDate),
-    "causal": vars.rsLisim.cause default vars.rsLisim.message default "",
-}]]></ee:set-payload>
-			</ee:message>
-			<ee:variables >
-				<ee:set-variable variableName="uriParams" ><![CDATA[%dw 2.0
-output application/json
----
-{
-	"documentType": vars.initialPayload.documentType as String,
-	"documentNumber": vars.initialPayload.documentNumber
-}]]></ee:set-variable>
-			</ee:variables>
-		</ee:transform>
-		<flow-ref doc:name="mongo-db-sapi-patch-identity-validation-sub-flow" doc:id="b1074a90-0711-4082-bb01-d24df3025b46" name="mongo-db-sapi-patch-identity-validation-sub-flow" />
-	</sub-flow>
-	<sub-flow name="os-store-validation-sub-flow" doc:id="eef85236-fb62-4998-8954-8f378b657e2b" >
-		<os:store doc:name="store validation values" doc:id="a7c3ca87-b16b-40ef-893c-c7be50a9b767" key="#[vars.rsLisim.id]" objectStore="Validation_Object_Store" >
-			<os:value ><![CDATA[#[%dw 2.0
+	<sub-flow name="os-store-validation-sub-flow"
+		doc:id="eef85236-fb62-4998-8954-8f378b657e2b">
+		<os:store doc:name="store validation values"
+			doc:id="a7c3ca87-b16b-40ef-893c-c7be50a9b767"
+			key="#[vars.rsLisim.id]" objectStore="Validation_Object_Store">
+			<os:value><![CDATA[#[%dw 2.0
 output application/json
 ---
 {
@@ -193,9 +276,10 @@ output application/json
 	segment: vars.initialPayload.model.segment
 }]]]></os:value>
 		</os:store>
-		<ee:transform doc:name="set validation response" doc:id="559a1e8d-4fc6-4f21-b6be-af4e2dbc4801" >
-			<ee:message >
-				<ee:set-payload ><![CDATA[%dw 2.0
+		<ee:transform doc:name="set validation response"
+			doc:id="559a1e8d-4fc6-4f21-b6be-af4e2dbc4801">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
 {
