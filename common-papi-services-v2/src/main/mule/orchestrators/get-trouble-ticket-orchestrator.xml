@@ -8,48 +8,73 @@
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
 	<sub-flow name="get-trouble-ticket-orchestrator-sub-flow"
 		doc:id="f13b7c5a-4e9d-4016-b1a3-8d5f2e6a0c37">
-		<ee:transform doc:name="set get pqr request"
+		<ee:transform doc:name="set mongo dynamicQuery request"
 			doc:id="c46e0f8d-7120-4349-e4d6-1a8c5b9d3f60">
 			<ee:message>
-			</ee:message>
-			<ee:variables>
-				<ee:set-variable variableName="headers"><![CDATA[%dw 2.0
-output application/json
----
-{
-	"client_secret" : p('secure::api.clientSecret'),
-	"client_id" : p('secure::api.clientId'),
-	"name": attributes.headers.name,
-	"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID" default attributes.headers."x-correlation-id" default correlationId,
-	"source": attributes.headers.source,
-	"systemId": attributes.headers.systemId
-}]]></ee:set-variable>
-				<ee:set-variable variableName="queryParameters"><![CDATA[%dw 2.0
+				<ee:set-payload><![CDATA[%dw 2.0
 import substringBefore, substringAfter from dw::core::Strings
-output application/json skipNullOn="everywhere"
+output application/json
+var queryParams = attributes.queryParams
 var filters = (
-    ((attributes.queryParams.FILTERS default "") splitBy ";")
+    ((queryParams.FILTERS default "") splitBy ";")
         filter ((item) -> item contains ":")
         reduce ((item, acc = {}) -> acc ++ {
             (trim(item substringBefore ":")): trim(item substringAfter ":")
         })
 ) default {}
+var limit = queryParams.LIMIT
 ---
 {
-	id: attributes.queryParams.id,
-	pqrNumber: attributes.queryParams.pqrId,
-	customerDocumentType: attributes.queryParams.documentType,
-	customerDocumentNumber: attributes.queryParams.documentNumber,
-	connectionNumber: attributes.queryParams.connectionNumber,
-	billingAccount: attributes.queryParams.billingAccount,
-	cun: attributes.queryParams.cun,
-	assignedUser: filters.usuarioAsignado,
-	queryType: filters.tipoConsulta,
-	serviceType: filters.tipoServicio,
-	receptionChannel: filters.canalRecepcion,
-	businessDays: filters.diasHabiles,
-	status: filters.estado
-}]]></ee:set-variable>
+	basePath: p("mongoDbSapi.basePath"),
+	host: p("mongoDbSapi.host"),
+	port: p("mongoDbSapi.port"),
+	method: p('mongoDbSapi.dynamicQuery.post.method'),
+	path: p('mongoDbSapi.dynamicQuery.path'),
+	body: {
+		"query": {
+			"aggregate": "PQR_PQR",
+			"pipeline": [
+				{
+					"\$match": {
+						("_id": { "\$oid": queryParams.id }) if (!isEmpty(queryParams.id)),
+						("numero_pqr": queryParams.pqrId) if (!isEmpty(queryParams.pqrId)),
+						("tipo_documento": queryParams.documentType) if (!isEmpty(queryParams.documentType)),
+						("numero_identificacion": queryParams.documentNumber) if (!isEmpty(queryParams.documentNumber)),
+						("numero_conexion": queryParams.connectionNumber) if (!isEmpty(queryParams.connectionNumber)),
+						("cuenta_facturacion": queryParams.billingAccount) if (!isEmpty(queryParams.billingAccount)),
+						("cun": queryParams.cun) if (!isEmpty(queryParams.cun)),
+						("usuario_asignado": filters.usuarioAsignado) if (!isEmpty(filters.usuarioAsignado)),
+						("tipo_pqr": filters.tipoConsulta) if (!isEmpty(filters.tipoConsulta)),
+						("servicio": filters.tipoServicio) if (!isEmpty(filters.tipoServicio)),
+						("canal_recepcion": filters.canalRecepcion) if (!isEmpty(filters.canalRecepcion)),
+						("dias_habiles": filters.diasHabiles) if (!isEmpty(filters.diasHabiles)),
+						("estado_pqr": filters.estado) if (!isEmpty(filters.estado))
+					}
+				},
+				({
+					"\$limit": limit as Number
+				}) if (!isEmpty(limit) and (limit as Number) > 0)
+			],
+			"cursor": {
+			},
+			"maxTimeMS": 5000
+		}
+	},
+	headers: {
+		"client_secret" : p('secure::api.clientSecret'),
+		"client_id" : p('secure::api.clientId'),
+		"name": attributes.headers.name,
+		"X-CORRELATION-ID": attributes.headers."X-CORRELATION-ID" default attributes.headers."x-correlation-id" default correlationId,
+		"source": attributes.headers.source,
+		"systemId": attributes.headers.systemId
+	},
+	queryParameters: {
+	},
+	uriParameters: {
+	}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
 				<ee:set-variable variableName="limit"><![CDATA[%dw 2.0
 output application/json
 ---
@@ -58,23 +83,44 @@ attributes.queryParams.LIMIT]]></ee:set-variable>
 		</ee:transform>
 		<logger level="INFO" doc:name="get pqr request"
 			doc:id="9a1c4e7b-3f20-4d68-b5e2-7c0a9d3f1b64"
-			message="#[vars.queryParameters]" />
-		<flow-ref doc:name="get-pqr-datalogic-sapi-client-sub-flow"
+			message="#[payload.body]" />
+		<flow-ref doc:name="mongo-db-sapi-common-request (PQR_PQR)"
 			doc:id="d57f1a9e-8231-4450-f5e7-2b9d6c0e4a71"
-			name="get-pqr-datalogic-sapi-client-sub-flow" />
-		<ee:transform doc:name="apply limit"
-			doc:id="e68a2b0f-9342-4561-a6f8-3c0e7d1f5b82">
-			<ee:message>
-				<ee:set-payload><![CDATA[%dw 2.0
-output application/json skipNullOn="everywhere"
+			name="mongo-db-sapi-common-request" />
+		<choice doc:name="pqr found?"
+			doc:id="3b8e1d24-6c57-4f0a-9d12-7e4a5c8b2f19">
+			<when expression="#[isEmpty(payload.result default {})]">
+				<set-variable value="404" doc:name="httpStatus"
+					doc:id="5f2a9c41-8e3d-4b67-a0c5-1d9e7b3f6a28"
+					variableName="httpStatus" />
+				<ee:transform doc:name="set not found response"
+					doc:id="7c4e2a90-1b5f-4d38-9e61-0a8f3c7d5b42">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
 ---
 {
-    code: payload.code,
-    message: payload.message,
-    pqr: if (isEmpty(vars.limit)) payload.pqr
-        else payload.pqr filter ((item, index) -> index < vars.limit as Number)
+	status: 404,
+	code: "NOT_FOUND",
+	message: "No se encontró información para la búsqueda",
+	messageServer: "",
+	cause: [{
+		origin: "common-papi-services-v2",
+		message: "No se encontraron PQR para los criterios enviados"
+	}]
 }]]></ee:set-payload>
-			</ee:message>
-		</ee:transform>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="set pqr response"
+					doc:id="e68a2b0f-9342-4561-a6f8-3c0e7d1f5b82">
+					<ee:message>
+						<ee:set-payload
+							resource="dwlScripts/getTroubleTicket/getPqrJsonResponse.dwl" />
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
 	</sub-flow>
 </mule>
