@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-referredServices-clientSub_Flow" doc:id="64774576-83f5-4a41-806d-f3ef4a07c062" >
+		<async doc:name="Async" doc:id="61aa9ef1-a10f-4db0-ae0a-3bb130726535">
+			<ee:transform doc:name="Transform Message" doc:id="cfac2af7-df6f-496b-86cf-de1337556d0f" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+'Tipo_Documento': vars.tipoDoc, 
+'Numero_Identificacion': vars.numDoc,
+'Estado': p('referred.estado'),
+'Producto': p('referred.producto') 
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="Call logger before" doc:id="6e738abd-f48d-4004-8a7d-607caba99fcc" name="audits-mongo-log-before" />
+		</async>
+		<mongo:find-documents collectionName="${mongoDb-mdm.mayoristas.collection-rneMoviles}" fields="," doc:name="Get active services" doc:id="23a4b616-6c64-478b-b78c-264e006b1266" config-ref="mdm_db_Config" >
+			<mongo:query ><![CDATA[#["{'Tipo_Documento': '" ++ vars.tipoDoc ++ "', 'Numero_Identificacion': '" ++ vars.numDoc ++ "', 'Estado':'" ++ p('referred.estado') ++ "','Producto':'" ++ p('referred.producto') ++ "'}"]]]></mongo:query>
+		</mongo:find-documents>
+		<async doc:name="Async" doc:id="1e1b7c17-a38a-4d3d-8129-29974b71433c" >
+			<flow-ref doc:name="Call logger after" doc:id="0d42faec-e41d-4329-868c-63214be34059" name="audits-mongo-log-after" />
+		</async>
+	</sub-flow>
+</mule>

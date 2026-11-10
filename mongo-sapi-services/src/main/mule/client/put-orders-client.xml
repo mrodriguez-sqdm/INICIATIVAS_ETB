@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="put-orders-client" doc:id="8d521aa9-b1d8-4ec5-82ee-6da2306eba09" >
+		<async doc:name="Async" doc:id="8fa9bc78-de21-45d7-8cb3-51c5e66308d8" >
+			<choice doc:name="Choice" doc:id="46209737-1d4c-4535-a316-a585e15bc6cf" >
+				<when expression="#[p('logging.mayoristas.ordenes.actualizar') == &quot;ON&quot;]">
+					<flow-ref doc:name="Call logger before" doc:id="cda59f25-3fd7-4f4e-ba90-309f89dc12a6" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="80bbd8c1-c606-4a2e-bf62-78592bace611">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="19092cac-59e8-43ff-8aeb-6bc21a50ae5f" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+		<mongo:update-documents doc:name="Update MDM_CD_ORDER" doc:id="11dfc02f-e891-4795-88d8-eed42dc2ee1e" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-order}">
+			<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{ 
+	'Numero_Orden': vars.orderNumber
+}]]]></mongo:query>
+			<mongo:content-to-update ><![CDATA[#[payload - '_id']]]></mongo:content-to-update>
+		</mongo:update-documents>
+		<choice doc:name="Choice" doc:id="714f4b27-cd12-4b66-aff8-fa95b01304d0" >
+			<when expression='#[vars.updateType == "2"]'>
+				<set-variable value="#[payload]" doc:name="Set Variable" doc:id="89c8c8c4-447f-48d6-acb4-d43c0c96b1cf" variableName="payload" />
+				<ee:transform doc:name="get objectID" doc:id="13baf0a0-2724-464b-b79b-a85523e207f4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	id1: lookup('calculate-objectid-string',{},10000).hexString,
+	id2: lookup('calculate-objectid-string',{},10000).hexString,
+	id3: lookup('calculate-objectid-string',{},10000).hexString,
+	id4: lookup('calculate-objectid-string',{},10000).hexString
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="hexString"><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	'4byte': toHex(randomInt(4294967295)),
+	'5byte': toHex(randomInt(1099511627775)),
+	'3byte': toHex(randomInt(16777215))
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+				<mongo:update-documents collectionName="${mongoDb-mdm.mayoristas.collection-order}" doc:name="Update documents" doc:id="0a1ab084-c9c5-4f56-9e79-c168ab609874" config-ref="mdm_db_Config">
+			<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+{ 
+	'Numero_Orden': vars.orderNumber
+}]]]></mongo:query>
+			<mongo:content-to-update><![CDATA[#["{'Servicio_Tramite._id': ObjectId('"++ payload.id1 ++"'),
+'Servicio_Tramite.Bundle._id': ObjectId('"++ payload.id2 ++"'),
+'Servicio_Tramite.Bundle.Primarios.\$[]._id': ObjectId('"++ payload.id3 ++"'),
+'Servicio_Tramite.Bundle.Primarios.\$[].Secundarios.\$[]._id': ObjectId('"++ payload.id4 ++"')}"]]]></mongo:content-to-update>
+		</mongo:update-documents>
+			</when>
+			<otherwise >
+				<set-variable value="#[payload]" doc:name="Set Variable" doc:id="2ab7d32a-d859-4fac-8695-325961a5edba" variableName="payload" />
+				<ee:transform doc:name="get objectID" doc:id="4c78bd20-c918-4edd-9003-182d09efa264" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	id1: lookup('calculate-objectid-string',{},10000).hexString
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="hexString" ><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	'4byte': toHex(randomInt(4294967295)),
+	'5byte': toHex(randomInt(1099511627775)),
+	'3byte': toHex(randomInt(16777215))
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<mongo:update-documents collectionName="${mongoDb-mdm.mayoristas.collection-order}" doc:name="Update documents" doc:id="08cb77f9-56f7-40c0-af21-bbdfffcc2894" config-ref="mdm_db_Config" >
+					<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{ 
+	'Numero_Orden': vars.orderNumber
+}]]]></mongo:query>
+					<mongo:content-to-update ><![CDATA[#["{'Cliente_Tramite._id': ObjectId('"++ payload.id1 ++"')}"]]]></mongo:content-to-update>
+				</mongo:update-documents>
+			</otherwise>
+		</choice>
+		<async doc:name="Async" doc:id="4b12f860-cf21-4730-bbb9-3707e67c51ee" >
+			<choice doc:name="Choice" doc:id="b2cd8705-4f3c-42e3-8363-ce7f3a1da5b6" >
+				<when expression="#[p('logging.mayoristas.ordenes.actualizar') == &quot;ON&quot;]" >
+					<flow-ref doc:name="Call logger after" doc:id="fdeb8c5c-5fb6-4116-ae01-a705637e72bb" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="be708551-6faf-47b6-a9f2-bd0fcd5741de">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="e90f9099-b3b8-4d2f-abb5-11e235f982dc" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+	</sub-flow>
+</mule>

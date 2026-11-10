@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-log-message-orchestratorSub_Flow" doc:id="a01a262a-80f5-4656-9fb3-a827722efa90" >
+		<set-variable value='#[payload.uuids]' doc:name="Set Variable uuids" doc:id="b6c4d56c-8f20-4e55-b81b-85dd122dc3fa" variableName="uuids"/>
+		<set-variable value="#[payload.codigoEstado]" doc:name="Set Variable codigoEstado" doc:id="b2cceffb-93c2-4395-ad35-b2b4a0e513bf" variableName="codigoEstado"/>
+		<choice doc:name="Choice" doc:id="d92abb08-81f8-438c-a7f4-53cb2d8034b1" >
+			<when expression="#[vars.codigoEstado == 'MSG_SENT_INFO']">
+				<set-variable value="#[payload]" doc:name="Set Variable PayloadMessage" doc:id="68269b04-ba41-4990-9083-e7608f398f09" variableName="PayloadMessage"/>
+				<foreach doc:name="For Each" doc:id="106f6bb6-0336-4012-b316-24bcb3b08ea8" collection="#[vars.uuids]">
+					<set-variable value="#[payload]" doc:name="Set Variable id" doc:id="f2392765-4f17-4af7-9f4f-118c673cb579" variableName="id"/>
+					<flow-ref doc:name="Go to Client to update SentInfo to log message" doc:id="4239db98-b88a-42de-9687-9c99a9f1de5d" name="log-message-sent-patchSubFlow" />
+				</foreach>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="7ce3fd6c-72d6-4ca0-84ad-9496269eed73">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+  codigoEstado: payload.codigoEstado,
+  estado: payload.estado,
+  detalle: payload.detalle,
+  fecha: payload.fecha,
+  usuario: payload.usuario,
+  (codigoError: payload.codigoError) if !isEmpty(payload.codigoError default null)
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<set-variable value="#[payload]" doc:name="Set Variable PayloadMessage" doc:id="b20b9303-93e5-40af-b0a3-639500088f1a" variableName="PayloadMessage" />
+				<foreach doc:name="For Each" doc:id="fbd684f7-f900-40c4-9ef9-792051740215" collection="#[vars.uuids]">
+			<set-variable value="#[payload]" doc:name="Set Variable id" doc:id="d703e393-e948-4d31-860f-710f971c4526" variableName="id" />
+			<set-variable value='#["historialEstados"]' doc:name="Set Variable Fields" doc:id="436ff0a6-2c01-4e61-a764-bccfe1dfca79" variableName="fields" />
+			<flow-ref doc:name="Go to Client to obtain historialEstados" doc:id="506f26a6-7977-4227-8d45-2344978cd6c1" name="log-message-getSubFlow" />
+			<flow-ref doc:name="Go to Client to Patch" doc:id="673e282e-c026-4c00-af6f-4eb41f12ae2c" name="log-message-patchSubFlow" />
+		</foreach>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

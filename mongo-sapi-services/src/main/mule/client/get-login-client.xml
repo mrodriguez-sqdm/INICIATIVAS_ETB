@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-login-clientSub_Flow" doc:id="9869bb3b-008b-418a-9a53-bce80adc6c6e" >
+		<async doc:name="Async" doc:id="dadabbe6-f40c-4ca7-8747-1e971fcaabee">
+			<flow-ref doc:name="Call logger before" doc:id="6e71c605-2d7b-4467-bfda-c4d1c4581ceb" name="loggin-client-call" />
+		</async>
+		<mongo:find-documents collectionName="${mongoDb-mdm.mayoristas.collection-loginPosteria}" fields="," doc:name="Find documents" doc:id="5c9a5ceb-9bdb-414a-87a3-78d21baaa359" config-ref="mdm_db_Config">
+			<mongo:query><![CDATA[#[output application/json
+---
+{ 
+	"Password" : vars.password,
+	"Email" : vars.email,
+	"Estado" : "Activo"
+}]]]></mongo:query>
+		</mongo:find-documents>
+		<async doc:name="Async" doc:id="3d8ab5a0-8461-4f72-984e-c719d0f6281c">
+			<flow-ref doc:name="Call logger after" doc:id="f6facdc4-4c72-4b5c-adaf-44661a25773b" name="loggin-client-call" />
+		</async>
+		<ee:transform doc:name="Validate response" doc:id="b0761409-14b1-4cd8-b9e6-912a6c24e7f3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "Error trying to retrieve information"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.module.apikit.exception.NotFoundException"
+    }
+  ]
+} 
+else payload
+
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload))
+404 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

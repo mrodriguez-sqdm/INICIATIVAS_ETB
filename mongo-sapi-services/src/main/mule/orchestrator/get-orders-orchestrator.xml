@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-orders-orchestratorSub_Flow" doc:id="de0d7f91-034f-4880-842e-1f6f07fb50a8" >
+		<choice doc:name="Choice" doc:id="443aeca9-92a6-4aa7-b1aa-0ee17f9c9e51" >
+			<when expression="#[vars.collection == p('mongoDb-mdm.mayoristas.collection-order-completed')]">
+				<flow-ref doc:name="get-ordersCompleted-clientSub_Flow" doc:id="35d17b80-309c-4a00-b657-200f9108d8ca" name="get-ordersCompleted-clientSub_Flow"/>
+			</when>
+			<when expression="#[vars.collection == p('mongoDb-mdm.billing.order-mobile-collection')]">
+				<flow-ref doc:name="get-orders-mobile-clientSub_Flow" doc:id="b9e5c6fb-801d-4a9a-896e-fab2dead5fbd" name="get-ordersMobile-clientSub_Flow" />
+			</when>
+			<otherwise >
+				<flow-ref doc:name="get-orders-clientSub_Flow" doc:id="10df72eb-5f58-4e61-a170-2014960ece86" name="get-orders-clientSub_Flow" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="set response" doc:id="50ce54c7-299a-48b1-8185-0bd1419b10c3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "Order not found"
+  },
+  "messageServer": "",
+  "cause": [
+    {
+      "origin": app.name,
+      "message": "org.mule.extension.http.api.request.validator.ResponseValidatorTypedException"
+    }
+  ]
+}
+else
+	payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+if(isEmpty(payload)) 404 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+	</sub-flow>
+</mule>

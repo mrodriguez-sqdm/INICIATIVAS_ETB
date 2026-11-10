@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="patch-rne-characteristic-orchestratorSub_Flow" doc:id="65eb69db-dbd4-4772-8f7b-ddc4b6a5a97f" >
+		<ee:transform doc:name="Set true or false" doc:id="263f33b4-da81-495d-9918-ce818222e75a">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="characteristics"><![CDATA[%dw 2.0
+var valores = [{"key": "RECIBIR MENSAJES", "value" : "true"},
+{"key": "NO RECIBIR MENSAJES", "value" : "false"}]
+output application/json
+---
+payload.caracteristicaServicio map ((item, index) -> {
+name: item.name,
+value: if((valores filter ($.key == item.value)).value[0] != null) 
+(valores filter ($.key == item.value)).value[0] else item.value
+})]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Get caracteristicas from db" doc:id="c9f1c0fb-5996-4a67-8222-813855d11ec1" name="get-characteristic-clientSub_Flow"/>
+		<choice doc:name="Choice" doc:id="c6b79ffc-1b6c-4456-ac61-7400c79b5f55" >
+			<when expression="#[isEmpty(payload)]">
+				<ee:transform doc:name="Set response" doc:id="190457c8-367b-4fc2-99f4-1e341d313d8d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  "codigo": "FAIL",
+  "descripcion": "No existen registros"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[%dw 2.0
+output application/java
+---
+404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<choice doc:name="Choice" doc:id="eb687e03-91c1-43a9-8f25-73dbaf8b46d3">
+					<when expression="#[payload[0].Caracteristica_Servicio == null or isEmpty(payload[0].Caracteristica_Servicio)]">
+						<ee:transform doc:name="Set request to update" doc:id="18f41199-d26d-4828-9c31-1f57e0bf5cfb">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.characteristics map (value) ->  {
+	'Caracteristica': value.name,
+	'Valor': value.value
+} ]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+					</ee:variables>
+				</ee:transform>
+					</when>
+					<otherwise>
+						<ee:transform doc:name="Join arrays" doc:id="10a4c9f9-62d8-410b-b955-bc6fc2feb742">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Arrays
+output application/json
+var arrayInput = vars.characteristics
+var arrayBD = payload[0].Caracteristica_Servicio
+---
+outerJoin(arrayInput, arrayBD, 
+	(arrayInput) -> arrayInput.name, 
+	(arrayBD) -> arrayBD.Caracteristica
+)]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+						<ee:transform doc:name="Set request to update" doc:id="bd2bab8d-2fce-4727-8e62-0321a684d936">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload map (value) -> 
+if ( value.l? ) {
+	'Caracteristica': value.l.name,
+	'Valor': value.l.value
+} 
+else value.r]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					</otherwise>
+				</choice>
+				<flow-ref doc:name="Update" doc:id="6532376b-80ae-4b00-96ee-7f3a3564ad24" name="update-characteristic-clientSub_Flow" />
+				<ee:transform doc:name="Set response" doc:id="72712826-f58c-476b-8d95-605c49396b23">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if ( payload.modified > 0 ) {
+	"codigo": "OK",
+	"descripcion": "Características actualizadas"
+} else 
+{
+	"codigo": "FAIL",
+	"descripcion": "No se pudo actualizar características"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if ( payload.modified > 0 ) 200 else 404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

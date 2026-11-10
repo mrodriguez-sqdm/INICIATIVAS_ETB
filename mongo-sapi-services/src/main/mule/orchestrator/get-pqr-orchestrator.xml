@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="get-pqr-orchestratorSub_Flow" doc:id="d0b3cfe5-928a-4332-af1d-054d837df67c" >
+		<choice doc:name="Choice" doc:id="76c3c7af-97ec-4735-b948-ce04f54a3183" >
+			<when expression='#[upper(attributes.headers.name) == upper("MiEtb-ObtenerPqrs")]'>
+				<flow-ref doc:name="Go to Client" doc:id="3ed7fe4d-369c-4dcb-99a1-48c6ccee212c" name="get-pqrByCtaFacturacionYSintoma-clientSub_Flow" />
+				<ee:transform doc:name="Map Output" doc:id="0833970f-03b1-4474-a052-9bd4665d0333" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Go to Client" doc:id="c2aed362-c064-4665-b6ef-15cd115ad596" name="get-pqr-clientSub_Flow" />
+				<ee:transform doc:name="Map Output" doc:id="b573cf87-7471-4489-a565-8bd1fcb6cbb0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if ( payload == [] ) {
+	"codigo": "400",
+	"titulo": "PQR no fue encontrada",
+	"detalle": "Al consultar la PQR no fue encontrada"
+}
+else 
+payload map
+    {
+      "id": $.numero_pqr,
+	  "cun": $.cun,
+      "tecnologia" : $.tecnologia,
+      "numero_pqr": $.numero_pqr,
+      "num_incidendia_remedy": $.num_incidendia_remedy,
+      "fecha_creacion": $.fecha_creacion,
+      "numero_conexion" : $.numero_conexion,
+	  "cliente": {
+	    "tipoIdentificacion": $.tipo_documento,
+	    "numIdentificacion": $.numero_identificacion
+	  },
+	  "estado": {
+	    "titulo": ($.pqr_caracteristicas filter $.Caracteristica == "estado_pqr_homologado")[0].Valor default $.estado_pqr
+	  },
+	  "contacto": {
+	    "tipoIdentificacion": $.contacto_tipo_documento,
+	    "numIdentificacion": $.contacto_numero_documento
+	  },
+	  "tipologia": {
+	    "causal": $.causal_pqr ,
+	    "clase": $.clase_pqr,
+	    "motivo": $.motivo_pqr,
+	    "producto": $.producto,
+	    "sintoma": $.sintoma_pqr
+	  }
+    }]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="httpStatus"><![CDATA[%dw 2.0
+output application/java
+---
+if(payload == []) 400 else 200]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

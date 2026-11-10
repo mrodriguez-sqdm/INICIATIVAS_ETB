@@ -1,0 +1,333 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="enrutador-datos-post-Sub_Flow" doc:id="6b0ffa47-db89-41df-9436-28cdb6774c71" >
+		<async doc:name="Async" doc:id="cfab9b2a-fc7c-428c-b400-d9d409beab3f">
+			<flow-ref doc:name="Call logger before" doc:id="2c926895-1335-4744-9cec-6e8cf1cff2fe" name="loggin-client-call" />
+		</async>
+		<mongo:insert-documents doc:name="Insert documents" doc:id="6c59dc0d-1e8e-40aa-9ac9-9113a6d5c8bd" config-ref="mongo-db-imei" collectionName="#[p('mongoDb.collectionEnrutadorMensajes')]"/>
+		<ee:transform doc:name="Set Response" doc:id="39a3d70b-a950-48b1-8e48-d0fa14ae4d90">
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var successfulItems = if(isEmpty(payload) or isEmpty(payload.items)) [] else payload.items filter (item) -> item.successful
+var failedItems = if(isEmpty(payload) or isEmpty(payload.items)) [] else payload.items filter (item) -> not item.successful
+var totalItems = if(isEmpty(payload) or isEmpty(payload.items)) 0 else sizeOf(payload.items)
+var successfulCount = sizeOf(successfulItems)
+var failedCount = sizeOf(failedItems)
+---
+if(isEmpty(payload) or isEmpty(payload.items))
+{
+  "status": 500,
+  "code": "ALL_FAILED",
+  "message": {
+    "message": "All records failed to insert"
+  },
+  "messageServer": "mongo-mvne",
+  "cause": [
+    {
+      "origin": "mongo-mvne",
+      "message": "error inserting records, validate database status"
+    }
+  ],
+  "results": []
+}
+else if(successfulCount == 0)
+{
+  "status": 500,
+  "code": "ALL_FAILED",
+  "message": {
+    "message": "All records failed to insert"
+  },
+  "messageServer": "mongo-mvne",
+  "cause": [
+    {
+      "origin": "mongo-mvne",
+      "message": "All insertions failed"
+    }
+  ],
+  "results": []
+}
+else if(failedCount == 0)
+{
+  "status": 200,
+  "code": "ALL_INSERTED",
+  "message": {
+    "message": "All records inserted successfully"
+  },
+  "messageServer": "mongo-mvne",
+  "insertedCount": successfulCount,
+  "results": successfulItems map (item, index) -> {
+    "messageId": item.payload.messageId,
+    "mongoId": item.payload."_id",
+    "status": "success"
+  }
+}
+else
+{
+  "status": 207,
+  "code": "PARTIAL_INSERTED",
+  "message": {
+    "message": "Some records were inserted successfully, others failed"
+  },
+  "messageServer": "mongo-mvne",
+  "insertedCount": successfulCount,
+  "totalAttempted": totalItems,
+  "failedCount": failedCount,
+  "results": successfulItems map (item, index) -> {
+    "messageId": item.payload.messageId,
+    "mongoId": item.payload."_id",
+    "status": "success"
+  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="9b29f468-4b4e-43cc-bad5-3dc961c501fc" >
+			<flow-ref doc:name="Call logger after" doc:id="3557a632-ee24-410a-83c9-91550895f22f" name="loggin-client-call" />
+		</async>
+	</sub-flow>
+	<sub-flow name="enrutador-datos-get-Sub_Flow" doc:id="269bcfe8-edb1-407e-badf-fd79ce3f4a9a" >
+		<async doc:name="Async" doc:id="4a45122a-ed08-44f9-b7e4-67467709c5f4">
+			<flow-ref doc:name="Call logger before" doc:id="3a73a030-5c50-4dc3-8be0-88ea341189dd" name="loggin-client-call" />
+		</async>
+		<mongo:find-documents doc:name="Find documents" doc:id="d9d30a84-8865-47e4-af5c-0a22138501b5" config-ref="mongo-db-imei" fields="," limit="#[vars.txrMaxPorHora]" collectionName="#[p('mongoDb.collectionEnrutadorMensajes')]">
+			<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+    status: "pending"
+}]]]></mongo:query>
+			<mongo:sort-by ><![CDATA[#[output application/json
+---
+{ 
+    "priority": "ASC",
+	"createdAt": "ASC"
+}]]]></mongo:sort-by>
+		</mongo:find-documents>
+		<ee:transform doc:name="Set Response" doc:id="8fdb133e-ce43-48b6-aabf-685e5ea78588" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload))
+{
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": {
+    "message": "No pending messages found"
+  },
+  "messageServer": "mongo-mvne",
+  "cause": [
+    {
+      "origin": "mongo-mvne",
+      "message": "No pending messages available for processing"
+    }
+  ],
+  "results": []
+}
+else
+{
+  "status": 200,
+  "code": "FOUND",
+  "message": {
+    "message": "Pending messages retrieved successfully"
+  },
+  "messageServer": "mongo-mvne",
+  "foundCount": sizeOf(payload),
+  "results": payload
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="22daee4f-7f6d-4879-a65e-90ec6ac4952d" >
+			<flow-ref doc:name="Call logger after" doc:id="017abc64-002d-4e60-83ab-d71fb9cd86a9" name="loggin-client-call" />
+		</async>
+</sub-flow>
+	<sub-flow name="enrutador-datos-update-Sub_Flow" doc:id="29347481-bae3-468c-a8f4-96e4346f3d1c" >
+		<async doc:name="Async" doc:id="7ed77d27-a8ff-4bd1-b06d-bfc8845dd8cf">
+			<flow-ref doc:name="Call logger before" doc:id="c3a66bc3-47dd-4680-9b45-bb212856054b" name="loggin-client-call" />
+		</async>
+		<set-variable value="#[attributes.uriParams.id]" doc:name="Set messageId" doc:id="8b084969-e59d-4522-9e0f-b644e711364b" variableName="messageId"/>
+		<mongo:update-documents doc:name="Update documents" doc:id="aeb960fd-2c24-47c8-b10d-379bf8bdd9e5" config-ref="mongo-db-imei" collectionName="#[p('mongoDb.collectionEnrutadorMensajes')]">
+			<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  "messageId": attributes.uriParams.id
+}]]]></mongo:query>
+		</mongo:update-documents>
+		<ee:transform doc:name="Set Response" doc:id="08409814-927b-413b-af01-5f6c4cb7f7a2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload) or payload.modifiedCount == 0)
+{
+  "status": 404,
+  "code": "NOT_UPDATED",
+  "message": {
+    "message": "Message not found or could not be updated"
+  },
+  "messageServer": "mongo-mvne",
+  "cause": [
+    {
+      "origin": "mongo-mvne",
+      "message": "Message with messageId '" ++ vars.messageId ++ "' not found or already processed"
+    }
+  ],
+  "results": []
+}
+else
+{
+  "status": 200,
+  "code": "UPDATED",
+  "message": {
+    "message": "Message updated successfully"
+  },
+  "messageServer": "mongo-mvne",
+  "modifiedCount": payload.modified,
+  "matchedCount": payload.matched,
+  "results": [
+    {
+      "messageId": vars.messageId default '',
+      "status": "updated"
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="c461738f-7556-4207-91a9-463a3f54b9b5" >
+			<flow-ref doc:name="Call logger after" doc:id="225329b3-5209-476e-a45b-e25433260e61" name="loggin-client-call" />
+		</async>
+</sub-flow>
+	<sub-flow name="enrutador-datos-delete-Sub_Flow" doc:id="9d539e89-2553-4a6a-a2ab-15ba42978ce4" >
+		<async doc:name="Async" doc:id="c0813262-c07f-4432-8615-c486d610cc37">
+			<flow-ref doc:name="Call logger before" doc:id="949a59e1-66ec-4177-9bbb-ef3415d83ef2" name="loggin-client-call" />
+		</async>
+		<mongo:remove-documents doc:name="Remove documents" doc:id="bdbdedff-0d4f-42c5-9ec5-bc3b1ff19257" config-ref="mongo-db-imei" collectionName="#[p('mongoDb.collectionEnrutadorMensajes')]">
+			<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+---
+if(not isEmpty(attributes.queryParams.id))
+{
+  "messageId": attributes.queryParams.id
+}
+else
+{
+  "status": "processed"
+}]]]></mongo:query>
+		</mongo:remove-documents>
+		<ee:transform doc:name="Set Response" doc:id="8bc6d406-9a26-4a6b-8c87-eb81b187540d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload) or payload.deletedCount == 0)
+{
+  "status": 404,
+  "code": "NOT_DELETED",
+  "message": {
+    "message": "No messages found to delete"
+  },
+  "messageServer": "mongo-mvne",
+  "cause": [
+    {
+      "origin": "mongo-mvne",
+      "message": if(not isEmpty(attributes.queryParams.id)) 
+        "Message with messageId '" ++ attributes.queryParams.id ++ "' not found"
+      else
+        "No processed messages found to delete"
+    }
+  ],
+  "results": []
+}
+else
+{
+  "status": 200,
+  "code": "DELETED",
+  "message": {
+    "message": "Messages deleted successfully"
+  },
+  "messageServer": "mongo-mvne",
+  "deletedCount": payload,
+  "results": [
+    {
+      "deletedCount": payload,
+      "status": "deleted"
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="bc7931d9-bcc6-40b6-aa3e-a04ee917b59a" >
+			<flow-ref doc:name="Call logger after" doc:id="b27486f1-c685-4034-9ea1-0a0ca403c0ea" name="loggin-client-call" />
+		</async>
+	
+</sub-flow>
+<sub-flow name="enrutador-datos-delete-timeSub_Flow" doc:id="a181506f-f383-4604-b5df-ac3a1cf2a687" >
+		<async doc:name="Async" doc:id="fb19118d-f5a2-42f8-9622-8c00228e5b54" >
+			<flow-ref doc:name="Call logger before" doc:id="9e4f260c-b916-46c5-bbbf-fe10cdf5dfbb" name="loggin-client-call"/>
+		</async>
+		<mongo:remove-documents doc:name="Remove documents" doc:id="ca4b99b6-0a8a-4cee-9458-f83bc4398c04" config-ref="mongo-db-imei" collectionName="#[p('mongoDb.collectionEnrutadorMensajes')]">
+			<mongo:query ><![CDATA[#[%dw 2.0
+output application/json
+var segundosEliminar = (vars.timeDelete default 0) as Number
+var limiteTiempoMillis = (now() as DateTime) as Number {unit: "milliseconds"} - (segundosEliminar * 1000)
+var limiteTiempo = limiteTiempoMillis as DateTime {unit: "milliseconds"}
+---
+{
+  createdAt: {
+    "\$lte": {
+      "\$date": (limiteTiempo as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"})
+    }
+  },
+  category: vars.category
+}]]]></mongo:query>
+		</mongo:remove-documents>
+		<ee:transform doc:name="Set Response" doc:id="0369e980-d749-42ce-89a4-c02f8b14e2e8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+if(isEmpty(payload) or payload.deletedCount == 0)
+{
+  "status": 404,
+  "code": "NOT_DELETED",
+  "message": {
+    "message": "No messages found to delete"
+  },
+  "messageServer": "mongo-mvne",
+  "cause": [
+    {
+      "origin": "mongo-mvne",
+      "message": "No processed messages found to delete"
+    }
+  ],
+  "results": []
+}
+else
+{
+  "status": 200,
+  "code": "DELETED",
+  "message": {
+    "message": "Messages deleted successfully"
+  },
+  "messageServer": "mongo-mvne",
+  "deletedCount": payload,
+  "results": [
+    {
+      "deletedCount": payload,
+      "status": "deleted"
+    }
+  ]
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<async doc:name="Async" doc:id="3f56b817-33ef-49e4-8f98-a602d9152d26" >
+			<flow-ref doc:name="Call logger after" doc:id="84770224-0f90-42ad-85d1-4f114ed7161d" name="loggin-client-call"/>
+		</async>
+	</sub-flow>
+</mule>

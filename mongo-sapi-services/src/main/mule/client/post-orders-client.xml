@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="post-orders-clientSub_Flow" doc:id="24a1f37a-0d9d-4566-8498-7741fed6a918" >
+		<async doc:name="Async" doc:id="25589b13-e7e1-4598-87b0-db428b28cfb2" >
+			<choice doc:name="Choice" doc:id="27851d40-12bd-43b6-9c42-1b75888dec63" >
+				<when expression="#[p('logging.mayoristas.ordenes.insertar') == &quot;ON&quot;]">
+					<flow-ref doc:name="Call logger before" doc:id="4a088995-7cd9-4657-acb1-45b91033c0c2" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="3a8af46a-15d3-4e14-a79f-17a152e6bd1d">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="97c3f5f6-b8bc-43a9-8a24-4749e79d926d" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+		<mongo:insert-document doc:name="Insert document" doc:id="e738bc26-2aa1-4b7f-b722-aa852d069b2d" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-order}"/>
+		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="b2e83748-5577-4f27-b415-63a7c7860974" variableName="payload"/>
+		<ee:transform doc:name="Transform Message" doc:id="ae749643-51be-491f-9daf-36abedf59505">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	id: lookup('calculate-objectid-string',{},10000).hexString
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="hexString"><![CDATA[%dw 2.0
+output application/java
+import * from dw::core::Binaries
+---
+{
+	'4byte': toHex(randomInt(4294967295)),
+	'5byte': toHex(randomInt(1099511627775)),
+	'3byte': toHex(randomInt(16777215))
+}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<mongo:update-documents doc:name="Update documents" doc:id="5ceca63d-c518-40cd-b0e9-56bec478662a" config-ref="mdm_db_Config" collectionName="${mongoDb-mdm.mayoristas.collection-order}">
+			<mongo:query><![CDATA[#[%dw 2.0
+output application/json
+---
+{ 
+	'Numero_Orden': vars.orderNumber
+}]]]></mongo:query>
+			<mongo:content-to-update><![CDATA[#["{'Cliente_Tramite._id': ObjectId('"++ payload.id ++"')}"]]]></mongo:content-to-update>
+		</mongo:update-documents>
+		<async doc:name="Async" doc:id="727e46cb-af10-4a61-b359-0988f17e8325" >
+			<choice doc:name="Choice" doc:id="3e512bf2-e1b2-434b-8645-304961092218" >
+				<when expression="#[p('logging.mayoristas.ordenes.insertar') == &quot;ON&quot;]" >
+					<flow-ref doc:name="Call logger after" doc:id="070ade38-9f1b-43e7-a444-92c070bb55ac" name="loggin-client-call" />
+				</when>
+				<otherwise >
+					<ee:transform doc:name="Map request log" doc:id="3038c456-e781-4777-b40a-33b9868d5887">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::Runtime
+var statusCode= if(!isEmpty(vars.httpStatus)) vars.httpStatus as String 
+                else if (try (()-> payload.overallStatusCode).success == false or isEmpty(payload.overallStatusCode)) "201" 
+                else payload.overallStatusCode
+var attr = if(attributes == null) vars.attributes else attributes
+var transactionId = if(!isEmpty(vars.headers)) vars.headers."x-correlation-id" else if (!isEmpty(attributes.headers."x-correlation-id")) attributes.headers."x-correlation-id" else correlationId
+var host = if(isEmpty(attributes.remoteAddress)) vars.attributes.remoteAddress else attributes.remoteAddress
+---
+{
+  transactionId: transactionId default correlationId,
+  correlation_id: correlationId,
+  fecha_creacion: now() >> "America/Bogota",
+  fecha: now() as String {format: "yyyyMMdd"} as Number,
+  body_request: write(payload.^raw, "application/json") as String,
+  attributes_request: write(attr, 'application/json') as String,
+  http_code: statusCode default "" as String,
+  apiName: p('app.name'),
+  host: host default "",
+  processname: vars.processname default null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+					<flow-ref doc:name="audits-client_log-audits-information" doc:id="b51d52c4-8017-454a-ad11-b49fbfa37e1f" name="post_log_audits-sapi-clientSub_Flow" />
+				</otherwise>
+			</choice>
+		</async>
+	</sub-flow>
+</mule>
