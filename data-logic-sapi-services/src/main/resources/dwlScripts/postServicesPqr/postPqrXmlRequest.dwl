@@ -43,6 +43,7 @@ output application/xml  skipNullOn = "everywhere", writeDeclaredNamespaces = "Al
 			mdm#fecha_creacion: payload.creationDate,
 			mdm#fecha_radicacion: payload.filingDate,
 			mdm#fecha_solucion: payload.solutionDate,
+			mdm#estado_pqr: payload.pqrStatus,
 			mdm#solucion: payload.solution,
 			mdm#imputabilidad: payload.imputability,
 			mdm#estado_envio_remedy: payload.remedySendStatus,
